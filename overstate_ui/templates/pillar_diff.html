@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Pillar diff — Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">Pillar diff</h1>
+  <p class="text-sm opacity-70 mt-0.5">Compare rendered pillar between two minions, live or from snapshots.</p>
+</div>
+<form method="get" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body flex-row flex-wrap items-end gap-2">
+    <label class="form-control">
+      <span class="label"><span class="label-text">Left</span></span>
+      <select name="a" class="select select-bordered select-sm">
+        <option value="">—</option>
+        {% for m in mids %}<option value="{{ m }}"{% if m == mid_a %} selected{% endif %}>{{ m }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="form-control">
+      <span class="label"><span class="label-text">Left revision</span></span>
+      <select name="rev_a" class="select select-bordered select-sm">
+        <option value="">newest snapshot</option>
+        <option value="live"{% if rev_a == "live" %} selected{% endif %}>live</option>
+        {% for s in snaps_a %}<option value="{{ s.id }}"{% if rev_a == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="form-control">
+      <span class="label"><span class="label-text">Right</span></span>
+      <select name="b" class="select select-bordered select-sm">
+        <option value="">—</option>
+        {% for m in mids %}<option value="{{ m }}"{% if m == mid_b %} selected{% endif %}>{{ m }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="form-control">
+      <span class="label"><span class="label-text">Right revision</span></span>
+      <select name="rev_b" class="select select-bordered select-sm">
+        <option value="">newest snapshot</option>
+        <option value="live"{% if rev_b == "live" %} selected{% endif %}>live</option>
+        {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-sm btn-primary">Compare</button>
+  </div>
+</form>
+{% if compared %}
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="px-4 py-3 border-b border-base-300 text-sm">
+    <span class="font-mono">{{ mid_a }}</span> <span class="opacity-60">vs</span> <span class="font-mono">{{ mid_b }}</span>
+    <span class="badge badge-sm badge-neutral ml-2">{{ rows|length }} difference{{ "s" if rows|length != 1 }}</span>
+  </div>
+  {% if rows %}
+  <div class="overflow-x-auto">
+  <table class="table table-sm table-zebra"><thead><tr><th>Path</th><th>Change</th><th>Left</th><th>Right</th></tr></thead><tbody>
+  {% for r in rows %}
+  <tr>
+    <td class="font-mono text-xs">{{ r.path }}</td>
+    <td>
+      {% if r.kind == "added" %}<span class="badge badge-sm badge-success">added</span>
+      {% elif r.kind == "removed" %}<span class="badge badge-sm badge-error">removed</span>
+      {% else %}<span class="badge badge-sm badge-warning">changed</span>{% endif %}
+    </td>
+    <td class="font-mono text-xs break-all">{{ render_value(r.old) if r.old is not none else "–" }}</td>
+    <td class="font-mono text-xs break-all">{{ render_value(r.new) if r.new is not none else "–" }}</td>
+  </tr>
+  {% endfor %}
+  </tbody></table>
+  </div>
+  {% else %}
+  <div class="py-8 text-center">
+    <p class="font-medium">Identical pillar</p>
+    <p class="text-sm opacity-70">No differences at the compared revisions.</p>
+  </div>
+  {% endif %}
+</div>
+{% elif mid_a and mid_b %}
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="py-8 text-center">
+    <p class="font-medium">No pillar data to compare</p>
+    <p class="text-sm opacity-70">Capture a snapshot or compare live for both minions.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

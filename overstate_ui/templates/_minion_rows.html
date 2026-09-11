@@ -1,0 +1,43 @@
+{% import "_macros.html" as m %}
+<div id="minion-table">
+  <div class="overflow-x-auto">
+  <table class="table table-sm table-zebra">
+    <thead><tr>{% if current_user.role in ["operator", "admin"] %}<th class="w-8"><span class="sr-only">Select</span></th>{% endif %}{{ m.sort_th('minions.index', 'id', 'Id', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'key', 'Key', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'presence', 'Presence', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'os', 'OS', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}<th>IP</th><th>CPUs</th><th>Salt</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      {% if current_user.role in ["operator", "admin"] %}<td><input type="checkbox" name="bulk" value="{{ r.id }}" class="checkbox checkbox-sm" aria-label="Select {{ r.id }}"></td>{% endif %}
+      <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=r.id) }}">{{ r.id }}</a>{% if r.grains.proxytype or r.grains.proxyid %} <span class="badge badge-sm badge-outline">proxy</span>{% endif %}</td>
+      <td>
+        {% if r.key_status == "accepted" %}<span class="badge badge-sm badge-success">accepted</span>
+        {% elif r.key_status == "pending" %}<span class="badge badge-sm badge-warning">pending</span>
+        {% elif r.key_status in ["rejected", "denied"] %}<span class="badge badge-sm badge-error">{{ r.key_status }}</span>
+        {% else %}<span class="badge badge-sm badge-neutral">{{ r.key_status }}</span>{% endif %}
+      </td>
+      <td><span class="inline-flex items-center gap-1.5 text-sm presence" data-mid="{{ r.id }}">
+        {% if r.up %}<span class="status status-success"></span><span>up</span>
+        {% elif r.dead %}<span class="status status-warning"></span><span>accepted-but-dead</span>
+        {% else %}<span class="status status-error"></span><span>down</span>{% endif %}
+      </span></td>
+      <td class="text-sm">{{ r.grains.get("osfinger", "–") }} {{ r.grains.get("osrelease", "") }}</td>
+      <td class="font-mono text-xs">{{ (r.grains.get("ipv4") or ["–"])[0] }}</td>
+      <td>{{ r.grains.get("num_cpus", "–") }}</td>
+      <td class="font-mono text-xs">{{ r.grains.get("saltversion", "–") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if not rows %}
+  <div class="py-8 text-center">
+    <p class="font-medium">No minions match</p>
+    <p class="text-sm opacity-70">Adjust the search or key-status filter.</p>
+  </div>
+  {% endif %}
+  <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
+    {% if page > 1 %}{{ m.hx_link(url_for('minions.index', q=q, status=status, page=page-1, per_page=per_page, sort=sort, dir=direction), '#minion-table', '‹ Prev') }}{% endif %}
+    <span class="text-sm opacity-70">Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}{{ m.hx_link(url_for('minions.index', q=q, status=status, page=page+1, per_page=per_page, sort=sort, dir=direction), '#minion-table', 'Next ›') }}{% endif %}
+    {% if current_user.role in ["operator", "admin"] %}<button class="btn btn-sm btn-primary ml-auto">Run job on selected</button>{% endif %}
+  </div>
+</div>

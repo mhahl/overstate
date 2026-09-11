@@ -1,0 +1,49 @@
+{% import "_macros.html" as m %}
+<div id="jobs-region"{% if tab == "running" %} data-poll-url="{{ url_for('jobs.index', tab='running', sort=sort, dir=direction) }}"{% endif %}>
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="tabs tabs-border px-3 pt-2" role="tablist">
+  {% for name in ["running", "history", "saved"] %}
+  {% set href = url_for('jobs.index', tab=name, sort=sort, dir=direction) %}
+  <a role="tab" href="{{ href }}" hx-get="{{ href }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-neutral ml-1">{{ running|length }}</span>{% endif %}</a>
+  {% endfor %}
+</div>
+<div class="border-t border-base-300">
+{% if tab == "saved" %}
+{% if saved %}
+<table class="table table-zebra"><thead><tr><th>Name</th><th>Function</th><th>Target</th><th class="text-right"></th></tr></thead><tbody>
+{% for s in saved %}
+<tr><td class="font-medium">{{ s.name }}</td><td class="font-mono text-xs">{{ s.fun }}</td><td class="font-mono text-xs">{{ s.tgt_type }}: {{ s.tgt }}</td>
+<td class="text-right"><span class="join join-horizontal">
+<a class="btn btn-sm btn-primary join-item" href="{{ url_for('jobs.new', saved=s.id) }}">Run</a>
+<form method="post" action="{{ url_for('jobs.delete_saved', saved_id=s.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-ghost join-item">Delete</button></form>
+</span></td></tr>
+{% endfor %}
+</tbody></table>
+{% else %}
+<div class="py-8 text-center">
+  <p class="font-medium">No saved jobs</p>
+  <p class="text-sm opacity-70">Save one from the run form.</p>
+</div>
+{% endif %}
+{% else %}
+{% set rows = running if tab == "running" else history %}
+{% if rows %}
+<div class="overflow-x-auto">
+<table class="table table-sm table-zebra"><thead><tr><th>JID</th>{{ m.sort_th('jobs.index', 'fun', 'Function', sort, direction, {'tab': tab}, '#jobs-region', false) }}<th>Target</th>{{ m.sort_th('jobs.index', 'user', 'User', sort, direction, {'tab': tab}, '#jobs-region', false) }}{{ m.sort_th('jobs.index', 'started', 'Started', sort, direction, {'tab': tab}, '#jobs-region', false) }}</tr></thead><tbody>
+{% for j in rows %}
+<tr><td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=j.jid) }}">{{ j.jid }}</a></td>
+<td class="font-mono text-xs">{{ j.fun }}</td><td class="font-mono text-xs">{{ j.tgt_type }}: {{ j.tgt }}</td>
+<td>{{ j.user }}</td><td class="text-sm">{{ j.started_at }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% else %}
+<div class="py-8 text-center">
+  <p class="font-medium">No {{ tab }} jobs</p>
+  <p class="text-sm opacity-70">{% if tab == "running" %}Nothing is running right now.{% else %}No job history yet.{% endif %}</p>
+</div>
+{% endif %}
+{% endif %}
+</div>
+</div>
+</div>

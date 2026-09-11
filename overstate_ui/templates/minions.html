@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Minions — Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end gap-3 mb-5">
+  <div class="mr-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Minions <span class="badge badge-neutral align-middle">{{ total }}</span></h1>
+    <p class="text-sm opacity-70 mt-0.5">Inventory snapshots with live presence.</p>
+  </div>
+  <button id="live-toggle" class="btn btn-sm btn-ghost">Pause live</button>
+  <form method="post" action="{{ url_for('minions.refresh') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-sm btn-primary">Refresh inventory</button>
+  </form>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.export_csv') }}">Export CSV</a>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.onboard') }}">Onboard minion</a>
+</div>
+{% if not reachable %}
+<div class="alert alert-error mb-4" role="alert">
+  <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+  <span>salt-api unreachable. Showing snapshot cache only.</span>
+</div>
+{% endif %}
+<form method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body flex-row flex-wrap items-end gap-2">
+    <label class="form-control flex-1 min-w-48">
+      <span class="label"><span class="label-text">Search</span></span>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search id…" class="input input-bordered input-sm">
+    </label>
+    <label class="form-control">
+      <span class="label"><span class="label-text">Key status</span></span>
+      <select name="status" class="select select-bordered select-sm" onchange="this.form.requestSubmit()">
+        <option value="">All statuses</option>
+        {% for s in ["accepted", "pending", "rejected", "denied"] %}
+        <option value="{{ s }}"{% if status == s %} selected{% endif %}>{{ s|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-sm">Filter</button>
+  </div>
+</form>
+<form method="get" action="{{ url_for('jobs.new') }}" class="card bg-base-100 border border-base-300 shadow-sm">
+{% include "_minion_rows.html" %}
+</form>
+<script>
+(function () {
+  var btn = document.getElementById("live-toggle");
+  // Shared pause preference across minions/jobs (intentional, D4).
+  var key = "overstate-live";
+  function paused() {
+    try { return localStorage.getItem(key) === "off"; }
+    catch (e) { return false; }
+  }
+  function paint() { if (btn) btn.textContent = paused() ? "Resume live" : "Pause live"; }
+  if (btn) btn.addEventListener("click", function () {
+    try { localStorage.setItem(key, paused() ? "on" : "off"); } catch (e) {}
+    paint();
+  });
+  paint();
+  setInterval(function () {
+    if (paused() || document.hidden) return;
+    fetch({{ url_for('minions.presence')|tojson }})
+      .then(function (r) { return r.json(); })
+      .then(function (map) {
+        document.querySelectorAll(".presence[data-mid]").forEach(function (el) {
+          var state = map[el.getAttribute("data-mid")];
+          if (!state) return;
+          var dot = el.querySelector(".status");
+          var label = el.querySelectorAll("span")[1];
+          var cls = state === "up" ? "status-success"
+            : (state === "dead" ? "status-warning" : "status-error");
+          dot.classList.remove("status-success", "status-warning", "status-error");
+          dot.classList.add(cls);
+          label.textContent = state === "dead" ? "accepted-but-dead" : state;
+        });
+      })
+      .catch(function () {});
+  }, 15000);
+})();
+</script>
+<script>
+(function () {
+  // bulk-selection: preserve checked minion ids across HTMX table swaps.
+  var kept = new Set();
+  document.addEventListener("change", function (ev) {
+    var box = ev.target.closest ? ev.target.closest('input[name="bulk"]') : null;
+    if (!box) return;
+    if (box.checked) kept.add(box.value);
+    else kept.delete(box.value);
+  });
+  document.addEventListener("htmx:afterSwap", function () {
+    document.querySelectorAll('input[name="bulk"]').forEach(function (box) {
+      box.checked = kept.has(box.value);
+    });
+  });
+})();
+</script>
+{% endblock %}

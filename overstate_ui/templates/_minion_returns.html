@@ -1,0 +1,21 @@
+{% import "_macros.html" as m %}
+<div id="minion-returns">
+  {% if data.returns %}
+  <div class="overflow-x-auto">
+  <table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('minions.detail', 'jid', 'JID', sort, direction, {'mid': mid, 'tab': 'jobs'}, '#minion-returns', false) }}{{ m.sort_th('minions.detail', 'status', 'Result', sort, direction, {'mid': mid, 'tab': 'jobs'}, '#minion-returns', false) }}</tr></thead><tbody>
+    {% for r in data.returns %}
+    <tr>
+      <td class="font-mono text-xs">{{ r.jid }}</td>
+      <td>{% if r.success %}<span class="badge badge-sm badge-success">ok</span>
+      {% else %}<span class="badge badge-sm badge-error">failed, retcode {{ r.retcode }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody></table>
+  </div>
+  {% else %}
+  <div class="py-8 text-center">
+    <p class="font-medium">No recorded returns</p>
+    <p class="text-sm opacity-70">Nothing has run against this minion yet.</p>
+  </div>
+  {% endif %}
+</div>

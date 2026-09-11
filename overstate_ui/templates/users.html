@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="mb-5">
+    <h1 class="text-2xl font-bold tracking-tight">Users</h1>
+    <p class="text-sm opacity-70 mt-0.5">Roles and access for local and SSO accounts.</p>
+  </div>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      {% for m in messages %}<div class="alert alert-info mb-2" role="alert">{{ m }}</div>{% endfor %}
+    {% endif %}
+  {% endwith %}
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="overflow-x-auto">
+  <table class="table table-zebra w-full">
+    <thead><tr><th>Username</th><th>Role</th><th>Auth</th><th class="text-right">Actions</th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td class="font-medium">{{ u.username }}</td>
+        <td><span class="badge badge-sm {{ 'badge-primary' if u.role == 'admin' else 'badge-neutral' }}">{{ u.role }}</span></td>
+        <td class="text-sm">{{ "local" if u.password_hash else "sso" }}</td>
+        <td class="text-right">
+          <span class="join join-horizontal">
+          <form method="post" action="{{ url_for('users.set_role', uid=u.id) }}" class="join-item flex">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="role" class="select select-bordered select-sm join-item">
+              {% for r in roles %}
+              <option value="{{ r }}" {% if r == u.role %}selected{% endif %}>{{ r }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-sm join-item">Set</button>
+          </form>
+          <form method="post" action="{{ url_for('users.delete', uid=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-error btn-outline join-item">Delete</button>
+          </form>
+          </span>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  </div>
+</div>
+{% endblock %}

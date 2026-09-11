@@ -1,0 +1,59 @@
+services:
+  overstate:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://overstate:overstate@postgres:5432/overstate
+      REDIS_URL: redis://redis:6379/0
+      SALT_API_URL: ${SALT_API_URL:-https://salt-master:8000}
+      SALT_API_VERIFY_CA: /srv/tls/ca.crt
+      SALT_EAUTH_USER: ${SALT_EAUTH_USER:-overstate}
+      SALT_EAUTH_PASSWORD: ${SALT_EAUTH_PASSWORD:-dev-salt-api-pass}
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      FILE_ROOTS: /srv/states/salt
+      TLS_CERT: /srv/tls/app.crt
+      TLS_KEY: /srv/tls/app.key
+    volumes:
+      - ./salt-srv:/srv/states:ro
+      - ./salt-config/tls:/srv/tls:ro
+    depends_on:
+      - postgres
+      - redis
+      - salt-master
+
+  # Dev-only Salt master with salt-api + one built-in (auto-accepted) minion.
+  # PLAN.md allows the master in its own container; never use auto_accept
+  # outside local dev. salt-api TLS is always on: certs come from
+  # salt-config/api.conf (ssl_crt/ssl_key) backed by ./salt-config/tls.
+  salt-master:
+    build:
+      context: .
+      dockerfile: Containerfile.salt-master
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      SALT_API_ENABLED: "True"
+      SALT_API_USER: overstate
+      SALT_API_USER_PASS: ${SALT_EAUTH_PASSWORD:-dev-salt-api-pass}
+      SALT_MINION_ENABLED: "True"
+      SALT_MINION_ID: dev-minion-01
+    volumes:
+      - ./salt-config:/home/salt/data/config:ro
+      - ./salt-config/tls:/home/salt/data/tls:ro
+      - ./salt-srv:/home/salt/data/srv:ro
+
+  postgres:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: overstate
+      POSTGRES_PASSWORD: overstate
+      POSTGRES_DB: overstate
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+
+volumes:
+  pgdata:

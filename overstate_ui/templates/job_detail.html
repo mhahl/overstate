@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.jid }} — Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-center gap-2 mb-4">
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.index', tab='history') }}">‹ Jobs</a>
+  <h1 class="text-xl font-bold font-mono tracking-tight">{{ job.jid }}</h1>
+  <span class="badge badge-sm {{ 'badge-success' if job.complete else 'badge-info' }}">{{ "complete" if job.complete else "running" }}</span>
+  <form method="post" action="{{ url_for('jobs.sync', jid=job.jid) }}" class="ml-auto">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-sm">Sync now</button>
+  </form>
+</div>
+<div class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
+    <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ job.tgt }} <span class="opacity-60">— by {{ job.user }}</span></p>
+    <p class="ml-auto"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
+  </div>
+</div>
+<div class="space-y-2">
+{% for r in returns %}
+  {% set summary = r.payload.get("succeeded", r.payload) if r.payload is mapping else r.payload %}
+  <details class="collapse bg-base-100 border {{ 'border-error' if not r.success else 'border-base-300' }} shadow-sm" {% if not r.success %}open{% endif %}>
+    <summary class="collapse-title font-mono text-sm flex items-center gap-2">
+      {% if r.success %}<span class="status status-success"></span>{% else %}<span class="status status-error"></span>{% endif %}
+      <span class="mr-auto">{{ r.minion_id }} — {{ "ok" if r.success else ("failed, retcode " ~ r.retcode) }}</span>
+      {% if summary is mapping %}<span class="text-xs opacity-70">{{ summary.get("succeeded", "?") }} succeeded, {{ summary.get("failed", "?") }} failed</span>{% endif %}
+    </summary>
+    <div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ r.payload | tojson(indent=1) }}</code></pre></div>
+  </details>
+{% endfor %}
+{% if not returns %}
+<div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
+  <p class="font-medium">No returns yet</p>
+  <p class="text-sm opacity-70">Waiting on minions — this updates live.</p>
+</div></div>
+{% endif %}
+</div>
+{% if not job.complete %}
+<script>
+(function () {
+  var src = new EventSource("{{ url_for('jobs.stream', jid=job.jid) }}");
+  src.onmessage = function (ev) {
+    var s = JSON.parse(ev.data);
+    document.getElementById("live-returned").textContent = s.returned;
+    document.getElementById("live-failed").textContent = s.failed;
+    if (s.complete) {
+      document.getElementById("live-note").textContent = "Complete — reloading…";
+      src.close();
+      setTimeout(function () { location.reload(); }, 1500);
+    }
+  };
+  src.addEventListener("done", function () { src.close(); });
+})();
+</script>
+{% endif %}
+{% endblock %}

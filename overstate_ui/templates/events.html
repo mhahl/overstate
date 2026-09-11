@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Events — Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">Events</h1>
+  <p class="text-sm opacity-70 mt-0.5">Live Salt event bus stream, newest first.</p>
+</div>
+<form method="get" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body flex-row flex-wrap items-center gap-x-4 gap-y-2">
+    {% for c in choices %}
+    <label class="flex items-center gap-2 text-sm font-mono cursor-pointer">
+      <input type="checkbox" name="tag" value="{{ c }}" class="checkbox checkbox-sm checkbox-primary"{% if c in selected %} checked{% endif %}> {{ c }}
+    </label>
+    {% endfor %}
+    <button class="btn btn-sm btn-primary ml-auto">Watch</button>
+  </div>
+</form>
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+  <ul id="event-list"></ul>
+  <p id="event-note" class="px-4 py-3 text-sm opacity-70 border-t border-base-200">Connecting…</p>
+</div>
+<script>
+(function () {
+  var params = new URLSearchParams();
+  {% for c in selected %}params.append("tag", {{ c|tojson }});{% endfor %}
+  var src = new EventSource("{{ url_for('events.stream') }}?" + params.toString());
+  var list = document.getElementById("event-list");
+  var note = document.getElementById("event-note");
+  src.onmessage = function (ev) {
+    var s = JSON.parse(ev.data);
+    var li = document.createElement("li");
+    li.className = "flex items-center gap-2 px-4 py-2 border-b border-base-200 last:border-0 font-mono text-xs";
+    var dot = document.createElement("span");
+    dot.className = "status status-info shrink-0";
+    li.appendChild(dot);
+    var text = document.createElement("span");
+    text.className = "break-all";
+    text.textContent = (s.stamp ? s.stamp + " " : "") + s.tag;
+    li.appendChild(text);
+    list.prepend(li);
+    while (list.children.length > 50) list.removeChild(list.lastChild);
+    note.textContent = "Streaming (newest first, server-filtered)…";
+  };
+  function finish(msg) { note.textContent = msg; src.close(); }
+  src.addEventListener("done", function () { finish("Stream ended (cap reached). Re-watch to resume."); });
+  src.addEventListener("error", function () { finish("Stream error or salt-api unreachable."); });
+  src.onerror = function () { finish("Stream error or salt-api unreachable."); };
+})();
+</script>
+{% endblock %}

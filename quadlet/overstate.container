@@ -1,0 +1,20 @@
+[Unit]
+Description=Overstate UI (Salt control plane)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/overstate:latest
+PublishPort=8000:8000
+Environment=DATABASE_URL=postgresql+psycopg://overstate:overstate@postgres:5432/overstate
+Environment=REDIS_URL=redis://redis:6379/0
+Environment=SALT_API_URL=https://salt-master:8000
+Environment=SALT_EAUTH_USER=overstate
+Secret=SALT_EAUTH_PASSWORD,type=env,target=SALT_EAUTH_PASSWORD
+Secret=SECRET_KEY,type=env,target=SECRET_KEY
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

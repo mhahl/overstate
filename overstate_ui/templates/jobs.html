@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Jobs — Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end gap-3 mb-5">
+  <div class="mr-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Jobs</h1>
+    <p class="text-sm opacity-70 mt-0.5">Dispatch commands and inspect returns.</p>
+  </div>
+  <button id="live-toggle" class="btn btn-sm btn-ghost">Pause live</button>
+  <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}">Run job</a>
+</div>
+{% include "_job_rows.html" %}
+<script>
+(function () {
+  var btn = document.getElementById("live-toggle");
+  // Shared pause preference across minions/jobs (intentional, D4).
+  var key = "overstate-live";
+  function paused() {
+    try { return localStorage.getItem(key) === "off"; }
+    catch (e) { return false; }
+  }
+  function paint() { if (btn) btn.textContent = paused() ? "Resume live" : "Pause live"; }
+  if (btn) btn.addEventListener("click", function () {
+    try { localStorage.setItem(key, paused() ? "on" : "off"); } catch (e) {}
+    paint();
+  });
+  paint();
+  setInterval(function () {
+    if (paused() || document.hidden || !window.htmx) return;
+    var region = document.getElementById("jobs-region");
+    if (!region || !region.getAttribute("data-poll-url")) return;
+    htmx.ajax("GET", region.getAttribute("data-poll-url"),
+              {target: "#jobs-region", swap: "outerHTML"});
+  }, 10000);
+})();
+</script>
+{% endblock %}

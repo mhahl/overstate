@@ -1,0 +1,24 @@
+{% import "_macros.html" as m %}
+<div id="conformity-table">
+      {% if minions %}
+      <div class="overflow-x-auto">
+      <table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {}, '#conformity-table', false) }}<th>Source JID</th></tr></thead><tbody>
+      {% for m in minions %}
+      {% set cstatus = (m.conformity or {}).get("status", "unknown") %}
+      <tr><td class="font-mono text-xs">{{ m.id }}</td>
+      <td>
+        {% if cstatus == "ok" %}<span class="badge badge-sm badge-success">ok</span>
+        {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error">{{ cstatus }}</span>
+        {% else %}<span class="badge badge-sm badge-neutral">{{ cstatus }}</span>{% endif %}
+      </td>
+      <td class="font-mono text-xs">{{ (m.conformity or {}).get("jid", "–") }}</td></tr>
+      {% endfor %}
+      </tbody></table>
+      </div>
+      {% else %}
+      <div class="py-4 text-center">
+        <p class="font-medium">No minions in cache</p>
+        <p class="text-sm opacity-70">Refresh the inventory to populate conformity.</p>
+      </div>
+      {% endif %}
+</div>

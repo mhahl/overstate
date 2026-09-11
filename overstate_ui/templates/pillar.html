@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Pillar — Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end gap-3 mb-5">
+  <div class="mr-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Pillar</h1>
+    <p class="text-sm opacity-70 mt-0.5">Rendered pillar per minion. Snapshots are captured on explicit action only.</p>
+  </div>
+  <a class="btn btn-sm btn-primary" href="{{ url_for('pillar.diff') }}">Compare two minions</a>
+</div>
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+{% if mids %}
+<div class="overflow-x-auto">
+<table class="table table-zebra"><thead><tr><th>Minion</th><th class="text-right">Snapshots</th><th class="text-right"></th></tr></thead><tbody>
+{% for mid in mids %}
+<tr>
+  <td><a class="link font-mono text-xs" href="{{ url_for('pillar.detail', mid=mid) }}">{{ mid }}</a></td>
+  <td class="text-right">{% if counts[mid] %}<span class="badge badge-sm badge-neutral">{{ counts[mid] }}</span>{% else %}<span class="opacity-50 text-sm">none</span>{% endif %}</td>
+  <td class="text-right"><a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.detail', mid=mid) }}">Inspect</a></td>
+</tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% else %}
+<div class="py-8 text-center">
+  <p class="font-medium">No minions in cache</p>
+  <p class="text-sm opacity-70">Refresh the inventory to populate this list.</p>
+</div>
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Keys — Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">Keys</h1>
+  <p class="text-sm opacity-70 mt-0.5">Accept, reject, or remove minion keys.</p>
+</div>
+{% if syndic_masters %}
+<div class="alert alert-info mb-4" role="note">
+  <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
+  <span>Syndic topology: this roster is the local master only. Upstream master(s): {{ syndic_masters|join(", ") }}. Key actions here never propagate upstream.</span>
+</div>
+{% endif %}
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="tabs tabs-border px-3 pt-2" role="tablist">
+  {% for name in ["pending", "accepted", "rejected", "denied"] %}
+  <a role="tab" href="{{ url_for('keys.index', tab=name) }}" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }} <span class="badge badge-sm {{ 'badge-warning' if name == 'pending' else 'badge-neutral' }} ml-1">{{ counts[name] }}</span></a>
+  {% endfor %}
+</div>
+<div class="border-t border-base-300">
+{% if rows %}
+<div class="overflow-x-auto">
+<table class="table table-zebra">
+  <thead><tr><th>Minion</th><th>Fingerprint</th><th class="w-48 text-right">Action</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr>
+    <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=row.id) }}">{{ row.id }}</a></td>
+    <td class="font-mono text-xs break-all">{{ row.fingerprint }}</td>
+    <td class="text-right">
+      <span class="join join-horizontal">
+      {% if tab == "pending" %}
+      <form method="post" action="{{ url_for('keys.act', action='accept') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><button class="btn btn-sm btn-success join-item">Accept</button></form>
+      <form method="post" action="{{ url_for('keys.act', action='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><button class="btn btn-sm join-item">Reject</button></form>
+      {% else %}
+      <form method="post" action="{{ url_for('keys.act', action='delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
+      {% endif %}
+      </span>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="py-8 text-center">
+  <p class="font-medium">No {{ tab }} keys</p>
+  <p class="text-sm opacity-70">This queue is empty.</p>
+  {% if tab == "pending" %}<a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('minions.onboard') }}">Onboard a minion</a>{% endif %}
+</div>
+{% endif %}
+</div>
+</div>
+{% endblock %}

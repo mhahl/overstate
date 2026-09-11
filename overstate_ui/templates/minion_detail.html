@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ mid }} — Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-center gap-2 mb-5">
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">‹ Minions</a>
+  <h1 class="text-2xl font-bold tracking-tight font-mono">{{ mid }}</h1>
+  {% if not snapshot %}<span class="badge badge-warning">not in snapshot cache</span>{% endif %}
+</div>
+{% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="tabs tabs-border px-3 pt-2" role="tablist">
+  {% for t in tabs %}
+  <a role="tab" href="{{ url_for('minions.detail', mid=mid, tab=t) }}" class="tab{% if tab == t %} tab-active{% endif %}">{{ t|capitalize }}</a>
+  {% endfor %}
+</div>
+<div class="border-t border-base-300">
+{% if tab == "overview" %}
+  <div class="overflow-x-auto">
+  <table class="table table-sm table-zebra">
+    <tbody>
+    {% for k, v in data.grains.items()|sort %}
+    <tr><th class="w-48">{{ k }}</th><td class="font-mono text-xs break-all">{{ v }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if not data.grains %}
+  <div class="py-8 text-center">
+    <p class="font-medium">No grain data</p>
+    <p class="text-sm opacity-70">Run a refresh or check the minion.</p>
+  </div>
+  {% endif %}
+{% elif tab == "jobs" %}
+{% include "_minion_returns.html" %}
+{% else %}
+<div class="p-4"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.get(tab, data.get("highstate", data.get("schedule", data.get("pillar", data.get("beacons", "No data"))))) | tojson(indent=1) }}</code></pre></div>
+{% endif %}
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}States — Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">States &amp; conformity</h1>
+  <p class="text-sm opacity-70 mt-0.5">Watch state files and track fleet drift.</p>
+</div>
+<div class="grid lg:grid-cols-2 gap-4">
+  <section class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-base">Watched states</h2>
+      {% if watched %}
+      <ul>
+        {% for w in watched %}
+        <li class="flex items-center gap-2 py-2 border-b border-base-200 last:border-0">
+          <span class="font-mono text-sm mr-auto">{{ w.sls }}</span>
+          <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-ghost">Unwatch</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="py-4 text-center">
+        <p class="font-medium">No watched states</p>
+        <p class="text-sm opacity-70">Watch an SLS to track it here.</p>
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-2 mt-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input name="sls" placeholder="e.g. baseline" class="input input-bordered input-sm flex-1" required>
+        <button class="btn btn-sm btn-primary">Watch</button>
+      </form>
+      <a class="btn btn-sm btn-outline mt-3 self-start" href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a>
+    </div>
+  </section>
+  <section class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body">
+      <div class="flex items-center gap-2">
+        <h2 class="card-title text-base mr-auto">Conformity</h2>
+        <form method="post" action="{{ url_for('states.recompute') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-xs btn-ghost">Recompute</button>
+        </form>
+      </div>
+      {% include "_conformity_rows.html" %}
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{
+  "name": "overstate",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:css": "tailwindcss -i ./assets/app.css -o ./overstate_ui/static/app.css"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.131",
+    "@iconify/tailwind4": "^1.2.3",
+    "@tailwindcss/cli": "^4.3.3",
+    "daisyui": "^5.7.36",
+    "tailwindcss": "^4.3.3"
+  }
+}

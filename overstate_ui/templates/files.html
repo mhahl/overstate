@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Files — Overstate{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="mb-5">
+    <h1 class="text-2xl font-bold tracking-tight">State files</h1>
+    <p class="text-sm opacity-70 mt-0.5">Read-only. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
+  </div>
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+  {% if not entries %}
+  <div class="py-8 text-center">
+    <p class="font-medium">No files found</p>
+    <p class="text-sm opacity-70">Nothing under the configured roots.</p>
+  </div>
+  {% endif %}
+  <ul>
+    {% for e in entries %}
+    <li class="border-b border-base-200 last:border-0">
+      <a href="{{ url_for('files.view', path=e.rel) }}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-base-200">
+        <span class="icon-[lucide--file-text] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
+        <span class="font-mono text-sm mr-auto break-all">{{ e.rel }}</span>
+        <span class="badge badge-sm badge-ghost">{{ e.size }} B</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  </div>
+</div>
+{% endblock %}

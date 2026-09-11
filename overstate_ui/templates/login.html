@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — Overstate</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-base-200 min-h-screen">
+<div class="flex justify-center px-4 pt-16 lg:pt-24">
+  <div class="w-full max-w-sm">
+    <div class="flex items-center justify-center gap-2.5 mb-6">
+      <span class="bg-primary text-primary-content font-bold rounded-lg w-10 h-10 grid place-items-center text-lg">O</span>
+      <div>
+        <p class="font-bold text-xl leading-none tracking-tight">Overstate</p>
+        <p class="text-xs opacity-70 mt-1">Salt control plane</p>
+      </div>
+    </div>
+    <form method="post" class="card bg-base-100 border border-base-300 shadow-sm">
+      <div class="card-body gap-3">
+        <h1 class="card-title text-base">Log in</h1>
+        {{ form.csrf_token }}
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            {% for m in messages %}<div class="alert alert-warning alert-sm" role="alert">{{ m }}</div>{% endfor %}
+          {% endif %}
+        {% endwith %}
+        <label class="form-control">
+          <span class="label"><span class="label-text">Username</span></span>
+          {{ form.username(class_="input input-bordered w-full") }}
+        </label>
+        <label class="form-control">
+          <span class="label"><span class="label-text">Password</span></span>
+          {{ form.password(class_="input input-bordered w-full") }}
+        </label>
+        <button class="btn btn-primary w-full mt-1">Log in</button>
+        {% if config.get("OIDC_ISSUER") and config.get("OIDC_CLIENT_ID") and config.get("OIDC_CLIENT_SECRET") %}
+        <div class="divider">or</div>
+        <a class="btn btn-outline w-full" href="{{ url_for('auth.oidc_login') }}">Log in with SSO</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Onboard minion — Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <div class="flex flex-wrap items-end gap-3">
+    <div class="mr-auto">
+      <h1 class="text-2xl font-bold tracking-tight">Onboard a minion</h1>
+      <p class="text-sm opacity-70 mt-0.5">Describe the machine, get a join script, accept its key.</p>
+    </div>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">‹ Minions</a>
+  </div>
+</div>
+{% if not reachable %}
+<div class="alert alert-error mb-4" role="alert">
+  <span>salt-api unreachable. The generator still works; key status cannot be checked right now.</span>
+</div>
+{% endif %}
+<div class="flex flex-col gap-4 max-w-3xl">
+  <section class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-base"><span class="badge badge-neutral">1</span> Describe the new minion</h2>
+      <form method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-wrap items-end gap-2">
+        <label class="form-control flex-1 min-w-40">
+          <span class="label"><span class="label-text">Minion id</span></span>
+          <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-bordered input-sm font-mono" required>
+        </label>
+        <label class="form-control">
+          <span class="label"><span class="label-text">Distribution</span></span>
+          <select name="distro" class="select select-bordered select-sm">
+            {% for d in ["opensuse", "fedora"] %}
+            <option value="{{ d }}"{% if request.args.get('distro', 'opensuse') == d %} selected{% endif %}>{{ d|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-control flex-1 min-w-40">
+          <span class="label"><span class="label-text">Master</span></span>
+          <input name="master" value="{{ request.args.get('master', master_host) }}" placeholder="salt master hostname" class="input input-bordered input-sm font-mono" required>
+        </label>
+        <button class="btn btn-sm btn-primary">Generate script</button>
+      </form>
+      <p class="text-sm opacity-70">Master defaults to <span class="font-mono">{{ master_host or "—" }}</span>. <a class="link" href="{{ url_for('settings.index') }}">Change it in Settings</a>.</p>
+    </div>
+  </section>
+  {% if script %}
+  <section class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body">
+      <div class="flex items-center gap-2">
+        <h2 class="card-title text-base mr-auto"><span class="badge badge-neutral">2</span> Run this on the new machine as root</h2>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.onboard_script', mid=request.args.get('mid', ''), distro=request.args.get('distro', 'opensuse'), master=request.args.get('master', master_host)) }}">Download .sh</a>
+      </div>
+      <pre class="mockup-code text-xs overflow-x-auto p-4"><code>{{ script }}</code></pre>
+    </div>
+  </section>
+  {% endif %}
+  <section class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-base"><span class="badge badge-neutral">3</span> Accept the key</h2>
+      {% if pending %}
+      <p class="text-sm"><span class="badge badge-warning">{{ pending|length }} pending</span></p>
+      <ul class="list-disc list-inside font-mono text-xs">
+        {% for mid in pending %}<li>{{ mid }}</li>{% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-sm opacity-70">No pending keys right now. Start the minion and wait a minute.</p>
+      {% endif %}
+      <p class="text-sm opacity-70">Compare the fingerprint on the machine (<span class="font-mono">salt-call key.finger</span>) with the Keys page, then accept.</p>
+      <a class="btn btn-sm btn-primary self-start" href="{{ url_for('keys.index', tab='pending') }}">Review pending keys</a>
+    </div>
+  </section>
+  <section class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-base"><span class="badge badge-neutral">4</span> Verify</h2>
+      <p class="text-sm opacity-70">Run a first command and watch it land in history.</p>
+      <div class="flex flex-wrap gap-2">
+        <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">Browse inventory</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

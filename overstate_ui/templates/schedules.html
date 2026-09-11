@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Schedules — Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end gap-3 mb-5">
+  <div class="mr-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Schedules</h1>
+    <p class="text-sm opacity-70 mt-0.5">Per-minion Salt scheduler jobs.</p>
+  </div>
+  <form method="get">
+    <label class="form-control">
+      <span class="label"><span class="label-text">Minion</span></span>
+      <select name="minion" class="select select-bordered select-sm" onchange="this.form.submit()">
+        {% for m in minions %}
+        <option value="{{ m }}"{% if m == mid %} selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+</div>
+{% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
+{% if mid and current_user.role in ["operator", "admin"] %}
+<form method="post" action="{{ url_for('schedules.add', mid=mid) }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body flex-row flex-wrap items-end gap-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="form-control">
+      <span class="label"><span class="label-text">Name</span></span>
+      <input name="name" placeholder="e.g. hourly-ping" class="input input-bordered input-sm" required>
+    </label>
+    <label class="form-control">
+      <span class="label"><span class="label-text">Function</span></span>
+      <input name="function" placeholder="test.ping" class="input input-bordered input-sm font-mono" required>
+    </label>
+    <label class="form-control">
+      <span class="label"><span class="label-text">Every</span></span>
+      <input name="value" type="number" min="1" value="60" class="input input-bordered input-sm w-24" required>
+    </label>
+    <label class="form-control">
+      <span class="label"><span class="label-text">Unit</span></span>
+      <select name="unit" class="select select-bordered select-sm">
+        {% for u in ["seconds", "minutes", "hours", "days"] %}
+        <option value="{{ u }}">{{ u }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-control">
+      <span class="label"><span class="label-text">Enabled</span></span>
+      <input type="checkbox" name="enabled" checked class="checkbox checkbox-sm mt-2">
+    </label>
+    <button class="btn btn-sm btn-primary">Add schedule</button>
+  </div>
+</form>
+{% endif %}
+{% if entries is mapping and entries %}
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="overflow-x-auto">
+<table class="table table-sm table-zebra"><thead><tr><th>Job</th><th>Function</th><th>When</th><th>Enabled</th><th class="text-right"></th></tr></thead><tbody>
+{% for name, job in entries.items() %}
+<tr><td class="font-mono text-xs">{{ name }}</td>
+<td class="font-mono text-xs">{{ job.get("function", "–") }}</td>
+<td class="font-mono text-xs">{{ job.get("seconds", job.get("minutes", job.get("hours", job.get("cron", "–")))) }}</td>
+<td>{% if job.get("enabled") is false %}<span class="badge badge-sm badge-neutral">no</span>{% else %}<span class="badge badge-sm badge-success">yes</span>{% endif %}</td>
+<td class="text-right"><span class="join join-horizontal">
+  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
+  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='disable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
+  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
+</span></td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+</div>
+{% elif raw %}
+<pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ raw }}</code></pre>
+{% else %}
+<div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
+  <p class="font-medium">{% if mid %}No schedules on {{ mid }}{% else %}No accepted minions{% endif %}</p>
+  <p class="text-sm opacity-70">Scheduler entries will appear here.</p>
+</div></div>
+{% endif %}
+{% endblock %}

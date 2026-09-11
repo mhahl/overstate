@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Settings — Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">Settings</h1>
+  <p class="text-sm opacity-70 mt-0.5">Application preferences stored in the database.</p>
+</div>
+{% set is_admin = current_user.role == "admin" %}
+<form method="post" class="card bg-base-100 border border-base-300 shadow-sm max-w-xl">
+  <div class="card-body gap-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for key, meta in defs.items() %}
+    <div class="form-control">
+      <label class="label" for="setting-{{ key }}"><span class="label-text font-medium">{{ meta.label }}</span></label>
+      {% if meta.options %}
+      <select id="setting-{{ key }}" name="{{ key }}" class="select select-bordered w-full"{% if not is_admin %} disabled{% endif %}>
+        {% for opt in meta.options %}
+        <option value="{{ opt }}"{% if values[key] == opt %} selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input id="setting-{{ key }}" name="{{ key }}" value="{{ values[key] }}" class="input input-bordered w-full font-mono"{% if not is_admin %} disabled{% endif %}>
+      {% endif %}
+      {% if meta.help %}<p class="text-xs opacity-70">{{ meta.help }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    {% if is_admin %}
+    <div class="card-actions justify-end mt-1"><button class="btn btn-primary">Save</button></div>
+    {% else %}
+    <p class="text-sm opacity-70">Only admins can change settings.</p>
+    {% endif %}
+  </div>
+</form>
+<p class="opacity-70 mt-4 text-sm">Redis, Postgres, and salt-api credentials stay in the environment, never here.</p>
+{% endblock %}
