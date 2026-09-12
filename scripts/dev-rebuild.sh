@@ -24,7 +24,7 @@ else
     $COMPOSE -f "$COMPOSE_FILE" down
 fi
 # shellcheck disable=SC2086
-$COMPOSE -f "$COMPOSE_FILE" build --no-cache overstate
+$COMPOSE -f "$COMPOSE_FILE" build --no-cache overstate worker
 # shellcheck disable=SC2086
 $COMPOSE -f "$COMPOSE_FILE" up -d
 wait_for_postgres

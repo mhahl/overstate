@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -25,11 +26,16 @@ class Base(DeclarativeBase):
 
 class User(Base, UserMixin):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("oidc_issuer", "oidc_sub", name="uq_users_oidc"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="viewer")
+    oidc_issuer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    oidc_sub: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -66,6 +72,10 @@ class Job(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     complete: Mapped[bool] = mapped_column(nullable=False, default=False)
+    batch_group: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    batch_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    __table_args__ = (Index("ix_jobs_batch_group", "batch_group"),)
 
 
 class JobReturn(Base):
@@ -95,6 +105,17 @@ class AuditEvent(Base):
     __table_args__ = (Index("ix_audit_events_created", "created_at"),)
 
 
+class MinionGroup(Base):
+    __tablename__ = "minion_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    members: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class SavedJob(Base):
     __tablename__ = "saved_jobs"
 
@@ -104,6 +125,7 @@ class SavedJob(Base):
     tgt: Mapped[str] = mapped_column(Text, nullable=False)
     tgt_type: Mapped[str] = mapped_column(String(16), nullable=False)
     args: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    batch: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class PillarSnapshot(Base):

@@ -116,6 +116,16 @@
         <dt class="opacity-70">@runner</dt><dd><span class="badge badge-sm {{ 'badge-success' if health.runner_ok else 'badge-error' }}">{{ "ok" if health.runner_ok else "failing" }}</span></dd>
       </dl>
       {% if health.error %}<p class="text-error text-sm mt-2">{{ health.error }}</p>{% endif %}
+      <div class="divider my-1">Capabilities</div>
+      <ul class="flex flex-col gap-2 text-sm">
+        {% for c in checks %}
+        <li class="flex items-center gap-2">
+          <span class="badge badge-sm {{ 'badge-success' if c.ok else 'badge-error' }}">{{ "ok" if c.ok else "failing" }}</span>
+          <span><span class="font-medium">{{ c.feature }}</span> <span class="opacity-70 font-mono text-xs">{{ c.fun }}</span></span>
+        </li>
+        {% if not c.ok %}<li class="text-xs opacity-70 -mt-1 ml-14">{{ c.grant }}</li>{% endif %}
+        {% endfor %}
+      </ul>
     </div>
   </section>
   <nav class="card bg-base-100 shadow-sm rounded-box" aria-label="Operator shortcuts">

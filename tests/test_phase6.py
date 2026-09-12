@@ -68,7 +68,7 @@ def client():
 
 def test_settings_save_and_default(client):
     with client.app.app_context():
-        assert get_setting("theme") == "light"
+        assert get_setting("theme") == "wireframe"
     rv = client.post("/settings/", data={"default_target": "web-*",
                                          "page_size": "10", "theme": "dark"})
     assert rv.status_code == 302
@@ -84,7 +84,7 @@ def test_settings_invalid_options_fall_back_to_default(client):
                                          "theme": "midnight"})
     assert rv.status_code == 302
     with client.app.app_context():
-        assert get_setting("theme") == "light"
+        assert get_setting("theme") == "wireframe"
         assert get_setting("page_size") == "25"
 
 

@@ -11,6 +11,14 @@ services:
       SALT_EAUTH_USER: ${SALT_EAUTH_USER:-overstate}
       SALT_EAUTH_PASSWORD: ${SALT_EAUTH_PASSWORD:-dev-salt-api-pass}
       SECRET_KEY: ${SECRET_KEY:-change-me}
+      # SSO (optional fallback; prefer the server Settings page).
+      # Unset everywhere means local login only.
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
+      OIDC_ADMIN_GROUPS: ${OIDC_ADMIN_GROUPS:-}
+      OIDC_OPERATOR_GROUPS: ${OIDC_OPERATOR_GROUPS:-}
       FILE_ROOTS: /srv/states/salt
       TLS_CERT: /srv/tls/app.crt
       TLS_KEY: /srv/tls/app.key
@@ -42,6 +50,26 @@ services:
       - ./salt-config:/home/salt/data/config:ro
       - ./salt-config/tls:/home/salt/data/tls:ro
       - ./salt-srv:/home/salt/data/srv:ro
+
+  # Background worker for long Salt queries (see overstate_ui/tasks.py).
+  # Same image, RQ entrypoint. Falls back to sync when it is down.
+  worker:
+    build: .
+    command: ["python", "-m", "overstate_ui.worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://overstate:overstate@postgres:5432/overstate
+      REDIS_URL: redis://redis:6379/0
+      SALT_API_URL: ${SALT_API_URL:-https://salt-master:8000}
+      SALT_API_VERIFY_CA: /srv/tls/ca.crt
+      SALT_EAUTH_USER: ${SALT_EAUTH_USER:-overstate}
+      SALT_EAUTH_PASSWORD: ${SALT_EAUTH_PASSWORD:-dev-salt-api-pass}
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+    volumes:
+      - ./salt-config/tls:/srv/tls:ro
+    depends_on:
+      - postgres
+      - redis
+      - salt-master
 
   postgres:
     image: docker.io/library/postgres:16

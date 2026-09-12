@@ -1,4 +1,4 @@
-"""DB-backed settings. Credentials never live here (env only)."""
+"""DB-backed settings. Only the OIDC client secret may live here (declared exception); all other credentials stay env-only."""
 
 import socket
 from urllib.parse import urlsplit
@@ -12,10 +12,49 @@ from .models import Setting
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
+OIDC_ENV_FALLBACK = {
+    "oidc_issuer": "OIDC_ISSUER",
+    "oidc_client_id": "OIDC_CLIENT_ID",
+    "oidc_client_secret": "OIDC_CLIENT_SECRET",
+    "oidc_groups_claim": "OIDC_GROUPS_CLAIM",
+    "oidc_admin_groups": "OIDC_ADMIN_GROUPS",
+    "oidc_operator_groups": "OIDC_OPERATOR_GROUPS",
+}
+
 DEFS = {
     "master_host": {
         "label": "Master hostname",
         "help": "Minion-facing Salt master hostname shown in the onboarding wizard. Empty resets to the detected default.",
+        "default": "",
+    },
+    "oidc_issuer": {
+        "label": "OIDC issuer",
+        "help": "Single sign-on provider URL. Empty (and no env) disables SSO.",
+        "default": "",
+    },
+    "oidc_client_id": {
+        "label": "OIDC client ID",
+        "help": "Client ID registered at the provider.",
+        "default": "",
+    },
+    "oidc_client_secret": {
+        "label": "OIDC client secret",
+        "help": "Empty defers to OIDC_CLIENT_SECRET.",
+        "default": "",
+    },
+    "oidc_groups_claim": {
+        "label": "OIDC groups claim",
+        "help": "Claim carrying group names for role mapping. Empty uses the default.",
+        "default": "",
+    },
+    "oidc_admin_groups": {
+        "label": "OIDC admin groups",
+        "help": "Comma-separated provider groups mapped to the admin role.",
+        "default": "",
+    },
+    "oidc_operator_groups": {
+        "label": "OIDC operator groups",
+        "help": "Comma-separated provider groups mapped to the operator role.",
         "default": "",
     },
     "default_target": {
@@ -32,10 +71,36 @@ DEFS = {
     "theme": {
         "label": "Theme",
         "help": "Interface color scheme.",
-        "options": ["light", "dark"],
-        "default": "light",
+        "options": ["light", "dark", "wireframe"],
+        "default": "wireframe",
     },
 }
+
+
+SECTIONS = [
+    {
+        "title": "Server",
+        "desc": "How minions and browsers reach this installation.",
+        "keys": ["master_host"],
+    },
+    {
+        "title": "Single sign-on (OIDC)",
+        "desc": "Provider connection and role mapping. Values set here override the environment; clearing a field defers back to it. The client secret may be stored here or via OIDC_CLIENT_SECRET.",
+        "keys": ["oidc_issuer", "oidc_client_id", "oidc_client_secret",
+                 "oidc_groups_claim", "oidc_admin_groups",
+                 "oidc_operator_groups"],
+    },
+    {
+        "title": "Run defaults",
+        "desc": "Prefills for the command forms.",
+        "keys": ["default_target"],
+    },
+    {
+        "title": "Display",
+        "desc": "List density and color scheme.",
+        "keys": ["page_size", "theme"],
+    },
+]
 
 
 def default_master_host() -> str:
@@ -58,6 +123,8 @@ def get_setting(key: str) -> str:
     row = get_session().get(Setting, key)
     if row is not None:
         return row.value
+    if key in OIDC_ENV_FALLBACK:
+        return current_app.config.get(OIDC_ENV_FALLBACK[key], "") or ""
     if key == "master_host":
         return default_master_host()
     return DEFS.get(key, {}).get("default", "")
@@ -67,7 +134,10 @@ def get_setting(key: str) -> str:
 @login_required
 def index():
     values = {key: get_setting(key) for key in DEFS}
-    return render_template("settings.html", defs=DEFS, values=values)
+    sections = [{**s, "fields": [(k, DEFS[k]) for k in s["keys"]]}
+                for s in SECTIONS]
+    return render_template("settings.html", sections=sections,
+                           values=values)
 
 
 @bp.post("/")
@@ -77,6 +147,12 @@ def save():
     for key, meta in DEFS.items():
         value = request.form.get(key, "").strip()
         if not value:
+            if key in OIDC_ENV_FALLBACK:
+                # Clearing defers to the environment: drop any override.
+                row = session.get(Setting, key)
+                if row is not None:
+                    session.delete(row)
+                continue
             value = (default_master_host() if key == "master_host"
                      else meta["default"])
         if "options" in meta and value not in meta["options"]:

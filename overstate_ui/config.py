@@ -35,6 +35,9 @@ class Config:
     OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "")
     OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "")
     OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "")
+    OIDC_GROUPS_CLAIM = os.environ.get("OIDC_GROUPS_CLAIM", "groups")
+    OIDC_ADMIN_GROUPS = os.environ.get("OIDC_ADMIN_GROUPS", "")
+    OIDC_OPERATOR_GROUPS = os.environ.get("OIDC_OPERATOR_GROUPS", "")
     FILE_ROOTS = os.environ.get("FILE_ROOTS", "salt-srv/salt")
     SYNDIC_MASTERS = os.environ.get("SYNDIC_MASTERS", "")
 

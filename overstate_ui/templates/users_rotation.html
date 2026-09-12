@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Rotate salt-api password — Overstate{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+  <div class="mb-5">
+    <h1 class="text-2xl font-bold tracking-tight">Rotate salt-api password</h1>
+    <p class="text-sm opacity-70 mt-0.5">Two-sided change: the master and the app must agree. Nothing here writes either side.</p>
+  </div>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      {% for m in messages %}<div class="alert alert-info mb-2" role="alert">{{ m }}</div>{% endfor %}
+    {% endif %}
+  {% endwith %}
+  <section class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body gap-4">
+      <div>
+        <h2 class="card-title text-base">1. New password</h2>
+        <p class="text-sm opacity-70 mt-0.5">Generated fresh on every visit. Copy it now; it is never stored.</p>
+        <p class="font-mono text-sm bg-base-200 rounded px-3 py-2 mt-2 break-all">{{ password }}</p>
+      </div>
+      <div>
+        <h2 class="card-title text-base">2. Apply on the master</h2>
+        <p class="text-sm opacity-70 mt-0.5">Set it for the <span class="font-mono">{{ eauth_user }}</span> system user, then restart salt-api.</p>
+      </div>
+      <div>
+        <h2 class="card-title text-base">3. Update the app</h2>
+        <p class="text-sm opacity-70 mt-0.5">Set <span class="font-mono">SALT_EAUTH_PASSWORD</span> to the same value and restart the app and worker containers.</p>
+      </div>
+      <div>
+        <h2 class="card-title text-base">4. Verify</h2>
+        <p class="text-sm opacity-70 mt-0.5">Paste the new password to try a salt-api login with it.</p>
+        <form method="post" action="{{ url_for('users.rotation_verify') }}" class="flex flex-col gap-2 mt-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input name="password" type="password" autocomplete="new-password" placeholder="New eauth password" class="input input-bordered w-full font-mono" required>
+          <div><button class="btn btn-primary">Verify login</button></div>
+        </form>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

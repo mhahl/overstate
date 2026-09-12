@@ -19,15 +19,15 @@
   <span>Bulk selection ignored: a preset or saved job is active. Clear it to use the bulk target.</span>
 </div>
 {% endif %}
-<div class="grid lg:grid-cols-2 gap-4 mb-4">
+<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
   <section class="card card-sm bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body">
       <h2 class="card-title text-sm">First-class</h2>
       <div class="flex flex-wrap gap-2">
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='ping') }}">test.ping</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='apply') }}">state.apply</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='highstate') }}">highstate</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='highstate-dry') }}">dry-run highstate</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'ping' }}" href="{{ url_for('jobs.new', preset='ping') }}">test.ping</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'apply' }}" href="{{ url_for('jobs.new', preset='apply') }}">state.apply</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'highstate' }}" href="{{ url_for('jobs.new', preset='highstate') }}">highstate</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'highstate-dry' }}" href="{{ url_for('jobs.new', preset='highstate-dry') }}">dry-run highstate</a>
       </div>
     </div>
   </section>
@@ -35,13 +35,13 @@
     <div class="card-body">
       <h2 class="card-title text-sm">Fleet</h2>
       <div class="flex flex-wrap gap-2">
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='pkg-install') }}">pkg.install</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='pkg-remove') }}">pkg.remove</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='service-restart') }}">service.restart</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='service-status') }}">service.status</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='process-signal') }}">signal process</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='minion-restart') }}">restart minion</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='mine-update') }}">mine.update</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'pkg-install' }}" href="{{ url_for('jobs.new', preset='pkg-install') }}">pkg.install</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'pkg-remove' }}" href="{{ url_for('jobs.new', preset='pkg-remove') }}">pkg.remove</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'service-restart' }}" href="{{ url_for('jobs.new', preset='service-restart') }}">service.restart</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'service-status' }}" href="{{ url_for('jobs.new', preset='service-status') }}">service.status</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'process-signal' }}" href="{{ url_for('jobs.new', preset='process-signal') }}">signal process</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'minion-restart' }}" href="{{ url_for('jobs.new', preset='minion-restart') }}">restart minion</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'mine-update' }}" href="{{ url_for('jobs.new', preset='mine-update') }}">mine.update</a>
       </div>
     </div>
   </section>
@@ -49,13 +49,13 @@
     <div class="card-body">
       <h2 class="card-title text-sm">Pillar &amp; sync</h2>
       <div class="flex flex-wrap gap-2">
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='refresh-pillar') }}">refresh pillar</a>
-        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='sync-all') }}">sync all</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'refresh-pillar' }}" href="{{ url_for('jobs.new', preset='refresh-pillar') }}">refresh pillar</a>
+        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'sync-all' }}" href="{{ url_for('jobs.new', preset='sync-all') }}">sync all</a>
       </div>
     </div>
   </section>
 </div>
-<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm max-w-2xl">
+<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm max-w-2xl" x-data="{ batch: '{{ saved.batch.mode if saved and saved.batch else 'off' }}' }">
   <div class="card-body gap-3">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="flex flex-wrap gap-3">
@@ -100,6 +100,25 @@
         <input name="save_as" placeholder="Saved job name" class="input input-bordered">
       </label>
     </div>
+    <div class="flex flex-wrap gap-3 items-end">
+      <label class="form-control">
+        <span class="label"><span class="label-text">Batch mode</span></span>
+        <select name="batch_mode" class="select select-bordered" x-model="batch">
+          <option value="off"{% if not saved or not saved.batch %} selected{% endif %}>off (whole target at once)</option>
+          <option value="count"{% if saved and saved.batch and saved.batch.mode == "count" %} selected{% endif %}>rolling: minions per wave</option>
+          <option value="percent"{% if saved and saved.batch and saved.batch.mode == "percent" %} selected{% endif %}>rolling: percent per wave</option>
+        </select>
+      </label>
+      <label class="form-control w-28">
+        <span class="label"><span class="label-text">Wave size</span></span>
+        <input name="batch_size" value="{{ saved.batch.size if saved and saved.batch else 25 }}" class="input input-bordered" inputmode="numeric" :disabled="batch === 'off'">
+      </label>
+      <label class="form-control w-32">
+        <span class="label"><span class="label-text">Stop after failures</span></span>
+        <input name="stop_after" value="{{ saved.batch.stop_after if saved and saved.batch else 1 }}" class="input input-bordered" inputmode="numeric" :disabled="batch === 'off'">
+      </label>
+    </div>
+    <p class="text-xs opacity-70">Rolling batches run list and glob targets wave by wave from the pinned inventory roster, stopping early at the failure limit.</p>
     <div class="card-actions justify-end mt-1">
       <button class="btn btn-primary">Fire</button>
     </div>

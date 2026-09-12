@@ -98,21 +98,25 @@ def test_admin_users_page_set_role_and_self_guard(client):
 
 def test_provision_oidc_user_defaults_to_viewer(client):
     with client.app.app_context():
-        user = provision_oidc_user({"preferred_username": "sso-alice",
-                                    "email": "a@example.com"})
+        user = provision_oidc_user({"sub": "s1",
+                                    "preferred_username": "sso-alice",
+                                    "email": "a@example.com"},
+                                   "https://idp.example")
         assert user.role == "viewer"
         assert user.password_hash is None
-        # second login keeps the admin-promoted role
+        # group mapping wins at each login, resetting manual edits
         user.role = "operator"
         get_session().commit()
-        same = provision_oidc_user({"preferred_username": "sso-alice"})
-        assert same.id == user.id and same.role == "operator"
+        same = provision_oidc_user({"sub": "s1",
+                                    "preferred_username": "sso-alice"},
+                                   "https://idp.example")
+        assert same.id == user.id and same.role == "viewer"
 
 
 def test_provision_oidc_user_rejects_empty_claims(client):
     with client.app.app_context():
         with pytest.raises(ValueError):
-            provision_oidc_user({})
+            provision_oidc_user({}, "https://idp.example")
 
 
 def test_oidc_routes_404_when_disabled(client):
@@ -124,7 +128,8 @@ def test_oidc_routes_404_when_disabled(client):
 def test_oidc_callback_provisions_and_logs_in(client, monkeypatch):
     class FakeOidc:
         def authorize_access_token(self):
-            return {"userinfo": {"preferred_username": "sso-bob"}}
+            return {"userinfo": {"sub": "bob-sub",
+                                 "preferred_username": "sso-bob"}}
 
     monkeypatch.setattr(authmod, "_oauth_client", lambda: FakeOidc())
     client.app.config.update(OIDC_ISSUER="https://idp.example",

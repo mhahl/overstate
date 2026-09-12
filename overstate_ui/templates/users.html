@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="max-w-3xl">
-  <div class="mb-5">
-    <h1 class="text-2xl font-bold tracking-tight">Users</h1>
-    <p class="text-sm opacity-70 mt-0.5">Roles and access for local and SSO accounts.</p>
+  <div class="mb-5 flex items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Users</h1>
+      <p class="text-sm opacity-70 mt-0.5">Roles and access for local and SSO accounts.</p>
+    </div>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('users.rotation') }}">Rotate salt-api password</a>
   </div>
   {% with messages = get_flashed_messages() %}
     {% if messages %}

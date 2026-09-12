@@ -27,7 +27,7 @@ from .salt_client import SaltApiError
 
 bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 
-TGT_TYPES = ["glob", "list", "grain", "compound", "nodegroup"]
+TGT_TYPES = ["glob", "list", "grain", "compound", "nodegroup", "group"]
 COMPLETE_AFTER_SECONDS = 60
 JOB_SORT_COLUMNS = ("started", "fun", "user")
 
@@ -142,10 +142,34 @@ def sync_job(jid: str) -> Job | None:
     return job
 
 
+def resolve_group_target(name: str) -> tuple[list[str], int]:
+    """Group members pinned to the snapshot roster.
+
+    Returns (targets, stale_count). Raises SaltApiError when the
+    group is unknown or nothing in it is known.
+    """
+    from .models import Minion, MinionGroup
+
+    session = get_session()
+    group = session.query(MinionGroup).filter_by(name=name).first()
+    if group is None:
+        raise SaltApiError(f"unknown group '{name}'")
+    roster = {row.id for row in session.query(Minion.id).all()}
+    targets = sorted(m for m in (group.members or []) if m in roster)
+    if not targets:
+        raise SaltApiError(f"group '{name}' matches no known minions")
+    return targets, len(group.members or []) - len(targets)
+
+
 def launch(tgt: str, tgt_type: str, fun: str, args: list,
            asynchronous: bool, via: str = "local") -> str:
     """Fire a job via salt-api; record the Job row. Returns the jid."""
     client = get_salt()
+    if tgt_type == "group":
+        targets, stale = resolve_group_target(tgt)
+        if stale:
+            flash(f"Group '{tgt}': {stale} stale members skipped.")
+        tgt, tgt_type = ",".join(targets), "list"
     if via == "ssh":
         # salt-ssh has no async path: synchronous over the roster, returns
         # carry no JID, so the job is recorded complete with a synthetic one.
@@ -266,11 +290,19 @@ def run():
         asynchronous = False
         flash("salt-ssh runs synchronously; switched to sync mode.")
     if fun in DESTRUCTIVE_FUNS and request.form.get("confirm", "") != tgt:
+        batch_preview = parse_batch_fields(request.form) or {}
         return render_template("job_confirm.html", tgt=tgt, tgt_type=tgt_type,
                                fun=fun, raw_args=raw_args,
                                mode=request.form.get("mode", "async"),
                                via=via,
-                               save_as=request.form.get("save_as", ""))
+                               save_as=request.form.get("save_as", ""),
+                               batch_mode=batch_preview.get("mode", "off"),
+                               batch_size=batch_preview.get("size", 25),
+                               stop_after=batch_preview.get("stop_after", 1))
+    batch = parse_batch_fields(request.form)
+    if batch is not None:
+        return run_batched(tgt, tgt_type, fun, args, batch,
+                           save_as=request.form.get("save_as", ""))
     try:
         jid = launch(tgt, tgt_type, fun, args, asynchronous, via=via)
     except SaltApiError as exc:
@@ -284,17 +316,237 @@ def run():
     return redirect(url_for("jobs.detail", jid=jid))
 
 
+def parse_batch_fields(form) -> dict | None:
+    """Batch config from the run form, or None for a normal run."""
+    mode = form.get("batch_mode", "off")
+    if mode not in ("count", "percent"):
+        return None
+    try:
+        size = int(form.get("batch_size", "0"))
+        stop_after = int(form.get("stop_after", "1"))
+    except ValueError:
+        return None
+    if size < 1 or stop_after < 1:
+        return None
+    return {"mode": mode, "size": size, "stop_after": stop_after}
+
+
+def resolve_batch_roster(tgt: str, tgt_type: str) -> list[str] | None:
+    """Pin the wave roster from the snapshot table. List and glob only."""
+    import fnmatch
+
+    from .models import Minion
+
+    roster = sorted(row.id for row in get_session().query(Minion.id).all())
+    if tgt_type == "list":
+        wanted = [t.strip() for t in tgt.split(",") if t.strip()]
+        return [mid for mid in roster if mid in wanted]
+    if tgt_type == "glob":
+        return [mid for mid in roster if fnmatch.fnmatchcase(mid, tgt)]
+    if tgt_type == "group":
+        try:
+            targets, _ = resolve_group_target(tgt)
+        except SaltApiError:
+            return []
+        return targets
+    return None
+
+
+def run_batched(tgt: str, tgt_type: str, fun: str, args: list,
+                batch: dict, save_as: str = ""):
+    """Start a gated wave batch: parent row, enqueue or run inline."""
+    import uuid
+
+    from .audit import log_event
+    from .models import Job
+    from .tasks import queue_or_none, run_wave_batch, run_wave_batch_task
+
+    roster = resolve_batch_roster(tgt, tgt_type)
+    if roster is None:
+        flash("Batch mode supports list, glob, and group targets.")
+        return redirect(url_for("jobs.new"))
+    if not roster:
+        flash("Batch roster is empty: no known minions match.")
+        return redirect(url_for("jobs.new"))
+    from .tasks import split_roster
+
+    waves = split_roster(roster, batch["mode"], batch["size"])
+    group = uuid.uuid4().hex[:16]
+    session = get_session()
+    session.add(Job(
+        jid=f"batch-{group}", fun=fun, tgt=tgt, tgt_type=tgt_type,
+        user=current_user.username, batch_group=group,
+        batch_state={"mode": batch["mode"], "size": batch["size"],
+                     "stop_after": batch["stop_after"], "status": "running",
+                     "failures": 0, "waves": len(waves),
+                     "waves_done": 0}))
+    session.commit()
+    log_event(current_user.username, f"batch-start:{group}")
+    if save_as:
+        session.add(SavedJob(name=save_as, fun=fun, tgt=tgt,
+                             tgt_type=tgt_type, args=args, batch=batch))
+        session.commit()
+    job = queue_or_none(run_wave_batch_task, group, waves, fun, args,
+                        batch["stop_after"], current_user.username)
+    if job is None:
+        result = run_wave_batch(group, waves, fun, args,
+                                batch["stop_after"], current_user.username)
+        flash(f"Batch {result['status']}: "
+              f"{result['failures']} failures over {len(waves)} waves.")
+    else:
+        flash(f"Batch queued: {len(waves)} waves. Watch this page.")
+    return redirect(url_for("jobs.detail", jid=f"batch-{group}"))
+
+
+MODS_RE = __import__("re").compile(r"^[A-Za-z0-9_.-]+$")
+
+
+@bp.route("/orchestrate")
+@login_required
+def orchestrate():
+    return render_template("jobs_orchestrate.html")
+
+
+@bp.post("/orchestrate/run")
+@roles_required("operator")
+def orchestrate_run():
+    import json as _json
+    import time as _time
+
+    from .audit import log_event
+    from .tasks import queue_or_none, run_orchestrate_task
+
+    mods = request.form.get("mods", "").strip()
+    saltenv = request.form.get("saltenv", "").strip() or "base"
+    test = request.form.get("test", "") == "on"
+    raw_pillar = request.form.get("pillar", "").strip()
+    pillar: dict = {}
+    if raw_pillar:
+        try:
+            pillar = _json.loads(raw_pillar)
+        except ValueError:
+            flash("Pillar override is not valid JSON.")
+            return redirect(url_for("jobs.orchestrate"))
+        if not isinstance(pillar, dict):
+            flash("Pillar override must be a JSON object.")
+            return redirect(url_for("jobs.orchestrate"))
+    if not mods or not MODS_RE.match(mods):
+        flash("Mods must be a dotted orchestration name.")
+        return redirect(url_for("jobs.orchestrate"))
+    jid = f"orch-{int(_time.time())}"
+    session = get_session()
+    session.add(Job(jid=jid, fun="state.orchestrate", tgt=mods,
+                    tgt_type="runner", user=current_user.username))
+    session.commit()
+    log_event(current_user.username, f"run-orchestrate:{mods}", jid=jid)
+    job = queue_or_none(run_orchestrate_task, jid, mods, saltenv, test,
+                        pillar, current_user.username, job_timeout=1800)
+    if job is None:
+        from .tasks import run_orchestrate_task as run_inline
+
+        run_inline(jid, mods, saltenv, test, pillar,
+                   current_user.username)
+        flash("Orchestration finished synchronously.")
+    else:
+        flash("Orchestration queued. Watch this page.")
+    return redirect(url_for("jobs.detail", jid=jid))
+
+
+@bp.post("/batch/<group>/cancel")
+@roles_required("operator")
+def cancel_batch(group: str):
+    from .tasks import request_batch_cancel
+
+    if request_batch_cancel(group):
+        flash("Cancel requested: no new waves will start.")
+    else:
+        flash("Cancel flag not stored (no queue); "
+              "a running inline batch cannot stop.")
+    return redirect(url_for("jobs.detail", jid=f"batch-{group}"))
+
+
 @bp.route("/<jid>")
 @login_required
 def detail(jid: str):
-    sync_job(jid)
     session = get_session()
     job = session.get(Job, jid)
     if job is None:
         flash("Unknown job.")
         return redirect(url_for("jobs.index", tab="history"))
+    waves: list = []
+    batch_state: dict | None = None
+    if job.batch_group and jid == f"batch-{job.batch_group}":
+        waves = (session.query(Job)
+                 .filter(Job.batch_group == job.batch_group,
+                         Job.jid != job.jid)
+                 .order_by(Job.started_at).all())
+        for child in waves:
+            sync_job(child.jid)
+        batch_state = job.batch_state or {}
+    else:
+        sync_job(jid)
     returns = session.query(JobReturn).filter_by(jid=jid).all()
-    return render_template("job_detail.html", job=job, returns=returns)
+    kill_reports: list = []
+    if not (job.batch_group and jid == f"batch-{job.batch_group}"):
+        from .models import AuditEvent
+
+        for event in (session.query(AuditEvent)
+                      .filter_by(action=f"kill:{jid}")
+                      .order_by(AuditEvent.id).all()):
+            if event.jid:
+                sync_job(event.jid)
+                kill_reports.append(
+                    (event.jid,
+                     session.query(JobReturn).filter_by(jid=event.jid).all()))
+    return render_template("job_detail.html", job=job, returns=returns,
+                           waves=waves, batch_state=batch_state,
+                           killable=killable(job),
+                           kill_reports=kill_reports)
+
+
+def killable(job) -> bool:
+    """A job kill needs a real Salt JID and a minion target."""
+    return (not job.complete
+            and job.tgt_type in ("glob", "list", "grain", "compound",
+                                 "nodegroup", "group")
+            and not job.jid.startswith(("batch-", "ssh-", "sync-")))
+
+
+@bp.post("/<jid>/kill")
+@roles_required("operator")
+def kill(jid: str):
+    """Publish saltutil.kill_job for jid to the job's own target."""
+    session = get_session()
+    job = session.get(Job, jid)
+    if job is None:
+        flash("Unknown job.")
+        return redirect(url_for("jobs.index", tab="history"))
+    if not killable(job):
+        flash("Only running Salt jobs with minion targets can be killed.")
+        return redirect(url_for("jobs.detail", jid=jid))
+    tgt, tgt_type = job.tgt, job.tgt_type
+    if tgt_type == "group":
+        try:
+            targets, _ = resolve_group_target(tgt)
+        except SaltApiError as exc:
+            flash(f"salt-api error: {exc}")
+            return redirect(url_for("jobs.detail", jid=jid))
+        tgt, tgt_type = ",".join(targets), "list"
+    client = get_salt()
+    try:
+        result = client.local(tgt, "saltutil.kill_job", arg=[jid],
+                              tgt_type=tgt_type, asynchronous=True)
+        kill_jid = (result[0]["jid"] if isinstance(result, list)
+                    else result["jid"])
+    except (SaltApiError, KeyError, IndexError, TypeError) as exc:
+        flash(f"kill failed: {exc}")
+        return redirect(url_for("jobs.detail", jid=jid))
+    session.add(Job(jid=kill_jid, fun="saltutil.kill_job", tgt=tgt,
+                    tgt_type=tgt_type, user=current_user.username))
+    session.commit()
+    log_event(current_user.username, f"kill:{jid}", jid=kill_jid)
+    flash(f"Kill published for {jid}: minions report back here.")
+    return redirect(url_for("jobs.detail", jid=jid))
 
 
 @bp.post("/<jid>/sync")

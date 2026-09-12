@@ -5,13 +5,13 @@ import io
 import re
 
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
 from .auth import roles_required
 
 from .dashboard import get_salt
 from .db import get_session
 from .inventory import GRAIN_COLUMNS, refresh_inventory
-from .models import JobReturn, Minion
+from .models import JobReturn, Minion, MinionGroup
 from .salt_client import SaltApiError
 
 bp = Blueprint("minions", __name__, url_prefix="/minions")
@@ -145,7 +145,9 @@ def index():
     ctx = dict(rows=rows[(page - 1) * per_page: page * per_page],
                q=q, status=status_filter, page=page, pages=pages,
                per_page=per_page, total=total, grains=GRAIN_COLUMNS,
-               reachable=bool(statuses or up), sort=sort, direction=direction)
+               reachable=bool(statuses or up), sort=sort, direction=direction,
+               groups=get_session().query(MinionGroup)
+               .order_by(MinionGroup.name).all())
     if request.headers.get("HX-Request") == "true":
         return render_template("_minion_rows.html", **ctx)
     return render_template("minions.html", **ctx)
@@ -201,6 +203,24 @@ def export_csv():
 @bp.post("/refresh")
 @roles_required("operator")
 def refresh():
+    from .tasks import queue_or_none, refresh_inventory_task, wait_for
+
+    job = queue_or_none(refresh_inventory_task)
+    if job is None:
+        refresh_sync()
+    else:
+        status, value = wait_for(job, wait=10.0)
+        if status == "ready":
+            flash(f"Inventory refreshed: {value['count']} minions.")
+        elif status == "pending":
+            flash("Refresh queued in the background — reload to see it.")
+        else:
+            flash(f"refresh failed in the background: {value}")
+    return redirect(url_for("minions.index"))
+
+
+def refresh_sync() -> None:
+    """Synchronous refresh. Worker fallback and no-Redis path."""
     client = get_salt()
     try:
         statuses, _ = live_roster(client)
@@ -209,6 +229,93 @@ def refresh():
         flash(f"salt-api error: {exc}")
     else:
         flash(f"Inventory refreshed: {count} minions.")
+
+
+def parse_member_ids(raw: str) -> list[str]:
+    """Split comma/space/newline separated IDs, deduped in order."""
+    seen: list[str] = []
+    for token in raw.replace(",", " ").split():
+        token = token.strip()
+        if token and token not in seen:
+            seen.append(token)
+    return seen
+
+
+@bp.post("/groups")
+@roles_required("operator")
+def create_group():
+    from .audit import log_event
+
+    name = request.form.get("name", "").strip()
+    members = parse_member_ids(request.form.get("members", ""))
+    session = get_session()
+    if not name:
+        flash("Group needs a name.")
+    elif session.query(MinionGroup).filter_by(name=name).first():
+        flash(f"Group '{name}' already exists.")
+    else:
+        session.add(MinionGroup(name=name, members=members))
+        session.commit()
+        log_event(current_user.username, f"group-create:{name}")
+        flash(f"Group '{name}' saved with {len(members)} members.")
+    return redirect(url_for("minions.index"))
+
+
+@bp.post("/groups/<int:gid>/rename")
+@roles_required("operator")
+def rename_group(gid: int):
+    from .audit import log_event
+
+    session = get_session()
+    group = session.get(MinionGroup, gid)
+    name = request.form.get("name", "").strip()
+    if group is None:
+        flash("Unknown group.")
+    elif not name:
+        flash("Group needs a name.")
+    elif (session.query(MinionGroup)
+          .filter(MinionGroup.name == name, MinionGroup.id != gid).first()):
+        flash(f"Group '{name}' already exists.")
+    else:
+        log_event(current_user.username,
+                  f"group-rename:{group.name}->{name}")
+        group.name = name
+        session.commit()
+        flash(f"Group renamed to '{name}'.")
+    return redirect(url_for("minions.index"))
+
+
+@bp.post("/groups/<int:gid>/members")
+@roles_required("operator")
+def edit_group_members(gid: int):
+    from .audit import log_event
+
+    session = get_session()
+    group = session.get(MinionGroup, gid)
+    if group is None:
+        flash("Unknown group.")
+    else:
+        group.members = parse_member_ids(request.form.get("members", ""))
+        session.commit()
+        log_event(current_user.username, f"group-members:{group.name}")
+        flash(f"Group '{group.name}' now has {len(group.members)} members.")
+    return redirect(url_for("minions.index"))
+
+
+@bp.post("/groups/<int:gid>/delete")
+@roles_required("operator")
+def delete_group(gid: int):
+    from .audit import log_event
+
+    session = get_session()
+    group = session.get(MinionGroup, gid)
+    if group is None:
+        flash("Unknown group.")
+    else:
+        log_event(current_user.username, f"group-delete:{group.name}")
+        session.delete(group)
+        session.commit()
+        flash(f"Group '{group.name}' deleted.")
     return redirect(url_for("minions.index"))
 
 

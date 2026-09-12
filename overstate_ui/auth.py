@@ -66,39 +66,76 @@ def roles_required(*roles: str):
 
 
 def oidc_enabled() -> bool:
-    cfg = current_app.config
-    return bool(cfg.get("OIDC_ISSUER") and cfg.get("OIDC_CLIENT_ID")
-                and cfg.get("OIDC_CLIENT_SECRET"))
+    from .settings import get_setting
+
+    return bool(get_setting("oidc_issuer")
+                and get_setting("oidc_client_id")
+                and get_setting("oidc_client_secret"))
 
 
 def _oauth_client():
     from authlib.integrations.flask_client import OAuth
 
+    from .settings import get_setting
+
     oauth = OAuth()
     oauth.register(
         "oidc",
-        server_metadata_url=f"{current_app.config['OIDC_ISSUER']}/"
+        server_metadata_url=f"{get_setting('oidc_issuer')}/"
         ".well-known/openid-configuration",
-        client_id=current_app.config["OIDC_CLIENT_ID"],
-        client_secret=current_app.config["OIDC_CLIENT_SECRET"],
+        client_id=get_setting("oidc_client_id"),
+        client_secret=get_setting("oidc_client_secret"),
         client_kwargs={"scope": "openid email profile"},
     )
     return oauth.oidc
 
 
-def provision_oidc_user(userinfo: dict) -> User:
-    """Find-or-create a user from OIDC claims. New users start as viewers."""
-    username = (
-        userinfo.get("preferred_username") or userinfo.get("email") or userinfo.get("sub")
-    )
-    if not username:
-        raise ValueError("OIDC claims carry no usable username")
+def _configured_groups(kind: str) -> set[str]:
+    from .settings import get_setting
+
+    raw = get_setting(f"oidc_{kind}_groups")
+    return {g.strip() for g in raw.split(",") if g.strip()}
+
+
+def role_for_groups(groups) -> str:
+    """Map IdP group membership to a role. No match means viewer."""
+    membership = set(groups or [])
+    if membership & _configured_groups("admin"):
+        return "admin"
+    if membership & _configured_groups("operator"):
+        return "operator"
+    return "viewer"
+
+
+def provision_oidc_user(userinfo: dict, issuer: str) -> User:
+    """Find-or-create a user from OIDC claims, keyed on (issuer, sub).
+
+    Never merges into a same-named local account: on username collision a
+    short-sub suffix disambiguates. Group mapping applies at each login
+    and wins over manual role edits.
+    """
+    sub = userinfo.get("sub")
+    if not sub:
+        raise ValueError("OIDC claims carry no subject")
     session = get_session()
-    user = session.query(User).filter_by(username=username).first()
+    user = (session.query(User)
+            .filter_by(oidc_issuer=issuer, oidc_sub=sub).first())
     if user is None:
-        user = User(username=username, password_hash=None, role="viewer")
+        base = (userinfo.get("preferred_username")
+                or userinfo.get("email") or sub)
+        if not base:
+            raise ValueError("OIDC claims carry no usable username")
+        username = base[:64]
+        if session.query(User).filter_by(username=username).first() is not None:
+            username = f"{base[:55]}#{str(sub)[:8]}"
+        user = User(username=username, password_hash=None, role="viewer",
+                    oidc_issuer=issuer, oidc_sub=sub)
         session.add(user)
-        session.commit()
+    from .settings import get_setting
+
+    claim = get_setting("oidc_groups_claim") or "groups"
+    user.role = role_for_groups(userinfo.get(claim))
+    session.commit()
     return user
 
 
@@ -144,7 +181,8 @@ def login():
     if form.validate_on_submit():
         if _rate_limited(request.remote_addr or "unknown"):
             flash("Too many attempts. Try again later.")
-            return render_template("login.html", form=form), 429
+            return render_template("login.html", form=form,
+                                   sso=oidc_enabled()), 429
         user = get_session().query(User).filter_by(username=form.username.data).first()
         try:
             valid = (
@@ -159,7 +197,7 @@ def login():
             login_user(user)
             return redirect(url_for("dashboard.index"))
         flash("Invalid credentials.")
-    return render_template("login.html", form=form)
+    return render_template("login.html", form=form, sso=oidc_enabled())
 
 
 @bp.route("/login/oidc")
@@ -174,10 +212,19 @@ def oidc_login():
 def oidc_callback():
     if not oidc_enabled():
         abort(404)
-    token = _oauth_client().authorize_access_token()
-    userinfo = token.get("userinfo") or _oauth_client().userinfo(token=token)
     try:
-        user = provision_oidc_user(dict(userinfo))
+        token = _oauth_client().authorize_access_token()
+        userinfo = token.get("userinfo") or _oauth_client().userinfo(token=token)
+    except Exception as exc:  # noqa: BLE001 — provider/network failures
+        flash(f"SSO login failed: {exc}")
+        return redirect(url_for("auth.login"))
+    from .settings import get_setting
+
+    try:
+        user = provision_oidc_user(
+            dict(userinfo),
+            get_setting("oidc_issuer").rstrip("/"),
+        )
     except ValueError as exc:
         flash(f"SSO login failed: {exc}")
         return redirect(url_for("auth.login"))

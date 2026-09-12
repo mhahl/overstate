@@ -9,13 +9,57 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm">Sync now</button>
   </form>
+  {% if killable and current_user.role in ["operator", "admin"] %}
+  <form method="post" action="{{ url_for('jobs.kill', jid=job.jid) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-sm btn-error btn-outline">Kill job</button>
+  </form>
+  {% endif %}
 </div>
+{% for kill_jid, kill_returns in kill_reports %}
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body gap-1">
+    <p class="text-sm"><span class="font-medium">Kill {{ kill_jid }}</span> <span class="opacity-70">— {{ kill_returns|length }} minion{{ "s" if kill_returns|length != 1 }} reported. Silence means unknown, not dead.</span></p>
+    <ul class="flex flex-wrap gap-2 text-xs font-mono">
+      {% for r in kill_returns %}
+      <li><span class="badge badge-sm {{ 'badge-success' if r.success else 'badge-error' }}">{{ r.minion_id }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endfor %}
 <div class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
     <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ job.tgt }} <span class="opacity-60">— by {{ job.user }}</span></p>
     <p class="ml-auto"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
   </div>
 </div>
+{% if batch_state %}
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body gap-2">
+    <div class="flex flex-wrap items-center gap-2">
+      <h2 class="card-title text-base">Batch</h2>
+      <span class="badge badge-sm {{ 'badge-success' if batch_state.status == 'complete' else ('badge-error' if batch_state.status in ('stopped', 'cancelled') else 'badge-info') }}">{{ batch_state.status }}</span>
+      <span class="text-sm opacity-70">{{ batch_state.waves_done | default(0) }}/{{ batch_state.waves }} waves · {{ batch_state.failures | default(0) }} failures · stop after {{ batch_state.stop_after }}</span>
+      {% if batch_state.status == "running" %}
+      <form method="post" action="{{ url_for('jobs.cancel_batch', group=job.batch_group) }}" class="ml-auto">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-error btn-outline">Stop batch</button>
+      </form>
+      {% endif %}
+    </div>
+    <ul class="flex flex-col gap-1 text-sm">
+      {% for w in waves %}
+      <li class="flex items-center gap-2">
+        <span class="badge badge-sm {{ 'badge-success' if w.complete else 'badge-info' }}">{{ "done" if w.complete else "running" }}</span>
+        <a class="link link-primary font-mono text-xs" href="{{ url_for('jobs.detail', jid=w.jid) }}">{{ w.jid }}</a>
+        <span class="opacity-70 font-mono text-xs">{{ w.tgt }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
 <div class="space-y-2">
 {% for r in returns %}
   {% set summary = r.payload.get("succeeded", r.payload) if r.payload is mapping else r.payload %}

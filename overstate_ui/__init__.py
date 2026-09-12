@@ -3,7 +3,7 @@
 from flask import Flask
 from flask_wtf import CSRFProtect
 
-from . import auth, dashboard, events, files, jobs, keys, minions, pillar, schedules, settings, states, users
+from . import auth, audit, dashboard, events, files, jobs, keys, minions, pillar, schedules, settings, states, users
 from .config import Config
 from .db import close_session, init_db
 from .salt_client import SaltClient
@@ -36,6 +36,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.register_blueprint(states.bp)
     app.register_blueprint(schedules.bp)
     app.register_blueprint(events.bp)
+    app.register_blueprint(audit.bp)
     app.register_blueprint(users.bp)
     app.register_blueprint(files.bp)
 
@@ -46,7 +47,8 @@ def create_app(config: type[Config] = Config) -> Flask:
         try:
             theme = get_setting("theme")
         except Exception:  # noqa: BLE001 — DB may not exist yet
-            theme = "light"
-        return {"app_theme": theme if theme in ("light", "dark") else "light"}
+            theme = "wireframe"
+        allowed = ("light", "dark", "wireframe")
+        return {"app_theme": theme if theme in allowed else "wireframe"}
 
     return app

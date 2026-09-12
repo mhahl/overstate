@@ -70,7 +70,7 @@ Not v1: edit master config, restart services, write into `/srv/salt`.
 
 Package name: `overstate_ui` (avoid colliding with historic Salt “OverState”).
 
-Auth v1: single local admin, argon2 hashes, signed cookie session, login rate limit. Seed admin only when no users exist. Salt-api password never goes in the settings table.
+Auth v1: single local admin, argon2 hashes, signed cookie session, login rate limit. Seed admin only when no users exist. Salt-api password never goes in the settings table. Declared exception: the OIDC client secret may live in the settings table (env fallback kept).
 
 Salt identity: dedicated eauth user `overstate` with `@wheel`, `@runner`, and a tight execution list. Do not log the GUI in as a human with `.*`.
 

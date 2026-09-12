@@ -36,6 +36,43 @@ def set_role(uid: int):
     return redirect(url_for("users.index"))
 
 
+@bp.route("/rotation")
+@roles_required("admin")
+def rotation():
+    """Step 1: show a fresh password plus the two-sided apply steps."""
+    import secrets
+
+    from flask import current_app
+
+    return render_template(
+        "users_rotation.html", password=secrets.token_urlsafe(18),
+        eauth_user=current_app.config["SALT_EAUTH_USER"])
+
+
+@bp.post("/rotation/verify")
+@roles_required("admin")
+def rotation_verify():
+    """Step 2: try the pasted password against salt-api. Never stored."""
+    from .audit import log_event
+    from .salt_client import SaltApiError
+    from .tasks import build_client
+
+    password = request.form.get("password", "")
+    if not password:
+        flash("Paste the new password to verify it.")
+        return redirect(url_for("users.rotation"))
+    candidate = build_client()
+    candidate.password = password
+    try:
+        candidate.login()
+    except SaltApiError as exc:
+        flash(f"verification failed: {exc}")
+    else:
+        log_event(current_user.username, "eauth-rotation-verified")
+        flash("New eauth password works. Update the app environment to match.")
+    return redirect(url_for("users.rotation"))
+
+
 @bp.post("/<int:uid>/delete")
 @roles_required("admin")
 def delete(uid: int):

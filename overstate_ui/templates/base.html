@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="{{ app_theme|default('light') }}">
+<html lang="en" data-theme="{{ app_theme|default('wireframe') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -105,6 +105,9 @@
           <li><a href="{{ url_for('pillar.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('pillar') }}">
             <span class="icon-[lucide--tag] size-4.5" aria-hidden="true"></span>
             Pillar</a></li>
+          <li><a href="{{ url_for('audit.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('audit') }}">
+            <span class="icon-[lucide--scroll-text] size-4.5" aria-hidden="true"></span>
+            Audit</a></li>
           <li class="menu-title mt-2">System</li>
           <li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('settings') }}">
             <span class="icon-[lucide--settings] size-4.5" aria-hidden="true"></span>

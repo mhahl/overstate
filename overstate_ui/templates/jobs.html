@@ -7,6 +7,7 @@
     <p class="text-sm opacity-70 mt-0.5">Dispatch commands and inspect returns.</p>
   </div>
   <button id="live-toggle" class="btn btn-sm btn-ghost">Pause live</button>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
   <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}">Run job</a>
 </div>
 {% include "_job_rows.html" %}

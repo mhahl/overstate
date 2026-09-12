@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Audit — Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">Audit</h1>
+  <p class="text-sm opacity-70 mt-0.5">Who changed what, and which Salt job it became. {{ total }} event{{ "s" if total != 1 }}.</p>
+</div>
+<form method="get" action="{{ url_for('audit.index') }}" class="flex flex-wrap items-end gap-2 mb-4">
+  <label class="form-control w-full sm:max-w-xs">
+    <span class="label"><span class="label-text">User</span></span>
+    <input name="user" value="{{ user }}" class="input input-bordered input-sm w-full" autocomplete="off">
+  </label>
+  <label class="form-control w-full sm:max-w-xs">
+    <span class="label"><span class="label-text">Action</span></span>
+    <input name="action" value="{{ action }}" class="input input-bordered input-sm w-full" autocomplete="off">
+  </label>
+  <button class="btn btn-sm">Filter</button>
+  {% if user or action %}<a class="btn btn-sm btn-ghost" href="{{ url_for('audit.index') }}">Clear</a>{% endif %}
+</form>
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="overflow-x-auto">
+    <table class="table table-zebra table-sm w-full">
+      <thead><tr><th>When</th><th>User</th><th>Action</th><th>Job</th></tr></thead>
+      <tbody>
+        {% for e in events %}
+        <tr>
+          <td class="whitespace-nowrap text-xs opacity-70">{{ e.created_at }}</td>
+          <td class="font-medium">{{ e.user }}</td>
+          <td class="font-mono text-xs">{{ e.action }}</td>
+          <td>{% if e.jid %}<a class="link link-primary font-mono text-xs" href="{{ url_for('jobs.detail', jid=e.jid) }}">{{ e.jid }}</a>{% else %}<span class="opacity-40">—</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center opacity-70 py-6">No events match.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% if pages > 1 %}
+<div class="join mt-4">
+  {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('audit.index', user=user, action=action, page=page-1) }}">‹ Prev</a>{% endif %}
+  <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('audit.index', user=user, action=action, page=page+1) }}">Next ›</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

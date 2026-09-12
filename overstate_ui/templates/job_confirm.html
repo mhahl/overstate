@@ -19,6 +19,9 @@
       <input type="hidden" name="mode" value="{{ mode }}">
       <input type="hidden" name="via" value="{{ via }}">
       <input type="hidden" name="save_as" value="{{ save_as }}">
+      <input type="hidden" name="batch_mode" value="{{ batch_mode | default('off') }}">
+      <input type="hidden" name="batch_size" value="{{ batch_size | default(25) }}">
+      <input type="hidden" name="stop_after" value="{{ stop_after | default(1) }}">
       <label class="form-control">
         <span class="label"><span class="label-text">Type <code>{{ tgt }}</code> to confirm</span></span>
         <input name="confirm" class="input input-bordered" autocomplete="off" autofocus>

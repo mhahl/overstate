@@ -152,7 +152,7 @@ def seed(session: Session, force: bool = False) -> dict[str, int]:
             WatchedState(sls="baseline"),
             Setting(key="default_target", value="*"),
             Setting(key="page_size", value="25"),
-            Setting(key="theme", value="light"),
+            Setting(key="theme", value="wireframe"),
             AuditEvent(user="admin", action="accept-key", jid=None),
             AuditEvent(user="admin", action="state.highstate",
                        jid="20260910123000000002"),
