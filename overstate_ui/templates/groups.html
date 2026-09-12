@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Groups — Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end gap-3 mb-5">
+  <div class="mr-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Groups <span class="badge badge-neutral align-middle">{{ total }}</span></h1>
+    <p class="text-sm opacity-70 mt-0.5">Saved member lists for the group job target. Unknown IDs resolve out at fire time.</p>
+    {% if current_user.role not in ["operator", "admin"] %}
+    <p class="text-sm opacity-70 mt-0.5">Only operators can create or change groups; saved groups appear as the “group” target on the <a class="link" href="{{ url_for('jobs.new') }}">New job</a> form.</p>
+    {% endif %}
+  </div>
+  {% if current_user.role in ["operator", "admin"] %}
+  <button type="button" class="btn btn-sm btn-primary" onclick="openGroupModal()">New group</button>
+  {% endif %}
+</div>
+<form method="get" action="{{ url_for('groups.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body flex-row flex-wrap items-end gap-2">
+    <label class="fieldset flex-1 min-w-48">
+      <span class="fieldset-legend">Search</span>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search name or member…" class="input input-sm">
+    </label>
+    <button class="btn btn-sm">Filter</button>
+  </div>
+</form>
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="overflow-x-auto">
+    <table class="table table-sm table-zebra w-full">
+      <thead><tr><th>Name</th><th class="text-right">Members</th><th>IDs</th><th class="text-right">Use</th>{% if current_user.role in ["operator", "admin"] %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for g in groups %}
+        <tr>
+          <td class="font-medium">{{ g.name }}</td>
+          <td class="text-right">{{ g.members|length }}</td>
+          <td class="font-mono text-xs opacity-70 max-w-72 truncate" title="{{ g.members|join(', ') }}">{{ g.members|join(", ") }}</td>
+          <td class="text-right whitespace-nowrap"><a class="btn btn-xs btn-ghost" href="{{ url_for('jobs.new', tgt_type='group', tgt=g.name) }}">Use in new job</a></td>
+          {% if current_user.role in ["operator", "admin"] %}
+          <td class="text-right whitespace-nowrap">
+            <button type="button" class="btn btn-xs" onclick='openGroupModal({{ g.id }}, {{ g.name|tojson }}, {{ g.members|tojson }})'>Edit</button>
+            <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="button" class="btn btn-xs btn-error btn-outline" onclick="this.classList.add('hidden');this.nextElementSibling.classList.remove('hidden')">Delete</button>
+              <span class="hidden">Delete “{{ g.name }}” ({{ g.members|length }} members)?
+                <button type="submit" class="btn btn-xs btn-error">Confirm</button>
+                <button type="button" class="btn btn-xs btn-ghost" onclick="var s=this.parentElement;s.classList.add('hidden');s.previousElementSibling.classList.remove('hidden')">Keep</button>
+              </span>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not groups %}
+    <p class="text-sm opacity-70 px-4 py-3">{% if q %}No groups match “{{ q }}”.{% else %}No groups yet. Save minions as a group to target them together.{% endif %}</p>
+    {% endif %}
+  </div>
+  <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
+    {% if page > 1 %}<a class="btn btn-sm" href="{{ url_for('groups.index', q=q, page=page-1, per_page=per_page) }}">‹ Prev</a>{% endif %}
+    <span class="text-sm opacity-70">Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}<a class="btn btn-sm" href="{{ url_for('groups.index', q=q, page=page+1, per_page=per_page) }}">Next ›</a>{% endif %}
+  </div>
+</div>
+{% if current_user.role in ["operator", "admin"] %}
+<dialog id="group-modal" class="modal" aria-labelledby="group-modal-title">
+  <div class="modal-box">
+    <h3 id="group-modal-title" class="font-bold text-lg">New group</h3>
+    <form id="group-modal-form" method="post" action="{{ url_for('groups.create_group') }}" class="flex flex-col gap-3 mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="fieldset">
+        <span class="fieldset-legend">Name</span>
+        <input id="group-modal-name" name="name" class="input w-full" autocomplete="off" required>
+      </label>
+      <div class="fieldset">
+        <span class="fieldset-legend">Members <span id="group-modal-count" class="badge badge-neutral badge-sm ml-1">0</span></span>
+        <input id="group-modal-search" type="search" placeholder="Filter minions…" autocomplete="off" class="input input-sm w-full" oninput="filterGroupMembers()">
+        <div class="mt-1 max-h-56 overflow-auto rounded-lg border border-base-300">
+          <table class="table table-sm table-zebra w-full">
+            <thead><tr><th class="w-8"><span class="sr-only">Select</span></th><th>Minion</th></tr></thead>
+            <tbody id="group-modal-list">
+              {% for mid in roster %}
+              <tr class="hover" data-name="{{ mid|lower }}">
+                <td><input type="checkbox" name="members" value="{{ mid }}" class="checkbox checkbox-sm" onchange="updateGroupCount()" aria-label="Select {{ mid }}"></td>
+                <td class="font-mono text-sm">{{ mid }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <span class="fieldset-label">Unknown IDs resolve out at fire time.</span>
+      </div>
+      <p id="group-modal-error" class="text-sm text-error hidden" role="alert"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('group-modal').close()">Cancel</button>
+        <button type="button" class="btn btn-ghost" onclick="clearGroupMembers()">Clear</button>
+        <button class="btn btn-primary">Save group</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+<script>
+(function () {
+  var createUrl = {{ url_for('groups.create_group')|tojson }};
+  var editUrl = function (gid) {
+    return {{ url_for('groups.edit_group', gid=0)|tojson }}.replace('/0/edit', '/' + gid + '/edit');
+  };
+  var presence = {{ presence|tojson }};
+  var seen = {};
+  presence.forEach(function (m) { seen[m] = true; });
+  var groupNames = {{ group_names|tojson }};
+  var editingName = null;
+  function boxes() {
+    return Array.from(document.querySelectorAll('#group-modal-list input[name=members]'));
+  }
+  window.updateGroupCount = function () {
+    var n = boxes().filter(function (b) { return b.checked; }).length;
+    document.getElementById('group-modal-count').textContent = n;
+  };
+  window.filterGroupMembers = function () {
+    var q = document.getElementById('group-modal-search').value.toLowerCase();
+    Array.from(document.querySelectorAll('#group-modal-list tr')).forEach(function (row) {
+      row.classList.toggle('hidden', !!q && row.getAttribute('data-name').indexOf(q) === -1);
+    });
+  };
+  window.clearGroupMembers = function () {
+    boxes().forEach(function (b) { b.checked = false; });
+    updateGroupCount();
+  };
+  function memberRow(value, checked, stale) {
+    var row = document.createElement('tr');
+    row.className = 'hover';
+    row.setAttribute('data-name', value.toLowerCase());
+    row.setAttribute('data-extra', '1');
+    var selectCell = document.createElement('td');
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.name = 'members';
+    box.value = value;
+    box.className = 'checkbox checkbox-sm';
+    box.checked = !!checked;
+    box.onchange = window.updateGroupCount;
+    box.setAttribute('aria-label', 'Select ' + value);
+    selectCell.appendChild(box);
+    var nameCell = document.createElement('td');
+    nameCell.className = 'font-mono text-sm';
+    nameCell.textContent = value;
+    if (stale) {
+      var badge = document.createElement('span');
+      badge.className = 'badge badge-warning badge-xs ml-2';
+      badge.textContent = 'not seen';
+      nameCell.appendChild(badge);
+    }
+    row.appendChild(selectCell);
+    row.appendChild(nameCell);
+    return row;
+  }
+  window.openGroupModal = function (gid, name, members) {
+    var dialog = document.getElementById('group-modal');
+    var form = document.getElementById('group-modal-form');
+    var title = document.getElementById('group-modal-title');
+    var nameInput = document.getElementById('group-modal-name');
+    var list = document.getElementById('group-modal-list');
+    var search = document.getElementById('group-modal-search');
+    var error = document.getElementById('group-modal-error');
+    list.querySelectorAll('[data-extra]').forEach(function (el) {
+      el.remove();
+    });
+    var picked = {};
+    (members || []).forEach(function (m) { picked[m] = true; });
+    boxes().forEach(function (b) { b.checked = !!picked[b.value]; });
+    Object.keys(picked).forEach(function (m) {
+      var known = boxes().some(function (b) { return b.value === m; });
+      if (!known) list.appendChild(memberRow(m, true, !seen[m]));
+    });
+    editingName = gid ? (name || '') : null;
+    error.classList.add('hidden');
+    search.value = '';
+    filterGroupMembers();
+    updateGroupCount();
+    if (gid) {
+      title.textContent = 'Edit group';
+      form.action = editUrl(gid);
+      nameInput.value = name || '';
+    } else {
+      title.textContent = 'New group';
+      form.action = createUrl;
+      nameInput.value = '';
+    }
+    dialog.showModal();
+  };
+  document.getElementById('group-modal-form').addEventListener('submit', function (ev) {
+    var name = document.getElementById('group-modal-name').value.trim();
+    var error = document.getElementById('group-modal-error');
+    if (name && name !== editingName && groupNames.indexOf(name) !== -1) {
+      ev.preventDefault();
+      error.textContent = 'A group named "' + name + '" already exists.';
+      error.classList.remove('hidden');
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

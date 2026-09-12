@@ -6,13 +6,13 @@
   <p class="text-sm opacity-70 mt-0.5">Who changed what, and which Salt job it became. {{ total }} event{{ "s" if total != 1 }}.</p>
 </div>
 <form method="get" action="{{ url_for('audit.index') }}" class="flex flex-wrap items-end gap-2 mb-4">
-  <label class="form-control w-full sm:max-w-xs">
-    <span class="label"><span class="label-text">User</span></span>
-    <input name="user" value="{{ user }}" class="input input-bordered input-sm w-full" autocomplete="off">
+  <label class="fieldset w-full sm:max-w-xs">
+    <span class="fieldset-legend">User</span>
+    <input name="user" value="{{ user }}" class="input input-sm w-full" autocomplete="off">
   </label>
-  <label class="form-control w-full sm:max-w-xs">
-    <span class="label"><span class="label-text">Action</span></span>
-    <input name="action" value="{{ action }}" class="input input-bordered input-sm w-full" autocomplete="off">
+  <label class="fieldset w-full sm:max-w-xs">
+    <span class="fieldset-legend">Action</span>
+    <input name="action" value="{{ action }}" class="input input-sm w-full" autocomplete="off">
   </label>
   <button class="btn btn-sm">Filter</button>
   {% if user or action %}<a class="btn btn-sm btn-ghost" href="{{ url_for('audit.index') }}">Clear</a>{% endif %}

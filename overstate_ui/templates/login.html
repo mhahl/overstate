@@ -31,13 +31,13 @@
           {% for m in messages %}<div class="alert alert-soft alert-warning" role="alert">{{ m }}</div>{% endfor %}
         {% endif %}
       {% endwith %}
-      <label class="form-control">
-        <span class="label"><span class="label-text">Username</span></span>
-        {{ form.username(class_="input input-bordered w-full", autocomplete="username") }}
+      <label class="fieldset">
+        <span class="fieldset-legend">Username</span>
+        {{ form.username(class_="input w-full", autocomplete="username") }}
       </label>
-      <label class="form-control">
-        <span class="label"><span class="label-text">Password</span></span>
-        {{ form.password(class_="input input-bordered w-full", autocomplete="current-password") }}
+      <label class="fieldset">
+        <span class="fieldset-legend">Password</span>
+        {{ form.password(class_="input w-full", autocomplete="current-password") }}
       </label>
       <div class="card-actions flex-col mt-1">
         <button class="btn btn-primary btn-block">Log in</button>

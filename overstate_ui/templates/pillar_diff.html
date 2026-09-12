@@ -7,31 +7,31 @@
 </div>
 <form method="get" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
-    <label class="form-control">
-      <span class="label"><span class="label-text">Left</span></span>
-      <select name="a" class="select select-bordered select-sm">
+    <label class="fieldset">
+      <span class="fieldset-legend">Left</span>
+      <select name="a" class="select select-sm">
         <option value="">—</option>
         {% for m in mids %}<option value="{{ m }}"{% if m == mid_a %} selected{% endif %}>{{ m }}</option>{% endfor %}
       </select>
     </label>
-    <label class="form-control">
-      <span class="label"><span class="label-text">Left revision</span></span>
-      <select name="rev_a" class="select select-bordered select-sm">
+    <label class="fieldset">
+      <span class="fieldset-legend">Left revision</span>
+      <select name="rev_a" class="select select-sm">
         <option value="">newest snapshot</option>
         <option value="live"{% if rev_a == "live" %} selected{% endif %}>live</option>
         {% for s in snaps_a %}<option value="{{ s.id }}"{% if rev_a == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
       </select>
     </label>
-    <label class="form-control">
-      <span class="label"><span class="label-text">Right</span></span>
-      <select name="b" class="select select-bordered select-sm">
+    <label class="fieldset">
+      <span class="fieldset-legend">Right</span>
+      <select name="b" class="select select-sm">
         <option value="">—</option>
         {% for m in mids %}<option value="{{ m }}"{% if m == mid_b %} selected{% endif %}>{{ m }}</option>{% endfor %}
       </select>
     </label>
-    <label class="form-control">
-      <span class="label"><span class="label-text">Right revision</span></span>
-      <select name="rev_b" class="select select-bordered select-sm">
+    <label class="fieldset">
+      <span class="fieldset-legend">Right revision</span>
+      <select name="rev_b" class="select select-sm">
         <option value="">newest snapshot</option>
         <option value="live"{% if rev_b == "live" %} selected{% endif %}>live</option>
         {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}

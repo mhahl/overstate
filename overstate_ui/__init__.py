@@ -3,7 +3,7 @@
 from flask import Flask
 from flask_wtf import CSRFProtect
 
-from . import auth, audit, dashboard, events, files, jobs, keys, minions, pillar, schedules, settings, states, users
+from . import auth, audit, dashboard, events, files, groups, jobs, keys, minions, pillar, schedules, settings, states, users
 from .config import Config
 from .db import close_session, init_db
 from .salt_client import SaltClient
@@ -30,6 +30,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(keys.bp)
     app.register_blueprint(minions.bp)
+    app.register_blueprint(groups.bp)
     app.register_blueprint(pillar.bp)
     app.register_blueprint(jobs.bp)
     app.register_blueprint(settings.bp)

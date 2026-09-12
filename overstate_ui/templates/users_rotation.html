@@ -31,7 +31,7 @@
         <p class="text-sm opacity-70 mt-0.5">Paste the new password to try a salt-api login with it.</p>
         <form method="post" action="{{ url_for('users.rotation_verify') }}" class="flex flex-col gap-2 mt-2">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input name="password" type="password" autocomplete="new-password" placeholder="New eauth password" class="input input-bordered w-full font-mono" required>
+          <input name="password" type="password" autocomplete="new-password" placeholder="New eauth password" class="input w-full font-mono" required>
           <div><button class="btn btn-primary">Verify login</button></div>
         </form>
       </div>

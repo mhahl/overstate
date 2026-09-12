@@ -11,7 +11,7 @@ from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
 from .inventory import GRAIN_COLUMNS, refresh_inventory
-from .models import JobReturn, Minion, MinionGroup
+from .models import JobReturn, Minion
 from .salt_client import SaltApiError
 
 bp = Blueprint("minions", __name__, url_prefix="/minions")
@@ -145,9 +145,7 @@ def index():
     ctx = dict(rows=rows[(page - 1) * per_page: page * per_page],
                q=q, status=status_filter, page=page, pages=pages,
                per_page=per_page, total=total, grains=GRAIN_COLUMNS,
-               reachable=bool(statuses or up), sort=sort, direction=direction,
-               groups=get_session().query(MinionGroup)
-               .order_by(MinionGroup.name).all())
+               reachable=bool(statuses or up), sort=sort, direction=direction)
     if request.headers.get("HX-Request") == "true":
         return render_template("_minion_rows.html", **ctx)
     return render_template("minions.html", **ctx)
@@ -231,92 +229,6 @@ def refresh_sync() -> None:
         flash(f"Inventory refreshed: {count} minions.")
 
 
-def parse_member_ids(raw: str) -> list[str]:
-    """Split comma/space/newline separated IDs, deduped in order."""
-    seen: list[str] = []
-    for token in raw.replace(",", " ").split():
-        token = token.strip()
-        if token and token not in seen:
-            seen.append(token)
-    return seen
-
-
-@bp.post("/groups")
-@roles_required("operator")
-def create_group():
-    from .audit import log_event
-
-    name = request.form.get("name", "").strip()
-    members = parse_member_ids(request.form.get("members", ""))
-    session = get_session()
-    if not name:
-        flash("Group needs a name.")
-    elif session.query(MinionGroup).filter_by(name=name).first():
-        flash(f"Group '{name}' already exists.")
-    else:
-        session.add(MinionGroup(name=name, members=members))
-        session.commit()
-        log_event(current_user.username, f"group-create:{name}")
-        flash(f"Group '{name}' saved with {len(members)} members.")
-    return redirect(url_for("minions.index"))
-
-
-@bp.post("/groups/<int:gid>/rename")
-@roles_required("operator")
-def rename_group(gid: int):
-    from .audit import log_event
-
-    session = get_session()
-    group = session.get(MinionGroup, gid)
-    name = request.form.get("name", "").strip()
-    if group is None:
-        flash("Unknown group.")
-    elif not name:
-        flash("Group needs a name.")
-    elif (session.query(MinionGroup)
-          .filter(MinionGroup.name == name, MinionGroup.id != gid).first()):
-        flash(f"Group '{name}' already exists.")
-    else:
-        log_event(current_user.username,
-                  f"group-rename:{group.name}->{name}")
-        group.name = name
-        session.commit()
-        flash(f"Group renamed to '{name}'.")
-    return redirect(url_for("minions.index"))
-
-
-@bp.post("/groups/<int:gid>/members")
-@roles_required("operator")
-def edit_group_members(gid: int):
-    from .audit import log_event
-
-    session = get_session()
-    group = session.get(MinionGroup, gid)
-    if group is None:
-        flash("Unknown group.")
-    else:
-        group.members = parse_member_ids(request.form.get("members", ""))
-        session.commit()
-        log_event(current_user.username, f"group-members:{group.name}")
-        flash(f"Group '{group.name}' now has {len(group.members)} members.")
-    return redirect(url_for("minions.index"))
-
-
-@bp.post("/groups/<int:gid>/delete")
-@roles_required("operator")
-def delete_group(gid: int):
-    from .audit import log_event
-
-    session = get_session()
-    group = session.get(MinionGroup, gid)
-    if group is None:
-        flash("Unknown group.")
-    else:
-        log_event(current_user.username, f"group-delete:{group.name}")
-        session.delete(group)
-        session.commit()
-        flash(f"Group '{group.name}' deleted.")
-    return redirect(url_for("minions.index"))
 
 
 def build_onboard_script(distro: str, master: str, mid: str) -> str:

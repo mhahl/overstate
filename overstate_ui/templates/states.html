@@ -29,7 +29,7 @@
       {% endif %}
       <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-2 mt-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input name="sls" placeholder="e.g. baseline" class="input input-bordered input-sm flex-1" required>
+        <input name="sls" placeholder="e.g. baseline" class="input input-sm flex-1" required>
         <button class="btn btn-sm btn-primary">Watch</button>
       </form>
       <a class="btn btn-sm btn-outline mt-3 self-start" href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a>

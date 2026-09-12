@@ -115,3 +115,33 @@ def test_saved_delete(client):
     assert rv.status_code == 302
     with client.app.app_context():
         assert get_session().query(SavedJob).count() == 1
+
+
+def test_new_renders_operation_library(client):
+    from overstate_ui.jobs import OPERATION_GROUPS
+
+    html = client.get("/jobs/new").data.decode()
+    assert 'id="op-search"' in html
+    assert 'id="fun-list"' in html
+    assert 'id="blast"' not in html
+    for group, ops in OPERATION_GROUPS:
+        assert group.replace("&", "&amp;") in html
+        for op in ops:
+            assert f"/jobs/new?preset={op['preset']}" in html
+            assert op["fun"] in html
+            assert op["about"] in html
+
+
+def test_new_marks_active_preset(client):
+    html = client.get("/jobs/new?preset=ping").data.decode()
+    assert 'aria-current="true"' in html
+    assert 'value="test.ping"' in html
+
+
+def test_library_collapsed_by_default(client):
+    html = client.get("/jobs/new").data.decode()
+    assert 'id="op-library-toggle"' in html
+    assert "checked" not in html
+    html = client.get("/jobs/new?preset=ping").data.decode()
+    assert 'id="op-library-toggle"' in html
+    assert "checked" in html

@@ -99,6 +99,49 @@ FLEET_PRESETS = {
 }
 
 
+OPERATION_GROUPS = [
+    ("First-class", [
+        {"preset": "ping", "fun": "test.ping", "args": "",
+         "about": "Check minions respond"},
+        {"preset": "apply", "fun": "state.apply", "args": "",
+         "about": "Apply states (args: sls names)"},
+        {"preset": "highstate", "fun": "state.highstate", "args": "",
+         "about": "Enforce the full state tree"},
+        {"preset": "highstate-dry", "fun": "state.highstate",
+         "args": "test=True", "about": "Preview highstate, change nothing"},
+    ]),
+    ("Fleet", [
+        {"preset": "pkg-install", "fun": "pkg.install", "args": "",
+         "about": "Install packages (args: names)"},
+        {"preset": "pkg-remove", "fun": "pkg.remove", "args": "",
+         "about": "Remove packages (args: names)"},
+        {"preset": "service-restart", "fun": "service.restart", "args": "",
+         "about": "Restart a service (args: name)"},
+        {"preset": "service-status", "fun": "service.status", "args": "",
+         "about": "Check a service status (args: name)"},
+        {"preset": "process-signal", "fun": "ps.kill_pid",
+         "args": "<pid> <signal>", "about": "Signal a process by PID"},
+        {"preset": "minion-restart", "fun": "service.restart",
+         "args": "salt-minion", "about": "Restart the salt-minion service"},
+        {"preset": "mine-update", "fun": "mine.update", "args": "",
+         "about": "Refresh mine data"},
+    ]),
+    ("Pillar & sync", [
+        {"preset": "refresh-pillar", "fun": "saltutil.refresh_pillar",
+         "args": "", "about": "Refresh pillar data"},
+        {"preset": "sync-all", "fun": "saltutil.sync_all", "args": "",
+         "about": "Sync modules to minions"},
+    ]),
+]
+
+_FUN_ABOUT: dict[str, str] = {}
+for _group, _ops in OPERATION_GROUPS:
+    for _op in _ops:
+        _FUN_ABOUT.setdefault(_op["fun"], _op["about"])
+OP_FUNCTIONS = [{"fun": fun, "about": about}
+                for fun, about in _FUN_ABOUT.items()]
+
+
 def sync_job(jid: str) -> Job | None:
     """Copy returner rows for jid into jobs/job_returns. Heuristic: a job is
     complete once returns exist and the youngest is older than
@@ -262,13 +305,20 @@ def new():
         preset = {"tgt": glob, "tgt_type": "glob"}
         bulk = {"ids": selected, "glob": glob, "covered": covered}
     bulk_ignored = bool(raw_bulk) and bulk is None
+    if not saved and not preset and not raw_bulk:
+        pre_tgt = request.args.get("tgt", "").strip()
+        pre_type = request.args.get("tgt_type", "")
+        if pre_tgt and pre_type in TGT_TYPES:
+            preset = {"tgt": pre_tgt, "tgt_type": pre_type}
     if not saved and "tgt" not in preset:
         from .settings import get_setting
 
         preset["tgt"] = get_setting("default_target")
     return render_template("job_new.html", tgt_types=TGT_TYPES,
                            preset=preset, saved=saved, bulk=bulk,
-                           bulk_ignored=bulk_ignored)
+                           bulk_ignored=bulk_ignored,
+                           op_groups=OPERATION_GROUPS,
+                           op_functions=OP_FUNCTIONS)
 
 
 @bp.post("/run")

@@ -22,13 +22,13 @@
 {% endif %}
 <form method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
-    <label class="form-control flex-1 min-w-48">
-      <span class="label"><span class="label-text">Search</span></span>
-      <input type="search" name="q" value="{{ q }}" placeholder="Search id…" class="input input-bordered input-sm">
+    <label class="fieldset flex-1 min-w-48">
+      <span class="fieldset-legend">Search</span>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search id…" class="input input-sm">
     </label>
-    <label class="form-control">
-      <span class="label"><span class="label-text">Key status</span></span>
-      <select name="status" class="select select-bordered select-sm" onchange="this.form.requestSubmit()">
+    <label class="fieldset">
+      <span class="fieldset-legend">Key status</span>
+      <select name="status" class="select select-sm" onchange="this.form.requestSubmit()">
         <option value="">All statuses</option>
         {% for s in ["accepted", "pending", "rejected", "denied"] %}
         <option value="{{ s }}"{% if status == s %} selected{% endif %}>{{ s|capitalize }}</option>
@@ -41,67 +41,6 @@
 <form method="get" action="{{ url_for('jobs.new') }}" class="card bg-base-100 border border-base-300 shadow-sm">
 {% include "_minion_rows.html" %}
 </form>
-<section class="card bg-base-100 border border-base-300 shadow-sm mt-4">
-  <div class="card-body gap-3">
-    <div>
-      <h2 class="card-title text-base">Groups</h2>
-      <p class="text-sm opacity-70 mt-0.5">Saved member lists for the group job target. Unknown IDs resolve out at fire time.</p>
-    </div>
-    {% if current_user.role in ["operator", "admin"] %}
-    <form method="post" action="{{ url_for('minions.create_group') }}" class="flex flex-wrap items-end gap-2">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="form-control w-full sm:max-w-xs">
-        <span class="label"><span class="label-text">Name</span></span>
-        <input name="name" class="input input-bordered input-sm w-full" autocomplete="off" required>
-      </label>
-      <label class="form-control flex-1 min-w-40">
-        <span class="label"><span class="label-text">Members (comma, space, or newline separated)</span></span>
-        <input id="group-members" name="members" class="input input-bordered input-sm w-full font-mono" autocomplete="off">
-      </label>
-      <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('group-members').value = Array.from(document.querySelectorAll('input[name=bulk]:checked')).map(function (b) { return b.value; }).join(', ')">Use checked</button>
-      <button class="btn btn-sm btn-primary">Save group</button>
-    </form>
-    {% endif %}
-    {% if groups %}
-    <div class="overflow-x-auto">
-      <table class="table table-sm table-zebra w-full">
-        <thead><tr><th>Name</th><th class="text-right">Members</th><th>IDs</th>{% if current_user.role in ["operator", "admin"] %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
-        <tbody>
-          {% for g in groups %}
-          <tr>
-            <td class="font-medium">{{ g.name }}</td>
-            <td class="text-right">{{ g.members|length }}</td>
-            <td class="font-mono text-xs opacity-70">{{ g.members|join(", ") }}</td>
-            {% if current_user.role in ["operator", "admin"] %}
-            <td class="text-right">
-              <span class="join join-horizontal">
-                <form method="post" action="{{ url_for('minions.rename_group', gid=g.id) }}" class="join-item flex">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input name="name" value="{{ g.name }}" class="input input-bordered input-xs join-item w-28" autocomplete="off" aria-label="Rename {{ g.name }}">
-                  <button class="btn btn-xs join-item" aria-label="Rename">Set</button>
-                </form>
-                <form method="post" action="{{ url_for('minions.edit_group_members', gid=g.id) }}" class="join-item flex">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input name="members" value="{{ g.members|join(', ') }}" class="input input-bordered input-xs join-item w-40 font-mono" autocomplete="off" aria-label="Edit members of {{ g.name }}">
-                  <button class="btn btn-xs join-item" aria-label="Save members">Set</button>
-                </form>
-                <form method="post" action="{{ url_for('minions.delete_group', gid=g.id) }}" class="join-item">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn btn-xs btn-error btn-outline join-item">Delete</button>
-                </form>
-              </span>
-            </td>
-            {% endif %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="text-sm opacity-70">No groups yet. Check minions above and save them as a group.</p>
-    {% endif %}
-  </div>
-</section>
 <script>
 (function () {
   var btn = document.getElementById("live-toggle");

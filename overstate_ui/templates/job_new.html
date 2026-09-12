@@ -3,7 +3,7 @@
 {% block content %}
 <div class="mb-5">
   <h1 class="text-2xl font-bold tracking-tight">Run job</h1>
-  <p class="text-sm opacity-70 mt-0.5">Pick a preset or compose a command manually.</p>
+  <p class="text-sm opacity-70 mt-0.5">Find an operation, adjust the target, fire.</p>
 </div>
 {% if bulk %}
 <div class="alert alert-info mb-4" role="note">
@@ -19,109 +19,176 @@
   <span>Bulk selection ignored: a preset or saved job is active. Clear it to use the bulk target.</span>
 </div>
 {% endif %}
-<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-  <section class="card card-sm bg-base-100 border border-base-300 shadow-sm">
-    <div class="card-body">
-      <h2 class="card-title text-sm">First-class</h2>
-      <div class="flex flex-wrap gap-2">
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'ping' }}" href="{{ url_for('jobs.new', preset='ping') }}">test.ping</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'apply' }}" href="{{ url_for('jobs.new', preset='apply') }}">state.apply</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'highstate' }}" href="{{ url_for('jobs.new', preset='highstate') }}">highstate</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'highstate-dry' }}" href="{{ url_for('jobs.new', preset='highstate-dry') }}">dry-run highstate</a>
-      </div>
+<div class="collapse collapse-arrow bg-base-100 border border-base-300 shadow-sm mb-4">
+  <input id="op-library-toggle" type="checkbox" aria-label="Toggle operation library"{% if request.args.get('preset') %} checked{% endif %}>
+  <div class="collapse-title font-bold text-lg tracking-tight">Operation library</div>
+  <div class="collapse-content">
+    <label class="fieldset w-full mb-3">
+      <span class="sr-only">Search operations</span>
+      <input id="op-search" type="search" placeholder="Search operations…" autocomplete="off" class="input input-sm w-full" oninput="filterOperations()">
+    </label>
+  {% for group, ops in op_groups %}
+  <div data-op-group class="mb-3">
+    <h3 class="text-sm font-semibold mb-1.5">{{ group }}</h3>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+      {% for op in ops %}
+      <a href="{{ url_for('jobs.new', preset=op.preset) }}"
+         data-op-card data-text="{{ (op.fun ~ ' ' ~ op.about ~ ' ' ~ op.args)|lower }}"
+         {% if request.args.get('preset') == op.preset %}aria-current="true"{% endif %}
+         class="card bg-base-100 border border-base-300 shadow-sm text-left transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary{% if request.args.get('preset') == op.preset %} border-primary bg-primary/5{% endif %}">
+        <div class="card-body p-3 gap-0.5">
+          <p class="font-mono font-semibold text-sm">{{ op.fun }}{% if op.args %} <span class="font-normal opacity-60">{{ op.args }}</span>{% endif %}</p>
+          <p class="text-xs opacity-70">{{ op.about }}</p>
+        </div>
+      </a>
+      {% endfor %}
     </div>
-  </section>
-  <section class="card card-sm bg-base-100 border border-base-300 shadow-sm">
-    <div class="card-body">
-      <h2 class="card-title text-sm">Fleet</h2>
-      <div class="flex flex-wrap gap-2">
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'pkg-install' }}" href="{{ url_for('jobs.new', preset='pkg-install') }}">pkg.install</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'pkg-remove' }}" href="{{ url_for('jobs.new', preset='pkg-remove') }}">pkg.remove</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'service-restart' }}" href="{{ url_for('jobs.new', preset='service-restart') }}">service.restart</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'service-status' }}" href="{{ url_for('jobs.new', preset='service-status') }}">service.status</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'process-signal' }}" href="{{ url_for('jobs.new', preset='process-signal') }}">signal process</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'minion-restart' }}" href="{{ url_for('jobs.new', preset='minion-restart') }}">restart minion</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'mine-update' }}" href="{{ url_for('jobs.new', preset='mine-update') }}">mine.update</a>
-      </div>
-    </div>
-  </section>
-  <section class="card card-sm bg-base-100 border border-base-300 shadow-sm">
-    <div class="card-body">
-      <h2 class="card-title text-sm">Pillar &amp; sync</h2>
-      <div class="flex flex-wrap gap-2">
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'refresh-pillar' }}" href="{{ url_for('jobs.new', preset='refresh-pillar') }}">refresh pillar</a>
-        <a class="btn btn-sm btn-outline{{ ' btn-active' if request.args.get('preset') == 'sync-all' }}" href="{{ url_for('jobs.new', preset='sync-all') }}">sync all</a>
-      </div>
-    </div>
-  </section>
+  </div>
+  {% endfor %}
+  <p id="op-empty" class="text-sm opacity-70 hidden">No operations match. Type any function name below instead.</p>
+  </div>
 </div>
-<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm max-w-2xl" x-data="{ batch: '{{ saved.batch.mode if saved and saved.batch else 'off' }}' }">
-  <div class="card-body gap-3">
+<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ saved.batch.mode if saved and saved.batch else 'off' }}' }">
+  <div class="card-body gap-0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="flex flex-wrap gap-3">
-      <label class="form-control flex-1 min-w-40">
-        <span class="label"><span class="label-text">Target</span></span>
-        <input name="tgt" value="{{ saved.tgt if saved else preset.get('tgt', '*') }}" class="input input-bordered" required>
+    <div class="grid md:grid-cols-[minmax(0,1fr)_13rem] gap-x-4 pb-5">
+      <label class="fieldset min-w-0">
+        <span class="fieldset-legend">Target</span>
+        <input id="job-tgt" name="tgt" value="{{ saved.tgt if saved else preset.get('tgt', '*') }}" class="input w-full" required>
       </label>
-      <label class="form-control">
-        <span class="label"><span class="label-text">Target type</span></span>
-        <select name="tgt_type" class="select select-bordered">
+      <label class="fieldset min-w-0">
+        <span class="fieldset-legend">Target type</span>
+        <select id="job-tgt-type" name="tgt_type" class="select w-full">
           {% for t in tgt_types %}
           <option value="{{ t }}"{% if (saved.tgt_type if saved else preset.get('tgt_type')) == t %} selected{% endif %}>{{ t }}</option>
           {% endfor %}
         </select>
       </label>
+      <p class="md:col-span-2 text-xs opacity-70">Target a saved minion group with type “group” (<a class="link" href="{{ url_for('groups.index') }}">manage groups</a>).</p>
     </div>
-    <label class="form-control">
-      <span class="label"><span class="label-text">Function</span></span>
-      <input name="fun" value="{{ saved.fun if saved else preset.get('fun', '') }}" class="input input-bordered font-mono" required>
+    <div class="border-t border-base-300 py-5 fieldset relative">
+      <span class="fieldset-legend">Function</span>
+      <input id="job-fun" name="fun" value="{{ saved.fun if saved else preset.get('fun', '') }}" class="input font-mono w-full" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="fun-list" aria-autocomplete="list" required>
+      <ul id="fun-list" role="listbox" aria-label="Known functions" class="hidden absolute z-10 top-full mt-1 w-full menu bg-base-100 border border-base-300 rounded-lg shadow-md max-h-56 overflow-auto p-1">
+        {% for f in op_functions %}
+        <li role="option" aria-selected="false" data-fun="{{ f.fun }}" data-text="{{ (f.fun ~ ' ' ~ f.about)|lower }}">
+          <button type="button" data-pick="{{ f.fun }}" class="flex gap-2 items-baseline text-left w-full">
+            <span class="font-mono text-sm">{{ f.fun }}</span>
+            <span class="text-xs opacity-70">{{ f.about }}</span>
+          </button>
+        </li>
+        {% endfor %}
+      </ul>
+      <span class="fieldset-label">Pick a known function or type any other.</span>
+    </div>
+    <label class="fieldset pb-5">
+      <span class="fieldset-legend">Args (space-separated)</span>
+      <input name="args" value="{{ (saved.args|join(' ')) if saved else preset.get('args', '') }}" class="input font-mono w-full">
     </label>
-    <label class="form-control">
-      <span class="label"><span class="label-text">Args (space-separated)</span></span>
-      <input name="args" value="{{ (saved.args|join(' ')) if saved else preset.get('args', '') }}" class="input input-bordered font-mono">
-    </label>
-    <div class="flex flex-wrap gap-3 items-end">
-      <label class="form-control">
-        <span class="label"><span class="label-text">Mode</span></span>
-        <select name="mode" class="select select-bordered">
+    <div class="grid sm:grid-cols-3 gap-4 border-t border-base-300 py-5">
+      <label class="fieldset">
+        <span class="fieldset-legend">Mode</span>
+        <select id="job-mode" name="mode" class="select w-full">
           <option value="async">async (returns JID)</option>
           <option value="sync">sync (wait up to 60s)</option>
         </select>
       </label>
-      <label class="form-control">
-        <span class="label"><span class="label-text">Transport</span></span>
-        <select name="via" class="select select-bordered">
+      <label class="fieldset">
+        <span class="fieldset-legend">Transport</span>
+        <select id="job-via" name="via" class="select w-full">
           <option value="local">ZeroMQ (minions)</option>
           <option value="ssh">salt-ssh (roster, sync only)</option>
         </select>
       </label>
-      <label class="form-control flex-1 min-w-40">
-        <span class="label"><span class="label-text">Save as (optional)</span></span>
-        <input name="save_as" placeholder="Saved job name" class="input input-bordered">
+      <label class="fieldset">
+        <span class="fieldset-legend">Save as (optional)</span>
+        <input name="save_as" placeholder="Saved job name" class="input w-full">
       </label>
     </div>
-    <div class="flex flex-wrap gap-3 items-end">
-      <label class="form-control">
-        <span class="label"><span class="label-text">Batch mode</span></span>
-        <select name="batch_mode" class="select select-bordered" x-model="batch">
+    <div class="grid sm:grid-cols-[1fr_7rem_8rem] gap-4 border-t border-base-300 py-5">
+      <label class="fieldset">
+        <span class="fieldset-legend">Batch mode</span>
+        <select name="batch_mode" class="select w-full" x-model="batch">
           <option value="off"{% if not saved or not saved.batch %} selected{% endif %}>off (whole target at once)</option>
           <option value="count"{% if saved and saved.batch and saved.batch.mode == "count" %} selected{% endif %}>rolling: minions per wave</option>
           <option value="percent"{% if saved and saved.batch and saved.batch.mode == "percent" %} selected{% endif %}>rolling: percent per wave</option>
         </select>
       </label>
-      <label class="form-control w-28">
-        <span class="label"><span class="label-text">Wave size</span></span>
-        <input name="batch_size" value="{{ saved.batch.size if saved and saved.batch else 25 }}" class="input input-bordered" inputmode="numeric" :disabled="batch === 'off'">
+      <label class="fieldset">
+        <span class="fieldset-legend">Wave size</span>
+        <input name="batch_size" value="{{ saved.batch.size if saved and saved.batch else 25 }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
       </label>
-      <label class="form-control w-32">
-        <span class="label"><span class="label-text">Stop after failures</span></span>
-        <input name="stop_after" value="{{ saved.batch.stop_after if saved and saved.batch else 1 }}" class="input input-bordered" inputmode="numeric" :disabled="batch === 'off'">
+      <label class="fieldset">
+        <span class="fieldset-legend">Stop after failures</span>
+        <input name="stop_after" value="{{ saved.batch.stop_after if saved and saved.batch else 1 }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
       </label>
     </div>
-    <p class="text-xs opacity-70">Rolling batches run list and glob targets wave by wave from the pinned inventory roster, stopping early at the failure limit.</p>
-    <div class="card-actions justify-end mt-1">
-      <button class="btn btn-primary">Fire</button>
+    <p class="text-xs opacity-70 pb-5">Rolling batches run list and glob targets wave by wave from the pinned inventory roster, stopping early at the failure limit.</p>
+    <div class="card-actions justify-end border-t border-base-300 pt-5">
+      <button class="btn btn-primary px-8">Fire</button>
     </div>
   </div>
 </form>
+<script>
+(function () {
+  var opSearch = document.getElementById('op-search');
+  function filterOperations() {
+    var q = opSearch.value.toLowerCase().trim();
+    var anyVisible = false;
+    Array.from(document.querySelectorAll('[data-op-group]')).forEach(function (group) {
+      var visible = 0;
+      Array.from(group.querySelectorAll('[data-op-card]')).forEach(function (card) {
+        var hit = !q || card.getAttribute('data-text').indexOf(q) !== -1;
+        card.classList.toggle('hidden', !hit);
+        if (hit) visible += 1;
+      });
+      group.classList.toggle('hidden', visible === 0);
+      if (visible > 0) anyVisible = true;
+    });
+    document.getElementById('op-empty').classList.toggle('hidden', anyVisible);
+  }
+  window.filterOperations = filterOperations;
+
+  var funInput = document.getElementById('job-fun');
+  var funList = document.getElementById('fun-list');
+  function funOptions() {
+    return Array.from(funList.querySelectorAll('[role=option]'));
+  }
+  function filterFunctions() {
+    var q = funInput.value.toLowerCase().trim();
+    var visible = 0;
+    funOptions().forEach(function (opt) {
+      var hit = !q || opt.getAttribute('data-text').indexOf(q) !== -1;
+      opt.classList.toggle('hidden', !hit);
+      if (hit) visible += 1;
+    });
+    var open = document.activeElement === funInput && visible > 0;
+    funList.classList.toggle('hidden', !open);
+    funInput.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  funInput.addEventListener('input', filterFunctions);
+  funInput.addEventListener('focus', filterFunctions);
+  funInput.addEventListener('blur', function () {
+    setTimeout(function () {
+      funList.classList.add('hidden');
+      funInput.setAttribute('aria-expanded', 'false');
+    }, 120);
+  });
+  funInput.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') {
+      funList.classList.add('hidden');
+      funInput.setAttribute('aria-expanded', 'false');
+    }
+  });
+  funList.addEventListener('mousedown', function (ev) {
+    var btn = ev.target.closest('[data-pick]');
+    if (!btn) return;
+    ev.preventDefault();
+    funInput.value = btn.getAttribute('data-pick');
+    funList.classList.add('hidden');
+    funInput.setAttribute('aria-expanded', 'false');
+    funInput.focus();
+  });
+})();
+</script>
 {% endblock %}

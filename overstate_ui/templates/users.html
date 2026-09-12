@@ -27,7 +27,7 @@
           <span class="join join-horizontal">
           <form method="post" action="{{ url_for('users.set_role', uid=u.id) }}" class="join-item flex">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <select name="role" class="select select-bordered select-sm join-item">
+            <select name="role" class="select select-sm join-item">
               {% for r in roles %}
               <option value="{{ r }}" {% if r == u.role %}selected{% endif %}>{{ r }}</option>
               {% endfor %}

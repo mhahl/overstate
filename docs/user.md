@@ -80,11 +80,12 @@ Use it for reports and asset reconciliation.
 
 ### Groups
 
-The Groups card below the list stores named member lists. Save the
-checked minions (or type IDs) under a name, then choose the group
-target type on the job form to fire at exactly those members.
-Rename, edit, and delete from the same card. Members that vanished
-from inventory resolve out at fire time with a note.
+The Groups card below the list stores named member lists. Open New
+group, name it, and pick members from the full roster in the select
+box (Use checked fills it from the ticked rows). Then choose the
+group target type on the job form to fire at exactly those members.
+Edit reopens the same dialog; Delete removes the group. Members
+that vanished from inventory resolve out at fire time with a note.
 
 ### Minion detail
 

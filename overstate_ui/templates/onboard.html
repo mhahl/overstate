@@ -20,21 +20,21 @@
     <div class="card-body">
       <h2 class="card-title text-base"><span class="badge badge-neutral">1</span> Describe the new minion</h2>
       <form method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-wrap items-end gap-2">
-        <label class="form-control flex-1 min-w-40">
-          <span class="label"><span class="label-text">Minion id</span></span>
-          <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-bordered input-sm font-mono" required>
+        <label class="fieldset flex-1 min-w-40">
+          <span class="fieldset-legend">Minion id</span>
+          <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm font-mono" required>
         </label>
-        <label class="form-control">
-          <span class="label"><span class="label-text">Distribution</span></span>
-          <select name="distro" class="select select-bordered select-sm">
+        <label class="fieldset">
+          <span class="fieldset-legend">Distribution</span>
+          <select name="distro" class="select select-sm">
             {% for d in ["opensuse", "fedora"] %}
             <option value="{{ d }}"{% if request.args.get('distro', 'opensuse') == d %} selected{% endif %}>{{ d|capitalize }}</option>
             {% endfor %}
           </select>
         </label>
-        <label class="form-control flex-1 min-w-40">
-          <span class="label"><span class="label-text">Master</span></span>
-          <input name="master" value="{{ request.args.get('master', master_host) }}" placeholder="salt master hostname" class="input input-bordered input-sm font-mono" required>
+        <label class="fieldset flex-1 min-w-40">
+          <span class="fieldset-legend">Master</span>
+          <input name="master" value="{{ request.args.get('master', master_host) }}" placeholder="salt master hostname" class="input input-sm font-mono" required>
         </label>
         <button class="btn btn-sm btn-primary">Generate script</button>
       </form>
