@@ -8,6 +8,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Container]
+ContainerName=salt-master
 Image=localhost/overstate-salt-master:latest
 Network=overstate.network
 PublishPort=127.0.0.1:8001:8000
@@ -15,7 +16,7 @@ Environment=SALT_API_ENABLED=True
 Environment=SALT_API_USER=overstate
 Environment=SALT_MINION_ENABLED=False
 EnvironmentFile=/etc/overstate/overstate.env
-Volume=overstate-saltdata:/home/salt/data
+Volume=overstate-saltdata:/home/salt/data:Z
 Volume=/etc/overstate/salt-config:/home/salt/data/config:ro,z
 Volume=/etc/overstate/tls:/home/salt/data/tls:ro,z
 Volume=/var/lib/overstate/srv:/home/salt/data/srv:ro,z

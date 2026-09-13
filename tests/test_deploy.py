@@ -45,6 +45,29 @@ def test_quadlet_units_cover_all_services():
     assert "PublishPort" not in app  # Caddy is the only front door
 
 
+def test_quadlet_names_cover_every_dialed_host():
+    import re
+
+    units = REPO / "deploy" / "quadlet"
+    names = set()
+    for unit in units.glob("*.container"):
+        found = re.findall(r"^ContainerName=(.+)$", unit.read_text(), re.MULTILINE)
+        assert len(found) == 1, unit.name
+        names.add(found[0].strip())
+    assert len(names) == len(list(units.glob("*.container")))
+    dialed = {"postgres", "redis", "salt-master", "overstate-app"}
+    assert dialed <= names, dialed - names
+
+
+def test_every_mount_carries_selinux_relabel():
+    import re
+
+    for unit in (REPO / "deploy" / "quadlet").glob("*.container"):
+        for line in unit.read_text().splitlines():
+            if line.startswith("Volume="):
+                assert re.search(r"[:,][zZ](,|$)", line), f"{unit.name}: {line}"
+
+
 def test_install_tolerates_generator_wiring():
     install = (REPO / "scripts" / "install.sh").read_text()
     assert "enable_unit()" in install

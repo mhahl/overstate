@@ -5,6 +5,7 @@ Wants=network-online.target
 Requires=overstate-app.service overstate-salt-master.service
 
 [Container]
+ContainerName=overstate-caddy
 Image=docker.io/caddy:2-alpine
 Network=overstate.network
 PublishPort=80:80
@@ -12,8 +13,8 @@ PublishPort=443:443
 EnvironmentFile=/etc/overstate/overstate.env
 Volume=/etc/overstate/Caddyfile:/etc/caddy/Caddyfile:ro,z
 Volume=/etc/overstate/tls/ca.crt:/etc/caddy/ca.crt:ro,z
-Volume=overstate-caddy-data:/data
-Volume=overstate-caddy-config:/config
+Volume=overstate-caddy-data:/data:Z
+Volume=overstate-caddy-config:/config:Z
 
 [Service]
 Restart=always

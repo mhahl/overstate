@@ -4,9 +4,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Container]
+ContainerName=postgres
 Image=docker.io/library/postgres:16
 Network=overstate.network
-Volume=overstate-pgdata:/var/lib/postgresql/data
+Volume=overstate-pgdata:/var/lib/postgresql/data:Z
 Environment=POSTGRES_USER=overstate
 Environment=POSTGRES_DB=overstate
 EnvironmentFile=/etc/overstate/overstate.env

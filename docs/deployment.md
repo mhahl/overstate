@@ -258,6 +258,13 @@ Wrong time breaks key exchange in confusing ways; run NTP everywhere.
   unit directly. If it still fails, the unit file never generated:
   check `podman --version`, confirm the `.container` file is in
   `/etc/containers/systemd/`, and rerun `systemctl daemon-reload`.
+- **Salt master logs "Permission denied" on keys/master.pem.** The
+  data volume kept the previous container's SELinux label. Every
+  mount in `deploy/quadlet/` carries a relabel flag (`:z` shared,
+  `:Z` private), which heals this on restart: rerun
+  `sudo ./scripts/update.sh`. If it persists, check Unix ownership
+  versus MAC with `podman exec salt-master ls -laZ
+  /home/salt/data/keys/` and `podman exec salt-master id`.
 - **Dashboard shows salt-api unreachable.** Check the URL, the CA
   mount, and the eauth password. `curl` the `/login` endpoint from
   the app container with the service credentials.

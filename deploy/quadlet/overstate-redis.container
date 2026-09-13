@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Container]
+ContainerName=redis
 Image=docker.io/library/redis:7-alpine
 Network=overstate.network
 

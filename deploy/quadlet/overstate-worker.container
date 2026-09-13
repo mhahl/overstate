@@ -5,6 +5,7 @@ Wants=network-online.target
 Requires=overstate-postgres.service overstate-redis.service overstate-salt-master.service
 
 [Container]
+ContainerName=overstate-worker
 Image=localhost/overstate:latest
 Network=overstate.network
 Exec=python -m overstate_ui.worker
