@@ -453,6 +453,21 @@ def detail(mid: str):
     return render_template("minion_detail.html", **ctx)
 
 
+def _beacon_refusal(outcome, mid: str) -> str | None:
+    """Salt's own refusal text when a toggle changed nothing.
+
+    Pillar-defined beacons answer ``{mid: {comment, result: False}}``
+    with HTTP 200, so a missing exception means nothing here: surface
+    the comment instead of flashing success.
+    """
+    if isinstance(outcome, list) and outcome \
+            and isinstance(outcome[0], dict):
+        ret = outcome[0].get(mid)
+        if isinstance(ret, dict) and ret.get("result") is False:
+            return str(ret.get("comment") or "toggle changed nothing.")
+    return None
+
+
 @bp.post("/<mid>/beacons/<action>")
 @roles_required("operator")
 def beacon_act(mid: str, action: str):
@@ -466,10 +481,14 @@ def beacon_act(mid: str, action: str):
         flash("Beacon name is required.", "error")
         return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
     try:
-        get_salt().local(mid, BEACON_ACTIONS[action], arg=[name])
+        outcome = get_salt().local(mid, BEACON_ACTIONS[action], arg=[name])
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
-    else:
-        log_event(current_user.username, f"beacon-{action}:{name}")
-        flash(f"{mid}/{name}: {action}d.", "success")
+        return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
+    refusal = _beacon_refusal(outcome, mid)
+    if refusal is not None:
+        flash(f"{mid}/{name}: {refusal}", "error")
+        return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
+    log_event(current_user.username, f"beacon-{action}:{name}")
+    flash(f"{mid}/{name}: {action}d.", "success")
     return redirect(url_for("minions.detail", mid=mid, tab="beacons"))

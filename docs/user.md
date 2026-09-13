@@ -246,11 +246,13 @@ them here — the same read-only rule as the Pillar page.
 The Beacons tab on a minion lists each configured beacon with its
 configuration. Entries defined in pillar carry a pillar badge;
 minion-local ones are marked minion. Enable and disable flip a
-beacon's runtime state without touching its definition. Every
-toggle runs through salt-api, so a minion that is down reports an
-error instead of pretending, and each toggle lands in the audit
-trail. Whether a toggle survives a pillar refresh depends on your
-master; when in doubt, change the definition in pillar instead.
+minion-local beacon's runtime state without touching its
+definition. Pillar-badged beacons refuse both actions. Salt
+answers "configured in pillar" and the page shows that error
+instead of a false success, so change the definition in pillar
+instead. Every toggle runs through salt-api, so a minion that is
+down reports an error instead of pretending, and each successful
+toggle lands in the audit trail.
 
 ## Mine
 

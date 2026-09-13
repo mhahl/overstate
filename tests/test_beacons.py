@@ -46,6 +46,13 @@ def fake_transport() -> httpx.MockTransport:
                 CALLS.append(body)
                 if body.get("arg") == ["gone"]:
                     return httpx.Response(500, json={})
+                if body.get("arg") == ["refused"]:
+                    return httpx.Response(200, json={"return": [{
+                        "web-01": {
+                            "comment": "Cannot disable beacon item "
+                                       "refused, it is configured "
+                                       "in pillar.",
+                            "result": False}}]})
                 return httpx.Response(200, json={"return": [{"web-01":
                                                              True}]})
         return httpx.Response(200, json={"return": [{}]})
@@ -116,6 +123,20 @@ def test_beacon_toggle_denied_flashes_error():
                 follow_redirects=True)
     assert rv.status_code == 200
     assert "salt-api error" in rv.data.decode()
+    with c.app.app_context():
+        assert get_session().query(AuditEvent).filter(
+            AuditEvent.action.like("beacon-%")).count() == 0
+
+
+def test_beacon_toggle_refusal_flashes_error_not_success():
+    c = make_client()
+    rv = c.post("/minions/web-01/beacons/disable",
+                data={"beacon": "refused"}, follow_redirects=True)
+    html = rv.data.decode()
+    assert rv.status_code == 200
+    assert "it is configured in pillar" in html
+    assert "alert-error" in html
+    assert "disabled." not in html
     with c.app.app_context():
         assert get_session().query(AuditEvent).filter(
             AuditEvent.action.like("beacon-%")).count() == 0
