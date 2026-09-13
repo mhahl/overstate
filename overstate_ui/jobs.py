@@ -160,10 +160,23 @@ def sync_job(jid: str) -> Job | None:
     complete once returns exist and the youngest is older than
     COMPLETE_AFTER_SECONDS (Salt exposes no completion flag)."""
     session = get_session()
-    rows = session.query(SaltReturn).filter_by(jid=jid).all()
-    if not rows:
-        return session.get(Job, jid)
     job = session.get(Job, jid)
+    rows = session.query(SaltReturn).filter_by(jid=jid).all()
+    now = dt.datetime.now(dt.timezone.utc)
+
+    def aware(value: dt.datetime) -> dt.datetime:
+        return value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)
+
+    if not rows:
+        # No returner rows at all (lost returns, dead minion): age out
+        # against started_at so the job can't sit in Running forever.
+        if (job is not None and not job.complete
+                and job.started_at is not None
+                and (now - aware(job.started_at)).total_seconds()
+                > COMPLETE_AFTER_SECONDS):
+            job.complete = True
+            session.commit()
+        return job
     if job is None:
         first = rows[0]
         job = Job(jid=jid, fun=first.fun, tgt="", tgt_type="glob",
@@ -182,14 +195,10 @@ def sync_job(jid: str) -> Job | None:
         else:
             existing.success = success
             existing.payload = payload
-    def aware(value: dt.datetime) -> dt.datetime:
-        return value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)
-
     youngest = max(
         (aware(r.alter_time) for r in rows if r.alter_time),
         default=None,
     )
-    now = dt.datetime.now(dt.timezone.utc)
     if youngest is None:
         job.complete = (now - aware(job.started_at)).total_seconds() > COMPLETE_AFTER_SECONDS
     else:

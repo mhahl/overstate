@@ -98,6 +98,8 @@ Click a minion ID for its detail page. Tabs organize the facts:
 - **Pillar.** Pillar data, read-only.
 - **Beacons.** Beacon list with enable / disable toggles.
   Definitions live in pillar and are never edited here.
+- **Mine.** This minion's stored mine values: enter a mine
+  function to see what it last reported.
 
 ### Onboard a new minion
 
@@ -249,6 +251,15 @@ toggle runs through salt-api, so a minion that is down reports an
 error instead of pretending, and each toggle lands in the audit
 trail. Whether a toggle survives a pillar refresh depends on your
 master; when in doubt, change the definition in pillar instead.
+
+## Mine
+
+The Mine page reads cached facts minions reported: pick a target,
+a target type, and a mine function (for example
+`network.ip_addrs`) to see per-minion values. Mine data is a
+cache — minions push it on their own schedule — so the page says
+so and links the mine-update preset to refresh it. An empty
+result means nothing is stored for that function, not an error.
 
 ## Pillar
 

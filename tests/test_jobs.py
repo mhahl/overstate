@@ -84,6 +84,25 @@ def test_sync_copies_returner_rows(client):
         assert len(failed) == 1 and failed[0].minion_id == "tw-minion-02"
 
 
+def test_sync_completes_old_job_without_returns(client):
+    with client.app.app_context():
+        from overstate_ui.models import Job
+
+        get_session().add(Job(jid="42424242424242424242", fun="test.ping",
+                              tgt="*", tgt_type="glob", user="admin",
+                              complete=False))
+        get_session().add(Job(jid="42424242424242424243", fun="test.ping",
+                              tgt="*", tgt_type="glob", user="admin",
+                              complete=False))
+        get_session().commit()
+        old = get_session().get(Job, "42424242424242424242")
+        old.started_at = (dt.datetime.now(dt.timezone.utc)
+                          - dt.timedelta(hours=2))
+        get_session().commit()
+        assert sync_job("42424242424242424242").complete is True
+        assert sync_job("42424242424242424243").complete is False
+
+
 def test_detail_and_history_render(client):
     with client.app.app_context():
         sync_job("20260910123000000002")

@@ -92,6 +92,7 @@ external_auth:
       - state.show_highstate
       - state.show_sls
       - schedule.*
+      - mine.*
       - beacons.list
       - beacons.enable_beacon
       - beacons.disable_beacon

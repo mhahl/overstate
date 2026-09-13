@@ -18,7 +18,8 @@ from .salt_client import SaltApiError
 bp = Blueprint("minions", __name__, url_prefix="/minions")
 
 PAGE_SIZES = (10, 25, 50)
-DETAIL_TABS = ["overview", "states", "jobs", "schedule", "pillar", "beacons"]
+DETAIL_TABS = ["overview", "states", "jobs", "schedule", "pillar",
+               "beacons", "mine"]
 BEACON_ACTIONS = {
     "enable": "beacons.enable_beacon",
     "disable": "beacons.disable_beacon",
@@ -367,6 +368,23 @@ def detail(mid: str):
                 kwarg={"return_yaml": False})[0].get(mid, {})
         elif tab == "pillar":
             data["pillar"] = client.local(mid, "pillar.items")[0].get(mid)
+        elif tab == "mine":
+            # This minion's stored mine values for one function:
+            # mine.get run on the minion answers {mid: value}.
+            # Missing/None means nothing stored (empty state).
+            mine_fun = request.args.get("mine_fun", "").strip()
+            data["mine_fun"] = mine_fun
+            data["mine_found"] = False
+            data["mine_value"] = None
+            if mine_fun:
+                stored = client.local(
+                    mid, "mine.get",
+                    arg=[mid, mine_fun])[0].get(mid, {})
+                value = stored.get(mid) if isinstance(stored, dict) \
+                    else stored
+                if value is not None:
+                    data["mine_found"] = True
+                    data["mine_value"] = value
         elif tab == "beacons":
             # return_yaml=False keeps this a real mapping (see
             # schedules.index). A second pillar-excluded call

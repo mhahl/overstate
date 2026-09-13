@@ -268,6 +268,24 @@ def show_sls_task(minion: str, sls_list: list[str],
         return show_sls_now(build_client(), minion, sls_list, via)
 
 
+def mine_get_now(client, reader: str, tgt: str, fun: str,
+                 tgt_type: str = "glob") -> dict:
+    """Mine values for a target expression, read through one minion.
+
+    Raises SaltApiError on failure. Non-mapping payloads yield {}
+    (caller shows the empty state).
+    """
+    payload = client.local(reader, "mine.get", arg=[tgt, fun],
+                           kwarg={"tgt_type": tgt_type})[0].get(reader, {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def mine_get_task(reader: str, tgt: str, fun: str,
+                  tgt_type: str = "glob") -> dict:
+    with isolated_app():
+        return mine_get_now(build_client(), reader, tgt, fun, tgt_type)
+
+
 FUN_DOC_LINES = 40
 
 

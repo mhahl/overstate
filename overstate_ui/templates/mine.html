@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Mine — Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end gap-3 mb-5">
+  <div class="mr-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Mine</h1>
+    <p class="text-sm opacity-70 mt-0.5">Cached fleet facts, reported by minions.</p>
+  </div>
+</div>
+{% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
+<form method="get" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body flex-row flex-wrap items-end gap-2">
+    <label class="fieldset">
+      <span class="fieldset-legend">Target</span>
+      <input name="tgt" value="{{ tgt }}" placeholder="*" class="input input-sm">
+    </label>
+    <label class="fieldset">
+      <span class="fieldset-legend">Type</span>
+      <select name="tgt_type" class="select select-sm">
+        {% for t in tgt_types %}
+        <option value="{{ t }}"{% if t == tgt_type %} selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="fieldset">
+      <span class="fieldset-legend">Function</span>
+      <input name="fun" value="{{ fun }}" placeholder="network.ip_addrs" class="input input-sm font-mono">
+    </label>
+    <button class="btn btn-sm btn-primary">Look up</button>
+  </div>
+</form>
+{% if tgt and fun and not error %}
+{% if entries %}
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="overflow-x-auto">
+<table class="table table-sm table-zebra"><thead><tr><th>Minion</th><th>Value</th></tr></thead><tbody>
+{% for mid, value in entries.items()|sort %}
+<tr><td class="font-mono text-xs"><a class="link" href="{{ url_for('minions.detail', mid=mid) }}">{{ mid }}</a></td>
+<td class="font-mono text-xs break-all">{{ value | tojson }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+</div>
+<p class="text-xs opacity-70 mt-3">Mine data is cached: minions push it on their own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a> to update it.</p>
+{% else %}
+<div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
+  <p class="font-medium">Mine has nothing stored for {{ fun }}</p>
+  <p class="text-sm opacity-70">No minion reported that function for this target — minions only report functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then look again.</p>
+</div></div>
+{% endif %}
+{% endif %}
+{% endblock %}

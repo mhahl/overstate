@@ -3,3 +3,11 @@
 FROM ghcr.io/cdalvaro/docker-salt-master:lts
 
 RUN /opt/saltstack/salt/bin/pip install --no-cache-dir psycopg2-binary
+
+# The built-in dev minion reports these mine functions so the Mine
+# browser has real data (plus whatever mine.send publishes). The
+# image reads minion drop-ins from /home/salt/data/minion_config,
+# not /etc/salt/minion.d.
+RUN mkdir -p /home/salt/data/minion_config \
+    && printf 'mine_functions:\n  network.ip_addrs: []\n  test.ping: []\nmine_interval: 5\n' \
+        > /home/salt/data/minion_config/mine.conf
