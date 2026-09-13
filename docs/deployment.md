@@ -239,9 +239,15 @@ Wrong time breaks key exchange in confusing ways; run NTP everywhere.
 - Never mount the states checkout writable by the app. Sync it from
   git with `scripts/sync-file-roots.sh`, which refuses non-fast-forward
   updates instead of forcing them.
-- A `quadlet/overstate.container` unit ships for Podman systems that
-  run containers as systemd services. Adapt the environment lines to
-  your host and enable it with `systemctl --user`.
+- Podman systems run the stack as systemd services through the
+  per-service Quadlet units in `deploy/quadlet/` (app, worker,
+  salt-master, postgres, redis, caddy, plus the network). Install
+  them with `sudo ./scripts/install.sh`, which builds the images,
+  lays down `/etc/overstate`, and enables the units as system
+  services; `sudo ./scripts/update.sh` rebuilds and restarts,
+  `sudo ./scripts/uninstall.sh` removes the units (config and data
+  survive unless `--purge`). Adapt the unit files to your host
+  before enabling anything by hand.
 
 ## Troubleshooting
 

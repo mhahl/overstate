@@ -12,7 +12,7 @@ if [ "$(id -u)" -ne 0 ]; then
   echo "error: run as root" >&2
   exit 1
 fi
-if [ ! -f "$REPO/Containerfile" ] || [ ! -d "$REPO/quadlet" ]; then
+if [ ! -f "$REPO/Containerfile" ] || [ ! -d "$REPO/deploy/quadlet" ]; then
   echo "error: run from an Overstate repo checkout" >&2
   exit 1
 fi
@@ -22,7 +22,7 @@ podman build -t localhost/overstate:latest "$REPO"
 podman build -f "$REPO/Containerfile.salt-master" -t localhost/overstate-salt-master:latest "$REPO"
 
 CHANGED=0
-for unit in "$REPO"/quadlet/overstate-*.container "$REPO"/quadlet/overstate.network; do
+for unit in "$REPO"/deploy/quadlet/overstate-*.container "$REPO"/deploy/quadlet/overstate.network; do
   cmp -s "$unit" "$UNITS/$(basename "$unit")" 2>/dev/null || CHANGED=1
 done
 if [ ! -f "$ETC/Caddyfile" ]; then
@@ -31,7 +31,7 @@ if [ ! -f "$ETC/Caddyfile" ]; then
 fi
 if [ "$CHANGED" -eq 1 ]; then
   echo "==> unit files changed; reinstalling"
-  cp "$REPO"/quadlet/overstate-*.container "$REPO"/quadlet/overstate.network "$UNITS/"
+  cp "$REPO"/deploy/quadlet/overstate-*.container "$REPO"/deploy/quadlet/overstate.network "$UNITS/"
   systemctl daemon-reload
 fi
 

@@ -45,7 +45,7 @@ if [ "$(id -u)" -ne 0 ]; then
   echo "error: run as root (system Quadlets and /etc writes need it)" >&2
   exit 1
 fi
-if [ ! -f "$REPO/Containerfile" ] || [ ! -d "$REPO/quadlet" ]; then
+if [ ! -f "$REPO/Containerfile" ] || [ ! -d "$REPO/deploy/quadlet" ]; then
   echo "error: run from an Overstate repo checkout ($REPO is not one)" >&2
   exit 1
 fi
@@ -151,7 +151,7 @@ if [ -n "$ADMIN_PASSWORD" ] && ! grep -q "^ADMIN_PASSWORD=" "$ENV_FILE"; then
 fi
 
 echo "==> installing Quadlet units"
-cp "$REPO"/quadlet/overstate-*.container "$REPO"/quadlet/overstate.network "$UNITS/"
+cp "$REPO"/deploy/quadlet/overstate-*.container "$REPO"/deploy/quadlet/overstate.network "$UNITS/"
 systemctl daemon-reload
 systemctl enable --now overstate-postgres.service overstate-redis.service \
   overstate-salt-master.service

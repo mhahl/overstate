@@ -16,8 +16,18 @@ def test_caddyfile_proxies_both_names_with_verified_tls():
     assert "admin off" in text
 
 
+def test_quadlet_units_live_with_deploy_code():
+    assert not (REPO / "quadlet").exists()
+    units = REPO / "deploy" / "quadlet"
+    assert units.is_dir()
+    for script in ("install.sh", "update.sh"):
+        text = (REPO / "scripts" / script).read_text()
+        assert "deploy/quadlet" in text
+        assert "$REPO/quadlet" not in text and '"quadlet"' not in text
+
+
 def test_quadlet_units_cover_all_services():
-    names = {p.name for p in (REPO / "quadlet").glob("*")}
+    names = {p.name for p in (REPO / "deploy" / "quadlet").glob("*")}
     assert names == {
         "overstate.network",
         "overstate-app.container",
@@ -27,11 +37,11 @@ def test_quadlet_units_cover_all_services():
         "overstate-redis.container",
         "overstate-caddy.container",
     }
-    caddy = (REPO / "quadlet" / "overstate-caddy.container").read_text()
+    caddy = (REPO / "deploy" / "quadlet" / "overstate-caddy.container").read_text()
     assert "PublishPort=80:80" in caddy
     assert "PublishPort=443:443" in caddy
     assert "/etc/overstate/Caddyfile:/etc/caddy/Caddyfile:ro" in caddy
-    app = (REPO / "quadlet" / "overstate-app.container").read_text()
+    app = (REPO / "deploy" / "quadlet" / "overstate-app.container").read_text()
     assert "PublishPort" not in app  # Caddy is the only front door
 
 
