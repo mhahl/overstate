@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Job {{ job.jid }} — Overstate{% endblock %}
+{% block title %}Job {{ job.jid }} · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-center gap-2 mb-4">
   <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.index', tab='history') }}">‹ Jobs</a>
@@ -19,7 +19,7 @@
 {% for kill_jid, kill_returns in kill_reports %}
 <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body gap-1">
-    <p class="text-sm"><span class="font-medium">Kill {{ kill_jid }}</span> <span class="opacity-70">— {{ kill_returns|length }} minion{{ "s" if kill_returns|length != 1 }} reported. Silence means unknown, not dead: check presence on the <a class="link" href="{{ url_for('minions.index') }}">Minions</a> page, then re-run against a narrower target if needed.</span></p>
+    <p class="text-sm"><span class="font-medium">Kill {{ kill_jid }}</span> <span class="opacity-70">{{ kill_returns|length }} of them reported. No return means unknown, not dead; check presence on the <a class="link" href="{{ url_for('minions.index') }}">Minions</a> page, then re-run against a narrower target.</span></p>
     <ul class="flex flex-wrap gap-2 text-xs font-mono">
       {% for r in kill_returns %}
       <li><span class="badge badge-sm {{ 'badge-success' if r.success else 'badge-error' }}">{{ r.minion_id }}</span></li>
@@ -89,7 +89,7 @@
 {% if not returns %}
 <div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
   <p class="font-medium">No returns yet</p>
-  <p class="text-sm opacity-70">Waiting on minions — this updates live.</p>
+  <p class="text-sm opacity-70">Waiting on minions. This page updates live.</p>
 </div></div>
 {% endif %}
 </div>
@@ -102,7 +102,7 @@
     document.getElementById("live-returned").textContent = s.returned;
     document.getElementById("live-failed").textContent = s.failed;
     if (s.complete) {
-      document.getElementById("live-note").textContent = "Complete — reloading…";
+      document.getElementById("live-note").textContent = "Complete. Reloading…";
       src.close();
       setTimeout(function () { location.reload(); }, 1500);
     }

@@ -473,11 +473,11 @@ def run():
     if via not in ("local", "ssh"):
         via = "local"
     if not fun or tgt_type not in TGT_TYPES:
-        flash("Target type and function are required.", "error")
+        flash("Pick a target type and a function.", "error")
         return redirect(url_for("jobs.new"))
     if via == "ssh" and asynchronous:
         asynchronous = False
-        flash("salt-ssh runs synchronously; switched to sync mode.", "info")
+        flash("salt-ssh runs synchronously, in sync mode only.", "info")
     if (fun in CONFIRM_FUNS and not is_test_mode(fun, args)
             and request.form.get("confirmed", "") != "yes"):
         batch_preview = parse_batch_fields(request.form) or {}

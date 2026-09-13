@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Groups — Overstate{% endblock %}
+{% block title %}Groups · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-end gap-3 mb-5">
   <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Groups <span class="badge badge-neutral align-middle">{{ total }}</span></h1>
-    <p class="text-sm opacity-70 mt-0.5">Saved member lists for the group job target. Unknown IDs resolve out at fire time.</p>
+    <p class="text-sm opacity-70 mt-0.5">Saved member lists for the group job target. Unknown IDs drop out when you fire.</p>
     {% if current_user.role not in ["operator", "admin"] %}
     <p class="text-sm opacity-70 mt-0.5">Only operators can create or change groups; saved groups appear as the “group” target on the <a class="link" href="{{ url_for('jobs.new') }}">New job</a> form.</p>
     {% endif %}
@@ -86,7 +86,7 @@
             </tbody>
           </table>
         </div>
-        <span class="fieldset-label">Unknown IDs resolve out at fire time.</span>
+        <span class="fieldset-label">Unknown IDs drop out when you fire.</span>
       </div>
       <p id="group-modal-error" class="text-sm text-error hidden" role="alert"></p>
       <div class="modal-action">

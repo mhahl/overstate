@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Pillar — Overstate{% endblock %}
+{% block title %}Pillar · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-end gap-3 mb-5">
   <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Pillar</h1>
-    <p class="text-sm opacity-70 mt-0.5">Rendered pillar per minion. Snapshots are captured on explicit action only.</p>
+    <p class="text-sm opacity-70 mt-0.5">Rendered pillar per minion. Snapshots happen only when you capture one.</p>
   </div>
   <a class="btn btn-sm btn-primary" href="{{ url_for('pillar.diff') }}">Compare two minions</a>
 </div>

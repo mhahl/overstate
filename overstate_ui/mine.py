@@ -58,7 +58,7 @@ def index():
                     if status == "ready":
                         entries = value
                     elif status == "pending":
-                        error = ("Mine query still running — "
+                        error = ("Mine query still running. "
                                  "reload to retry.")
                     else:
                         error = f"Mine query failed: {value}"

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Orchestrate — Overstate{% endblock %}
+{% block title %}Orchestrate · Overstate{% endblock %}
 {% block content %}
 <div class="mb-5">
   <h1 class="text-2xl font-bold tracking-tight">Orchestrate</h1>
-  <p class="text-sm opacity-70 mt-0.5">Run an orchestration state on the master. Long runs execute in the background.</p>
+  <p class="text-sm opacity-70 mt-0.5">Run an orchestration state on the master. Long runs continue in the background.</p>
 </div>
 {% with messages = get_flashed_messages() %}
   {% if messages %}

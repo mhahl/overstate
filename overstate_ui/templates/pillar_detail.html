@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ mid }} pillar — Overstate{% endblock %}
+{% block title %}{{ mid }} pillar · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-center gap-2 mb-4">
   <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.index') }}">‹ Pillar</a>
@@ -41,7 +41,7 @@
       {% else %}
       <div class="py-4 text-center">
         <p class="font-medium">No snapshots yet</p>
-        <p class="text-sm opacity-70">Capture one to start a history (last 10 kept).</p>
+        <p class="text-sm opacity-70">Capture one to start a history (keeps the last 10).</p>
       </div>
       {% endif %}
     </div>

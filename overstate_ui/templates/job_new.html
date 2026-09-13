@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Run job — Overstate{% endblock %}
+{% block title %}Run job · Overstate{% endblock %}
 {% block content %}
 <div class="mb-5">
   <h1 class="text-2xl font-bold tracking-tight">Run job</h1>
@@ -16,7 +16,7 @@
 {% endif %}
 {% if bulk_ignored and not bulk %}
 <div class="alert alert-warning mb-4" role="note">
-  <span>Bulk selection ignored: a preset or saved job is active. <a class="link" href="{{ url_for('jobs.new') }}">Start over</a> to use the bulk target.</span>
+  <span>Bulk selection ignored while a preset or saved job is active. <a class="link" href="{{ url_for('jobs.new') }}">Start over</a> to use the bulk target.</span>
 </div>
 {% endif %}
 <div class="collapse collapse-arrow bg-base-100 border border-base-300 shadow-sm mb-4">
@@ -45,7 +45,7 @@
     </div>
   </div>
   {% endfor %}
-  <p id="op-empty" class="text-sm opacity-70 hidden">No operations match. Type any function name below instead.</p>
+  <p id="op-empty" class="text-sm opacity-70 hidden">No operations match. Type any function name below.</p>
   </div>
 </div>
 <form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ saved.batch.mode if saved and saved.batch else 'off' }}' }">
@@ -124,7 +124,7 @@
         <input name="stop_after" value="{{ saved.batch.stop_after if saved and saved.batch else 1 }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
       </label>
     </div>
-    <p class="text-xs opacity-70 pb-5">Rolling batches run list and glob targets wave by wave from the pinned inventory roster, stopping early at the failure limit.</p>
+    <p class="text-xs opacity-70 pb-5">Rolling batches run list and glob targets wave by wave from the pinned roster. They stop at the failure limit.</p>
     <div class="card-actions justify-end border-t border-base-300 pt-5">
       <button class="btn btn-primary px-8">Fire</button>
     </div>

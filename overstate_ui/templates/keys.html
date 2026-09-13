@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Keys — Overstate{% endblock %}
+{% block title %}Keys · Overstate{% endblock %}
 {% block content %}
 <div class="mb-5">
   <h1 class="text-2xl font-bold tracking-tight">Keys</h1>
@@ -8,7 +8,7 @@
 {% if syndic_masters %}
 <div class="alert alert-info mb-4" role="note">
   <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
-  <span>Syndic topology: this roster is the local master only. Upstream master(s): {{ syndic_masters|join(", ") }}. Key actions here never propagate upstream.</span>
+  <span>Syndic topology: this roster is the local master only. Upstream master(s): {{ syndic_masters|join(", ") }}. Key actions here stay local.</span>
 </div>
 {% endif %}
 <div class="card bg-base-100 border border-base-300 shadow-sm">

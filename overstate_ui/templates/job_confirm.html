@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Review {{ fun }} — Overstate{% endblock %}
+{% block title %}Review {{ fun }} · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-xl mx-auto">
   <h1 class="text-2xl font-bold tracking-tight mb-1">Review before firing</h1>
-  <p class="text-sm opacity-70 mb-4">Check the target — this runs immediately.</p>
+  <p class="text-sm opacity-70 mb-4">Check the target. This runs immediately.</p>
   <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
     <div class="card-body gap-3">
       <div>
@@ -17,7 +17,7 @@
       <div>
         <p class="text-xs opacity-70">Matched minions</p>
         {% if matched is none %}
-        <p class="text-sm">Match preview is unavailable for {{ tgt_type }} targets; the master resolves them at fire time.</p>
+        <p class="text-sm">No match preview for {{ tgt_type }} targets. The master resolves them when you fire.</p>
         {% elif matched %}
         <p class="font-semibold">{{ matched|length }} minion{{ "s" if matched|length != 1 }}</p>
         <p class="font-mono text-xs opacity-70 break-all">{{ matched[:10]|join(", ") }}{% if matched|length > 10 %} …{% endif %}</p>
@@ -36,8 +36,8 @@
   <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
     <div class="card-body gap-3">
       <div>
-        <p class="text-xs opacity-70">SLS preview{% if preview_minion %} — rendered on <span class="font-mono">{{ preview_minion }}</span> (base saltenv){% endif %}</p>
-        <p class="text-xs opacity-70">One minion's pillar and grains; per-minion differences are possible.</p>
+        <p class="text-xs opacity-70">SLS preview{% if preview_minion %}, rendered on <span class="font-mono">{{ preview_minion }}</span> (base saltenv){% endif %}</p>
+        <p class="text-xs opacity-70">One minion's pillar and grains. Other minions can differ.</p>
       </div>
       {% for sls, states in preview %}
       <div>

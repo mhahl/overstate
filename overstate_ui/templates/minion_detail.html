@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ mid }} — Overstate{% endblock %}
+{% block title %}{{ mid }} · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-center gap-2 mb-5">
   <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">‹ Minions</a>
@@ -43,7 +43,7 @@
             <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--badge-check] size-4" aria-hidden="true"></span></span>
             <p class="font-medium text-sm">Conformity</p>
           </div>
-          <p class="text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-success" title="Last highstate-style run matched the watched states">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-warning" title="Last run reported changes — open Recent activity, then re-run state.apply to converge">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-error" title="Last run could not reach this minion — check presence and key state">unreachable</span>{% else %}<span class="badge badge-neutral" title="No highstate-style job has reported for this minion yet">unknown</span>{% endif %}</p>
+          <p class="text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-success" title="Last highstate-style run matched the watched states">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-warning" title="Last run reported changes. Open Recent activity, then re-run state.apply to converge">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-error" title="Last run could not reach this minion. Check presence and key state">unreachable</span>{% else %}<span class="badge badge-neutral" title="No highstate-style job has reported for this minion yet">unknown</span>{% endif %}</p>
           <p class="text-xs text-base-content/60">{% if conformity.get("jid") %}Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% else %}No highstate-style job recorded{% endif %}</p>
         </div>
       </div>
@@ -144,11 +144,11 @@
 <td class="font-mono text-xs break-all">{{ data.mine_value | tojson }}</td></tr>
 </tbody></table>
 </div>
-<p class="text-xs opacity-70">Mine data is cached — this minion last reported it on its own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>.</p>
+<p class="text-xs opacity-70">Mine data is cached. This minion last reported it on its own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>.</p>
 {% else %}
 <div class="py-8 text-center">
   <p class="font-medium">Mine has nothing stored for {{ data.mine_fun }}</p>
-  <p class="text-sm opacity-70">This minion never reported that function — minions only report functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then look again.</p>
+  <p class="text-sm opacity-70">This minion never reported that function. Minions only report functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then look again.</p>
 </div>
 {% endif %}
 {% endif %}
@@ -157,7 +157,7 @@
 <div class="p-4 flex flex-col gap-4">
 <div class="py-8 text-center">
   <p class="font-medium">{% if tab == "schedule" %}No schedules on {{ mid }}{% else %}No pillar data for {{ mid }}{% endif %}</p>
-  <p class="text-sm opacity-70">{% if tab == "schedule" %}Recurring jobs live on the minion. <a class="link" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>{% else %}Pillar is rendered per minion on the master. <a class="link" href="https://docs.saltproject.io/en/3006/topics/pillar/index.html" target="_blank" rel="noopener">Salt pillar documentation</a>{% endif %}</p>
+  <p class="text-sm opacity-70">{% if tab == "schedule" %}Recurring jobs live on the minion. <a class="link" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>{% else %}The master renders pillar per minion. <a class="link" href="https://docs.saltproject.io/en/3006/topics/pillar/index.html" target="_blank" rel="noopener">Salt pillar documentation</a>{% endif %}</p>
 </div>
 </div>
 {% elif tab == "beacons" %}

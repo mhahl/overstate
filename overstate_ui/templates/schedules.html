@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Schedules — Overstate{% endblock %}
+{% block title %}Schedules · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-end gap-3 mb-5">
   <div class="mr-auto">
@@ -73,7 +73,7 @@
 {% else %}
 <div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
   <p class="font-medium">{% if mid %}No schedules on {{ mid }}{% else %}No accepted minions{% endif %}</p>
-  <p class="text-sm opacity-70">Scheduler entries will appear here.</p>
+  <p class="text-sm opacity-70">New scheduler entries show up here.</p>
 </div></div>
 {% endif %}
 {% endblock %}

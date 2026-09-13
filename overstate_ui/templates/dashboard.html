@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Overstate{% endblock %}
+{% block title %}Dashboard · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-col gap-4">
 <div class="flex flex-wrap items-end gap-3">
@@ -15,7 +15,7 @@
 {% if not stats.reachable %}
 <div class="alert alert-error" role="alert">
   <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
-  <span>salt-api unreachable. Showing database history only.</span>
+  <span>salt-api unreachable. Database history only.</span>
 </div>
 {% endif %}
 <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -96,7 +96,7 @@
           <span class="icon-[lucide--circle-check] size-5 text-success" aria-hidden="true"></span>
         </div>
         <p class="font-medium mt-2">No failures recorded</p>
-        <p class="text-sm opacity-70">Failed returns will appear here.</p>
+        <p class="text-sm opacity-70">Failed returns land here.</p>
         <a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
       </div>
       {% endif %}

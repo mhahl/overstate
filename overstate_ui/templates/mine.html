@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Mine — Overstate{% endblock %}
+{% block title %}Mine · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-end gap-3 mb-5">
   <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Mine</h1>
-    <p class="text-sm opacity-70 mt-0.5">Cached fleet facts, reported by minions.</p>
+    <p class="text-sm opacity-70 mt-0.5">Fleet facts your minions reported.</p>
   </div>
 </div>
 {% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
@@ -41,11 +41,11 @@
 </tbody></table>
 </div>
 </div>
-<p class="text-xs opacity-70 mt-3">Mine data is cached: minions push it on their own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a> to update it.</p>
+<p class="text-xs opacity-70 mt-3">Mine data stays cached: minions push it on their own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a> to update it.</p>
 {% else %}
 <div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
   <p class="font-medium">Mine has nothing stored for {{ fun }}</p>
-  <p class="text-sm opacity-70">No minion reported that function for this target — minions only report functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then look again.</p>
+  <p class="text-sm opacity-70">No minion reported that function for this target. Minions only report functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then look again.</p>
 </div></div>
 {% endif %}
 {% endif %}
