@@ -18,16 +18,32 @@ from overstate_ui.salt_client import SaltClient
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["web-01", "web-02"], "minions_pre": ["db-01"],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01", "web-02"],
+                                    "minions_pre": ["db-01"],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{"up": ["web-01"],
-                                                         "down": []}]})
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -39,27 +55,59 @@ def client():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
         session = get_session()
-        session.add(Minion(id="web-01", key_status="accepted",
-                           grains={"osfinger": "Fedora Linux"},
-                           conformity={"status": "ok", "jid": "1"}))
-        session.add(Minion(id="web-02", key_status="accepted",
-                           grains={"osfinger": "Debian"},
-                           conformity={"status": "drifted", "jid": "1"}))
-        session.add(Minion(id="db-01", key_status="pending", grains={},
-                           conformity={}))
-        session.add(Job(jid="100", fun="state.highstate", tgt="*",
-                        tgt_type="glob", user="amy", complete=False))
-        session.add(Job(jid="090", fun="test.ping", tgt="*",
-                        tgt_type="glob", user="zed", complete=False))
-        session.add(JobReturn(jid="100", minion_id="web-01", success=True,
-                              retcode=0, payload={}))
-        session.add(JobReturn(jid="090", minion_id="web-01", success=False,
-                              retcode=1, payload={}))
+        session.add(
+            Minion(
+                id="web-01",
+                key_status="accepted",
+                grains={"osfinger": "Fedora Linux"},
+                conformity={"status": "ok", "jid": "1"},
+            )
+        )
+        session.add(
+            Minion(
+                id="web-02",
+                key_status="accepted",
+                grains={"osfinger": "Debian"},
+                conformity={"status": "drifted", "jid": "1"},
+            )
+        )
+        session.add(Minion(id="db-01", key_status="pending", grains={}, conformity={}))
+        session.add(
+            Job(
+                jid="100",
+                fun="state.highstate",
+                tgt="*",
+                tgt_type="glob",
+                user="amy",
+                complete=False,
+            )
+        )
+        session.add(
+            Job(
+                jid="090",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="zed",
+                complete=False,
+            )
+        )
+        session.add(
+            JobReturn(
+                jid="100", minion_id="web-01", success=True, retcode=0, payload={}
+            )
+        )
+        session.add(
+            JobReturn(
+                jid="090", minion_id="web-01", success=False, retcode=1, payload={}
+            )
+        )
         session.commit()
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
@@ -141,15 +189,21 @@ def test_conformity_full_page_has_hx_wiring(client):
 
 def test_sort_jobs_started_uses_datetime():
     def job(jid, started):
-        return Job(jid=jid, fun="test.ping", tgt="*", tgt_type="glob",
-                   user="u", started_at=started)
+        return Job(
+            jid=jid,
+            fun="test.ping",
+            tgt="*",
+            tgt_type="glob",
+            user="u",
+            started_at=started,
+        )
 
-    old = job("001", dt.datetime(2020, 1, 1))
-    new = job("002", dt.datetime(2024, 1, 1))
+    old = job("001", dt.datetime(2020, 1, 1, tzinfo=dt.UTC))
+    new = job("002", dt.datetime(2024, 1, 1, tzinfo=dt.UTC))
     assert [j.jid for j in sort_jobs([old, new], "started", "desc")] == ["002", "001"]
     assert [j.jid for j in sort_jobs([new, old], "started", "asc")] == ["001", "002"]
     missing = job("000", None)
-    assert [j.jid for j in sort_jobs([missing, old], "started", "desc")][0] == "001"
+    assert next(j.jid for j in sort_jobs([missing, old], "started", "desc")) == "001"
 
 
 def test_conformity_ok_renders_success(client):
@@ -167,8 +221,7 @@ def test_minion_returns_partial_and_sort(client):
 def test_presence_endpoint(client):
     rv = client.get("/minions/presence")
     assert rv.status_code == 200
-    assert rv.get_json() == {"web-01": "up", "web-02": "dead",
-                             "db-01": "down"}
+    assert rv.get_json() == {"web-01": "up", "web-02": "dead", "db-01": "down"}
 
 
 def test_bulk_selection_survives_swaps_hook(client):

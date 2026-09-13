@@ -49,11 +49,21 @@ def index():
     direction = request.args.get("dir", "desc")
     if direction not in ("asc", "desc"):
         direction = "desc"
-    order = {"when": AuditEvent.id, "user": AuditEvent.user,
-             "action": AuditEvent.action}[sort]
+    order = {
+        "when": AuditEvent.id,
+        "user": AuditEvent.user,
+        "action": AuditEvent.action,
+    }[sort]
     order = order.desc() if direction == "desc" else order.asc()
-    events = (query.order_by(order)
-              .offset((page - 1) * page_size).limit(page_size).all())
-    return render_template("audit.html", events=events, user=user,
-                           action=action, page=page, pages=pages,
-                           total=total, sort=sort, direction=direction)
+    events = query.order_by(order).offset((page - 1) * page_size).limit(page_size).all()
+    return render_template(
+        "audit.html",
+        events=events,
+        user=user,
+        action=action,
+        page=page,
+        pages=pages,
+        total=total,
+        sort=sort,
+        direction=direction,
+    )

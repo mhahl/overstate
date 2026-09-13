@@ -1,0 +1,29 @@
+# Public front door. Caddy terminates ACME TLS for both names and
+# proxies to the self-signed backends, verifying them against our CA
+# (mounted at /etc/caddy/ca.crt) instead of skipping verification.
+# Domains come from the environment with these defaults; override
+# APP_DOMAIN / API_DOMAIN in /etc/overstate/overstate.env.
+# Requires: DNS A records for both names -> this host, ports 80+443 open.
+{
+	admin off
+}
+
+{$APP_DOMAIN:overstate.sigaint.au} {
+	encode gzip
+	reverse_proxy https://overstate-app:8000 {
+		transport http {
+			tls
+			tls_trust_pool file /etc/caddy/ca.crt
+		}
+	}
+}
+
+{$API_DOMAIN:overstate-api.sigaint.au} {
+	encode gzip
+	reverse_proxy https://overstate-salt-master:8000 {
+		transport http {
+			tls
+			tls_trust_pool file /etc/caddy/ca.crt
+		}
+	}
+}

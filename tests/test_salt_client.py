@@ -14,8 +14,9 @@ from overstate_ui.salt_client import SaltApiError, SaltClient
 def fake_transport(state: dict) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 43200}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 43200}]}
+            )
         token = request.headers.get("X-Auth-Token")
         if token != "tok" and not state.get("expired_ok"):
             return httpx.Response(401, json={"error": "auth"})
@@ -24,20 +25,34 @@ def fake_transport(state: dict) -> httpx.MockTransport:
         except ValueError:
             body = {}
         if isinstance(body, dict) and body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["a", "b"], "minions_pre": ["c"],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["a", "b"],
+                                    "minions_pre": ["c"],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if isinstance(body, dict) and body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{"up": ["a"],
-                                                         "down": ["b"]}]})
+            return httpx.Response(200, json={"return": [{"up": ["a"], "down": ["b"]}]})
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
 
 
 def make_client(state: dict | None = None) -> SaltClient:
-    return SaltClient("https://salt:8000", "overstate", "pw",
-                      transport=fake_transport(state or {}))
+    return SaltClient(
+        "https://salt:8000", "overstate", "pw", transport=fake_transport(state or {})
+    )
 
 
 def test_wheel_login_and_call():
@@ -52,15 +67,21 @@ def test_local_forwards_kwargs():
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         seen.update(_json.loads(request.content or b"{}"))
         return httpx.Response(200, json={"return": [{"web-01": True}]})
 
-    client = SaltClient("https://salt:8000", "u", "p",
-                        transport=httpx.MockTransport(handler))
-    out = client.local("web-01", "schedule.add", arg=["daily"],
-                       kwarg={"function": "test.ping", "seconds": 60})
+    client = SaltClient(
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler)
+    )
+    out = client.local(
+        "web-01",
+        "schedule.add",
+        arg=["daily"],
+        kwarg={"function": "test.ping", "seconds": 60},
+    )
     assert out == [{"web-01": True}]
     assert seen["arg"] == ["daily"]
     assert seen["kwarg"] == {"function": "test.ping", "seconds": 60}
@@ -68,11 +89,11 @@ def test_local_forwards_kwargs():
 
 def test_401_triggers_relogin():
     bad = httpx.MockTransport(
-        lambda req: httpx.Response(
-            401, json={"error": "expired"})
-        if req.url.path != "/login"
-        else httpx.Response(200, json={"return": [{"token": "tok2",
-                                                   "expire": 1}]})
+        lambda req: (
+            httpx.Response(401, json={"error": "expired"})
+            if req.url.path != "/login"
+            else httpx.Response(200, json={"return": [{"token": "tok2", "expire": 1}]})
+        )
     )
     client = SaltClient("https://salt:8000", "u", "p", transport=bad)
     with pytest.raises(SaltApiError):
@@ -82,9 +103,12 @@ def test_401_triggers_relogin():
 
 def test_health_ok_and_down():
     assert make_client().health()["reachable"] is True
-    down = SaltClient("https://salt:8000", "u", "p",
-                      transport=httpx.MockTransport(
-                          lambda req: httpx.Response(500, text="boom")))
+    down = SaltClient(
+        "https://salt:8000",
+        "u",
+        "p",
+        transport=httpx.MockTransport(lambda req: httpx.Response(500, text="boom")),
+    )
     health = down.health()
     assert health["reachable"] is False
     assert health["error"]
@@ -117,8 +141,11 @@ def test_dashboard_offline_degrades():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p",
-        transport=httpx.MockTransport(lambda req: httpx.Response(500)))
+        "https://salt:8000",
+        "u",
+        "p",
+        transport=httpx.MockTransport(lambda req: httpx.Response(500)),
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")

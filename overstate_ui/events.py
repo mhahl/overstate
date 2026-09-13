@@ -71,7 +71,7 @@ def stream():
         except SaltApiError as exc:
             yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
         except httpx.TimeoutException:
-            yield "event: error\ndata: {\"error\": \"event stream idle timeout\"}\n\n"
+            yield 'event: error\ndata: {"error": "event stream idle timeout"}\n\n'
         yield "event: done\ndata: {}\n\n"
 
     return Response(stream_with_context(filtered()), mimetype="text/event-stream")

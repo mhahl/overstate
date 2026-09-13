@@ -1,8 +1,8 @@
 """Audit page tests: render, filters, pagination, role reach."""
 
 from overstate_ui import create_app
-from overstate_ui.auth import seed_admin
 from overstate_ui.audit import log_event
+from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.models import User
@@ -15,12 +15,14 @@ def make_client():
     with app.app_context():
         create_all()
         seed_admin(password="pw")
-        get_session().add(User(username="vwr", password_hash="x",
-                               role="viewer"))
+        get_session().add(User(username="vwr", password_hash="x", role="viewer"))
         get_session().commit()
         for i in range(30):
-            log_event("admin" if i % 2 else "op", f"action-{i:02d}",
-                      jid=f"jid-{i:02d}" if i % 3 == 0 else None)
+            log_event(
+                "admin" if i % 2 else "op",
+                f"action-{i:02d}",
+                jid=f"jid-{i:02d}" if i % 3 == 0 else None,
+            )
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
     return c
@@ -64,6 +66,7 @@ def test_audit_pagination_bounds():
     c = make_client()
     with c.application.app_context():
         from overstate_ui.models import Setting
+
         get_session().add(Setting(key="page_size", value="10"))
         get_session().commit()
     html = c.get("/audit/").data.decode()

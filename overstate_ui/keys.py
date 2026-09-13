@@ -2,11 +2,19 @@
 
 import re
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import current_user, login_required
-from .auth import roles_required
 
 from .audit import log_event
+from .auth import roles_required
 from .dashboard import get_salt
 from .salt_client import SaltApiError
 
@@ -73,27 +81,35 @@ def index():
         flash(f"salt-api error: {exc}", "error")
         data = {t: [] for t, _ in TABS}
     counts = {t: len(data[t]) for t, _ in TABS}
-    masters = [m.strip() for m in
-               current_app.config.get("SYNDIC_MASTERS", "").split(",")
-               if m.strip()]
+    masters = [
+        m.strip()
+        for m in current_app.config.get("SYNDIC_MASTERS", "").split(",")
+        if m.strip()
+    ]
     q = request.args.get("q", "").strip()
     ql = q.lower()
     rows = data[tab]
     if ql:
-        rows = [r for r in rows
-                if ql in r["id"].lower()
-                or ql in r["fingerprint"].lower()]
+        rows = [
+            r for r in rows if ql in r["id"].lower() or ql in r["fingerprint"].lower()
+        ]
     sort = request.args.get("sort", "id")
     if sort not in ("id",):
         sort = "id"
     direction = request.args.get("dir", "asc")
     if direction not in ("asc", "desc"):
         direction = "asc"
-    rows = sorted(rows, key=lambda r: r["id"],
-                  reverse=(direction == "desc"))
-    return render_template("keys.html", tab=tab, rows=rows,
-                           counts=counts, syndic_masters=masters,
-                           q=q, sort=sort, direction=direction)
+    rows = sorted(rows, key=lambda r: r["id"], reverse=(direction == "desc"))
+    return render_template(
+        "keys.html",
+        tab=tab,
+        rows=rows,
+        counts=counts,
+        syndic_masters=masters,
+        q=q,
+        sort=sort,
+        direction=direction,
+    )
 
 
 @bp.post("/<action>")

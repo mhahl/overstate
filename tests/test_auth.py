@@ -22,9 +22,7 @@ def client(tmp_path):
 
 def test_login_logout_roundtrip(client):
     assert client.get("/").status_code == 302  # login required
-    rv = client.post(
-        "/login", data={"username": "admin", "password": "test-password"}
-    )
+    rv = client.post("/login", data={"username": "admin", "password": "test-password"})
     assert rv.status_code == 302
     assert client.get("/").status_code == 200
     assert client.post("/logout").status_code == 302
@@ -67,11 +65,13 @@ def _oidc_app(**overrides):
     init_db("sqlite://")
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
-    app.config.update({
-        "OIDC_ISSUER": "https://idp.example.com",
-        "OIDC_CLIENT_ID": "cid",
-        "OIDC_CLIENT_SECRET": "csecret",
-    })
+    app.config.update(
+        {
+            "OIDC_ISSUER": "https://idp.example.com",
+            "OIDC_CLIENT_ID": "cid",
+            "OIDC_CLIENT_SECRET": "csecret",
+        }
+    )
     app.config.update(overrides)
     with app.app_context():
         create_all()
@@ -96,15 +96,15 @@ def test_provision_creates_viewer_with_identity_key():
     app = _oidc_app()
     with app.app_context():
         user = provision_oidc_user(
-            {"sub": "s1", "preferred_username": "alice"},
-            "https://idp.example.com")
+            {"sub": "s1", "preferred_username": "alice"}, "https://idp.example.com"
+        )
         assert user.role == "viewer"
         assert user.oidc_issuer == "https://idp.example.com"
         assert user.oidc_sub == "s1"
         assert user.password_hash is None
         again = provision_oidc_user(
-            {"sub": "s1", "preferred_username": "alice"},
-            "https://idp.example.com")
+            {"sub": "s1", "preferred_username": "alice"}, "https://idp.example.com"
+        )
         assert again.id == user.id
         assert get_session().query(User).count() == 1
 
@@ -114,12 +114,13 @@ def test_provision_never_merges_into_local_account():
 
     app = _oidc_app()
     with app.app_context():
-        get_session().add(User(username="bob", password_hash="local-hash",
-                               role="operator"))
+        get_session().add(
+            User(username="bob", password_hash="local-hash", role="operator")
+        )
         get_session().commit()
         sso = provision_oidc_user(
-            {"sub": "s2", "preferred_username": "bob"},
-            "https://idp.example.com")
+            {"sub": "s2", "preferred_username": "bob"}, "https://idp.example.com"
+        )
         assert sso.username != "bob"
         assert sso.role == "viewer"
         local = get_session().query(User).filter_by(username="bob").one()
@@ -131,26 +132,33 @@ def test_provision_never_merges_into_local_account():
 def test_group_mapping_assigns_roles():
     from overstate_ui.auth import provision_oidc_user
 
-    app = _oidc_app(OIDC_ADMIN_GROUPS="sre",
-                    OIDC_OPERATOR_GROUPS="oncall,support")
+    app = _oidc_app(OIDC_ADMIN_GROUPS="sre", OIDC_OPERATOR_GROUPS="oncall,support")
     with app.app_context():
         admin = provision_oidc_user(
-            {"sub": "a", "preferred_username": "root-sso",
-             "groups": ["everyone", "sre"]}, "https://idp.example.com")
+            {
+                "sub": "a",
+                "preferred_username": "root-sso",
+                "groups": ["everyone", "sre"],
+            },
+            "https://idp.example.com",
+        )
         assert admin.role == "admin"
         op = provision_oidc_user(
-            {"sub": "o", "preferred_username": "op-sso",
-             "groups": ["support"]}, "https://idp.example.com")
+            {"sub": "o", "preferred_username": "op-sso", "groups": ["support"]},
+            "https://idp.example.com",
+        )
         assert op.role == "operator"
         viewer = provision_oidc_user(
-            {"sub": "v", "preferred_username": "v-sso",
-             "groups": ["everyone"]}, "https://idp.example.com")
+            {"sub": "v", "preferred_username": "v-sso", "groups": ["everyone"]},
+            "https://idp.example.com",
+        )
         assert viewer.role == "viewer"
         # Mapping wins at each login, including over manual edits.
         viewer.role = "operator"
         relogin = provision_oidc_user(
-            {"sub": "v", "preferred_username": "v-sso",
-             "groups": ["everyone"]}, "https://idp.example.com")
+            {"sub": "v", "preferred_username": "v-sso", "groups": ["everyone"]},
+            "https://idp.example.com",
+        )
         assert relogin.id == viewer.id
         assert relogin.role == "viewer"
 
@@ -161,10 +169,8 @@ def test_provision_rejects_missing_subject():
     from overstate_ui.auth import provision_oidc_user
 
     app = _oidc_app()
-    with app.app_context():
-        with pytest.raises(ValueError):
-            provision_oidc_user({"preferred_username": "nobody"},
-                                "https://idp.example.com")
+    with app.app_context(), pytest.raises(ValueError):
+        provision_oidc_user({"preferred_username": "nobody"}, "https://idp.example.com")
 
 
 def test_oidc_settings_page_enables_sso():
@@ -180,8 +186,10 @@ def test_oidc_settings_page_enables_sso():
     c = app.test_client()
     assert "Log in with SSO" not in c.get("/login").data.decode()
     c.post("/login", data={"username": "admin", "password": "pw"})
-    c.post("/settings/", data={"oidc_issuer": "https://idp.example.com",
-                               "oidc_client_id": "cid"})
+    c.post(
+        "/settings/",
+        data={"oidc_issuer": "https://idp.example.com", "oidc_client_id": "cid"},
+    )
     assert "Log in with SSO" in c.get("/login").data.decode()
 
 
@@ -196,8 +204,7 @@ def test_oidc_db_overrides_and_clears_to_env():
     with app.app_context():
         create_all()
         assert get_setting("oidc_issuer") == "https://env.example.com"
-        _session().add(Setting(key="oidc_issuer",
-                               value="https://db.example.com"))
+        _session().add(Setting(key="oidc_issuer", value="https://db.example.com"))
         _session().commit()
         assert get_setting("oidc_issuer") == "https://db.example.com"
 

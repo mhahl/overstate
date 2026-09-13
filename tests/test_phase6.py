@@ -8,11 +8,10 @@ from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.events import match_prefixes
-from overstate_ui.models import Minion, WatchedState
+from overstate_ui.models import WatchedState
 from overstate_ui.salt_client import SaltClient
 from overstate_ui.seed_mock import seed as seed_mock
 from overstate_ui.settings import get_setting
-
 
 _ADD_CALLS: list = []
 
@@ -22,22 +21,50 @@ def fake_transport() -> httpx.MockTransport:
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["web-01"], "minions_pre": [],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01"],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{"up": ["web-01"],
-                                                         "down": []}]})
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         if body.get("client") == "local":
             if body.get("fun") == "schedule.list":
-                return httpx.Response(200, json={"return": [{
-                    "web-01": {"daily": {"function": "state.highstate",
-                                         "seconds": 86400,
-                                         "enabled": True}}}]})
+                return httpx.Response(
+                    200,
+                    json={
+                        "return": [
+                            {
+                                "web-01": {
+                                    "daily": {
+                                        "function": "state.highstate",
+                                        "seconds": 86400,
+                                        "enabled": True,
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                )
             if body.get("fun") == "schedule.add":
                 _ADD_CALLS.append(body)
                 return httpx.Response(200, json={"return": [{"web-01": True}]})
@@ -55,7 +82,8 @@ def client():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -69,8 +97,10 @@ def client():
 def test_settings_save_and_default(client):
     with client.app.app_context():
         assert get_setting("theme") == "wireframe"
-    rv = client.post("/settings/", data={"default_target": "web-*",
-                                         "page_size": "10", "theme": "dark"})
+    rv = client.post(
+        "/settings/",
+        data={"default_target": "web-*", "page_size": "10", "theme": "dark"},
+    )
     assert rv.status_code == 302
     with client.app.app_context():
         assert get_setting("theme") == "dark"
@@ -79,9 +109,10 @@ def test_settings_save_and_default(client):
 
 
 def test_settings_invalid_options_fall_back_to_default(client):
-    rv = client.post("/settings/", data={"default_target": "*",
-                                         "page_size": "999",
-                                         "theme": "midnight"})
+    rv = client.post(
+        "/settings/",
+        data={"default_target": "*", "page_size": "999", "theme": "midnight"},
+    )
     assert rv.status_code == 302
     with client.app.app_context():
         assert get_setting("theme") == "wireframe"
@@ -91,9 +122,11 @@ def test_settings_invalid_options_fall_back_to_default(client):
 def test_settings_page_read_only_for_viewers(client):
     from overstate_ui.auth import _ph
     from overstate_ui.models import User
+
     with client.app.app_context():
-        get_session().add(User(username="viewer", role="viewer",
-                               password_hash=_ph.hash("pw")))
+        get_session().add(
+            User(username="viewer", role="viewer", password_hash=_ph.hash("pw"))
+        )
         get_session().commit()
     viewer = client.app.test_client()
     viewer.post("/login", data={"username": "viewer", "password": "pw"})
@@ -124,8 +157,13 @@ def test_schedules_index_and_actions(client):
     with client.app.app_context():
         from overstate_ui.models import AuditEvent
 
-        assert get_session().query(AuditEvent).filter(
-            AuditEvent.action.like("schedule-%")).count() == 3
+        assert (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action.like("schedule-%"))
+            .count()
+            == 3
+        )
 
 
 def test_schedules_sort_headers_carry_minion(client):
@@ -144,39 +182,74 @@ def test_schedules_add_form_visible(client):
 
 def test_schedules_add_success(client):
     _ADD_CALLS.clear()
-    rv = client.post("/schedules/web-01/add", data={
-        "name": "hourly", "function": "test.ping",
-        "value": "60", "unit": "minutes", "enabled": "on"})
+    rv = client.post(
+        "/schedules/web-01/add",
+        data={
+            "name": "hourly",
+            "function": "test.ping",
+            "value": "60",
+            "unit": "minutes",
+            "enabled": "on",
+        },
+    )
     assert rv.status_code == 302
     html = client.get(rv.headers["Location"]).data.decode()
     assert "hourly" in html and "added." in html
     assert len(_ADD_CALLS) == 1
     assert _ADD_CALLS[0]["arg"] == ["hourly"]
-    assert _ADD_CALLS[0]["kwarg"] == {"function": "test.ping",
-                                      "minutes": 60, "enabled": True}
+    assert _ADD_CALLS[0]["kwarg"] == {
+        "function": "test.ping",
+        "minutes": 60,
+        "enabled": True,
+    }
     with client.app.app_context():
         from overstate_ui.models import AuditEvent
-        assert get_session().query(AuditEvent).filter(
-            AuditEvent.action == "schedule-add:hourly").count() == 1
+
+        assert (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action == "schedule-add:hourly")
+            .count()
+            == 1
+        )
 
 
 def test_schedules_add_rejects_duplicates_and_bad_input(client):
     _ADD_CALLS.clear()
-    rv = client.post("/schedules/web-01/add", data={
-        "name": "daily", "function": "test.ping",
-        "value": "60", "unit": "seconds", "enabled": "on"})
+    rv = client.post(
+        "/schedules/web-01/add",
+        data={
+            "name": "daily",
+            "function": "test.ping",
+            "value": "60",
+            "unit": "seconds",
+            "enabled": "on",
+        },
+    )
     assert rv.status_code == 302
     assert "already has" in client.get(rv.headers["Location"]).data.decode()
-    rv = client.post("/schedules/web-01/add", data={
-        "name": "hourly", "function": "test.ping",
-        "value": "0", "unit": "seconds"})
+    rv = client.post(
+        "/schedules/web-01/add",
+        data={
+            "name": "hourly",
+            "function": "test.ping",
+            "value": "0",
+            "unit": "seconds",
+        },
+    )
     assert rv.status_code == 302
     assert "required" in client.get(rv.headers["Location"]).data.decode()
     assert _ADD_CALLS == []
     with client.app.app_context():
         from overstate_ui.models import AuditEvent
-        assert get_session().query(AuditEvent).filter(
-            AuditEvent.action.like("schedule-add:%")).count() == 0
+
+        assert (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action.like("schedule-add:%"))
+            .count()
+            == 0
+        )
 
 
 def test_add_succeeded_shapes():
@@ -196,7 +269,6 @@ def test_events_match_and_page(client):
 
 
 def test_events_stream_filters(monkeypatch):
-    from overstate_ui import events as events_mod
 
     seen = [
         {"tag": "salt/job/1/new", "data": {"_stamp": "t1"}},
@@ -205,8 +277,7 @@ def test_events_stream_filters(monkeypatch):
     init_db("sqlite://")
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
-    monkeypatch.setattr(
-        SaltClient, "event_stream", lambda self: iter(seen))
+    monkeypatch.setattr(SaltClient, "event_stream", lambda self: iter(seen))
     app.extensions["salt_client"] = SaltClient("https://salt:8000", "u", "p")
     with app.app_context():
         create_all()
@@ -224,27 +295,51 @@ def test_schedules_empty_string_payload(client):
 
     def empty_schedule(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = _json.loads(request.content or b"{}")
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["web-01"], "minions_pre": [],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01"],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{"up": ["web-01"],
-                                                         "down": []}]})
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         # schedule.list renders as an indented string on some Salt versions
-        return httpx.Response(200, json={"return": [{"web-01":
-            "schedule:\n  daily:\n    enabled: true\n    function: test.ping\n"
-            "    seconds: 3600\n"}]})
+        return httpx.Response(
+            200,
+            json={
+                "return": [
+                    {
+                        "web-01": "schedule:\n  daily:\n    enabled: true\n    function: test.ping\n"
+                        "    seconds: 3600\n"
+                    }
+                ]
+            },
+        )
 
     init_db("sqlite://")
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p",
-        transport=httpx.MockTransport(empty_schedule))
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(empty_schedule)
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -263,30 +358,45 @@ def test_schedules_blank_yaml_shows_empty_state():
 
     def blank_schedule(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = _json.loads(request.content or b"{}")
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["web-01"], "minions_pre": [],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01"],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{"up": ["web-01"],
-                                                         "down": []}]})
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         seen.append(body)
         if body.get("kwarg", {}).get("return_yaml") is False:
             # Structured form: an empty schedule arrives as {}.
             return httpx.Response(200, json={"return": [{"web-01": {}}]})
         # Default Salt form: blank YAML text for an empty schedule.
-        return httpx.Response(200, json={"return": [{"web-01":
-            "schedule: {}\n"}]})
+        return httpx.Response(200, json={"return": [{"web-01": "schedule: {}\n"}]})
 
     init_db("sqlite://")
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p",
-        transport=httpx.MockTransport(blank_schedule))
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(blank_schedule)
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -306,9 +416,11 @@ def test_parse_schedule_list_shapes():
     assert parse_schedule_list(None) == {}
     parsed = parse_schedule_list(
         "schedule:\n  acc-job:\n    enabled: true\n    function: test.ping\n"
-        "    seconds: 3600\n")
-    assert parsed == {"acc-job": {"enabled": True, "function": "test.ping",
-                                  "seconds": 3600}}
+        "    seconds: 3600\n"
+    )
+    assert parsed == {
+        "acc-job": {"enabled": True, "function": "test.ping", "seconds": 3600}
+    }
 
 
 def test_events_stream_idle_timeout(monkeypatch):

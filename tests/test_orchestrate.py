@@ -28,16 +28,21 @@ def test_orchestrate_page_renders():
 
 def test_orchestrate_rejects_bad_input():
     c = make_client()
-    rv = c.post("/jobs/orchestrate/run", data={"mods": "evil; rm"},
-                follow_redirects=True)
+    rv = c.post(
+        "/jobs/orchestrate/run", data={"mods": "evil; rm"}, follow_redirects=True
+    )
     assert "dotted orchestration name" in rv.data.decode()
-    rv = c.post("/jobs/orchestrate/run",
-                data={"mods": "orch.ok", "pillar": "{nope"},
-                follow_redirects=True)
+    rv = c.post(
+        "/jobs/orchestrate/run",
+        data={"mods": "orch.ok", "pillar": "{nope"},
+        follow_redirects=True,
+    )
     assert "not valid JSON" in rv.data.decode()
-    rv = c.post("/jobs/orchestrate/run",
-                data={"mods": "orch.ok", "pillar": "[1, 2]"},
-                follow_redirects=True)
+    rv = c.post(
+        "/jobs/orchestrate/run",
+        data={"mods": "orch.ok", "pillar": "[1, 2]"},
+        follow_redirects=True,
+    )
     assert "must be a JSON object" in rv.data.decode()
 
 
@@ -49,14 +54,19 @@ def test_orchestrate_runs_and_stores_returns(monkeypatch):
     class StubRunner:
         def runner(self, fun, **kwargs):
             seen.update(fun=fun, kwargs=kwargs)
-            return [{"web-01": {"result": True, "comment": "ok"},
-                     "web-02": {"result": False, "comment": "bad"}}]
+            return [
+                {
+                    "web-01": {"result": True, "comment": "ok"},
+                    "web-02": {"result": False, "comment": "bad"},
+                }
+            ]
 
     monkeypatch.setattr(tasks_mod, "build_client", lambda: StubRunner())
     c = make_client()
-    rv = c.post("/jobs/orchestrate/run",
-                data={"mods": "orch.demo", "saltenv": "base",
-                      "pillar": '{"role": "web"}'})
+    rv = c.post(
+        "/jobs/orchestrate/run",
+        data={"mods": "orch.demo", "saltenv": "base", "pillar": '{"role": "web"}'},
+    )
     assert rv.status_code == 302
     jid = rv.headers["Location"].rsplit("/", 1)[1]
     assert jid.startswith("orch-")
@@ -67,8 +77,10 @@ def test_orchestrate_runs_and_stores_returns(monkeypatch):
     with c.application.app_context():
         job = get_session().get(Job, jid)
         assert job.complete is True
-        rows = {r.minion_id: r.success for r in
-                get_session().query(JobReturn).filter_by(jid=jid).all()}
+        rows = {
+            r.minion_id: r.success
+            for r in get_session().query(JobReturn).filter_by(jid=jid).all()
+        }
         assert rows == {"web-01": True, "web-02": False}
     html = c.get(f"/jobs/{jid}").data.decode()
     assert "state.orchestrate" in html

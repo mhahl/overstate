@@ -54,7 +54,9 @@ class Minion(Base):
     __tablename__ = "minions"
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    key_status: Mapped[str] = mapped_column(String(16), nullable=False, default="accepted")
+    key_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="accepted"
+    )
     last_seen: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     grains: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     conformity: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

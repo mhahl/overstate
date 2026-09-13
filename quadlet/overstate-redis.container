@@ -1,0 +1,14 @@
+[Unit]
+Description=Overstate Redis (RQ job queue)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/library/redis:7-alpine
+Network=overstate.network
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

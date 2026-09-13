@@ -3,7 +3,23 @@
 from flask import Flask
 from flask_wtf import CSRFProtect
 
-from . import auth, audit, dashboard, events, files, groups, jobs, keys, mine, minions, pillar, schedules, settings, states, users
+from . import (
+    audit,
+    auth,
+    dashboard,
+    events,
+    files,
+    groups,
+    jobs,
+    keys,
+    mine,
+    minions,
+    pillar,
+    schedules,
+    settings,
+    states,
+    users,
+)
 from .config import Config
 from .db import close_session, init_db
 from .salt_client import SaltClient
@@ -22,8 +38,11 @@ def create_app(config: type[Config] = Config) -> Flask:
     csrf.init_app(app)
     auth.login_manager.init_app(app)
     app.extensions["salt_client"] = SaltClient(
-        config.SALT_API_URL, config.SALT_EAUTH_USER, config.SALT_EAUTH_PASSWORD,
-        config.SALT_EAUTH_TYPE, verify=config.SALT_API_VERIFY,
+        config.SALT_API_URL,
+        config.SALT_EAUTH_USER,
+        config.SALT_EAUTH_PASSWORD,
+        config.SALT_EAUTH_TYPE,
+        verify=config.SALT_API_VERIFY,
     )
 
     app.register_blueprint(auth.bp)

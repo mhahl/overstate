@@ -27,8 +27,9 @@ def snapshot_versions() -> dict[str, int]:
     return counts
 
 
-def collect_stats(client: SaltClient, overview: dict | None = None,
-                  truth: dict | None = None) -> dict:
+def collect_stats(
+    client: SaltClient, overview: dict | None = None, truth: dict | None = None
+) -> dict:
     """Live key/presence counts; falls back to unreachable marker.
 
     Pass worker-computed `overview`/`truth` to skip the Salt calls;
@@ -38,15 +39,13 @@ def collect_stats(client: SaltClient, overview: dict | None = None,
 
     stats: dict = {"reachable": False}
     try:
-        stats.update(overview if overview is not None
-                     else salt_overview_now(client))
+        stats.update(overview if overview is not None else salt_overview_now(client))
     except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
         pass
     if truth is None:
         truth = fleet_truth_now(client)
     session = get_session()
-    incomplete = {r[0] for r in
-                  session.query(Job.jid).filter_by(complete=False).all()}
+    incomplete = {r[0] for r in session.query(Job.jid).filter_by(complete=False).all()}
     if truth.get("active_live"):
         active = set(truth.get("active_jids") or [])
         stats["in_flight"] = len(incomplete & active)
@@ -73,9 +72,16 @@ def collect_stats(client: SaltClient, overview: dict | None = None,
 @bp.route("/")
 @login_required
 def index():
-    from .tasks import (CAPABILITY_CHECKS, capabilities_task,
-                        fleet_truth_task, probe_capabilities, queue_or_none,
-                        read_capability_cache, salt_overview_task, wait_for)
+    from .tasks import (
+        CAPABILITY_CHECKS,
+        capabilities_task,
+        fleet_truth_task,
+        probe_capabilities,
+        queue_or_none,
+        read_capability_cache,
+        salt_overview_task,
+        wait_for,
+    )
 
     client = get_salt()
     overview: dict | None = None
@@ -101,16 +107,19 @@ def index():
                 caps = value
         if caps is None:
             caps = probe_capabilities(client, target)
-    health = {"url": client.base_url, "token_age": client.token_age,
-              "wheel_ok": caps["wheel_ok"], "runner_ok": caps["runner_ok"],
-              "reachable": stats["reachable"], "error": caps.get("error")}
-    checks = [{**c, "ok": bool(caps.get(c["key"]))}
-              for c in CAPABILITY_CHECKS]
-    return render_template("dashboard.html", stats=stats, health=health,
-                           checks=checks)
+    health = {
+        "url": client.base_url,
+        "token_age": client.token_age,
+        "wheel_ok": caps["wheel_ok"],
+        "runner_ok": caps["runner_ok"],
+        "reachable": stats["reachable"],
+        "error": caps.get("error"),
+    }
+    checks = [{**c, "ok": bool(caps.get(c["key"]))} for c in CAPABILITY_CHECKS]
+    return render_template("dashboard.html", stats=stats, health=health, checks=checks)
 
 
 def ping_target() -> str | None:
     """One accepted minion for the execution-door probe, or None."""
-    row = (get_session().query(Minion.id).order_by(Minion.id).first())
+    row = get_session().query(Minion.id).order_by(Minion.id).first()
     return row[0] if row else None

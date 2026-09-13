@@ -18,23 +18,45 @@ LIVE_BADGE = '<span class="badge badge-xs badge-info">live</span>'
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["web-01"], "minions_pre": [],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01"],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("client") == "runner":
             if body.get("fun") == "jobs.lookup_jid":
                 data = {}
                 if body.get("jid") == "j-live":
-                    data = {"j-live": {"web-01": {
-                        "success": True, "retcode": 0,
-                        "return": {"ping": True}}}}
+                    data = {
+                        "j-live": {
+                            "web-01": {
+                                "success": True,
+                                "retcode": 0,
+                                "return": {"ping": True},
+                            }
+                        }
+                    }
                 return httpx.Response(200, json={"return": [data]})
-            return httpx.Response(200, json={"return": [{
-                "up": ["web-01"], "down": []}]})
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -45,18 +67,41 @@ def make_client(with_db_return=False):
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
-        get_session().add(Job(jid="j-live", fun="test.ping", tgt="*",
-                              tgt_type="glob", user="admin", complete=False))
-        get_session().add(Job(jid="j-old", fun="test.ping", tgt="*",
-                              tgt_type="glob", user="admin", complete=False))
+        get_session().add(
+            Job(
+                jid="j-live",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=False,
+            )
+        )
+        get_session().add(
+            Job(
+                jid="j-old",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=False,
+            )
+        )
         if with_db_return:
-            get_session().add(JobReturn(jid="j-live", minion_id="web-01",
-                                        success=True, retcode=0,
-                                        payload={"ping": True}))
+            get_session().add(
+                JobReturn(
+                    jid="j-live",
+                    minion_id="web-01",
+                    success=True,
+                    retcode=0,
+                    payload={"ping": True},
+                )
+            )
         get_session().commit()
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
@@ -90,6 +135,5 @@ def test_live_returns_handles_scalar():
             return [{"m1": True, "m2": False}]
 
     rows = live_returns_now(ScalarClient(), "9")
-    assert [(r.minion_id, r.success) for r in rows] == \
-        [("m1", True), ("m2", False)]
+    assert [(r.minion_id, r.success) for r in rows] == [("m1", True), ("m2", False)]
     assert all(r.live for r in rows)

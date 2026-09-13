@@ -5,6 +5,7 @@ the forked work horse (see tasks.isolated_app), so nothing
 connection-like crosses the fork.
 """
 
+
 def main() -> None:
     import redis
     from rq import Queue, Worker

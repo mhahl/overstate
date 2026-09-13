@@ -43,6 +43,11 @@
     });
   }
   filterInput.addEventListener("input", applyFilter);
+  src.onopen = function () {
+    if (list.children.length === 0) {
+      note.textContent = "Connected. Waiting for events; run a job to see activity.";
+    }
+  };
   src.onmessage = function (ev) {
     var s = JSON.parse(ev.data);
     var li = document.createElement("li");

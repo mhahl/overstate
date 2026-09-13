@@ -1,8 +1,9 @@
 # Dev-only Salt master: stock image plus the postgres driver the pgjsonb
 # returner needs. Never use outside local dev.
+# TODO: pin :lts to a digest (docker manifest inspect) for reproducibility.
 FROM ghcr.io/cdalvaro/docker-salt-master:lts
 
-RUN /opt/saltstack/salt/bin/pip install --no-cache-dir psycopg2-binary
+RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
 
 # The built-in dev minion reports these mine functions so the Mine
 # browser has real data (plus whatever mine.send publishes). The

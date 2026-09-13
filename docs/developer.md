@@ -155,6 +155,27 @@ isolation. The settings grouping test asserts every `DEFS` key
 appears in exactly one `SECTIONS` group, so the panels cannot drift
 from the data. Keep that invariant when you add keys.
 
+## Lint, format, coverage, deps
+
+`ruff check overstate_ui tests` and `ruff format --check overstate_ui
+tests` are the gates; both must pass. Lint defaults come from ruff
+with `target-version = "py312"` in `pyproject.toml`. There is no
+Makefile: run the tools directly from the repo root.
+
+Coverage config lives in `pyproject.toml` (`[tool.coverage.*]`,
+source `overstate_ui`, branch mode). Measure with
+`.venv/bin/pytest -q --cov=overstate_ui --cov-report=term-missing`;
+baseline is ~84%. No `fail-under` gate is committed yet: add one in
+CI once the baseline is ratified, not before.
+
+Python runtime deps are pinned in `requirements.lock` (verified by a
+clean install running the suite); the `Containerfile` installs `-r
+requirements.lock .` so image builds are reproducible. JS deps float
+on caret ranges with `package-lock.json` + `npm ci`. Weekly
+`.github/dependabot.yml` covers pip, npm, and docker (docker only
+advisories: files are named `Containerfile*`, which Dependabot does
+not auto-detect).
+
 ## UI work without Salt
 
 `python -m overstate_ui.seed_mock` fills the database with fake

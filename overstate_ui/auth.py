@@ -13,7 +13,6 @@ from argon2.exceptions import VerifyMismatchError
 from flask import (
     Blueprint,
     abort,
-    current_app,
     flash,
     redirect,
     render_template,
@@ -68,9 +67,11 @@ def roles_required(*roles: str):
 def oidc_enabled() -> bool:
     from .settings import get_setting
 
-    return bool(get_setting("oidc_issuer")
-                and get_setting("oidc_client_id")
-                and get_setting("oidc_client_secret"))
+    return bool(
+        get_setting("oidc_issuer")
+        and get_setting("oidc_client_id")
+        and get_setting("oidc_client_secret")
+    )
 
 
 def _oauth_client():
@@ -118,18 +119,21 @@ def provision_oidc_user(userinfo: dict, issuer: str) -> User:
     if not sub:
         raise ValueError("OIDC claims carry no subject")
     session = get_session()
-    user = (session.query(User)
-            .filter_by(oidc_issuer=issuer, oidc_sub=sub).first())
+    user = session.query(User).filter_by(oidc_issuer=issuer, oidc_sub=sub).first()
     if user is None:
-        base = (userinfo.get("preferred_username")
-                or userinfo.get("email") or sub)
+        base = userinfo.get("preferred_username") or userinfo.get("email") or sub
         if not base:
             raise ValueError("OIDC claims carry no usable username")
         username = base[:64]
         if session.query(User).filter_by(username=username).first() is not None:
             username = f"{base[:55]}#{str(sub)[:8]}"
-        user = User(username=username, password_hash=None, role="viewer",
-                    oidc_issuer=issuer, oidc_sub=sub)
+        user = User(
+            username=username,
+            password_hash=None,
+            role="viewer",
+            oidc_issuer=issuer,
+            oidc_sub=sub,
+        )
         session.add(user)
     from .settings import get_setting
 
@@ -163,8 +167,7 @@ def seed_admin(username: str = "admin", password: str | None = None) -> bool:
     import secrets
 
     password = password or secrets.token_urlsafe(16)
-    session.add(User(username=username, password_hash=_ph.hash(password),
-                     role="admin"))
+    session.add(User(username=username, password_hash=_ph.hash(password), role="admin"))
     session.commit()
     print(f"seeded admin '{username}' with password: {password}")
     return True
@@ -181,8 +184,7 @@ def login():
     if form.validate_on_submit():
         if _rate_limited(request.remote_addr or "unknown"):
             flash("Too many attempts. Try again later.", "error")
-            return render_template("login.html", form=form,
-                                   sso=oidc_enabled()), 429
+            return render_template("login.html", form=form, sso=oidc_enabled()), 429
         user = get_session().query(User).filter_by(username=form.username.data).first()
         try:
             valid = (

@@ -13,24 +13,29 @@ from overstate_ui.salt_client import SaltApiError, SaltClient
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={
-                "return": [{"token": "tok", "expire": 99999}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99999}]}
+            )
         body = __import__("json").loads(request.content or b"{}")
         fun = body.get("fun", "")
         if body.get("client") == "wheel" and fun == "key.list_all":
-            return httpx.Response(200, json={
-                "return": [{"data": {"return": {
-                    "minions": ["m1"], "minions_pre": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {"data": {"return": {"minions": ["m1"], "minions_pre": []}}}
+                    ]
+                },
+            )
         if body.get("client") == "runner" and fun == "manage.status":
-            return httpx.Response(200, json={
-                "return": [{"up": ["m1"], "down": []}]})
+            return httpx.Response(200, json={"return": [{"up": ["m1"], "down": []}]})
         if fun == "grains.items":
-            return httpx.Response(200, json={
-                "return": [{"m1": {"osfinger": "TestOS",
-                                   "ipv4": ["10.0.0.1"]}}]})
+            return httpx.Response(
+                200,
+                json={"return": [{"m1": {"osfinger": "TestOS", "ipv4": ["10.0.0.1"]}}]},
+            )
         if fun == "test.ping":
-            return httpx.Response(200, json={
-                "return": [{body.get("tgt"): True}]})
+            return httpx.Response(200, json={"return": [{body.get("tgt"): True}]})
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -43,7 +48,8 @@ def app():
     app.config["WTF_CSRF_ENABLED"] = False
     app.config["REDIS_URL"] = "redis://127.0.0.1:9/0"
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -64,8 +70,7 @@ class StubClient:
     def wheel(self, fun, **kwargs):
         if fun in self.deny:
             raise SaltApiError("denied")
-        return [{"data": {"return": {"minions": ["m1"],
-                                     "minions_pre": ["m2"]}}}]
+        return [{"data": {"return": {"minions": ["m1"], "minions_pre": ["m2"]}}}]
 
     def runner(self, fun, **kwargs):
         if fun in self.deny:
@@ -160,15 +165,16 @@ def test_salt_overview_parses_and_raises(app):
 
     with app.app_context():
         out = salt_overview_now(StubClient())
-    assert out == {"reachable": True, "accepted": 1, "pending": 1,
-                   "up": 1, "down": 0}
+    assert out == {"reachable": True, "accepted": 1, "pending": 1, "up": 1, "down": 0}
     with app.app_context(), pytest.raises(SaltApiError):
         salt_overview_now(StubClient(deny={"key.list_all"}))
 
 
 def test_refresh_uses_worker_result(monkeypatch, admin):
-    monkeypatch.setattr("overstate_ui.tasks.queue_or_none",
-                        lambda *a, **k: StubJob("finished", {"count": 3}))
+    monkeypatch.setattr(
+        "overstate_ui.tasks.queue_or_none",
+        lambda *a, **k: StubJob("finished", {"count": 3}),
+    )
     rv = admin.post("/minions/refresh", follow_redirects=True)
     assert "Inventory refreshed: 3 minions." in rv.data.decode()
 
@@ -196,8 +202,9 @@ def test_rotation_page_and_verify(monkeypatch, admin):
             return None
 
     monkeypatch.setattr("overstate_ui.tasks.build_client", lambda: LoginOk())
-    rv = admin.post("/users/rotation/verify", data={"password": "new"},
-                    follow_redirects=True)
+    rv = admin.post(
+        "/users/rotation/verify", data={"password": "new"}, follow_redirects=True
+    )
     assert "New eauth password works." in rv.data.decode()
 
     class LoginDenied:
@@ -205,8 +212,9 @@ def test_rotation_page_and_verify(monkeypatch, admin):
             raise SaltApiError("denied")
 
     monkeypatch.setattr("overstate_ui.tasks.build_client", lambda: LoginDenied())
-    rv = admin.post("/users/rotation/verify", data={"password": "bad"},
-                    follow_redirects=True)
+    rv = admin.post(
+        "/users/rotation/verify", data={"password": "bad"}, follow_redirects=True
+    )
     assert "verification failed" in rv.data.decode()
 
 
@@ -214,11 +222,9 @@ def test_rotation_forbidden_for_operator(app):
     from overstate_ui.models import User
 
     with app.app_context():
-        get_session().add(User(username="op", password_hash="x",
-                               role="operator"))
+        get_session().add(User(username="op", password_hash="x", role="operator"))
         get_session().commit()
-        op_id = get_session().query(User).filter_by(
-            username="op").first().id
+        op_id = get_session().query(User).filter_by(username="op").first().id
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["_user_id"] = str(op_id)

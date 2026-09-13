@@ -2,9 +2,9 @@
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from .auth import roles_required
 
 from .audit import log_event
+from .auth import roles_required
 from .dashboard import get_salt
 from .minions import live_roster
 from .salt_client import SaltApiError
@@ -80,8 +80,9 @@ def index():
             # return_yaml=False keeps this a real mapping: an empty
             # schedule arrives as {} (empty state), not blank YAML text
             # (which the raw fallback would render as a "schedule: {}" box).
-            value = client.local(mid, "schedule.list",
-                                 kwarg={"return_yaml": False})[0].get(mid, {})
+            value = client.local(mid, "schedule.list", kwarg={"return_yaml": False})[
+                0
+            ].get(mid, {})
             entries = parse_schedule_list(value)
             if not entries and isinstance(value, str) and value.strip():
                 raw = value
@@ -94,13 +95,22 @@ def index():
     if direction not in ("asc", "desc"):
         direction = "asc"
     if isinstance(entries, dict):
-        key = (lambda kv: kv[0]) if sort == "name" else (
-            lambda kv: (str(kv[1].get("function", "")), kv[0]))
-        entries = dict(sorted(entries.items(), key=key,
-                              reverse=(direction == "desc")))
-    return render_template("schedules.html", minions=accepted, mid=mid,
-                           entries=entries, raw=raw, error=error,
-                           sort=sort, direction=direction)
+        key = (
+            (lambda kv: kv[0])
+            if sort == "name"
+            else (lambda kv: (str(kv[1].get("function", "")), kv[0]))
+        )
+        entries = dict(sorted(entries.items(), key=key, reverse=(direction == "desc")))
+    return render_template(
+        "schedules.html",
+        minions=accepted,
+        mid=mid,
+        entries=entries,
+        raw=raw,
+        error=error,
+        sort=sort,
+        direction=direction,
+    )
 
 
 @bp.post("/<mid>/add")
@@ -120,7 +130,8 @@ def add(mid: str):
     client = get_salt()
     try:
         entries = parse_schedule_list(
-            client.local(mid, "schedule.list")[0].get(mid, {}))
+            client.local(mid, "schedule.list")[0].get(mid, {})
+        )
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
         return redirect(url_for("schedules.index", minion=mid))
@@ -128,9 +139,12 @@ def add(mid: str):
         flash(f"{mid} already has a scheduled job named '{name}'.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     try:
-        result = client.local(mid, "schedule.add", arg=[name],
-                              kwarg={"function": fun, unit: value,
-                                     "enabled": enabled})
+        result = client.local(
+            mid,
+            "schedule.add",
+            arg=[name],
+            kwarg={"function": fun, unit: value, "enabled": enabled},
+        )
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
     else:

@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-type: all
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+  # Note: files are named Containerfile*, which Dependabot's docker
+  # ecosystem does not auto-detect; image bumps still need a manual
+  # `docker manifest inspect` pass. Pending a Dockerfile rename decision.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

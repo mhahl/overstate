@@ -36,8 +36,9 @@ def list_tree() -> list[dict]:
     for path in sorted(base.rglob("*")):
         if path.is_dir():
             continue
-        entries.append({"rel": str(path.relative_to(base)),
-                        "size": path.stat().st_size})
+        entries.append(
+            {"rel": str(path.relative_to(base)), "size": path.stat().st_size}
+        )
     return entries
 
 
@@ -61,8 +62,13 @@ def sync_revision() -> str | None:
         if (path / ".git").exists():
             try:
                 out = subprocess.run(
-                    ["git", "rev-parse", "--short", "HEAD"], cwd=path,
-                    capture_output=True, text=True, timeout=5)
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=path,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
             except (OSError, subprocess.SubprocessError):
                 return None
             return out.stdout.strip() or None if out.returncode == 0 else None
@@ -74,8 +80,7 @@ def sync_revision() -> str | None:
 @bp.route("/")
 @login_required
 def index():
-    return render_template("files.html", entries=list_tree(),
-                           revision=sync_revision())
+    return render_template("files.html", entries=list_tree(), revision=sync_revision())
 
 
 @bp.route("/view")
@@ -88,5 +93,6 @@ def view():
     content = read_text(target)
     if content is None:
         abort(404)
-    return render_template("file_view.html", rel=rel, content=content,
-                           revision=sync_revision())
+    return render_template(
+        "file_view.html", rel=rel, content=content, revision=sync_revision()
+    )

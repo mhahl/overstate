@@ -23,20 +23,36 @@ PILLAR_B = {"ntp": {"servers": ["10.0.0.2"]}, "role": "web", "added": 1}
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("fun") == "pillar.items":
             tgt = body.get("tgt", "web-01")
             payload = PILLAR_B if tgt == "web-02" else PILLAR_A
             return httpx.Response(200, json={"return": [{tgt: payload}]})
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["web-01", "web-02"], "minions_pre": [],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01", "web-02"],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{"up": ["web-01"],
-                                                         "down": []}]})
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -48,7 +64,8 @@ def client():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -81,8 +98,7 @@ def test_capture_stores_and_prunes(client):
         rv = client.post("/pillar/web-01/capture")
         assert rv.status_code == 302
     with client.app.app_context():
-        rows = get_session().query(PillarSnapshot).filter_by(
-            minion_id="web-01").all()
+        rows = get_session().query(PillarSnapshot).filter_by(minion_id="web-01").all()
         assert len(rows) == SNAPSHOT_LIMIT
         assert rows[0].payload["role"] == "web"
     html = client.get("/pillar/web-01").data.decode()
@@ -111,18 +127,17 @@ def test_diff_unit():
 
 def test_suggest_glob_unit():
     glob, selected, covered = suggest_glob(
-        ["web-02", "web-01"], ["web-01", "web-02", "db-01"])
+        ["web-02", "web-01"], ["web-01", "web-02", "db-01"]
+    )
     assert glob == "web-0*"
     assert selected == ["web-01", "web-02"]
     assert covered == ["web-01", "web-02"]
-    glob_all, _, _ = suggest_glob(["web-01", "db-01"],
-                                  ["web-01", "db-01"])
+    glob_all, _, _ = suggest_glob(["web-01", "db-01"], ["web-01", "db-01"])
     assert glob_all == "*"
 
 
 def test_suggest_glob_single_host_is_exact():
-    glob, selected, covered = suggest_glob(
-        ["web-01"], ["web-01", "web-02", "web-010"])
+    glob, selected, covered = suggest_glob(["web-01"], ["web-01", "web-02", "web-010"])
     assert glob == "web-01"
     assert selected == ["web-01"]
     assert covered == ["web-01"]
@@ -164,7 +179,7 @@ def test_palette_results_are_real_links(client):
     """Regression: results are native anchors so clicks always navigate."""
     html = client.get("/").data.decode()
     assert 'id="palette-list"' in html
-    assert '<li data-palette-entry' in html
+    assert "<li data-palette-entry" in html
     assert 'href="/jobs/new?preset=refresh-pillar"' in html
     assert "commandPalette" not in html
 
@@ -178,9 +193,24 @@ def test_palette_minion_links_have_no_double_slash(client):
 def test_migration_head_applies(tmp_path):
     db = tmp_path / "mig.sqlite"
     env = dict(os.environ, DATABASE_URL=f"sqlite:///{db}")
-    subprocess.run([".venv/bin/alembic", "upgrade", "head"], check=True,
-                   capture_output=True, env=env, timeout=120)
-    subprocess.run([".venv/bin/alembic", "downgrade", "-1"], check=True,
-                   capture_output=True, env=env, timeout=120)
-    subprocess.run([".venv/bin/alembic", "upgrade", "head"], check=True,
-                   capture_output=True, env=env, timeout=120)
+    subprocess.run(
+        [".venv/bin/alembic", "upgrade", "head"],
+        check=True,
+        capture_output=True,
+        env=env,
+        timeout=120,
+    )
+    subprocess.run(
+        [".venv/bin/alembic", "downgrade", "-1"],
+        check=True,
+        capture_output=True,
+        env=env,
+        timeout=120,
+    )
+    subprocess.run(
+        [".venv/bin/alembic", "upgrade", "head"],
+        check=True,
+        capture_output=True,
+        env=env,
+        timeout=120,
+    )

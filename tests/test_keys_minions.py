@@ -18,40 +18,86 @@ FP = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("client") == "wheel":
             if body.get("fun") == "key.list_all":
-                return httpx.Response(200, json={"return": [{"data": {"return": {
-                    "minions": ["web-01"], "minions_pre": ["new-01"],
-                    "minions_rejected": [], "minions_denied": []}}}]})
+                return httpx.Response(
+                    200,
+                    json={
+                        "return": [
+                            {
+                                "data": {
+                                    "return": {
+                                        "minions": ["web-01"],
+                                        "minions_pre": ["new-01"],
+                                        "minions_rejected": [],
+                                        "minions_denied": [],
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                )
             if body.get("fun") == "key.finger":
-                return httpx.Response(200, json={"return": [{"data": {"return": {
-                    "minions": {"web-01": FP},
-                    "minions_pre": {"new-01": FP}}}}]})
+                return httpx.Response(
+                    200,
+                    json={
+                        "return": [
+                            {
+                                "data": {
+                                    "return": {
+                                        "minions": {"web-01": FP},
+                                        "minions_pre": {"new-01": FP},
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                )
             if body.get("fun") in ("key.accept", "key.reject", "key.delete"):
                 assert body.get("match") in ("web-01", "new-01")
-                return httpx.Response(200, json={"return": [{"data": {
-                    "return": {}, "success": True}}]})
+                return httpx.Response(
+                    200, json={"return": [{"data": {"return": {}, "success": True}}]}
+                )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{"up": ["web-01"],
-                                                         "down": []}]})
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         if body.get("client") == "local":
             fun = body.get("fun")
             if fun == "grains.items":
-                return httpx.Response(200, json={"return": [{
-                    "web-01": {"osfinger": "Fedora Linux 41", "ipv4": ["10.0.0.1"],
-                               "num_cpus": 4, "saltversion": "3006.5"}}]})
-            if fun in ("schedule.list", "pillar.items", "state.show_highstate",
-                       "beacons.list"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "return": [
+                            {
+                                "web-01": {
+                                    "osfinger": "Fedora Linux 41",
+                                    "ipv4": ["10.0.0.1"],
+                                    "num_cpus": 4,
+                                    "saltversion": "3006.5",
+                                }
+                            }
+                        ]
+                    },
+                )
+            if fun in (
+                "schedule.list",
+                "pillar.items",
+                "state.show_highstate",
+                "beacons.list",
+            ):
                 value = {}
-                if fun == "schedule.list" and (
-                        body.get("kwarg") or {}).get("return_yaml") is not False:
+                if (
+                    fun == "schedule.list"
+                    and (body.get("kwarg") or {}).get("return_yaml") is not False
+                ):
                     # Older renders arrive as YAML text, not a mapping.
                     value = "schedule: {}\n"
-                return httpx.Response(200, json={"return": [{"web-01":
-                                                             value}]})
+                return httpx.Response(200, json={"return": [{"web-01": value}]})
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -63,7 +109,8 @@ def client():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -98,7 +145,8 @@ def test_key_accept_writes_audit_row():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -138,8 +186,9 @@ def test_onboard_renders_form_and_pending(client):
 
 
 def test_onboard_generates_script(client):
-    html = client.get("/minions/onboard?mid=db-02&distro=fedora"
-                      "&master=salt.example.com").data.decode()
+    html = client.get(
+        "/minions/onboard?mid=db-02&distro=fedora&master=salt.example.com"
+    ).data.decode()
     assert "Run this on the new machine" in html
     assert "dnf" in html and "zypper" not in html
     assert "master: salt.example.com" in html
@@ -148,15 +197,17 @@ def test_onboard_generates_script(client):
 
 
 def test_onboard_rejects_bad_input(client):
-    html = client.get("/minions/onboard?mid=bad+id%21&distro=fedora"
-                      "&master=salt.example.com").data.decode()
+    html = client.get(
+        "/minions/onboard?mid=bad+id%21&distro=fedora&master=salt.example.com"
+    ).data.decode()
     assert "valid hostnames" in html
     assert "Run this on the new machine" not in html
 
 
 def test_onboard_script_download(client):
-    rv = client.get("/minions/onboard/script?mid=db-02&distro=opensuse"
-                    "&master=salt.example.com")
+    rv = client.get(
+        "/minions/onboard/script?mid=db-02&distro=opensuse&master=salt.example.com"
+    )
     assert rv.status_code == 200
     assert "attachment" in rv.headers["Content-Disposition"]
     assert "onboard-db-02.sh" in rv.headers["Content-Disposition"]
@@ -181,7 +232,8 @@ def test_master_host_setting_saved_and_used():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -229,8 +281,15 @@ def test_schedule_pillar_empty_states_link_docs_no_raw(client):
 
 def test_minion_overview_dashboard(client):
     html = client.get("/minions/web-01").data.decode()
-    for heading in ("Presence", "Key", "Conformity", "Last seen",
-                    "Machine", "Recent activity", "All grain facts"):
+    for heading in (
+        "Presence",
+        "Key",
+        "Conformity",
+        "Last seen",
+        "Machine",
+        "Recent activity",
+        "All grain facts",
+    ):
         assert heading in html
     assert "Fedora Linux 41" in html and "10.0.0.1" in html
     assert "icon-[simple-icons--fedora]" in html
@@ -263,14 +322,28 @@ def test_minion_overview_snapshot_and_activity(client):
     from overstate_ui.models import Job, JobReturn
 
     with client.app.app_context():
-        get_session().add(Minion(
-            id="web-01", grains={}, conformity={"status": "ok", "jid": "j1"},
-            key_status="accepted",
-            last_seen=dt.datetime(2026, 9, 1, 12, 0)))
-        get_session().add(Job(jid="j1", fun="test.ping", tgt="*",
-                              tgt_type="glob", user="admin", complete=True))
-        get_session().add(JobReturn(jid="j1", minion_id="web-01",
-                                    success=True, retcode=0))
+        get_session().add(
+            Minion(
+                id="web-01",
+                grains={},
+                conformity={"status": "ok", "jid": "j1"},
+                key_status="accepted",
+                last_seen=dt.datetime(2026, 9, 1, 12, 0, tzinfo=dt.UTC),
+            )
+        )
+        get_session().add(
+            Job(
+                jid="j1",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=True,
+            )
+        )
+        get_session().add(
+            JobReturn(jid="j1", minion_id="web-01", success=True, retcode=0)
+        )
         get_session().commit()
     html = client.get("/minions/web-01").data.decode()
     assert "not in snapshot cache" not in html
@@ -288,8 +361,9 @@ def test_minion_overview_hides_run_for_viewer(client):
     from overstate_ui.models import User
 
     with client.app.app_context():
-        get_session().add(User(username="v", password_hash=_ph.hash("pw"),
-                               role="viewer"))
+        get_session().add(
+            User(username="v", password_hash=_ph.hash("pw"), role="viewer")
+        )
         get_session().commit()
     viewer = client.app.test_client()
     viewer.post("/login", data={"username": "v", "password": "pw"})

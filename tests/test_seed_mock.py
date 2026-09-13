@@ -23,9 +23,7 @@ def test_seed_inserts_expected_rows(session):
     assert session.query(Job).count() == 3
     pending = session.query(Minion).filter_by(key_status="pending").all()
     assert [m.id for m in pending] == ["new-node-01"]
-    failed = (
-        session.query(Job).filter_by(fun="state.highstate").one()
-    )
+    failed = session.query(Job).filter_by(fun="state.highstate").one()
     assert failed.complete is True
 
 

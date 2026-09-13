@@ -1,0 +1,27 @@
+# Salt master + salt-api. Production posture, unlike compose.yml:
+# no built-in minion (SALT_MINION_ENABLED=False) and salt-api listens on
+# localhost only. Master keys live in the overstate-saltdata volume; the
+# read-only binds below overlay config, TLS, and state/pillar roots.
+[Unit]
+Description=Overstate Salt master and salt-api
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/overstate-salt-master:latest
+Network=overstate.network
+PublishPort=127.0.0.1:8001:8000
+Environment=SALT_API_ENABLED=True
+Environment=SALT_API_USER=overstate
+Environment=SALT_MINION_ENABLED=False
+EnvironmentFile=/etc/overstate/overstate.env
+Volume=overstate-saltdata:/home/salt/data
+Volume=/etc/overstate/salt-config:/home/salt/data/config:ro,z
+Volume=/etc/overstate/tls:/home/salt/data/tls:ro,z
+Volume=/var/lib/overstate/srv:/home/salt/data/srv:ro,z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

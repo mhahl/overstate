@@ -47,7 +47,9 @@ def test_traversal_rejected(rooted):
 
 
 def test_missing_file_404(rooted):
-    assert rooted.get("/files/view", query_string={"path": "nope.sls"}).status_code == 404
+    assert (
+        rooted.get("/files/view", query_string={"path": "nope.sls"}).status_code == 404
+    )
 
 
 def test_no_write_routes_exist(rooted):

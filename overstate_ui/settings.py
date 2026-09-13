@@ -3,10 +3,18 @@
 import socket
 from urllib.parse import urlsplit
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import login_required
-from .auth import roles_required
 
+from .auth import roles_required
 from .db import get_session
 from .models import Setting
 
@@ -86,9 +94,14 @@ SECTIONS = [
     {
         "title": "Single sign-on (OIDC)",
         "desc": "Provider connection and role mapping. Values set here override the environment; clearing a field defers back to it. The client secret may be stored here or via OIDC_CLIENT_SECRET.",
-        "keys": ["oidc_issuer", "oidc_client_id", "oidc_client_secret",
-                 "oidc_groups_claim", "oidc_admin_groups",
-                 "oidc_operator_groups"],
+        "keys": [
+            "oidc_issuer",
+            "oidc_client_id",
+            "oidc_client_secret",
+            "oidc_groups_claim",
+            "oidc_admin_groups",
+            "oidc_operator_groups",
+        ],
     },
     {
         "title": "Run defaults",
@@ -134,10 +147,8 @@ def get_setting(key: str) -> str:
 @login_required
 def index():
     values = {key: get_setting(key) for key in DEFS}
-    sections = [{**s, "fields": [(k, DEFS[k]) for k in s["keys"]]}
-                for s in SECTIONS]
-    return render_template("settings.html", sections=sections,
-                           values=values)
+    sections = [{**s, "fields": [(k, DEFS[k]) for k in s["keys"]]} for s in SECTIONS]
+    return render_template("settings.html", sections=sections, values=values)
 
 
 @bp.post("/")
@@ -153,8 +164,7 @@ def save():
                 if row is not None:
                     session.delete(row)
                 continue
-            value = (default_master_host() if key == "master_host"
-                     else meta["default"])
+            value = default_master_host() if key == "master_host" else meta["default"]
         if "options" in meta and value not in meta["options"]:
             value = meta["default"]
         row = session.get(Setting, key)

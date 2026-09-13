@@ -29,7 +29,7 @@ from .models import (
     WatchedState,
 )
 
-NOW = dt.datetime.now(dt.timezone.utc)
+NOW = dt.datetime.now(dt.UTC)
 
 
 def _grains(osfinger: str, osrelease: str, ip: str, salt_version: str) -> dict:
@@ -116,15 +116,38 @@ def mock_jobs() -> tuple[list[Job], list[JobReturn]]:
         complete=False,
     )
     returns = [
-        JobReturn(jid=ping.jid, minion_id="tw-master-01", success=True, retcode=0,
-                  payload=True),
-        JobReturn(jid=ping.jid, minion_id="fedora-web-01", success=True, retcode=0,
-                  payload=True),
-        JobReturn(jid=highstate.jid, minion_id="tw-master-01", success=True,
-                  retcode=0, payload={"succeeded": 42, "failed": 0}),
-        JobReturn(jid=highstate.jid, minion_id="tw-minion-02", success=False,
-                  retcode=1, payload={"succeeded": 40, "failed": 2,
-                                      "failures": ["pkg_|-nginx_|-nginx_|-installed"]}),
+        JobReturn(
+            jid=ping.jid,
+            minion_id="tw-master-01",
+            success=True,
+            retcode=0,
+            payload=True,
+        ),
+        JobReturn(
+            jid=ping.jid,
+            minion_id="fedora-web-01",
+            success=True,
+            retcode=0,
+            payload=True,
+        ),
+        JobReturn(
+            jid=highstate.jid,
+            minion_id="tw-master-01",
+            success=True,
+            retcode=0,
+            payload={"succeeded": 42, "failed": 0},
+        ),
+        JobReturn(
+            jid=highstate.jid,
+            minion_id="tw-minion-02",
+            success=False,
+            retcode=1,
+            payload={
+                "succeeded": 40,
+                "failed": 2,
+                "failures": ["pkg_|-nginx_|-nginx_|-installed"],
+            },
+        ),
     ]
     return [ping, highstate, running], returns
 
@@ -144,18 +167,29 @@ def seed(session: Session, force: bool = False) -> dict[str, int]:
     session.add_all(returns)
     session.add_all(
         [
-            SavedJob(name="ping everything", fun="test.ping", tgt="*",
-                     tgt_type="glob", args=[]),
-            SavedJob(name="dry-run highstate", fun="state.highstate", tgt="*",
-                     tgt_type="glob", args=["test=True"]),
+            SavedJob(
+                name="ping everything",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                args=[],
+            ),
+            SavedJob(
+                name="dry-run highstate",
+                fun="state.highstate",
+                tgt="*",
+                tgt_type="glob",
+                args=["test=True"],
+            ),
             WatchedState(sls="common"),
             WatchedState(sls="baseline"),
             Setting(key="default_target", value="*"),
             Setting(key="page_size", value="25"),
             Setting(key="theme", value="wireframe"),
             AuditEvent(user="admin", action="accept-key", jid=None),
-            AuditEvent(user="admin", action="state.highstate",
-                       jid="20260910123000000002"),
+            AuditEvent(
+                user="admin", action="state.highstate", jid="20260910123000000002"
+            ),
         ]
     )
     session.commit()
@@ -164,8 +198,9 @@ def seed(session: Session, force: bool = False) -> dict[str, int]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Seed mock data for local testing")
-    parser.add_argument("--force", action="store_true",
-                        help="replace existing mock rows")
+    parser.add_argument(
+        "--force", action="store_true", help="replace existing mock rows"
+    )
     args = parser.parse_args(argv)
     url = os.environ.get(
         "DATABASE_URL",

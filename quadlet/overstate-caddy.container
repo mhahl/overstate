@@ -1,0 +1,22 @@
+[Unit]
+Description=Overstate Caddy reverse proxy (public TLS)
+After=network-online.target overstate-app.service overstate-salt-master.service
+Wants=network-online.target
+Requires=overstate-app.service overstate-salt-master.service
+
+[Container]
+Image=docker.io/caddy:2-alpine
+Network=overstate.network
+PublishPort=80:80
+PublishPort=443:443
+EnvironmentFile=/etc/overstate/overstate.env
+Volume=/etc/overstate/Caddyfile:/etc/caddy/Caddyfile:ro,z
+Volume=/etc/overstate/tls/ca.crt:/etc/caddy/ca.crt:ro,z
+Volume=overstate-caddy-data:/data
+Volume=overstate-caddy-config:/config
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

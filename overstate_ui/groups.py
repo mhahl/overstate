@@ -2,8 +2,9 @@
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from .auth import roles_required
 
+from .audit import log_event
+from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
 from .minions import PAGE_SIZES, live_roster
@@ -26,12 +27,13 @@ def index():
         page = int(request.args.get("page", 1))
     except ValueError:
         page = 1
-    all_groups = (get_session().query(MinionGroup)
-                  .order_by(MinionGroup.name).all())
+    all_groups = get_session().query(MinionGroup).order_by(MinionGroup.name).all()
     if q:
-        all_groups = [g for g in all_groups
-                      if q in g.name.lower()
-                      or any(q in m.lower() for m in g.members)]
+        all_groups = [
+            g
+            for g in all_groups
+            if q in g.name.lower() or any(q in m.lower() for m in g.members)
+        ]
     total = len(all_groups)
     sort = request.args.get("sort", "name")
     if sort not in ("name", "members"):
@@ -40,8 +42,9 @@ def index():
     if direction not in ("asc", "desc"):
         direction = "asc"
     if sort == "members":
-        all_groups.sort(key=lambda g: (len(g.members or []), g.name),
-                        reverse=(direction == "desc"))
+        all_groups.sort(
+            key=lambda g: (len(g.members or []), g.name), reverse=(direction == "desc")
+        )
     elif direction == "desc":
         all_groups.sort(key=lambda g: g.name, reverse=True)
     pages = max(1, (total + per_page - 1) // per_page)
@@ -49,12 +52,19 @@ def index():
     statuses, _ = live_roster(get_salt())
     roster = sorted(row.id for row in get_session().query(Minion.id).all())
     return render_template(
-        "groups.html", q=request.args.get("q", ""), page=page, pages=pages,
-        per_page=per_page, total=total, sort=sort, direction=direction,
-        groups=all_groups[(page - 1) * per_page: page * per_page],
+        "groups.html",
+        q=request.args.get("q", ""),
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        total=total,
+        sort=sort,
+        direction=direction,
+        groups=all_groups[(page - 1) * per_page : page * per_page],
         group_names=[g.name for g in all_groups],
         roster=roster,
-        presence=sorted(set(roster) | set(statuses)))
+        presence=sorted(set(roster) | set(statuses)),
+    )
 
 
 def parse_member_ids(form) -> list[str]:
@@ -76,8 +86,6 @@ def parse_member_ids(form) -> list[str]:
 @bp.post("/", strict_slashes=False)
 @roles_required("operator")
 def create_group():
-    from .audit import log_event
-
     name = request.form.get("name", "").strip()
     members = parse_member_ids(request.form)
     session = get_session()
@@ -96,8 +104,6 @@ def create_group():
 @bp.post("/<int:gid>/rename")
 @roles_required("operator")
 def rename_group(gid: int):
-    from .audit import log_event
-
     session = get_session()
     group = session.get(MinionGroup, gid)
     name = request.form.get("name", "").strip()
@@ -105,12 +111,14 @@ def rename_group(gid: int):
         flash("Unknown group.", "error")
     elif not name:
         flash("Group needs a name.", "error")
-    elif (session.query(MinionGroup)
-          .filter(MinionGroup.name == name, MinionGroup.id != gid).first()):
+    elif (
+        session.query(MinionGroup)
+        .filter(MinionGroup.name == name, MinionGroup.id != gid)
+        .first()
+    ):
         flash(f"Group '{name}' already exists.", "error")
     else:
-        log_event(current_user.username,
-                  f"group-rename:{group.name}->{name}")
+        log_event(current_user.username, f"group-rename:{group.name}->{name}")
         group.name = name
         session.commit()
         flash(f"Group renamed to '{name}'.", "success")
@@ -120,8 +128,6 @@ def rename_group(gid: int):
 @bp.post("/<int:gid>/members")
 @roles_required("operator")
 def edit_group_members(gid: int):
-    from .audit import log_event
-
     session = get_session()
     group = session.get(MinionGroup, gid)
     if group is None:
@@ -138,8 +144,6 @@ def edit_group_members(gid: int):
 @roles_required("operator")
 def edit_group(gid: int):
     """Combined rename plus member update from the group modal."""
-    from .audit import log_event
-
     session = get_session()
     group = session.get(MinionGroup, gid)
     name = request.form.get("name", "").strip()
@@ -147,27 +151,28 @@ def edit_group(gid: int):
         flash("Unknown group.", "error")
     elif not name:
         flash("Group needs a name.", "error")
-    elif (session.query(MinionGroup)
-          .filter(MinionGroup.name == name, MinionGroup.id != gid).first()):
+    elif (
+        session.query(MinionGroup)
+        .filter(MinionGroup.name == name, MinionGroup.id != gid)
+        .first()
+    ):
         flash(f"Group '{name}' already exists.", "error")
     else:
         if name != group.name:
-            log_event(current_user.username,
-                      f"group-rename:{group.name}->{name}")
+            log_event(current_user.username, f"group-rename:{group.name}->{name}")
             group.name = name
         group.members = parse_member_ids(request.form)
         session.commit()
         log_event(current_user.username, f"group-members:{group.name}")
-        flash(f"Group '{group.name}' saved "
-              f"with {len(group.members)} members.", "success")
+        flash(
+            f"Group '{group.name}' saved with {len(group.members)} members.", "success"
+        )
     return redirect(url_for("groups.index"))
 
 
 @bp.post("/<int:gid>/delete")
 @roles_required("operator")
 def delete_group(gid: int):
-    from .audit import log_event
-
     session = get_session()
     group = session.get(MinionGroup, gid)
     if group is None:

@@ -19,13 +19,15 @@ from overstate_ui.seed_mock import seed as seed_mock
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("client") == "local_async":
             assert body["fun"] == "test.ping"
-            return httpx.Response(200, json={"return": [{"jid": "99999",
-                                                         "minions": ["m1"]}]})
+            return httpx.Response(
+                200, json={"return": [{"jid": "99999", "minions": ["m1"]}]}
+            )
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -37,7 +39,8 @@ def client():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -49,25 +52,36 @@ def client():
 
 
 def test_run_async_creates_job_and_audit(client):
-    rv = client.post("/jobs/run", data={
-        "tgt": "*", "tgt_type": "glob", "fun": "test.ping",
-        "args": "", "mode": "async", "save_as": "ping all"})
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "*",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "args": "",
+            "mode": "async",
+            "save_as": "ping all",
+        },
+    )
     assert rv.status_code == 302
     assert "/jobs/99999" in rv.headers["Location"]
     with client.app.app_context():
         job = get_session().get(Job, "99999")
         assert job is not None and job.fun == "test.ping"
         assert job.complete is False
-        audit = get_session().query(AuditEvent).filter(
-            AuditEvent.action == "run:test.ping").one()
+        audit = (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action == "run:test.ping")
+            .one()
+        )
         assert audit.jid == "99999"
         saved = get_session().query(SavedJob).filter_by(name="ping all").one()
         assert saved.fun == "test.ping"
 
 
 def test_run_requires_fun(client):
-    rv = client.post("/jobs/run", data={"tgt": "*", "tgt_type": "glob",
-                                        "fun": ""})
+    rv = client.post("/jobs/run", data={"tgt": "*", "tgt_type": "glob", "fun": ""})
     assert rv.status_code == 302
     assert "new" in rv.headers["Location"]
 
@@ -77,8 +91,9 @@ def test_sync_copies_returner_rows(client):
         job = sync_job("20260910123000000002")
         assert job is not None
         assert job.fun == "state.highstate"
-        returns = get_session().query(JobReturn).filter_by(
-            jid="20260910123000000002").all()
+        returns = (
+            get_session().query(JobReturn).filter_by(jid="20260910123000000002").all()
+        )
         assert len(returns) == 2
         failed = [r for r in returns if not r.success]
         assert len(failed) == 1 and failed[0].minion_id == "tw-minion-02"
@@ -88,16 +103,29 @@ def test_sync_completes_old_job_without_returns(client):
     with client.app.app_context():
         from overstate_ui.models import Job
 
-        get_session().add(Job(jid="42424242424242424242", fun="test.ping",
-                              tgt="*", tgt_type="glob", user="admin",
-                              complete=False))
-        get_session().add(Job(jid="42424242424242424243", fun="test.ping",
-                              tgt="*", tgt_type="glob", user="admin",
-                              complete=False))
+        get_session().add(
+            Job(
+                jid="42424242424242424242",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=False,
+            )
+        )
+        get_session().add(
+            Job(
+                jid="42424242424242424243",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=False,
+            )
+        )
         get_session().commit()
         old = get_session().get(Job, "42424242424242424242")
-        old.started_at = (dt.datetime.now(dt.timezone.utc)
-                          - dt.timedelta(hours=2))
+        old.started_at = dt.datetime.now(dt.UTC) - dt.timedelta(hours=2)
         get_session().commit()
         assert sync_job("42424242424242424242").complete is True
         assert sync_job("42424242424242424243").complete is False
@@ -116,9 +144,9 @@ def test_detail_recovery_links(client):
 
     with client.app.app_context():
         sync_job("20260910123000000002")
-        get_session().add(AuditEvent(user="admin",
-                                     action="kill:20260910123000000002",
-                                     jid="kk"))
+        get_session().add(
+            AuditEvent(user="admin", action="kill:20260910123000000002", jid="kk")
+        )
         get_session().commit()
     html = client.get("/jobs/20260910123000000002").data.decode()
     assert html.count("Re-run") == 1
@@ -129,8 +157,9 @@ def test_detail_recovery_links(client):
 
 
 def test_new_prefills_fun_and_args(client):
-    html = client.get("/jobs/new?tgt=x&tgt_type=glob&fun=test.ping&args=a"
-                      ).data.decode()
+    html = client.get(
+        "/jobs/new?tgt=x&tgt_type=glob&fun=test.ping&args=a"
+    ).data.decode()
     assert 'name="fun" value="test.ping"' in html
     assert 'name="args" value="a"' in html
 
@@ -155,7 +184,7 @@ def test_stream_completes_for_old_job(client):
         from overstate_ui.models import SaltReturn
 
         job = sync_job("20260910123000000002")
-        old = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=2)
+        old = dt.datetime.now(dt.UTC) - dt.timedelta(hours=2)
         job.started_at = old
         for sr in get_session().query(SaltReturn).all():
             sr.alter_time = old

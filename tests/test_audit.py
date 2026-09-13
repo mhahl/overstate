@@ -23,7 +23,10 @@ def test_log_event_with_jid(app_ctx):
     assert event.id is not None
     row = get_session().query(AuditEvent).one()
     assert (row.user, row.action, row.jid) == (
-        "admin", "state.highstate", "20260910000000000001")
+        "admin",
+        "state.highstate",
+        "20260910000000000001",
+    )
 
 
 def test_log_event_without_jid(app_ctx):

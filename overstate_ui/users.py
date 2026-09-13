@@ -28,8 +28,14 @@ def index():
     col = User.username if sort == "username" else User.role
     col = col.desc() if direction == "desc" else col.asc()
     users = query.order_by(col, User.username).all()
-    return render_template("users.html", users=users, roles=list(LEVELS),
-                           role=role, sort=sort, direction=direction)
+    return render_template(
+        "users.html",
+        users=users,
+        roles=list(LEVELS),
+        role=role,
+        sort=sort,
+        direction=direction,
+    )
 
 
 @bp.post("/<int:uid>/role")
@@ -60,8 +66,10 @@ def rotation():
     from flask import current_app
 
     return render_template(
-        "users_rotation.html", password=secrets.token_urlsafe(18),
-        eauth_user=current_app.config["SALT_EAUTH_USER"])
+        "users_rotation.html",
+        password=secrets.token_urlsafe(18),
+        eauth_user=current_app.config["SALT_EAUTH_USER"],
+    )
 
 
 @bp.post("/rotation/verify")
@@ -84,7 +92,9 @@ def rotation_verify():
         flash(f"verification failed: {exc}", "error")
     else:
         log_event(current_user.username, "eauth-rotation-verified")
-        flash("New eauth password works. Update the app environment to match.", "warning")
+        flash(
+            "New eauth password works. Update the app environment to match.", "warning"
+        )
     return redirect(url_for("users.rotation"))
 
 

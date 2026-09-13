@@ -14,33 +14,55 @@ from overstate_ui.seed_mock import seed as seed_mock
 
 DENY_SHOW_SLS = False
 
-STATES = {"/tmp/overstate-demo.txt": {
-    "file": [{"contents": "managed"}, "managed", {"order": 10000}],
-    "__sls__": "demo", "__env__": "base"}}
+STATES = {
+    "/tmp/overstate-demo.txt": {
+        "file": [{"contents": "managed"}, "managed", {"order": 10000}],
+        "__sls__": "demo",
+        "__env__": "base",
+    }
+}
 
 
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["fedora-web-01"], "minions_pre": [],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["fedora-web-01"],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{
-                "up": ["fedora-web-01"], "down": []}]})
-        if body.get("client") in ("local", "ssh"):
-            if body.get("fun") == "state.show_sls":
-                if DENY_SHOW_SLS:
-                    return httpx.Response(500, json={})
-                return httpx.Response(200, json={"return": [{
-                    body.get("tgt"): STATES}]})
+            return httpx.Response(
+                200, json={"return": [{"up": ["fedora-web-01"], "down": []}]}
+            )
+        if (
+            body.get("client") in ("local", "ssh")
+            and body.get("fun") == "state.show_sls"
+        ):
+            if DENY_SHOW_SLS:
+                return httpx.Response(500, json={})
+            return httpx.Response(200, json={"return": [{body.get("tgt"): STATES}]})
         if body.get("client") == "local_async":
-            return httpx.Response(200, json={"return": [{
-                "jid": "424242", "minions": ["fedora-web-01"]}]})
+            return httpx.Response(
+                200, json={"return": [{"jid": "424242", "minions": ["fedora-web-01"]}]}
+            )
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -51,7 +73,8 @@ def make_client():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -63,8 +86,7 @@ def make_client():
 
 
 def confirm(c, fun="state.apply", args="demo", **extra):
-    data = {"tgt": "*", "tgt_type": "glob", "fun": fun, "args": args,
-            "mode": "async"}
+    data = {"tgt": "*", "tgt_type": "glob", "fun": fun, "args": args, "mode": "async"}
     data.update(extra)
     return c.post("/jobs/run", data=data)
 
@@ -89,8 +111,7 @@ def test_preview_denial_renders_note_fire_intact():
 
 
 def test_no_preview_for_other_functions():
-    html = confirm(make_client(), fun="pkg.install",
-                   args="nginx").data.decode()
+    html = confirm(make_client(), fun="pkg.install", args="nginx").data.decode()
     assert "SLS preview" not in html
     assert "Run pkg.install" in html
 

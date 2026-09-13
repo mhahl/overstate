@@ -1,0 +1,17 @@
+# Pinned runtime snapshot for overstate-ui, taken from the dev .venv that
+# runs the green suite (Python 3.14.7; containers build on 3.12).
+# Regenerate after deliberate upgrades and re-run the suite:
+#   .venv/bin/pip install -U <pkg> && .venv/bin/python -m pytest -q
+#   .venv/bin/pip freeze | grep -iE '^(flask|...)' > requirements.lock
+Flask==3.1.3
+Flask-Login==0.6.3
+Flask-WTF==1.3.0
+SQLAlchemy==2.0.52
+Alembic==1.20.0
+psycopg[binary]==3.3.5
+redis==8.1.0
+rq==2.12.0
+httpx==0.28.1
+argon2-cffi==25.1.0
+Authlib==1.8.0
+gunicorn==26.2.0

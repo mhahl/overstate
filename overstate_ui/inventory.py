@@ -26,7 +26,7 @@ def refresh_inventory(client, key_statuses: dict[str, str]) -> int:
     Structured so an RQ worker can call it by import path; the refresh
     button calls it synchronously (dev fleets are tiny).
     """
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     result = client.local("*", "grains.items", timeout=30)[0]
     session = get_session()
     count = 0

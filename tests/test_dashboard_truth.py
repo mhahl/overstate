@@ -19,16 +19,30 @@ GROUPED_VERSIONS = False
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{"data": {"return": {
-                "minions": ["web-01"], "minions_pre": [],
-                "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01"],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("client") == "runner":
-            if DENY_RUNNERS and body.get("fun") in ("manage.versions",
-                                                    "jobs.active"):
+            if DENY_RUNNERS and body.get("fun") in ("manage.versions", "jobs.active"):
                 return httpx.Response(500, json={})
             if body.get("fun") == "manage.versions":
                 if GROUPED_VERSIONS:
@@ -37,10 +51,12 @@ def fake_transport() -> httpx.MockTransport:
                     versions = {"web-01": "3006.5", "db-01": "3006.5"}
                 return httpx.Response(200, json={"return": [versions]})
             if body.get("fun") == "jobs.active":
-                return httpx.Response(200, json={"return": [{
-                    "12345": {"fun": "state.highstate"}}]})
-            return httpx.Response(200, json={"return": [{
-                "up": ["web-01"], "down": []}]})
+                return httpx.Response(
+                    200, json={"return": [{"12345": {"fun": "state.highstate"}}]}
+                )
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -51,16 +67,34 @@ def make_client():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
-        get_session().add(Minion(id="web-01", key_status="accepted",
-                                 grains={"saltversion": "3006.5"}))
-        get_session().add(Job(jid="12345", fun="state.highstate", tgt="*",
-                              tgt_type="glob", user="admin", complete=False))
-        get_session().add(Job(jid="stale-1", fun="test.ping", tgt="*",
-                              tgt_type="glob", user="admin", complete=False))
+        get_session().add(
+            Minion(id="web-01", key_status="accepted", grains={"saltversion": "3006.5"})
+        )
+        get_session().add(
+            Job(
+                jid="12345",
+                fun="state.highstate",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=False,
+            )
+        )
+        get_session().add(
+            Job(
+                jid="stale-1",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=False,
+            )
+        )
         get_session().commit()
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
@@ -101,10 +135,10 @@ def test_grouped_versions_fall_back_to_snapshot():
 def test_normalize_versions_shapes():
     from overstate_ui.tasks import normalize_versions
 
-    assert normalize_versions({"a": "1", "b": "1", "c": "2"}) == \
-        {"1": 2, "2": 1}
-    assert normalize_versions({"Up to date": {"a": "1", "b": "1"},
-                               "Master": "3008.2"}) == {"1": 2}
+    assert normalize_versions({"a": "1", "b": "1", "c": "2"}) == {"1": 2, "2": 1}
+    assert normalize_versions(
+        {"Up to date": {"a": "1", "b": "1"}, "Master": "3008.2"}
+    ) == {"1": 2}
     assert normalize_versions({"Minion offline": {"a": False}}) == {}
     assert normalize_versions({"Up to date": ["a"]}) == {}
     assert normalize_versions("3006") == {}

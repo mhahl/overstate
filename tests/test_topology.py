@@ -34,21 +34,36 @@ def client():
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={"return": [{"token": "tok",
-                                                         "expire": 99}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
         body = json.loads(request.content or b"{}")
         seen.update(body)
         if body.get("client") == "local_async":
-            return httpx.Response(200, json={"return": [{"jid": "1",
-                                                         "minions": []}]})
+            return httpx.Response(200, json={"return": [{"jid": "1", "minions": []}]})
         if body.get("client") == "wheel":
-            return httpx.Response(200, json={"return": [{
-                "data": {"return": {"minions": [], "minions_pre": [],
-                                    "minions_rejected": [], "minions_denied": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": [],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         return httpx.Response(200, json={"return": [{"m1": True}]})
 
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler))
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler)
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -63,9 +78,13 @@ def test_proxy_grains_render_in_list_and_csv(client):
     from overstate_ui.models import Minion
 
     with client.app.app_context():
-        get_session().add(Minion(id="prox-1", key_status="accepted",
-                                 grains={"proxytype": "dummy",
-                                         "ipv4": "10.0.0.5"}))
+        get_session().add(
+            Minion(
+                id="prox-1",
+                key_status="accepted",
+                grains={"proxytype": "dummy", "ipv4": "10.0.0.5"},
+            )
+        )
         get_session().commit()
     rv = client.get("/minions/")
     assert rv.status_code == 200
@@ -83,9 +102,17 @@ def test_syndic_banner_only_when_configured(client):
 
 
 def test_ssh_run_posts_ssh_client_and_synthesizes_jid(client):
-    rv = client.post("/jobs/run", data={
-        "tgt": "roster-*", "tgt_type": "glob", "fun": "test.ping",
-        "args": "", "mode": "async", "via": "ssh"})
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "roster-*",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "args": "",
+            "mode": "async",
+            "via": "ssh",
+        },
+    )
     assert rv.status_code == 302
     assert client.seen.get("client") == "ssh"
     assert client.seen.get("ignore_invalid") is True
@@ -97,15 +124,32 @@ def test_ssh_run_posts_ssh_client_and_synthesizes_jid(client):
 
 
 def test_ssh_forces_sync_mode(client):
-    rv = client.post("/jobs/run", data={
-        "tgt": "r", "tgt_type": "glob", "fun": "test.ping",
-        "args": "", "mode": "async", "via": "ssh"}, follow_redirects=True)
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "r",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "args": "",
+            "mode": "async",
+            "via": "ssh",
+        },
+        follow_redirects=True,
+    )
     assert b"runs synchronously" in rv.data
 
 
 def test_bad_via_falls_back_to_local(client):
-    rv = client.post("/jobs/run", data={
-        "tgt": "*", "tgt_type": "glob", "fun": "test.ping",
-        "args": "", "mode": "async", "via": "telnet"})
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "*",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "args": "",
+            "mode": "async",
+            "via": "telnet",
+        },
+    )
     assert rv.status_code == 302
     assert client.seen.get("client") == "local_async"

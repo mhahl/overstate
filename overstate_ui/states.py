@@ -2,8 +2,8 @@
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
-from .auth import roles_required
 
+from .auth import roles_required
 from .db import get_session
 from .models import Job, JobReturn, Minion, WatchedState
 
@@ -32,8 +32,7 @@ def recompute_conformity() -> str | None:
         if row is None:
             row = Minion(id=ret.minion_id, grains={}, conformity={})
             session.add(row)
-        row.conformity = {"status": "ok" if ret.success else "drifted",
-                          "jid": jid}
+        row.conformity = {"status": "ok" if ret.success else "drifted", "jid": jid}
     for row in session.query(Minion).all():
         if row.id not in seen:
             conf = dict(row.conformity or {})
@@ -67,8 +66,7 @@ def index():
         return row.id
 
     ordered = sorted(minions, key=key, reverse=(direction == "desc"))
-    ctx = dict(watched=watched, minions=ordered, sort=sort,
-               direction=direction)
+    ctx = {"watched": watched, "minions": ordered, "sort": sort, "direction": direction}
     if request.headers.get("HX-Request") == "true":
         return render_template("_conformity_rows.html", **ctx)
     return render_template("states.html", **ctx)

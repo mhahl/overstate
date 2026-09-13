@@ -4,10 +4,9 @@ Read-only: mine.get through one minion. Refreshing stays on the
 existing mine-update run preset; mine.delete/flush have no UI.
 """
 
+import httpx
 from flask import Blueprint, render_template, request
 from flask_login import login_required
-
-import httpx
 
 from .dashboard import get_salt, ping_target
 from .jobs import TGT_TYPES, resolve_group_target
@@ -49,24 +48,32 @@ def index():
             from .tasks import mine_get_task, queue_or_none, wait_for
 
             try:
-                queued = queue_or_none(mine_get_task, reader, query_tgt,
-                                       fun, query_type)
+                queued = queue_or_none(
+                    mine_get_task, reader, query_tgt, fun, query_type
+                )
                 if queued is None:
                     from .tasks import mine_get_now
 
-                    entries = mine_get_now(get_salt(), reader, query_tgt,
-                                           fun, query_type)
+                    entries = mine_get_now(
+                        get_salt(), reader, query_tgt, fun, query_type
+                    )
                 else:
                     status, value = wait_for(queued, wait=6.0)
                     if status == "ready":
                         entries = value
                     elif status == "pending":
-                        error = ("Mine query still running. "
-                                 "reload to retry.")
+                        error = "Mine query still running. reload to retry."
                     else:
                         error = f"Mine query failed: {value}"
             except (SaltApiError, httpx.HTTPError) as exc:
                 error = f"salt-api error: {exc}"
-    return render_template("mine.html", tgt=tgt, tgt_type=tgt_type,
-                           tgt_types=TGT_TYPES, fun=fun, entries=entries,
-                           error=error, direction=direction)
+    return render_template(
+        "mine.html",
+        tgt=tgt,
+        tgt_type=tgt_type,
+        tgt_types=TGT_TYPES,
+        fun=fun,
+        entries=entries,
+        error=error,
+        direction=direction,
+    )

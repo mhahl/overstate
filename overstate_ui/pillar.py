@@ -7,8 +7,8 @@ import json
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
-from .auth import roles_required
 
+from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
 from .models import Minion, PillarSnapshot
@@ -42,15 +42,13 @@ def diff_pillars(left: dict, right: dict) -> list[dict]:
         old = flat_left.get(path, None)
         new = flat_right.get(path, None)
         if path not in flat_left:
-            rows.append({"path": path, "kind": "added", "old": None,
-                         "new": new})
+            rows.append({"path": path, "kind": "added", "old": None, "new": new})
         elif path not in flat_right:
-            rows.append({"path": path, "kind": "removed", "old": old,
-                         "new": None})
+            rows.append({"path": path, "kind": "removed", "old": old, "new": None})
         elif json.dumps(old, sort_keys=True, default=str) != json.dumps(
-                new, sort_keys=True, default=str):
-            rows.append({"path": path, "kind": "changed", "old": old,
-                         "new": new})
+            new, sort_keys=True, default=str
+        ):
+            rows.append({"path": path, "kind": "changed", "old": old, "new": new})
     return rows
 
 
@@ -85,7 +83,8 @@ def minion_ids() -> list[str]:
 
 def snapshots_for(mid: str) -> list[PillarSnapshot]:
     return (
-        get_session().query(PillarSnapshot)
+        get_session()
+        .query(PillarSnapshot)
         .filter_by(minion_id=mid)
         .order_by(PillarSnapshot.id.desc())
         .limit(SNAPSHOT_LIMIT)
@@ -104,8 +103,7 @@ def render_value(value) -> str:
 def index():
     mids = minion_ids()
     counts = {
-        mid: get_session().query(PillarSnapshot)
-        .filter_by(minion_id=mid).count()
+        mid: get_session().query(PillarSnapshot).filter_by(minion_id=mid).count()
         for mid in mids
     }
     q = request.args.get("q", "").strip().lower()
@@ -118,13 +116,19 @@ def index():
     if direction not in ("asc", "desc"):
         direction = "asc"
     if sort == "snapshots":
-        mids = sorted(mids, key=lambda m: (counts.get(m, 0), m),
-                      reverse=(direction == "desc"))
+        mids = sorted(
+            mids, key=lambda m: (counts.get(m, 0), m), reverse=(direction == "desc")
+        )
     elif direction == "desc":
         mids = sorted(mids, reverse=True)
-    return render_template("pillar.html", mids=mids, counts=counts,
-                           q=request.args.get("q", ""),
-                           sort=sort, direction=direction)
+    return render_template(
+        "pillar.html",
+        mids=mids,
+        counts=counts,
+        q=request.args.get("q", ""),
+        sort=sort,
+        direction=direction,
+    )
 
 
 @bp.route("/<mid>")
@@ -137,8 +141,14 @@ def detail(mid: str):
         live = get_salt().local(mid, "pillar.items")[0].get(mid)
     except SaltApiError as exc:
         error = str(exc)
-    return render_template("pillar_detail.html", mid=mid, snaps=snaps,
-                           live=live, error=error, render_value=render_value)
+    return render_template(
+        "pillar_detail.html",
+        mid=mid,
+        snaps=snaps,
+        live=live,
+        error=error,
+        render_value=render_value,
+    )
 
 
 @bp.post("/<mid>/capture")
@@ -163,14 +173,26 @@ def diff():
     rev_b = request.args.get("rev_b", "")
     left = _resolve(mid_a, rev_a) if mid_a else None
     right = _resolve(mid_b, rev_b) if mid_b else None
-    rows = diff_pillars(left or {}, right or {}) if left is not None and right is not None else []
+    rows = (
+        diff_pillars(left or {}, right or {})
+        if left is not None and right is not None
+        else []
+    )
     snaps_a = snapshots_for(mid_a) if mid_a else []
     snaps_b = snapshots_for(mid_b) if mid_b else []
-    return render_template("pillar_diff.html", mids=mids, mid_a=mid_a,
-                           mid_b=mid_b, rev_a=rev_a, rev_b=rev_b,
-                           snaps_a=snaps_a, snaps_b=snaps_b, rows=rows,
-                           compared=left is not None and right is not None,
-                           render_value=render_value)
+    return render_template(
+        "pillar_diff.html",
+        mids=mids,
+        mid_a=mid_a,
+        mid_b=mid_b,
+        rev_a=rev_a,
+        rev_b=rev_b,
+        snaps_a=snaps_a,
+        snaps_b=snaps_b,
+        rows=rows,
+        compared=left is not None and right is not None,
+        render_value=render_value,
+    )
 
 
 def _resolve(mid: str, rev: str) -> dict | None:

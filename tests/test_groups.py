@@ -16,17 +16,28 @@ def fake_transport() -> httpx.MockTransport:
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
-            return httpx.Response(200, json={
-                "return": [{"token": "tok", "expire": 99999}]})
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99999}]}
+            )
         body = json.loads(request.content or b"{}")
         if body.get("fun") == "key.list_all":
-            return httpx.Response(200, json={
-                "return": [{"data": {"return": {
-                    "minions": ["web-01", "web-02", "db-01"],
-                    "minions_pre": []}}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01", "web-02", "db-01"],
+                                    "minions_pre": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
         if body.get("fun") == "manage.status":
-            return httpx.Response(200, json={
-                "return": [{"up": [], "down": []}]})
+            return httpx.Response(200, json={"return": [{"up": [], "down": []}]})
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -38,7 +49,8 @@ def app():
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport())
+        "https://salt:8000", "u", "p", transport=fake_transport()
+    )
     with app.app_context():
         create_all()
         seed_admin(password="pw")
@@ -61,32 +73,40 @@ def group_named(name):
 
 def test_groups_sort_by_members(app, admin):
     with app.app_context():
-        get_session().add(MinionGroup(name="big",
-                                      members=["web-01", "web-02", "db-01"]))
+        get_session().add(
+            MinionGroup(name="big", members=["web-01", "web-02", "db-01"])
+        )
         get_session().add(MinionGroup(name="small", members=["web-01"]))
         get_session().commit()
     html = admin.get("/groups/?sort=members&dir=desc").data.decode()
-    assert (html.index('<td class="font-medium">big</td>')
-            < html.index('<td class="font-medium">small</td>'))
+    assert html.index('<td class="font-medium">big</td>') < html.index(
+        '<td class="font-medium">small</td>'
+    )
     html = admin.get("/groups/?sort=members&dir=asc").data.decode()
-    assert (html.index('<td class="font-medium">small</td>')
-            < html.index('<td class="font-medium">big</td>'))
+    assert html.index('<td class="font-medium">small</td>') < html.index(
+        '<td class="font-medium">big</td>'
+    )
 
 
 def test_create_rename_edit_delete(admin, app):
-    rv = admin.post("/groups",
-                    data={"name": "web", "members": "web-01, web-02 web-01"},
-                    follow_redirects=True)
+    rv = admin.post(
+        "/groups",
+        data={"name": "web", "members": "web-01, web-02 web-01"},
+        follow_redirects=True,
+    )
     assert "saved with 2 members" in rv.data.decode()
     with app.app_context():
         assert group_named("web").members == ["web-01", "web-02"]
         gid = group_named("web").id
-    rv = admin.post(f"/groups/{gid}/rename", data={"name": "web2"},
-                    follow_redirects=True)
+    rv = admin.post(
+        f"/groups/{gid}/rename", data={"name": "web2"}, follow_redirects=True
+    )
     assert "renamed to" in rv.data.decode()
-    rv = admin.post(f"/groups/{gid}/members",
-                    data={"members": "web-01\ndb-01"},
-                    follow_redirects=True)
+    rv = admin.post(
+        f"/groups/{gid}/members",
+        data={"members": "web-01\ndb-01"},
+        follow_redirects=True,
+    )
     assert "now has 2 members" in rv.data.decode()
     with app.app_context():
         assert group_named("web2").members == ["web-01", "db-01"]
@@ -97,12 +117,14 @@ def test_create_rename_edit_delete(admin, app):
 
 
 def test_create_validates(admin):
-    rv = admin.post("/groups", data={"name": "", "members": "m1"},
-                    follow_redirects=True)
+    rv = admin.post(
+        "/groups", data={"name": "", "members": "m1"}, follow_redirects=True
+    )
     assert "needs a name" in rv.data.decode()
     admin.post("/groups", data={"name": "dup", "members": ""})
-    rv = admin.post("/groups", data={"name": "dup", "members": ""},
-                    follow_redirects=True)
+    rv = admin.post(
+        "/groups", data={"name": "dup", "members": ""}, follow_redirects=True
+    )
     assert "already exists" in rv.data.decode()
 
 
@@ -111,9 +133,9 @@ def test_groups_forbidden_for_viewer(app):
     from overstate_ui.models import User
 
     with app.app_context():
-        get_session().add(User(username="vwr",
-                               password_hash=authmod._ph.hash("vpw"),
-                               role="viewer"))
+        get_session().add(
+            User(username="vwr", password_hash=authmod._ph.hash("vpw"), role="viewer")
+        )
         get_session().commit()
     client = app.test_client()
     client.post("/login", data={"username": "vwr", "password": "vpw"})
@@ -122,17 +144,25 @@ def test_groups_forbidden_for_viewer(app):
 
 def test_group_target_fires_list_job(app, admin, monkeypatch):
     with app.app_context():
-        get_session().add(MinionGroup(name="web",
-                                      members=["web-01", "ghost-99"]))
+        get_session().add(MinionGroup(name="web", members=["web-01", "ghost-99"]))
         get_session().commit()
-    monkeypatch.setattr(app.extensions["salt_client"], "local",
-                        lambda *a, **k: [{"jid": "j9"}])
-    rv = admin.post("/jobs/run", data={
-        "tgt": "web", "tgt_type": "group", "fun": "test.ping",
-        "mode": "async", "via": "local"})
+    monkeypatch.setattr(
+        app.extensions["salt_client"], "local", lambda *a, **k: [{"jid": "j9"}]
+    )
+    rv = admin.post(
+        "/jobs/run",
+        data={
+            "tgt": "web",
+            "tgt_type": "group",
+            "fun": "test.ping",
+            "mode": "async",
+            "via": "local",
+        },
+    )
     assert rv.status_code == 302
     with app.app_context():
         from overstate_ui.models import Job
+
         job = get_session().get(Job, "j9")
         assert job is not None and job.tgt_type == "list"
         assert job.tgt == "web-01"  # stale ghost-99 resolved out
@@ -149,24 +179,25 @@ def test_resolve_group_target_errors(app):
         with pytest.raises(SaltApiError):
             resolve_group_target("empty")
     with app.app_context():
-        get_session().add(MinionGroup(name="mix",
-                                      members=["web-01", "ghost"]))
+        get_session().add(MinionGroup(name="mix", members=["web-01", "ghost"]))
         get_session().commit()
         targets, stale = resolve_group_target("mix")
         assert targets == ["web-01"] and stale == 1
 
 
 def test_success_flash_renders_success(admin):
-    rv = admin.post("/groups", data={"name": "ok", "members": ["web-01"]},
-                    follow_redirects=True)
+    rv = admin.post(
+        "/groups", data={"name": "ok", "members": ["web-01"]}, follow_redirects=True
+    )
     html = rv.data.decode()
     assert "alert-success" in html
     assert "alert-warning" not in html
 
 
 def test_error_flash_renders_error(admin):
-    rv = admin.post("/groups", data={"name": "", "members": ["m1"]},
-                    follow_redirects=True)
+    rv = admin.post(
+        "/groups", data={"name": "", "members": ["m1"]}, follow_redirects=True
+    )
     html = rv.data.decode()
     assert "alert-error" in html
     assert "alert-warning" not in html
@@ -206,8 +237,7 @@ def table_html(html):
 
 
 def test_groups_search_filters_names_and_members(admin):
-    admin.post("/groups", data={"name": "webfleet",
-                                "members": ["web-01"]})
+    admin.post("/groups", data={"name": "webfleet", "members": ["web-01"]})
     admin.post("/groups", data={"name": "dbfleet", "members": ["db-01"]})
     admin.get("/groups/")  # flush setup flash messages
     html = table_html(admin.get("/groups/?q=webfleet").data.decode())
@@ -231,8 +261,7 @@ def test_groups_paginate(admin):
 
 
 def test_group_row_links_prefilled_job_form(admin):
-    admin.post("/groups",
-               data={"name": "fleet", "members": ["web-01"]})
+    admin.post("/groups", data={"name": "fleet", "members": ["web-01"]})
     html = admin.get("/groups/").data.decode()
     assert "Use in new job" in html
     assert "/jobs/new?tgt_type=group&amp;tgt=fleet" in html
@@ -243,9 +272,7 @@ def test_group_row_links_prefilled_job_form(admin):
 
 
 def test_delete_requires_confirm(admin):
-    admin.post("/groups",
-               data={"name": "doomed",
-                     "members": ["web-01", "web-02"]})
+    admin.post("/groups", data={"name": "doomed", "members": ["web-01", "web-02"]})
     html = admin.get("/groups/").data.decode()
     assert "Delete \u201cdoomed\u201d (2 members)?" in html
     assert ">Confirm</button>" in html
@@ -256,8 +283,9 @@ def test_viewer_sees_readonly_hint(app):
     from overstate_ui.models import User
 
     with app.app_context():
-        get_session().add(User(username="v", password_hash=_ph.hash("pw"),
-                               role="viewer"))
+        get_session().add(
+            User(username="v", password_hash=_ph.hash("pw"), role="viewer")
+        )
         get_session().commit()
     client = app.test_client()
     client.post("/login", data={"username": "v", "password": "pw"})
@@ -267,18 +295,21 @@ def test_viewer_sees_readonly_hint(app):
 
 
 def test_create_from_multiselect_and_edit(admin, app):
-    rv = admin.post("/groups",
-                    data={"name": "fleet",
-                          "members": ["web-01", "web-02"]},
-                    follow_redirects=True)
+    rv = admin.post(
+        "/groups",
+        data={"name": "fleet", "members": ["web-01", "web-02"]},
+        follow_redirects=True,
+    )
     assert "saved with 2 members" in rv.data.decode()
     with app.app_context():
         group = group_named("fleet")
         assert group.members == ["web-01", "web-02"]
         gid = group.id
-    rv = admin.post(f"/groups/{gid}/edit",
-                    data={"name": "fleet2", "members": ["db-01"]},
-                    follow_redirects=True)
+    rv = admin.post(
+        f"/groups/{gid}/edit",
+        data={"name": "fleet2", "members": ["db-01"]},
+        follow_redirects=True,
+    )
     assert "saved" in rv.data.decode()
     with app.app_context():
         assert group_named("fleet2").members == ["db-01"]
@@ -290,8 +321,7 @@ def test_edit_rejects_duplicate_name(admin, app):
     admin.post("/groups", data={"name": "b", "members": []})
     with app.app_context():
         gid = group_named("a").id
-    rv = admin.post(f"/groups/{gid}/edit", data={"name": "b"},
-                    follow_redirects=True)
+    rv = admin.post(f"/groups/{gid}/edit", data={"name": "b"}, follow_redirects=True)
     assert "already exists" in rv.data.decode()
 
 

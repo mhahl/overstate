@@ -14,8 +14,7 @@ PW = "test-password"
 
 def _make_user(username: str, role: str) -> None:
     session = get_session()
-    session.add(User(username=username,
-                     password_hash=authmod._ph.hash(PW), role=role))
+    session.add(User(username=username, password_hash=authmod._ph.hash(PW), role=role))
     session.commit()
 
 
@@ -86,8 +85,9 @@ def test_admin_users_page_filters_by_role_and_sorts(client):
     assert '<td class="font-medium">vwr</td>' in html
     assert '<td class="font-medium">op</td>' not in html
     html = client.get("/users/?sort=username&dir=desc").data.decode()
-    assert (html.find('<td class="font-medium">vwr</td>')
-            < html.find('<td class="font-medium">admin</td>'))
+    assert html.find('<td class="font-medium">vwr</td>') < html.find(
+        '<td class="font-medium">admin</td>'
+    )
     assert 'aria-sort="desc"' in html
 
 
@@ -96,8 +96,10 @@ def test_admin_users_page_set_role_and_self_guard(client):
     assert client.get("/users/").status_code == 200
     with client.app.app_context():
         vwr = get_session().query(User).filter_by(username="vwr").one()
-        uid, admin_id = vwr.id, get_session().query(User).filter_by(
-            username="admin").one().id
+        uid, admin_id = (
+            vwr.id,
+            get_session().query(User).filter_by(username="admin").one().id,
+        )
     rv = client.post(f"/users/{uid}/role", data={"role": "operator"})
     assert rv.status_code == 302
     with client.app.app_context():
@@ -111,25 +113,24 @@ def test_admin_users_page_set_role_and_self_guard(client):
 
 def test_provision_oidc_user_defaults_to_viewer(client):
     with client.app.app_context():
-        user = provision_oidc_user({"sub": "s1",
-                                    "preferred_username": "sso-alice",
-                                    "email": "a@example.com"},
-                                   "https://idp.example")
+        user = provision_oidc_user(
+            {"sub": "s1", "preferred_username": "sso-alice", "email": "a@example.com"},
+            "https://idp.example",
+        )
         assert user.role == "viewer"
         assert user.password_hash is None
         # group mapping wins at each login, resetting manual edits
         user.role = "operator"
         get_session().commit()
-        same = provision_oidc_user({"sub": "s1",
-                                    "preferred_username": "sso-alice"},
-                                   "https://idp.example")
+        same = provision_oidc_user(
+            {"sub": "s1", "preferred_username": "sso-alice"}, "https://idp.example"
+        )
         assert same.id == user.id and same.role == "viewer"
 
 
 def test_provision_oidc_user_rejects_empty_claims(client):
-    with client.app.app_context():
-        with pytest.raises(ValueError):
-            provision_oidc_user({}, "https://idp.example")
+    with client.app.app_context(), pytest.raises(ValueError):
+        provision_oidc_user({}, "https://idp.example")
 
 
 def test_oidc_routes_404_when_disabled(client):
@@ -141,12 +142,12 @@ def test_oidc_routes_404_when_disabled(client):
 def test_oidc_callback_provisions_and_logs_in(client, monkeypatch):
     class FakeOidc:
         def authorize_access_token(self):
-            return {"userinfo": {"sub": "bob-sub",
-                                 "preferred_username": "sso-bob"}}
+            return {"userinfo": {"sub": "bob-sub", "preferred_username": "sso-bob"}}
 
     monkeypatch.setattr(authmod, "_oauth_client", lambda: FakeOidc())
-    client.app.config.update(OIDC_ISSUER="https://idp.example",
-                             OIDC_CLIENT_ID="x", OIDC_CLIENT_SECRET="y")
+    client.app.config.update(
+        OIDC_ISSUER="https://idp.example", OIDC_CLIENT_ID="x", OIDC_CLIENT_SECRET="y"
+    )
     assert b"Log in with SSO" in client.get("/login").data
     rv = client.get("/login/oidc/callback")
     assert rv.status_code == 302

@@ -24,7 +24,8 @@ def _verify_setting(value: str) -> bool | str:
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-me")
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", "postgresql+psycopg://overstate:overstate@localhost:5432/overstate"
+        "DATABASE_URL",
+        "postgresql+psycopg://overstate:overstate@localhost:5432/overstate",
     )
     REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     SALT_API_URL = os.environ.get("SALT_API_URL", "https://salt-master:8000")

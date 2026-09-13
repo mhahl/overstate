@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import httpx
 
@@ -33,8 +34,9 @@ class SaltClient:
         self.password = password
         self.eauth = eauth
         self.verify = verify
-        self._http = httpx.Client(base_url=self.base_url, transport=transport,
-                                  timeout=30.0, verify=verify)
+        self._http = httpx.Client(
+            base_url=self.base_url, transport=transport, timeout=30.0, verify=verify
+        )
         self._token: str | None = None
         self._token_issued: float = 0.0
         self._token_ttl: float = 0.0
@@ -46,8 +48,11 @@ class SaltClient:
     def login(self) -> None:
         resp = self._http.post(
             "/login",
-            json={"username": self.username, "password": self.password,
-                  "eauth": self.eauth},
+            json={
+                "username": self.username,
+                "password": self.password,
+                "eauth": self.eauth,
+            },
         )
         if resp.status_code != 200:
             raise SaltApiError(f"salt-api login failed: HTTP {resp.status_code}")
@@ -63,9 +68,7 @@ class SaltClient:
     def _post(self, payload: dict | list, retry: bool = True) -> Any:
         if self._token is None:
             self.login()
-        resp = self._http.post(
-            "/", json=payload, headers={"X-Auth-Token": self._token}
-        )
+        resp = self._http.post("/", json=payload, headers={"X-Auth-Token": self._token})
         if resp.status_code == 401 and retry:
             self.login()
             return self._post(payload, retry=False)
@@ -76,10 +79,17 @@ class SaltClient:
     def wheel(self, fun: str, **kwargs: Any) -> Any:
         return self._post({"client": "wheel", "fun": fun, **kwargs})
 
-    def local(self, tgt: str, fun: str, arg: list | None = None,
-              tgt_type: str = "glob", timeout: int = 10,
-              asynchronous: bool = False, via: str = "local",
-              kwarg: dict | None = None) -> Any:
+    def local(
+        self,
+        tgt: str,
+        fun: str,
+        arg: list | None = None,
+        tgt_type: str = "glob",
+        timeout: int = 10,
+        asynchronous: bool = False,
+        via: str = "local",
+        kwarg: dict | None = None,
+    ) -> Any:
         """Run a function via the ``local`` zeromq path or ``ssh`` roster path.
 
         salt-ssh runs synchronously with its own (longer) timeout: roster
@@ -89,19 +99,30 @@ class SaltClient:
         """
         if via == "ssh":
             payload: dict = {
-                "client": "ssh", "tgt": tgt, "fun": fun,
-                "arg": arg or [], "tgt_type": tgt_type, "timeout": timeout,
+                "client": "ssh",
+                "tgt": tgt,
+                "fun": fun,
+                "arg": arg or [],
+                "tgt_type": tgt_type,
+                "timeout": timeout,
                 "ignore_invalid": True,
             }
         elif asynchronous:
             payload = {
-                "client": "local_async", "tgt": tgt, "fun": fun,
-                "arg": arg or [], "tgt_type": tgt_type,
+                "client": "local_async",
+                "tgt": tgt,
+                "fun": fun,
+                "arg": arg or [],
+                "tgt_type": tgt_type,
             }
         else:
             payload = {
-                "client": "local", "tgt": tgt, "fun": fun,
-                "arg": arg or [], "tgt_type": tgt_type, "timeout": timeout,
+                "client": "local",
+                "tgt": tgt,
+                "fun": fun,
+                "arg": arg or [],
+                "tgt_type": tgt_type,
+                "timeout": timeout,
             }
         if kwarg:
             payload["kwarg"] = kwarg
@@ -120,7 +141,9 @@ class SaltClient:
         if self._token is None:
             self.login()
         with self._http.stream(
-            "GET", "/events", headers={"X-Auth-Token": self._token},
+            "GET",
+            "/events",
+            headers={"X-Auth-Token": self._token},
             timeout=httpx.Timeout(idle_timeout),
         ) as resp:
             if resp.status_code == 401:
@@ -128,9 +151,7 @@ class SaltClient:
                 yield from self.event_stream()
                 return
             if resp.status_code != 200:
-                raise SaltApiError(
-                    f"salt-api /events failed: HTTP {resp.status_code}"
-                )
+                raise SaltApiError(f"salt-api /events failed: HTTP {resp.status_code}")
             data = ""
             for line in resp.iter_lines():
                 if line.startswith("data:"):

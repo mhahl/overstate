@@ -1,156 +1,82 @@
-"""Minion inventory: live list merged from Salt, snapshot cache, detail tabs."""
+"""Minion inventory: live list merged from Salt, snapshot cache, detail tabs.
+
+Routes only: helpers live in :mod:`overstate_ui.minions_helpers` and
+are re-exported here so existing ``overstate_ui.minions.*`` import
+paths keep working.
+"""
 
 import csv
 import io
-import re
 
-from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    Response,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import current_user, login_required
-from .auth import roles_required
 
 from .audit import log_event
+from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
-from .inventory import GRAIN_COLUMNS, refresh_inventory
+from .inventory import GRAIN_COLUMNS
+from .minions_helpers import (
+    HOST_RE,
+    ONBOARD_DISTROS,
+    ONBOARD_INSTALL,
+    OS_ICONS,
+    PRESENCE_ORDER,
+    _beacon_refusal,
+    build_onboard_script,
+    live_roster,
+    minion_rows,
+    normalize_grains,
+    onboard_inputs,
+    os_icon_slug,
+    parse_beacon_list,
+    presence_of,
+    refresh_sync,
+)
 from .models import Job, JobReturn, Minion
 from .salt_client import SaltApiError
 
 bp = Blueprint("minions", __name__, url_prefix="/minions")
 
 PAGE_SIZES = (10, 25, 50)
-DETAIL_TABS = ["overview", "states", "jobs", "schedule", "pillar",
-               "beacons", "mine"]
+DETAIL_TABS = ["overview", "states", "jobs", "schedule", "pillar", "beacons", "mine"]
 BEACON_ACTIONS = {
     "enable": "beacons.enable_beacon",
     "disable": "beacons.disable_beacon",
 }
 SORT_COLUMNS = ("id", "key", "presence", "os")
-PRESENCE_ORDER = {"up": 0, "dead": 1, "down": 2}
-ONBOARD_DISTROS = ("opensuse", "fedora")
-ONBOARD_INSTALL = {
-    "opensuse": "sudo zypper -n install salt-minion",
-    "fedora": "sudo dnf -y install salt-minion",
-}
-HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$")
 
-
-OS_ICONS = (
-    ("fedora", "fedora"),
-    ("opensuse", "opensuse"),
-    ("suse", "opensuse"),
-    ("ubuntu", "ubuntu"),
-    ("debian", "debian"),
-    ("centos", "centos"),
-    ("red hat", "redhat"),
-    ("rhel", "redhat"),
-    ("alma", "almalinux"),
-    ("rocky", "rockylinux"),
-    ("arch", "archlinux"),
-    ("gentoo", "gentoo"),
-    ("freebsd", "freebsd"),
-    ("windows", "windows"),
-    ("macos", "apple"),
-    ("darwin", "apple"),
-)
-
-
-def os_icon_slug(grains: dict) -> str:
-    """Simple Icons slug for the minion OS; generic Linux fallback."""
-    hay = f"{grains.get('os', '')} {grains.get('osfinger', '')}".lower()
-    for needle, slug in OS_ICONS:
-        if needle in hay:
-            return slug
-    return "linux"
-
-
-def presence_of(row: dict) -> str:
-    if row["up"]:
-        return "up"
-    if row["dead"]:
-        return "dead"
-    return "down"
-
-
-def parse_beacon_list(value) -> dict:
-    """Parse beacons.list output. With ``return_yaml=False`` this is a
-    mapping of beacon name to config; anything else (a YAML string on
-    older renders, None on an empty set) yields {} and the caller
-    shows the raw payload or the empty state instead."""
-    if isinstance(value, dict):
-        return dict(value)
-    return {}
-
-
-def live_roster(client) -> tuple[dict[str, str], set[str]]:
-    """Return ({minion_id: key_status}, {up minion ids}); offline-safe."""
-    statuses: dict[str, str] = {}
-    up: set[str] = set()
-    try:
-        listed = client.wheel("key.list_all")[0]["data"]["return"]
-        for mid in listed.get("minions", []):
-            statuses[mid] = "accepted"
-        for mid in listed.get("minions_pre", []):
-            statuses[mid] = "pending"
-        for mid in listed.get("minions_rejected", []):
-            statuses[mid] = "rejected"
-        for mid in listed.get("minions_denied", []):
-            statuses[mid] = "denied"
-        up = set(client.runner("manage.status")[0].get("up", []))
-    except (SaltApiError, KeyError, IndexError, TypeError):
-        pass
-    return statuses, up
-
-
-def normalize_grains(grains) -> dict:
-    """Coerce snapshot/live grains for display. Proxy minions and older
-    releases omit keys or report scalars (e.g. a single ipv4 string)."""
-    if not isinstance(grains, dict):
-        return {}
-    grains = dict(grains)
-    ipv4 = grains.get("ipv4")
-    if isinstance(ipv4, str):
-        grains["ipv4"] = [ipv4]
-    elif not isinstance(ipv4, list):
-        grains["ipv4"] = []
-    return grains
-
-
-def minion_rows(statuses: dict, up: set, q: str, status_filter: str,
-                 sort: str = "id", direction: str = "asc") -> list[dict]:
-    session = get_session()
-    by_id: dict[str, dict] = {}
-    for row in session.query(Minion).order_by(Minion.id).all():
-        by_id[row.id] = {
-            "id": row.id,
-            "key_status": row.key_status,
-            "up": False,
-            "dead": False,
-            "last_seen": row.last_seen,
-            "grains": normalize_grains(row.grains),
-        }
-    for mid, st in statuses.items():
-        by_id.setdefault(mid, {"id": mid, "key_status": st, "up": False,
-                               "dead": False, "last_seen": None, "grains": {}})
-        by_id[mid]["key_status"] = st
-    rows = []
-    for row in by_id.values():
-        row["up"] = row["id"] in up
-        row["dead"] = row["key_status"] == "accepted" and not row["up"] and bool(up)
-        if q and q not in row["id"]:
-            continue
-        if status_filter and row["key_status"] != status_filter:
-            continue
-        rows.append(row)
-    if sort == "key":
-        key = lambda r: (r["key_status"], r["id"])  # noqa: E731
-    elif sort == "presence":
-        key = lambda r: (PRESENCE_ORDER[presence_of(r)], r["id"])  # noqa: E731
-    elif sort == "os":
-        key = lambda r: (r["grains"].get("osfinger", ""), r["id"])  # noqa: E731
-    else:
-        key = lambda r: r["id"]  # noqa: E731
-    rows.sort(key=key, reverse=(direction == "desc"))
-    return rows
+__all__ = [
+    "BEACON_ACTIONS",
+    "DETAIL_TABS",
+    "HOST_RE",
+    "ONBOARD_DISTROS",
+    "ONBOARD_INSTALL",
+    "OS_ICONS",
+    "PAGE_SIZES",
+    "PRESENCE_ORDER",
+    "SORT_COLUMNS",
+    "_beacon_refusal",
+    "bp",
+    "build_onboard_script",
+    "live_roster",
+    "minion_rows",
+    "normalize_grains",
+    "onboard_inputs",
+    "os_icon_slug",
+    "parse_beacon_list",
+    "presence_of",
+    "refresh_sync",
+]
 
 
 @bp.route("/")
@@ -187,10 +113,19 @@ def index():
     total = len(rows)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
-    ctx = dict(rows=rows[(page - 1) * per_page: page * per_page],
-               q=q, status=status_filter, page=page, pages=pages,
-               per_page=per_page, total=total, grains=GRAIN_COLUMNS,
-               reachable=bool(statuses or up), sort=sort, direction=direction)
+    ctx = {
+        "rows": rows[(page - 1) * per_page : page * per_page],
+        "q": q,
+        "status": status_filter,
+        "page": page,
+        "pages": pages,
+        "per_page": per_page,
+        "total": total,
+        "grains": GRAIN_COLUMNS,
+        "reachable": bool(statuses or up),
+        "sort": sort,
+        "direction": direction,
+    }
     if request.headers.get("HX-Request") == "true":
         return render_template("_minion_rows.html", **ctx)
     return render_template("minions.html", **ctx)
@@ -204,8 +139,7 @@ def search():
     query = get_session().query(Minion.id)
     if q:
         query = query.filter(Minion.id.contains(q))
-    return jsonify([row[0] for row in
-                    query.order_by(Minion.id).limit(20).all()])
+    return jsonify([row[0] for row in query.order_by(Minion.id).limit(20).all()])
 
 
 @bp.route("/presence")
@@ -225,22 +159,43 @@ def export_csv():
     rows = minion_rows(statuses, up, "", "")
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["id", "key_status", "presence", "osfinger", "osrelease",
-                     "fqdn", "ipv4", "cpuarch", "num_cpus", "saltversion",
-                     "last_seen"])
+    writer.writerow(
+        [
+            "id",
+            "key_status",
+            "presence",
+            "osfinger",
+            "osrelease",
+            "fqdn",
+            "ipv4",
+            "cpuarch",
+            "num_cpus",
+            "saltversion",
+            "last_seen",
+        ]
+    )
     for r in rows:
         g = r["grains"]
-        writer.writerow([
-            r["id"], r["key_status"],
-            "up" if r["up"] else ("accepted-but-dead" if r["dead"] else "down"),
-            g.get("osfinger", ""), g.get("osrelease", ""), g.get("fqdn", ""),
-            ";".join(g.get("ipv4", [])), g.get("cpuarch", ""),
-            g.get("num_cpus", ""), g.get("saltversion", ""),
-            r["last_seen"].isoformat() if r["last_seen"] else "",
-        ])
-    return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition":
-                             "attachment; filename=minions.csv"})
+        writer.writerow(
+            [
+                r["id"],
+                r["key_status"],
+                "up" if r["up"] else ("accepted-but-dead" if r["dead"] else "down"),
+                g.get("osfinger", ""),
+                g.get("osrelease", ""),
+                g.get("fqdn", ""),
+                ";".join(g.get("ipv4", [])),
+                g.get("cpuarch", ""),
+                g.get("num_cpus", ""),
+                g.get("saltversion", ""),
+                r["last_seen"].isoformat() if r["last_seen"] else "",
+            ]
+        )
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=minions.csv"},
+    )
 
 
 @bp.post("/refresh")
@@ -262,54 +217,6 @@ def refresh():
     return redirect(url_for("minions.index"))
 
 
-def refresh_sync() -> None:
-    """Synchronous refresh. Worker fallback and no-Redis path."""
-    client = get_salt()
-    try:
-        statuses, _ = live_roster(client)
-        count = refresh_inventory(client, statuses)
-    except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
-    else:
-        flash(f"Inventory refreshed: {count} minions.", "success")
-
-
-
-
-def build_onboard_script(distro: str, master: str, mid: str) -> str:
-    """Render a join script for a new minion. Inputs must already match
-    HOST_RE / ONBOARD_DISTROS; values are shell-safe by construction."""
-    install = ONBOARD_INSTALL[distro]
-    return (
-        "#!/bin/sh\n"
-        f"# Generated by Overstate: joins this machine to '{master}' as '{mid}'.\n"
-        "# Review, then run as root on the new minion.\n"
-        "set -eu\n"
-        f"{install}\n"
-        f"printf 'master: {master}\\nid: {mid}\\n'"
-        " | sudo tee /etc/salt/minion > /dev/null\n"
-        "sudo systemctl enable --now salt-minion\n"
-        f"echo \"Minion '{mid}' started. Accept its key in Overstate > Keys, then run test.ping.\"\n"
-    )
-
-
-def onboard_inputs(args) -> tuple[str, str, str] | None:
-    """Validated (distro, master, mid) from the wizard form, or None when
-    the form was not submitted or failed validation (caller flashes)."""
-    if "mid" not in args and "master" not in args:
-        return None
-    from .settings import get_setting
-
-    mid = args.get("mid", "").strip()
-    distro = args.get("distro", "opensuse")
-    master = args.get("master", get_setting("master_host")).strip()
-    if (not mid or distro not in ONBOARD_DISTROS or not HOST_RE.match(mid)
-            or not master or not HOST_RE.match(master)):
-        flash("Minion id and master must be valid hostnames; pick a distribution.", "error")
-        return None
-    return (distro, master, mid)
-
-
 @bp.route("/onboard")
 @login_required
 def onboard():
@@ -323,9 +230,13 @@ def onboard():
     master_host = get_setting("master_host")
     inputs = onboard_inputs(request.args)
     script = build_onboard_script(*inputs) if inputs else None
-    return render_template("onboard.html", master_host=master_host,
-                           pending=pending, reachable=bool(statuses),
-                           script=script)
+    return render_template(
+        "onboard.html",
+        master_host=master_host,
+        pending=pending,
+        reachable=bool(statuses),
+        script=script,
+    )
 
 
 @bp.route("/onboard/script")
@@ -336,10 +247,11 @@ def onboard_script():
     if inputs is None:
         return redirect(url_for("minions.onboard"))
     distro, master, mid = inputs
-    return Response(build_onboard_script(distro, master, mid),
-                    mimetype="text/x-shellscript",
-                    headers={"Content-Disposition":
-                             f"attachment; filename=onboard-{mid}.sh"})
+    return Response(
+        build_onboard_script(distro, master, mid),
+        mimetype="text/x-shellscript",
+        headers={"Content-Disposition": f"attachment; filename=onboard-{mid}.sh"},
+    )
 
 
 @bp.route("/<mid>")
@@ -364,8 +276,8 @@ def detail(mid: str):
             # schedule arrives as {} so the empty state triggers,
             # not as the string "schedule: {}\n" (see schedules.index).
             data["schedule"] = client.local(
-                mid, "schedule.list",
-                kwarg={"return_yaml": False})[0].get(mid, {})
+                mid, "schedule.list", kwarg={"return_yaml": False}
+            )[0].get(mid, {})
         elif tab == "pillar":
             data["pillar"] = client.local(mid, "pillar.items")[0].get(mid)
         elif tab == "mine":
@@ -377,11 +289,10 @@ def detail(mid: str):
             data["mine_found"] = False
             data["mine_value"] = None
             if mine_fun:
-                stored = client.local(
-                    mid, "mine.get",
-                    arg=[mid, mine_fun])[0].get(mid, {})
-                value = stored.get(mid) if isinstance(stored, dict) \
-                    else stored
+                stored = client.local(mid, "mine.get", arg=[mid, mine_fun])[0].get(
+                    mid, {}
+                )
+                value = stored.get(mid) if isinstance(stored, dict) else stored
                 if value is not None:
                     data["mine_found"] = True
                     data["mine_value"] = value
@@ -390,8 +301,9 @@ def detail(mid: str):
             # schedules.index). A second pillar-excluded call
             # attributes the `pillar` source badge; when it fails
             # no badge is shown rather than a wrong one.
-            value = client.local(mid, "beacons.list",
-                                 kwarg={"return_yaml": False})[0].get(mid, {})
+            value = client.local(mid, "beacons.list", kwarg={"return_yaml": False})[
+                0
+            ].get(mid, {})
             entries = parse_beacon_list(value)
             data["beacon_entries"] = entries
             data["beacon_pillar"] = set()
@@ -400,15 +312,16 @@ def detail(mid: str):
             elif entries:
                 try:
                     local_value = client.local(
-                        mid, "beacons.list",
-                        kwarg={"return_yaml": False,
-                               "include_pillar": False})[0].get(mid, {})
+                        mid,
+                        "beacons.list",
+                        kwarg={"return_yaml": False, "include_pillar": False},
+                    )[0].get(mid, {})
                 except SaltApiError:
                     pass
                 else:
-                    data["beacon_pillar"] = (set(entries)
-                                             - set(parse_beacon_list(
-                                                 local_value)))
+                    data["beacon_pillar"] = set(entries) - set(
+                        parse_beacon_list(local_value)
+                    )
     except SaltApiError as exc:
         error = str(exc)
     sort = request.args.get("sort", "jid")
@@ -419,7 +332,8 @@ def detail(mid: str):
         direction = "desc"
     if tab == "jobs":
         returns = (
-            get_session().query(JobReturn)
+            get_session()
+            .query(JobReturn)
             .filter_by(minion_id=mid)
             .order_by(JobReturn.jid.desc())
             .limit(20)
@@ -431,41 +345,43 @@ def detail(mid: str):
                 return (0 if r.success else 1, r.jid)
             return r.jid
 
-        data["returns"] = sorted(returns, key=ret_key,
-                                 reverse=(direction == "desc"))
+        data["returns"] = sorted(returns, key=ret_key, reverse=(direction == "desc"))
     recent = []
     if tab == "overview":
         recent_returns = (
-            get_session().query(JobReturn).filter_by(minion_id=mid)
-            .order_by(JobReturn.jid.desc()).limit(5).all())
-        funs = {j.jid: j.fun for j in get_session().query(Job).filter(
-            Job.jid.in_([r.jid for r in recent_returns])).all()}
-        recent = [{"ret": r, "fun": funs.get(r.jid, "—")}
-                  for r in recent_returns]
-    ctx = dict(mid=mid, tab=tab, tabs=DETAIL_TABS, data=data, error=error,
-               snapshot=bool(row), sort=sort, direction=direction,
-               key_status=row.key_status if row else None,
-               last_seen=row.last_seen if row else None,
-               conformity=(row.conformity or {}) if row else {},
-               recent=recent, os_icon=os_icon_slug(data["grains"]))
+            get_session()
+            .query(JobReturn)
+            .filter_by(minion_id=mid)
+            .order_by(JobReturn.jid.desc())
+            .limit(5)
+            .all()
+        )
+        funs = {
+            j.jid: j.fun
+            for j in get_session()
+            .query(Job)
+            .filter(Job.jid.in_([r.jid for r in recent_returns]))
+            .all()
+        }
+        recent = [{"ret": r, "fun": funs.get(r.jid, "—")} for r in recent_returns]
+    ctx = {
+        "mid": mid,
+        "tab": tab,
+        "tabs": DETAIL_TABS,
+        "data": data,
+        "error": error,
+        "snapshot": bool(row),
+        "sort": sort,
+        "direction": direction,
+        "key_status": row.key_status if row else None,
+        "last_seen": row.last_seen if row else None,
+        "conformity": (row.conformity or {}) if row else {},
+        "recent": recent,
+        "os_icon": os_icon_slug(data["grains"]),
+    }
     if tab == "jobs" and request.headers.get("HX-Request") == "true":
         return render_template("_minion_returns.html", **ctx)
     return render_template("minion_detail.html", **ctx)
-
-
-def _beacon_refusal(outcome, mid: str) -> str | None:
-    """Salt's own refusal text when a toggle changed nothing.
-
-    Pillar-defined beacons answer ``{mid: {comment, result: False}}``
-    with HTTP 200, so a missing exception means nothing here: surface
-    the comment instead of flashing success.
-    """
-    if isinstance(outcome, list) and outcome \
-            and isinstance(outcome[0], dict):
-        ret = outcome[0].get(mid)
-        if isinstance(ret, dict) and ret.get("result") is False:
-            return str(ret.get("comment") or "toggle changed nothing.")
-    return None
 
 
 @bp.post("/<mid>/beacons/<action>")
