@@ -37,7 +37,7 @@
         {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
       </select>
     </label>
-    <button class="btn btn-sm btn-primary">Compare</button>
+    <button class="btn btn-sm btn-primary mb-1">Compare</button>
   </div>
 </form>
 {% if compared %}
