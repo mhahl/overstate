@@ -45,6 +45,13 @@ def test_quadlet_units_cover_all_services():
     assert "PublishPort" not in app  # Caddy is the only front door
 
 
+def test_install_tolerates_generator_wiring():
+    install = (REPO / "scripts" / "install.sh").read_text()
+    assert "enable_unit()" in install
+    assert "is-enabled" in install
+    assert "systemctl enable --now overstate-" not in install
+
+
 def test_install_targets_leap_16():
     install = (REPO / "scripts" / "install.sh").read_text()
     assert "opensuse-leap" in install

@@ -159,8 +159,22 @@ fi
 echo "==> installing Quadlet units"
 cp "$REPO"/deploy/quadlet/overstate-*.container "$REPO"/deploy/quadlet/overstate.network "$UNITS/"
 systemctl daemon-reload
-systemctl enable --now overstate-postgres.service overstate-redis.service \
-  overstate-salt-master.service
+enable_unit() { # enable + start one service, tolerating generator wiring
+  # The Quadlet generator wires [Install] WantedBy itself at reload, and
+  # systemd then refuses `enable` on the generated file ("transient or
+  # generated"). When that happens, starting the already-wired unit is
+  # the correct recovery; anything else is a real failure.
+  if systemctl enable --now "$1" 2>/dev/null; then
+    return 0
+  fi
+  case "$(systemctl is-enabled "$1" 2>/dev/null)" in
+    enabled|generated) systemctl start "$1" ;;
+    *) echo "error: cannot enable $1" >&2; return 1 ;;
+  esac
+}
+enable_unit overstate-postgres.service
+enable_unit overstate-redis.service
+enable_unit overstate-salt-master.service
 
 echo "==> waiting for salt-api"
 API_UP=""
@@ -175,8 +189,9 @@ for _ in $(seq 1 30); do
 done
 [ -n "$API_UP" ] || echo "WARNING: salt-api is not answering; check 'journalctl -u overstate-salt-master'" >&2
 
-systemctl enable --now overstate-worker.service overstate-app.service \
-  overstate-caddy.service
+enable_unit overstate-worker.service
+enable_unit overstate-app.service
+enable_unit overstate-caddy.service
 
 # shellcheck disable=SC1091
 source "$ENV_FILE"

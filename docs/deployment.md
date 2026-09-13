@@ -251,6 +251,13 @@ Wrong time breaks key exchange in confusing ways; run NTP everywhere.
 
 ## Troubleshooting
 
+- **Install fails with "transient or generated" on enable.** The
+  Quadlet generator already wired the unit's `[Install]` section and
+  systemd refuses `enable` on its own generated copy. `install.sh`
+  detects this (`is-enabled` reports `generated`) and starts the
+  unit directly. If it still fails, the unit file never generated:
+  check `podman --version`, confirm the `.container` file is in
+  `/etc/containers/systemd/`, and rerun `systemctl daemon-reload`.
 - **Dashboard shows salt-api unreachable.** Check the URL, the CA
   mount, and the eauth password. `curl` the `/login` endpoint from
   the app container with the service credentials.

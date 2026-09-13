@@ -1,4 +1,4 @@
-"""Overstate configuration — env only, per PLAN.md. Never store secrets in the DB."""
+"""Overstate configuration — env only. Never store secrets in the DB."""
 
 import os
 
