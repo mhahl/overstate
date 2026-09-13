@@ -19,13 +19,15 @@
       <span class="fieldset-legend">Search</span>
       <input type="search" name="q" value="{{ q }}" placeholder="Search name or member…" class="input input-sm">
     </label>
-    <button class="btn btn-sm">Filter</button>
+    <button class="btn btn-sm mb-1">Filter</button>
+    {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
+{% import "_macros.html" as m %}
 <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="overflow-x-auto">
     <table class="table table-sm table-zebra w-full">
-      <thead><tr><th>Name</th><th class="text-right">Members</th><th>IDs</th><th class="text-right">Use</th>{% if current_user.role in ["operator", "admin"] %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
+      <thead><tr>{{ m.sort_th_plain('groups.index', 'name', 'Name', sort, direction, {'q': q}) }}{{ m.sort_th_plain('groups.index', 'members', 'Members', sort, direction, {'q': q}) }}<th>IDs</th><th class="text-right">Use</th>{% if current_user.role in ["operator", "admin"] %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
       <tbody>
         {% for g in groups %}
         <tr>
@@ -55,9 +57,9 @@
     {% endif %}
   </div>
   <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
-    {% if page > 1 %}<a class="btn btn-sm" href="{{ url_for('groups.index', q=q, page=page-1, per_page=per_page) }}">‹ Prev</a>{% endif %}
+    {% if page > 1 %}<a class="btn btn-sm" href="{{ url_for('groups.index', q=q, page=page-1, per_page=per_page, sort=sort, dir=direction) }}">‹ Prev</a>{% endif %}
     <span class="text-sm opacity-70">Page {{ page }} of {{ pages }}</span>
-    {% if page < pages %}<a class="btn btn-sm" href="{{ url_for('groups.index', q=q, page=page+1, per_page=per_page) }}">Next ›</a>{% endif %}
+    {% if page < pages %}<a class="btn btn-sm" href="{{ url_for('groups.index', q=q, page=page+1, per_page=per_page, sort=sort, dir=direction) }}">Next ›</a>{% endif %}
   </div>
 </div>
 {% if current_user.role in ["operator", "admin"] %}

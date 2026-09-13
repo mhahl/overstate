@@ -2,6 +2,13 @@
 <a href="{{ href }}" hx-get="{{ href }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true" class="{{ cls }}">{{ text|safe }}</a>
 {% endmacro %}
 
+{% macro sort_th_plain(endpoint, col, label, sort, direction, params) %}
+{% set active = (sort == col) %}
+{% set next_dir = 'desc' if (active and direction == 'asc') else 'asc' %}
+{% set href = url_for(endpoint, sort=col, dir=next_dir, **params) %}
+<th aria-sort="{{ direction if active else 'none' }}" class="whitespace-nowrap"><a href="{{ href }}" class="inline-flex items-center gap-1 hover:underline">{{ label }}{% if active %} <span aria-hidden="true">{{ '↑' if direction == 'asc' else '↓' }}</span>{% endif %}</a></th>
+{% endmacro %}
+
 {% macro sort_th(endpoint, col, label, sort, direction, params, target, reset_page=true) %}
 {% set active = (sort == col) %}
 {% set next_dir = 'desc' if (active and direction == 'asc') else 'asc' %}

@@ -68,6 +68,14 @@ def test_pillar_index_lists_minions(client):
     assert "web-01" in html and "Compare two minions" in html
 
 
+def test_pillar_index_search_and_snapshot_sort(client):
+    html = client.get("/pillar/?q=web-02").data.decode()
+    assert 'href="/pillar/web-02"' in html
+    assert 'href="/pillar/web-01"' not in html
+    html = client.get("/pillar/?sort=snapshots&dir=desc").data.decode()
+    assert 'aria-sort="desc"' in html
+
+
 def test_capture_stores_and_prunes(client):
     for _ in range(SNAPSHOT_LIMIT + 3):
         rv = client.post("/pillar/web-01/capture")

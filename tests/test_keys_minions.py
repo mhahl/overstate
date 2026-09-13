@@ -80,6 +80,19 @@ def test_keys_tabs(client):
     assert "web-01" in html
 
 
+def test_keys_search_filters_within_tab(client):
+    html = client.get("/keys/?tab=accepted&q=zzz-nope").data.decode()
+    assert "No accepted keys" in html
+    html = client.get("/keys/?tab=accepted&q=web").data.decode()
+    assert "web-01" in html
+
+
+def test_keys_sort_direction_flips(client):
+    asc = client.get("/keys/?tab=accepted&sort=id&dir=asc").data.decode()
+    desc = client.get("/keys/?tab=accepted&sort=id&dir=desc").data.decode()
+    assert 'aria-sort="asc"' in asc and 'aria-sort="desc"' in desc
+
+
 def test_key_accept_writes_audit_row():
     init_db("sqlite://")
     app = create_app(TestConfig)

@@ -13,8 +13,23 @@ bp = Blueprint("users", __name__, url_prefix="/users")
 @bp.route("/")
 @roles_required("admin")
 def index():
-    users = get_session().query(User).order_by(User.username).all()
-    return render_template("users.html", users=users, roles=list(LEVELS))
+    role = request.args.get("role", "")
+    if role not in LEVELS:
+        role = ""
+    sort = request.args.get("sort", "username")
+    if sort not in ("username", "role"):
+        sort = "username"
+    direction = request.args.get("dir", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    query = get_session().query(User)
+    if role:
+        query = query.filter_by(role=role)
+    col = User.username if sort == "username" else User.role
+    col = col.desc() if direction == "desc" else col.asc()
+    users = query.order_by(col, User.username).all()
+    return render_template("users.html", users=users, roles=list(LEVELS),
+                           role=role, sort=sort, direction=direction)
 
 
 @bp.post("/<int:uid>/role")

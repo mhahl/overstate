@@ -7,6 +7,8 @@
     <p class="text-sm opacity-70 mt-0.5">Per-minion Salt scheduler jobs.</p>
   </div>
   <form method="get">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
     <label class="fieldset">
       <span class="fieldset-legend">Minion</span>
       <select name="minion" class="select select-sm" onchange="this.form.submit()">
@@ -53,7 +55,8 @@
 {% if entries is mapping and entries %}
 <div class="card bg-base-100 border border-base-300 shadow-sm">
 <div class="overflow-x-auto">
-<table class="table table-sm table-zebra"><thead><tr><th>Job</th><th>Function</th><th>When</th><th>Enabled</th><th class="text-right"></th></tr></thead><tbody>
+{% import "_macros.html" as m %}
+<table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th_plain('schedules.index', 'name', 'Job', sort, direction, {'minion': mid}) }}{{ m.sort_th_plain('schedules.index', 'function', 'Function', sort, direction, {'minion': mid}) }}<th>When</th><th>Enabled</th><th class="text-right"></th></tr></thead><tbody>
 {% for name, job in entries.items() %}
 <tr><td class="font-mono text-xs">{{ name }}</td>
 <td class="font-mono text-xs">{{ job.get("function", "–") }}</td>

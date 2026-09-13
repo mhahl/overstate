@@ -5,22 +5,27 @@
   <h1 class="text-2xl font-bold tracking-tight">Audit</h1>
   <p class="text-sm opacity-70 mt-0.5">Who changed what, and the Salt job it became. {{ total }} event{{ "s" if total != 1 }}.</p>
 </div>
-<form method="get" action="{{ url_for('audit.index') }}" class="flex flex-wrap items-end gap-2 mb-4">
-  <label class="fieldset w-full sm:max-w-xs">
-    <span class="fieldset-legend">User</span>
-    <input name="user" value="{{ user }}" class="input input-sm w-full" autocomplete="off">
-  </label>
-  <label class="fieldset w-full sm:max-w-xs">
-    <span class="fieldset-legend">Action</span>
-    <input name="action" value="{{ action }}" class="input input-sm w-full" autocomplete="off">
-  </label>
-  <button class="btn btn-sm">Filter</button>
-  {% if user or action %}<a class="btn btn-sm btn-ghost" href="{{ url_for('audit.index') }}">Clear</a>{% endif %}
+{% import "_macros.html" as m %}
+<form method="get" action="{{ url_for('audit.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
+  <div class="card-body flex-row flex-wrap items-end gap-2">
+    <label class="fieldset flex-1 min-w-48">
+      <span class="fieldset-legend">User</span>
+      <input name="user" value="{{ user }}" placeholder="Search user…" class="input input-sm w-full" autocomplete="off">
+    </label>
+    <label class="fieldset flex-1 min-w-48">
+      <span class="fieldset-legend">Action</span>
+      <input name="action" value="{{ action }}" placeholder="Search action…" class="input input-sm w-full" autocomplete="off">
+    </label>
+    <button class="btn btn-sm mb-1">Filter</button>
+    {% if user or action %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
+  </div>
 </form>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="overflow-x-auto">
     <table class="table table-zebra table-sm w-full">
-      <thead><tr><th>When</th><th>User</th><th>Action</th><th>Job</th></tr></thead>
+      <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action}) }}<th>Job</th></tr></thead>
       <tbody>
         {% for e in events %}
         <tr>
@@ -38,9 +43,9 @@
 </div>
 {% if pages > 1 %}
 <div class="join mt-4">
-  {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('audit.index', user=user, action=action, page=page-1) }}">‹ Prev</a>{% endif %}
+  {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('audit.index', user=user, action=action, page=page-1, sort=sort, dir=direction) }}">‹ Prev</a>{% endif %}
   <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('audit.index', user=user, action=action, page=page+1) }}">Next ›</a>{% endif %}
+  {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('audit.index', user=user, action=action, page=page+1, sort=sort, dir=direction) }}">Next ›</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

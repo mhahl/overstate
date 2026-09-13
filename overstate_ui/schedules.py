@@ -87,8 +87,20 @@ def index():
                 raw = value
         except SaltApiError as exc:
             error = str(exc)
+    sort = request.args.get("sort", "name")
+    if sort not in ("name", "function"):
+        sort = "name"
+    direction = request.args.get("dir", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    if isinstance(entries, dict):
+        key = (lambda kv: kv[0]) if sort == "name" else (
+            lambda kv: (str(kv[1].get("function", "")), kv[0]))
+        entries = dict(sorted(entries.items(), key=key,
+                              reverse=(direction == "desc")))
     return render_template("schedules.html", minions=accepted, mid=mid,
-                           entries=entries, raw=raw, error=error)
+                           entries=entries, raw=raw, error=error,
+                           sort=sort, direction=direction)
 
 
 @bp.post("/<mid>/add")

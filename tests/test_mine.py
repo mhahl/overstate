@@ -83,6 +83,12 @@ def test_values_table_and_staleness_note():
     assert CALLS and CALLS[0]["fun"] == "mine.get"
 
 
+def test_minion_sort_direction_toggles():
+    html = query(make_client(), dir="desc").data.decode()
+    assert 'aria-sort="desc"' in html
+    assert "dir=asc" in html  # header link flips back
+
+
 def test_empty_function_explains():
     html = query(make_client(), fun="nosuch").data.decode()
     assert "nothing stored" in html

@@ -11,17 +11,31 @@
   <span>Syndic topology: this roster is the local master only. Upstream master(s): {{ syndic_masters|join(", ") }}. Key actions here stay local.</span>
 </div>
 {% endif %}
+{% import "_macros.html" as m %}
+<form method="get" action="{{ url_for('keys.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
+  <div class="card-body flex-row flex-wrap items-end gap-2">
+    <label class="fieldset flex-1 min-w-48">
+      <span class="fieldset-legend">Search</span>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search id or fingerprint…" class="input input-sm">
+    </label>
+    <button class="btn btn-sm mb-1">Filter</button>
+    {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('keys.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
+  </div>
+</form>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
 <div class="tabs tabs-border px-3 pt-2" role="tablist">
   {% for name in ["pending", "accepted", "rejected", "denied"] %}
-  <a role="tab" href="{{ url_for('keys.index', tab=name) }}" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }} <span class="badge badge-sm {{ 'badge-warning' if name == 'pending' else 'badge-neutral' }} ml-1">{{ counts[name] }}</span></a>
+  <a role="tab" href="{{ url_for('keys.index', tab=name, q=q, sort=sort, dir=direction) }}" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }} <span class="badge badge-sm {{ 'badge-warning' if name == 'pending' else 'badge-neutral' }} ml-1">{{ counts[name] }}</span></a>
   {% endfor %}
 </div>
 <div class="border-t border-base-300">
 {% if rows %}
 <div class="overflow-x-auto">
 <table class="table table-zebra">
-  <thead><tr><th>Minion</th><th>Fingerprint</th><th class="w-48 text-right">Action</th></tr></thead>
+  <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q}) }}<th>Fingerprint</th><th class="w-48 text-right">Action</th></tr></thead>
   <tbody>
   {% for row in rows %}
   <tr>
@@ -30,10 +44,10 @@
     <td class="text-right">
       <span class="join join-horizontal">
       {% if tab == "pending" %}
-      <form method="post" action="{{ url_for('keys.act', action='accept') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><button class="btn btn-sm btn-success join-item">Accept</button></form>
-      <form method="post" action="{{ url_for('keys.act', action='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><button class="btn btn-sm join-item">Reject</button></form>
+      <form method="post" action="{{ url_for('keys.act', action='accept') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-success join-item">Accept</button></form>
+      <form method="post" action="{{ url_for('keys.act', action='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm join-item">Reject</button></form>
       {% else %}
-      <form method="post" action="{{ url_for('keys.act', action='delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
+      <form method="post" action="{{ url_for('keys.act', action='delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
       {% endif %}
       </span>
     </td>

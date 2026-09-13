@@ -59,6 +59,20 @@ def group_named(name):
     return get_session().query(MinionGroup).filter_by(name=name).first()
 
 
+def test_groups_sort_by_members(app, admin):
+    with app.app_context():
+        get_session().add(MinionGroup(name="big",
+                                      members=["web-01", "web-02", "db-01"]))
+        get_session().add(MinionGroup(name="small", members=["web-01"]))
+        get_session().commit()
+    html = admin.get("/groups/?sort=members&dir=desc").data.decode()
+    assert (html.index('<td class="font-medium">big</td>')
+            < html.index('<td class="font-medium">small</td>'))
+    html = admin.get("/groups/?sort=members&dir=asc").data.decode()
+    assert (html.index('<td class="font-medium">small</td>')
+            < html.index('<td class="font-medium">big</td>'))
+
+
 def test_create_rename_edit_delete(admin, app):
     rv = admin.post("/groups",
                     data={"name": "web", "members": "web-01, web-02 web-01"},

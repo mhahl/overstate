@@ -13,10 +13,27 @@
       {% for m in messages %}<div class="alert alert-info mb-2" role="alert">{{ m }}</div>{% endfor %}
     {% endif %}
   {% endwith %}
+  {% import "_macros.html" as m %}
+  <form method="get" action="{{ url_for('users.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    <div class="card-body flex-row flex-wrap items-end gap-2">
+      <label class="fieldset">
+        <span class="fieldset-legend">Role</span>
+        <select name="role" class="select select-sm" onchange="this.form.requestSubmit()">
+          <option value="">All roles</option>
+          {% for r in roles %}
+          <option value="{{ r }}"{% if role == r %} selected{% endif %}>{{ r|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if role %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('users.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
+    </div>
+  </form>
   <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="overflow-x-auto">
   <table class="table table-zebra w-full">
-    <thead><tr><th>Username</th><th>Role</th><th>Auth</th><th class="text-right">Actions</th></tr></thead>
+    <thead><tr>{{ m.sort_th_plain('users.index', 'username', 'Username', sort, direction, {'role': role}) }}{{ m.sort_th_plain('users.index', 'role', 'Role', sort, direction, {'role': role}) }}<th>Auth</th><th class="text-right">Actions</th></tr></thead>
     <tbody>
     {% for u in users %}
       <tr>

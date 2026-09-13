@@ -80,6 +80,17 @@ def test_operator_can_mutate_but_not_admin_routes(client):
     assert client.get("/users/").status_code == 403
 
 
+def test_admin_users_page_filters_by_role_and_sorts(client):
+    login_as(client, "admin")
+    html = client.get("/users/?role=viewer").data.decode()
+    assert '<td class="font-medium">vwr</td>' in html
+    assert '<td class="font-medium">op</td>' not in html
+    html = client.get("/users/?sort=username&dir=desc").data.decode()
+    assert (html.find('<td class="font-medium">vwr</td>')
+            < html.find('<td class="font-medium">admin</td>'))
+    assert 'aria-sort="desc"' in html
+
+
 def test_admin_users_page_set_role_and_self_guard(client):
     login_as(client, "admin")
     assert client.get("/users/").status_code == 200

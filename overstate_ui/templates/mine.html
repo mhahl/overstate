@@ -9,6 +9,7 @@
 </div>
 {% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
 <form method="get" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <input type="hidden" name="dir" value="{{ direction }}">
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <label class="fieldset">
       <span class="fieldset-legend">Target</span>
@@ -33,8 +34,8 @@
 {% if entries %}
 <div class="card bg-base-100 border border-base-300 shadow-sm">
 <div class="overflow-x-auto">
-<table class="table table-sm table-zebra"><thead><tr><th>Minion</th><th>Value</th></tr></thead><tbody>
-{% for mid, value in entries.items()|sort %}
+<table class="table table-sm table-zebra"><thead><tr><th aria-sort="{{ direction }}"><a href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir='desc' if direction == 'asc' else 'asc') }}" class="inline-flex items-center gap-1 hover:underline">Minion <span aria-hidden="true">{{ '↑' if direction == 'asc' else '↓' }}</span></a></th><th>Value</th></tr></thead><tbody>
+{% for mid, value in entries.items()|sort(reverse=(direction == 'desc')) %}
 <tr><td class="font-mono text-xs"><a class="link" href="{{ url_for('minions.detail', mid=mid) }}">{{ mid }}</a></td>
 <td class="font-mono text-xs break-all">{{ value | tojson }}</td></tr>
 {% endfor %}

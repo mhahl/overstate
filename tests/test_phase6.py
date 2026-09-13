@@ -128,6 +128,14 @@ def test_schedules_index_and_actions(client):
             AuditEvent.action.like("schedule-%")).count() == 3
 
 
+def test_schedules_sort_headers_carry_minion(client):
+    html = client.get("/schedules/").data.decode()
+    assert 'aria-sort="asc"' in html
+    assert "sort=function" in html and "minion=web-01" in html
+    html = client.get("/schedules/?sort=bogus").data.decode()
+    assert 'aria-sort="asc"' in html  # invalid falls back to name
+
+
 def test_schedules_add_form_visible(client):
     html = client.get("/schedules/").data.decode()
     assert "Add schedule" in html

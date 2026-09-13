@@ -135,6 +135,15 @@ def test_new_prefills_fun_and_args(client):
     assert 'name="args" value="a"' in html
 
 
+def test_jobs_history_search_filters_rows(client):
+    html = client.get("/jobs/?tab=history&q=highstate").data.decode()
+    assert "20260910123000000002" in html  # highstate row stays
+    assert "20260910120000000001" not in html  # ping row filtered out
+    plain = client.get("/jobs/?tab=history").data.decode()
+    assert "20260910120000000001" in plain
+    assert "20260910123000000002" in plain
+
+
 def test_jobs_page_pause_labels_scope(client):
     html = client.get("/jobs/").data.decode()
     assert "Pause live updates" in html

@@ -51,6 +51,15 @@ def test_audit_filters_narrow():
     assert "action-19" in html and "action-00" not in html
 
 
+def test_audit_sorts_by_action_and_user():
+    c = make_client()
+    html = c.get("/audit/?sort=action&dir=asc").data.decode()
+    assert html.find("action-00") < html.find("action-01")
+    assert 'aria-sort="asc"' in html
+    html = c.get("/audit/?sort=user&dir=asc").data.decode()
+    assert html.find(">admin<") < html.find(">op<")
+
+
 def test_audit_pagination_bounds():
     c = make_client()
     with c.application.app_context():

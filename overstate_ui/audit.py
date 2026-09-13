@@ -43,8 +43,17 @@ def index():
     total = query.count()
     pages = max(1, -(-total // page_size))
     page = min(page, pages)
-    events = (query.order_by(AuditEvent.id.desc())
+    sort = request.args.get("sort", "when")
+    if sort not in ("when", "user", "action"):
+        sort = "when"
+    direction = request.args.get("dir", "desc")
+    if direction not in ("asc", "desc"):
+        direction = "desc"
+    order = {"when": AuditEvent.id, "user": AuditEvent.user,
+             "action": AuditEvent.action}[sort]
+    order = order.desc() if direction == "desc" else order.asc()
+    events = (query.order_by(order)
               .offset((page - 1) * page_size).limit(page_size).all())
     return render_template("audit.html", events=events, user=user,
                            action=action, page=page, pages=pages,
-                           total=total)
+                           total=total, sort=sort, direction=direction)

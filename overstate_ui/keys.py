@@ -76,8 +76,24 @@ def index():
     masters = [m.strip() for m in
                current_app.config.get("SYNDIC_MASTERS", "").split(",")
                if m.strip()]
-    return render_template("keys.html", tab=tab, rows=data[tab],
-                           counts=counts, syndic_masters=masters)
+    q = request.args.get("q", "").strip()
+    ql = q.lower()
+    rows = data[tab]
+    if ql:
+        rows = [r for r in rows
+                if ql in r["id"].lower()
+                or ql in r["fingerprint"].lower()]
+    sort = request.args.get("sort", "id")
+    if sort not in ("id",):
+        sort = "id"
+    direction = request.args.get("dir", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    rows = sorted(rows, key=lambda r: r["id"],
+                  reverse=(direction == "desc"))
+    return render_template("keys.html", tab=tab, rows=rows,
+                           counts=counts, syndic_masters=masters,
+                           q=q, sort=sort, direction=direction)
 
 
 @bp.post("/<action>")
@@ -88,6 +104,10 @@ def act(action: str):
         return redirect(url_for("keys.index"))
     mid = request.form.get("id", "")
     tab = request.form.get("tab", "pending")
+    keep = {"tab": tab}
+    for f in ("q", "sort", "dir"):
+        if request.form.get(f):
+            keep[f] = request.form[f]
     try:
         get_salt().wheel(ACTIONS[action], match=mid)
     except SaltApiError as exc:
@@ -95,4 +115,4 @@ def act(action: str):
     else:
         log_event(current_user.username, f"{action}-key")
         flash(f"{mid}: {action}ed.", "success")
-    return redirect(url_for("keys.index", tab=tab))
+    return redirect(url_for("keys.index", **keep))

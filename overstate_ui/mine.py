@@ -24,6 +24,9 @@ def index():
     if tgt_type not in TGT_TYPES:
         tgt_type = "glob"
     fun = request.args.get("fun", "").strip()
+    direction = request.args.get("dir", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
     entries: dict = {}
     error = None
     if tgt and fun:
@@ -66,4 +69,4 @@ def index():
                 error = f"salt-api error: {exc}"
     return render_template("mine.html", tgt=tgt, tgt_type=tgt_type,
                            tgt_types=TGT_TYPES, fun=fun, entries=entries,
-                           error=error)
+                           error=error, direction=direction)

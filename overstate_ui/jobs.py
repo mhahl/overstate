@@ -31,7 +31,7 @@ bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 
 TGT_TYPES = ["glob", "list", "grain", "compound", "nodegroup", "group"]
 COMPLETE_AFTER_SECONDS = 60
-JOB_SORT_COLUMNS = ("started", "fun", "user")
+JOB_SORT_COLUMNS = ("started", "jid", "fun", "user")
 FUN_RE = re.compile(r"^[A-Za-z0-9_.]+$")
 
 
@@ -42,6 +42,8 @@ def sort_jobs(rows: list, sort: str, direction: str) -> list:
         rows.sort(key=lambda j: (j.fun, j.jid), reverse=reverse)
     elif sort == "user":
         rows.sort(key=lambda j: (j.user, j.jid), reverse=reverse)
+    elif sort == "jid":
+        rows.sort(key=lambda j: j.jid, reverse=reverse)
     else:
         def started_key(j):
             if isinstance(j.started_at, dt.datetime):
@@ -358,13 +360,30 @@ def index():
     direction = request.args.get("dir", "desc")
     if direction not in ("asc", "desc"):
         direction = "desc"
-    running = sort_jobs(session.query(Job).filter_by(complete=False).order_by(
-        Job.started_at.desc()).all(), sort, direction)
-    history = sort_jobs(session.query(Job).filter_by(complete=True).order_by(
-        Job.started_at.desc()).limit(50).all(), sort, direction)
+    q = request.args.get("q", "").strip()
+    ql = q.lower()
+
+    def matches(job) -> bool:
+        if not ql:
+            return True
+        return any(ql in (str(getattr(job, f, "") or "").lower())
+                   for f in ("jid", "fun", "tgt", "tgt_type", "user"))
+
+    running = sort_jobs([j for j in session.query(Job)
+                         .filter_by(complete=False)
+                         .order_by(Job.started_at.desc()).all()
+                         if matches(j)], sort, direction)
+    history = sort_jobs([j for j in session.query(Job)
+                         .filter_by(complete=True)
+                         .order_by(Job.started_at.desc()).limit(200).all()
+                         if matches(j)][:50], sort, direction)
     saved = session.query(SavedJob).order_by(SavedJob.name).all()
+    if ql:
+        saved = [s for s in saved
+                 if ql in s.name.lower() or ql in (s.fun or "").lower()
+                 or ql in (s.tgt or "").lower()]
     ctx = dict(tab=tab, running=running, history=history, saved=saved,
-               sort=sort, direction=direction)
+               sort=sort, direction=direction, q=q)
     if request.headers.get("HX-Request") == "true":
         return render_template("_job_rows.html", **ctx)
     return render_template("jobs.html", **ctx)

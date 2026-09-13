@@ -33,13 +33,24 @@ def index():
                       if q in g.name.lower()
                       or any(q in m.lower() for m in g.members)]
     total = len(all_groups)
+    sort = request.args.get("sort", "name")
+    if sort not in ("name", "members"):
+        sort = "name"
+    direction = request.args.get("dir", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    if sort == "members":
+        all_groups.sort(key=lambda g: (len(g.members or []), g.name),
+                        reverse=(direction == "desc"))
+    elif direction == "desc":
+        all_groups.sort(key=lambda g: g.name, reverse=True)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(max(1, page), pages)
     statuses, _ = live_roster(get_salt())
     roster = sorted(row.id for row in get_session().query(Minion.id).all())
     return render_template(
         "groups.html", q=request.args.get("q", ""), page=page, pages=pages,
-        per_page=per_page, total=total,
+        per_page=per_page, total=total, sort=sort, direction=direction,
         groups=all_groups[(page - 1) * per_page: page * per_page],
         group_names=[g.name for g in all_groups],
         roster=roster,

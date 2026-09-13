@@ -108,7 +108,23 @@ def index():
         .filter_by(minion_id=mid).count()
         for mid in mids
     }
-    return render_template("pillar.html", mids=mids, counts=counts)
+    q = request.args.get("q", "").strip().lower()
+    if q:
+        mids = [m for m in mids if q in m.lower()]
+    sort = request.args.get("sort", "minion")
+    if sort not in ("minion", "snapshots"):
+        sort = "minion"
+    direction = request.args.get("dir", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    if sort == "snapshots":
+        mids = sorted(mids, key=lambda m: (counts.get(m, 0), m),
+                      reverse=(direction == "desc"))
+    elif direction == "desc":
+        mids = sorted(mids, reverse=True)
+    return render_template("pillar.html", mids=mids, counts=counts,
+                           q=request.args.get("q", ""),
+                           sort=sort, direction=direction)
 
 
 @bp.route("/<mid>")
