@@ -1,9 +1,8 @@
-# Install on openSUSE Tumbleweed
+# Install on openSUSE Leap 16
 
 Salt runs in a container (Quadlet `overstate-salt-master`), the same image
-as dev — decided 2026-09-13. Tumbleweed's rolling Python would otherwise
-drag the Salt version around; the image pins it and dev/prod stay identical.
-Only Podman runs on the host.
+as dev — decided 2026-09-13. The image pins the Salt version, so dev and
+prod stay identical and the host only needs Podman.
 
 ## Install
 
@@ -11,7 +10,7 @@ Only Podman runs on the host.
 sudo ./scripts/install.sh --admin-password 'pick-one'
 ```
 
-What it does: checks Tumbleweed (root), installs podman/openssl, builds
+What it does: checks Leap 16 (root), installs podman/openssl, builds
 both images, lays down `/etc/overstate` (env, salt-config copy, TLS) and
 `/var/lib/overstate/srv`, generates secrets plus a self-signed CA/certs
 (hostname in the app cert, `salt-master` in the api cert), installs six

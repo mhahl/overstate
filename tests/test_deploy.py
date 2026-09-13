@@ -45,6 +45,15 @@ def test_quadlet_units_cover_all_services():
     assert "PublishPort" not in app  # Caddy is the only front door
 
 
+def test_install_targets_leap_16():
+    install = (REPO / "scripts" / "install.sh").read_text()
+    assert "opensuse-leap" in install
+    assert "openSUSE Leap 16" in install
+    assert "Tumbleweed" not in install or "non-Leap-16" in install
+    guide = (REPO / "docs" / "install-opensuse.md").read_text()
+    assert guide.startswith("# Install on openSUSE Leap 16")
+
+
 def test_install_wires_domains_and_caddy():
     install = (REPO / "scripts" / "install.sh").read_text()
     assert "APP_DOMAIN=overstate.sigaint.au" in install

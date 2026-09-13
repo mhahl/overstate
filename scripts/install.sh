@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Overstate on openSUSE Tumbleweed as root Podman Quadlets.
+# Install Overstate on openSUSE Leap 16 as root Podman Quadlets.
 # Run from a repo checkout: `sudo ./scripts/install.sh`.
 # Idempotent: re-running keeps existing secrets, certs, and data.
 set -euo pipefail
@@ -19,7 +19,7 @@ usage() {
 Usage: sudo ./scripts/install.sh [--yes] [--force] [--admin-password PW] [--hostname NAME]
 
   --yes              skip the confirmation prompt
-  --force            allow non-Tumbleweed systems (openSUSE Leap, etc.)
+  --force            allow non-Leap-16 systems (Tumbleweed, Leap 15, etc.)
   --admin-password   set the initial admin password (else printed to the
                      app container log on first boot; change it after login)
   --hostname         hostname baked into the self-signed app cert
@@ -51,13 +51,19 @@ if [ ! -f "$REPO/Containerfile" ] || [ ! -d "$REPO/deploy/quadlet" ]; then
 fi
 # shellcheck disable=SC1091
 source /etc/os-release
-if [ "${ID:-}" != "opensuse-tumbleweed" ] && { [ "${ID_LIKE:-}" != *"suse"* ] || [ "$FORCE" -ne 1 ]; }; then
-  echo "error: ${PRETTY_NAME:-this system} is not Tumbleweed; pass --force to proceed anyway" >&2
+ON_TARGET=0
+[ "${ID:-}" = "opensuse-leap" ] && [ "${VERSION_ID%%.*}" = "16" ] && ON_TARGET=1
+case "${ID_LIKE:-}" in
+  *suse*) SUSE_LIKE=1 ;;
+  *) SUSE_LIKE=0 ;;
+esac
+if [ "$ON_TARGET" -ne 1 ] && { [ "$SUSE_LIKE" -ne 1 ] || [ "$FORCE" -ne 1 ]; }; then
+  echo "error: ${PRETTY_NAME:-this system} is not openSUSE Leap 16; pass --force to proceed anyway" >&2
   exit 1
 fi
 if [ "$YES" -ne 1 ]; then
   cat <<EOF
-Overstate install plan (Tumbleweed, Podman Quadlets):
+Overstate install plan (Leap 16, Podman Quadlets):
   units:  $UNITS/overstate-{app,worker,salt-master,postgres,redis,caddy}.container
   config: $ETC (env, salt-config, tls, Caddyfile)
   data:   $VAR (salt roots), podman volumes overstate-pgdata/overstate-saltdata

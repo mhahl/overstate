@@ -51,7 +51,7 @@ same paths production uses. Coverage config lives in
 
 ## Install it for real
 
-Target is openSUSE Tumbleweed with Podman, running the stack as
+Target is openSUSE Leap 16 with Podman, running the stack as
 systemd Quadlets:
 
 ```sh
