@@ -1,4 +1,4 @@
-"""v2 unit 3 tests: fleet presets prefill, typed-confirm gating, launch flow."""
+"""v2 unit 3 tests: fleet presets prefill, review-modal gating, launch flow."""
 
 import json
 
@@ -52,34 +52,67 @@ def test_fleet_presets_prefill(client):
     assert b"ps.kill_pid" in rv.data
 
 
-def test_destructive_without_confirm_shows_interstitial(client):
+def test_destructive_without_confirm_shows_review(client):
     rv = client.post("/jobs/run", data={
         "tgt": "web-*", "tgt_type": "glob", "fun": "service.restart",
         "args": "nginx", "mode": "async"})
     assert rv.status_code == 200
-    assert b"Type <code>web-*" in rv.data
+    assert b"Review" in rv.data
+    assert b"Type <code>" not in rv.data
     with client.app.app_context():
         assert get_session().query(Job).count() == 0
 
 
-def test_destructive_with_wrong_confirm_stays(client):
+def test_destructive_with_unconfirmed_value_stays(client):
     rv = client.post("/jobs/run", data={
         "tgt": "web-*", "tgt_type": "glob", "fun": "service.restart",
-        "args": "nginx", "mode": "async", "confirm": "oops"})
+        "args": "nginx", "mode": "async", "confirmed": "no"})
     assert rv.status_code == 200
     with client.app.app_context():
         assert get_session().query(Job).count() == 0
 
 
-def test_destructive_with_matching_confirm_launches(client):
+def test_destructive_with_confirmed_launches(client):
     rv = client.post("/jobs/run", data={
         "tgt": "web-*", "tgt_type": "glob", "fun": "service.restart",
-        "args": "nginx", "mode": "async", "confirm": "web-*"})
+        "args": "nginx", "mode": "async", "confirmed": "yes"})
     assert rv.status_code == 302
     assert "/jobs/42424" in rv.headers["Location"]
     with client.app.app_context():
         job = get_session().get(Job, "42424")
         assert job is not None and job.fun == "service.restart"
+
+
+def test_review_modal_lists_match_count(client):
+    from overstate_ui.models import Minion
+
+    with client.app.app_context():
+        get_session().add(Minion(id="web-01", grains={}, conformity={}))
+        get_session().add(Minion(id="web-02", grains={}, conformity={}))
+        get_session().commit()
+    rv = client.post("/jobs/run", data={
+        "tgt": "web-*", "tgt_type": "glob", "fun": "service.restart",
+        "args": "nginx", "mode": "async"})
+    html = rv.data.decode()
+    assert "2 minions" in html
+    assert "web-01" in html and "web-02" in html
+
+
+def test_state_apply_requires_review(client):
+    rv = client.post("/jobs/run", data={
+        "tgt": "*", "tgt_type": "glob", "fun": "state.apply",
+        "args": "", "mode": "async"})
+    assert rv.status_code == 200
+    assert b"Review" in rv.data
+    with client.app.app_context():
+        assert get_session().query(Job).count() == 0
+
+
+def test_state_highstate_dry_run_skips_review(client):
+    rv = client.post("/jobs/run", data={
+        "tgt": "*", "tgt_type": "glob", "fun": "state.highstate",
+        "args": "test=True", "mode": "async"})
+    assert rv.status_code == 302
 
 
 def test_non_destructive_needs_no_confirm(client):
@@ -90,4 +123,8 @@ def test_non_destructive_needs_no_confirm(client):
 
 
 def test_destructive_set_covers_package_changes():
+    from overstate_ui.jobs import CONFIRM_FUNS
+
     assert {"pkg.install", "pkg.remove"} <= set(DESTRUCTIVE_FUNS)
+    assert {"state.apply", "state.highstate",
+            "pkg.install", "service.restart"} <= set(CONFIRM_FUNS)

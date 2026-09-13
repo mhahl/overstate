@@ -103,30 +103,30 @@ def add(mid: str):
         value = 0
     enabled = request.form.get("enabled", "") == "on"
     if not name or not fun or unit not in SCHEDULE_UNITS or value < 1:
-        flash("Name, function, and a positive interval are required.")
+        flash("Name, function, and a positive interval are required.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     client = get_salt()
     try:
         entries = parse_schedule_list(
             client.local(mid, "schedule.list")[0].get(mid, {}))
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}")
+        flash(f"salt-api error: {exc}", "error")
         return redirect(url_for("schedules.index", minion=mid))
     if name in entries:
-        flash(f"{mid} already has a scheduled job named '{name}'.")
+        flash(f"{mid} already has a scheduled job named '{name}'.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     try:
         result = client.local(mid, "schedule.add", arg=[name],
                               kwarg={"function": fun, unit: value,
                                      "enabled": enabled})
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}")
+        flash(f"salt-api error: {exc}", "error")
     else:
         if add_succeeded(result, mid):
             log_event(current_user.username, f"schedule-add:{name}")
-            flash(f"{mid}/{name}: added.")
+            flash(f"{mid}/{name}: added.", "success")
         else:
-            flash(f"{mid}/{name}: salt did not confirm the add.")
+            flash(f"{mid}/{name}: salt did not confirm the add.", "warning")
     return redirect(url_for("schedules.index", minion=mid))
 
 
@@ -134,14 +134,14 @@ def add(mid: str):
 @roles_required("operator")
 def act(mid: str, action: str):
     if action not in SCHEDULE_ACTIONS:
-        flash("Unknown schedule action.")
+        flash("Unknown schedule action.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     job_name = request.form.get("job", "")
     try:
         get_salt().local(mid, SCHEDULE_ACTIONS[action], arg=[job_name])
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}")
+        flash(f"salt-api error: {exc}", "error")
     else:
         log_event(current_user.username, f"schedule-{action}:{job_name}")
-        flash(f"{mid}/{job_name}: {action}d.")
+        flash(f"{mid}/{job_name}: {action}d.", "success")
     return redirect(url_for("schedules.index", minion=mid))

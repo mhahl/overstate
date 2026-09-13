@@ -71,14 +71,14 @@ def create_group():
     members = parse_member_ids(request.form)
     session = get_session()
     if not name:
-        flash("Group needs a name.")
+        flash("Group needs a name.", "error")
     elif session.query(MinionGroup).filter_by(name=name).first():
-        flash(f"Group '{name}' already exists.")
+        flash(f"Group '{name}' already exists.", "error")
     else:
         session.add(MinionGroup(name=name, members=members))
         session.commit()
         log_event(current_user.username, f"group-create:{name}")
-        flash(f"Group '{name}' saved with {len(members)} members.")
+        flash(f"Group '{name}' saved with {len(members)} members.", "success")
     return redirect(url_for("groups.index"))
 
 
@@ -91,18 +91,18 @@ def rename_group(gid: int):
     group = session.get(MinionGroup, gid)
     name = request.form.get("name", "").strip()
     if group is None:
-        flash("Unknown group.")
+        flash("Unknown group.", "error")
     elif not name:
-        flash("Group needs a name.")
+        flash("Group needs a name.", "error")
     elif (session.query(MinionGroup)
           .filter(MinionGroup.name == name, MinionGroup.id != gid).first()):
-        flash(f"Group '{name}' already exists.")
+        flash(f"Group '{name}' already exists.", "error")
     else:
         log_event(current_user.username,
                   f"group-rename:{group.name}->{name}")
         group.name = name
         session.commit()
-        flash(f"Group renamed to '{name}'.")
+        flash(f"Group renamed to '{name}'.", "success")
     return redirect(url_for("groups.index"))
 
 
@@ -114,12 +114,12 @@ def edit_group_members(gid: int):
     session = get_session()
     group = session.get(MinionGroup, gid)
     if group is None:
-        flash("Unknown group.")
+        flash("Unknown group.", "error")
     else:
         group.members = parse_member_ids(request.form)
         session.commit()
         log_event(current_user.username, f"group-members:{group.name}")
-        flash(f"Group '{group.name}' now has {len(group.members)} members.")
+        flash(f"Group '{group.name}' now has {len(group.members)} members.", "success")
     return redirect(url_for("groups.index"))
 
 
@@ -133,12 +133,12 @@ def edit_group(gid: int):
     group = session.get(MinionGroup, gid)
     name = request.form.get("name", "").strip()
     if group is None:
-        flash("Unknown group.")
+        flash("Unknown group.", "error")
     elif not name:
-        flash("Group needs a name.")
+        flash("Group needs a name.", "error")
     elif (session.query(MinionGroup)
           .filter(MinionGroup.name == name, MinionGroup.id != gid).first()):
-        flash(f"Group '{name}' already exists.")
+        flash(f"Group '{name}' already exists.", "error")
     else:
         if name != group.name:
             log_event(current_user.username,
@@ -148,7 +148,7 @@ def edit_group(gid: int):
         session.commit()
         log_event(current_user.username, f"group-members:{group.name}")
         flash(f"Group '{group.name}' saved "
-              f"with {len(group.members)} members.")
+              f"with {len(group.members)} members.", "success")
     return redirect(url_for("groups.index"))
 
 
@@ -160,10 +160,10 @@ def delete_group(gid: int):
     session = get_session()
     group = session.get(MinionGroup, gid)
     if group is None:
-        flash("Unknown group.")
+        flash("Unknown group.", "error")
     else:
         log_event(current_user.username, f"group-delete:{group.name}")
         session.delete(group)
         session.commit()
-        flash(f"Group '{group.name}' deleted.")
+        flash(f"Group '{group.name}' deleted.", "success")
     return redirect(url_for("groups.index"))

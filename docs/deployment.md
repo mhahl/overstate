@@ -92,6 +92,9 @@ external_auth:
       - state.show_highstate
       - state.show_sls
       - schedule.*
+      - beacons.list
+      - beacons.enable_beacon
+      - beacons.disable_beacon
       - saltutil.sync_all
       - saltutil.refresh_pillar
       - saltutil.kill_job

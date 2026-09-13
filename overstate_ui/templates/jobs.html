@@ -6,7 +6,7 @@
     <h1 class="text-2xl font-bold tracking-tight">Jobs</h1>
     <p class="text-sm opacity-70 mt-0.5">Dispatch commands and inspect returns.</p>
   </div>
-  <button id="live-toggle" class="btn btn-sm btn-ghost">Pause live</button>
+  <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on all pages" aria-label="Pause live updates on all pages">Pause live updates</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
   <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}">Run job</a>
 </div>
@@ -20,7 +20,7 @@
     try { return localStorage.getItem(key) === "off"; }
     catch (e) { return false; }
   }
-  function paint() { if (btn) btn.textContent = paused() ? "Resume live" : "Pause live"; }
+  function paint() { if (btn) btn.textContent = paused() ? "Resume live updates" : "Pause live updates"; }
   if (btn) btn.addEventListener("click", function () {
     try { localStorage.setItem(key, paused() ? "on" : "off"); } catch (e) {}
     paint();

@@ -15,26 +15,179 @@
 </div>
 <div class="border-t border-base-300">
 {% if tab == "overview" %}
-  <div class="overflow-x-auto">
-  <table class="table table-sm table-zebra">
-    <tbody>
-    {% for k, v in data.grains.items()|sort %}
-    <tr><th class="w-48">{{ k }}</th><td class="font-mono text-xs break-all">{{ v }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="flex flex-col gap-4 p-4">
+    <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div class="bg-base-200 rounded-box">
+        <div class="p-4 flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--activity] size-4" aria-hidden="true"></span></span>
+            <p class="font-medium text-sm">Presence</p>
+          </div>
+          <p class="text-2xl font-semibold flex items-center gap-2"><span id="presence-dot" class="status animate-pulse" aria-hidden="true"></span><span id="presence-text">checking</span></p>
+          <p class="text-xs text-base-content/60">Live from the master</p>
+        </div>
+      </div>
+      <div class="bg-base-200 rounded-box">
+        <div class="p-4 flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--key] size-4" aria-hidden="true"></span></span>
+            <p class="font-medium text-sm">Key</p>
+          </div>
+          <p class="text-2xl font-semibold">{% if key_status == "accepted" %}<span class="badge badge-success">accepted</span>{% elif key_status == "pending" %}<span class="badge badge-warning">pending</span>{% elif key_status in ["rejected", "denied"] %}<span class="badge badge-error">{{ key_status }}</span>{% else %}<span class="badge badge-neutral">unknown</span>{% endif %}</p>
+          <p class="text-xs text-base-content/60">Key state on the master</p>
+        </div>
+      </div>
+      <div class="bg-base-200 rounded-box">
+        <div class="p-4 flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--badge-check] size-4" aria-hidden="true"></span></span>
+            <p class="font-medium text-sm">Conformity</p>
+          </div>
+          <p class="text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-success" title="Last highstate-style run matched the watched states">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-warning" title="Last run reported changes — open Recent activity, then re-run state.apply to converge">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-error" title="Last run could not reach this minion — check presence and key state">unreachable</span>{% else %}<span class="badge badge-neutral" title="No highstate-style job has reported for this minion yet">unknown</span>{% endif %}</p>
+          <p class="text-xs text-base-content/60">{% if conformity.get("jid") %}Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% else %}No highstate-style job recorded{% endif %}</p>
+        </div>
+      </div>
+      <div class="bg-base-200 rounded-box">
+        <div class="p-4 flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--clock] size-4" aria-hidden="true"></span></span>
+            <p class="font-medium text-sm">Last seen</p>
+          </div>
+          <p class="text-2xl font-semibold tabular-nums">{{ last_seen.strftime("%Y-%m-%d %H:%M") if last_seen else "never" }}</p>
+          <p class="text-xs text-base-content/60">Snapshot cache</p>
+        </div>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <section aria-label="Machine facts" class="xl:col-span-2">
+        <div class="flex flex-col gap-3">
+          <p class="font-semibold">Machine</p>
+          {% if data.grains %}
+          <dl class="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+            <div><dt class="text-xs text-base-content/60">Operating system</dt><dd class="font-mono text-sm flex items-center gap-2"><span class="icon-[simple-icons--{{ os_icon }}] size-4 shrink-0" aria-hidden="true"></span>{{ data.grains.get("osfinger", "–") }} {{ data.grains.get("osrelease", "") }}</dd></div>
+            <div><dt class="text-xs text-base-content/60">IP address</dt><dd class="font-mono text-sm">{{ (data.grains.get("ipv4") or ["–"])[0] }}</dd></div>
+            <div><dt class="text-xs text-base-content/60">CPUs</dt><dd class="font-mono text-sm tabular-nums">{{ data.grains.get("num_cpus", "–") }}</dd></div>
+            <div><dt class="text-xs text-base-content/60">Salt version</dt><dd class="font-mono text-sm">{{ data.grains.get("saltversion", "–") }}</dd></div>
+          </dl>
+          {% if data.grains.proxytype or data.grains.proxyid %}<p><span class="badge badge-sm badge-outline">proxy</span></p>{% endif %}
+          {% else %}
+          <div class="py-6 text-center">
+            <p><span class="flex items-center justify-center size-8 rounded-full bg-base-200 mx-auto"><span class="icon-[lucide--inbox] size-4" aria-hidden="true"></span></span></p>
+            <p class="font-medium mt-2">No grain data</p>
+            <p class="text-sm text-base-content/60">Run a refresh or check the minion.</p>
+            {% if current_user.role in ["operator", "admin"] %}
+            <p class="mt-3"><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}">Run a job</a></p>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </section>
+      <section aria-label="Recent activity">
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <p class="font-semibold me-auto">Recent activity</p>
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.detail', mid=mid, tab='jobs') }}">All activity</a>
+          </div>
+          {% if recent %}
+          <ul class="flex flex-col gap-2">
+            {% for item in recent %}
+            <li class="flex items-center gap-2 text-sm">
+              {% if item.ret.success %}<span class="badge badge-sm badge-success">ok</span>{% else %}<span class="badge badge-sm badge-error">failed</span>{% endif %}
+              <span class="font-mono">{{ item.fun }}</span>
+              <a class="link font-mono text-xs ms-auto" href="{{ url_for('jobs.detail', jid=item.ret.jid) }}">{{ item.ret.jid }}</a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="text-sm text-base-content/60">Nothing has run against this minion yet.</p>
+          {% endif %}
+          {% if current_user.role in ["operator", "admin"] %}
+          <p><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}">Run job on this minion</a></p>
+          {% endif %}
+        </div>
+      </section>
+    </div>
   </div>
-  {% if not data.grains %}
-  <div class="py-8 text-center">
-    <p class="font-medium">No grain data</p>
-    <p class="text-sm opacity-70">Run a refresh or check the minion.</p>
-  </div>
-  {% endif %}
+  <script>
+  (function () {
+    fetch({{ url_for('minions.presence')|tojson }})
+      .then(function (r) { return r.json(); })
+      .then(function (map) {
+        var state = map[{{ mid|tojson }}];
+        if (!state) return;
+        var dot = document.getElementById('presence-dot');
+        var text = document.getElementById('presence-text');
+        dot.classList.remove('animate-pulse');
+        dot.classList.add(state === 'up' ? 'status-success' : (state === 'dead' ? 'status-warning' : 'status-error'));
+        text.textContent = state === 'up' ? 'up' : (state === 'dead' ? 'accepted, dead' : 'down');
+      })
+      .catch(function () {});
+  })();
+  </script>
 {% elif tab == "jobs" %}
 {% include "_minion_returns.html" %}
+{% elif (tab == "schedule" or tab == "pillar") and not error and not data.get(tab) %}
+<div class="p-4 flex flex-col gap-4">
+<div class="py-8 text-center">
+  <p class="font-medium">{% if tab == "schedule" %}No schedules on {{ mid }}{% else %}No pillar data for {{ mid }}{% endif %}</p>
+  <p class="text-sm opacity-70">{% if tab == "schedule" %}Recurring jobs live on the minion. <a class="link" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>{% else %}Pillar is rendered per minion on the master. <a class="link" href="https://docs.saltproject.io/en/3006/topics/pillar/index.html" target="_blank" rel="noopener">Salt pillar documentation</a>{% endif %}</p>
+</div>
+</div>
+{% elif tab == "beacons" %}
+<div class="p-4 flex flex-col gap-4">
+{% if data.beacon_entries %}
+<div class="overflow-x-auto rounded-box border border-base-300">
+<table class="table table-sm table-zebra"><thead><tr><th>Beacon</th><th>Configuration</th><th>Source</th><th class="text-right"></th></tr></thead><tbody>
+{% for name, conf in data.beacon_entries.items() %}
+<tr><td class="font-mono text-xs">{{ name }}</td>
+<td class="font-mono text-xs break-all">{{ conf | tojson }}</td>
+<td>{% if name in data.beacon_pillar %}<span class="badge badge-sm badge-outline">pillar</span>{% else %}<span class="badge badge-sm badge-ghost">minion</span>{% endif %}</td>
+<td class="text-right">
+  {% if current_user.role in ["operator", "admin"] %}
+  <span class="join join-horizontal">
+  <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
+  <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='disable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
+  </span>
+  {% endif %}
+</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% elif data.beacon_raw %}
+<pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ data.beacon_raw }}</code></pre>
 {% else %}
-<div class="p-4"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.get(tab, data.get("highstate", data.get("schedule", data.get("pillar", data.get("beacons", "No data"))))) | tojson(indent=1) }}</code></pre></div>
+<div class="py-8 text-center">
+  <p class="font-medium">No beacons on {{ mid }}</p>
+  <p class="text-sm opacity-70">Beacon definitions live in pillar. <a class="link" href="https://docs.saltproject.io/en/3006/topics/beacons/index.html" target="_blank" rel="noopener">Salt beacon documentation</a></p>
+</div>
+{% endif %}
+</div>
+{% else %}
+<div class="p-4"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.get(tab, data.get("highstate", data.get("schedule", data.get("pillar", "No data")))) | tojson(indent=1) }}</code></pre></div>
 {% endif %}
 </div>
 </div>
+{% if tab == "overview" %}
+<section aria-label="All grain facts" class="card bg-base-100 shadow-sm mt-4">
+  <div class="collapse collapse-arrow">
+    <input type="checkbox" checked aria-label="Toggle all grain facts">
+    <div class="collapse-title font-semibold">All grain facts ({{ data.grains|length }})</div>
+    <div class="collapse-content">
+      {% if data.grains %}
+      <div class="overflow-x-auto">
+      <table class="table table-sm table-zebra">
+        <tbody>
+        {% for k, v in data.grains.items()|sort %}
+        <tr class="hover"><th class="w-48">{{ k }}</th><td class="font-mono text-xs break-all">{{ v }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="text-sm text-base-content/60">No grain data recorded.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

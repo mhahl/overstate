@@ -63,7 +63,7 @@
       <div>
         <p class="font-medium">Jobs in flight</p>
         <p class="text-3xl font-semibold tabular-nums">{{ stats.in_flight }}</p>
-        <p class="text-xs opacity-70"><a class="link" href="{{ url_for('jobs.index', tab='running') }}">Running jobs</a></p>
+        <p class="text-xs opacity-70">{% if stats.in_flight_live %}Live from master · {% else %}Database count · {% endif %}<a class="link" href="{{ url_for('jobs.index', tab='running') }}">Running jobs</a></p>
       </div>
     </div>
   </section>
@@ -126,6 +126,26 @@
         {% if not c.ok %}<li class="text-xs opacity-70 -mt-1 ml-14">{{ c.grant }}</li>{% endif %}
         {% endfor %}
       </ul>
+    </div>
+  </section>
+  <section class="card bg-base-100 shadow-sm rounded-box">
+    <div class="card-body p-4">
+      <div class="flex items-center gap-2">
+        <h2 class="card-title text-base">Salt versions</h2>
+        <span class="badge badge-sm ms-auto {{ 'badge-success' if stats.versions_live else 'badge-neutral' }}">{{ "live" if stats.versions_live else "snapshot" }}</span>
+      </div>
+      {% if stats.versions %}
+      <ul class="flex flex-col gap-1 text-sm mt-1">
+        {% for version, count in stats.versions.items()|sort %}
+        <li class="flex items-center gap-2">
+          <span class="font-mono text-xs">{{ version }}</span>
+          <span class="ms-auto tabular-nums">{{ count }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-sm opacity-70">No version data.</p>
+      {% endif %}
     </div>
   </section>
   <nav class="card bg-base-100 shadow-sm rounded-box" aria-label="Operator shortcuts">

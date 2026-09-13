@@ -39,7 +39,7 @@ def index():
     prefixes = request.args.getlist("tag") or ["salt/job"]
     valid = [p for p in prefixes if p in TAG_CHOICES]
     if not valid:
-        flash("Select at least one event family.")
+        flash("Select at least one event family.", "error")
         return redirect(url_for("events.index", tag="salt/job"))
     return render_template("events.html", choices=TAG_CHOICES, selected=valid)
 

@@ -131,9 +131,9 @@ def capture(mid: str):
     try:
         capture_pillar(mid)
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}")
+        flash(f"salt-api error: {exc}", "error")
     else:
-        flash(f"Pillar snapshot captured for {mid}.")
+        flash(f"Pillar snapshot captured for {mid}.", "success")
     return redirect(url_for("pillar.detail", mid=mid))
 
 

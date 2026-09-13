@@ -7,7 +7,7 @@
   <span class="badge badge-sm {{ 'badge-success' if job.complete else 'badge-info' }}">{{ "complete" if job.complete else "running" }}</span>
   <form method="post" action="{{ url_for('jobs.sync', jid=job.jid) }}" class="ml-auto">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-sm">Sync now</button>
+    <button class="btn btn-sm">Sync results</button>
   </form>
   {% if killable and current_user.role in ["operator", "admin"] %}
   <form method="post" action="{{ url_for('jobs.kill', jid=job.jid) }}">
@@ -19,7 +19,7 @@
 {% for kill_jid, kill_returns in kill_reports %}
 <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body gap-1">
-    <p class="text-sm"><span class="font-medium">Kill {{ kill_jid }}</span> <span class="opacity-70">— {{ kill_returns|length }} minion{{ "s" if kill_returns|length != 1 }} reported. Silence means unknown, not dead.</span></p>
+    <p class="text-sm"><span class="font-medium">Kill {{ kill_jid }}</span> <span class="opacity-70">— {{ kill_returns|length }} minion{{ "s" if kill_returns|length != 1 }} reported. Silence means unknown, not dead: check presence on the <a class="link" href="{{ url_for('minions.index') }}">Minions</a> page, then re-run against a narrower target if needed.</span></p>
     <ul class="flex flex-wrap gap-2 text-xs font-mono">
       {% for r in kill_returns %}
       <li><span class="badge badge-sm {{ 'badge-success' if r.success else 'badge-error' }}">{{ r.minion_id }}</span></li>
@@ -67,9 +67,23 @@
     <summary class="collapse-title font-mono text-sm flex items-center gap-2">
       {% if r.success %}<span class="status status-success"></span>{% else %}<span class="status status-error"></span>{% endif %}
       <span class="mr-auto">{{ r.minion_id }} — {{ "ok" if r.success else ("failed, retcode " ~ r.retcode) }}</span>
+      {% if r.live|default(False) %}<span class="badge badge-xs badge-info">live</span>{% endif %}
       {% if summary is mapping %}<span class="text-xs opacity-70">{{ summary.get("succeeded", "?") }} succeeded, {{ summary.get("failed", "?") }} failed</span>{% endif %}
+      {% if not r.success and current_user.role in ["operator", "admin"] %}<a class="btn btn-xs" href="{{ url_for('jobs.new', tgt=r.minion_id, tgt_type='list', fun=job.fun) }}" onclick="event.stopPropagation()">Re-run</a>{% endif %}
     </summary>
-    <div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ r.payload | tojson(indent=1) }}</code></pre></div>
+    <div class="collapse-content">
+      {% set ns = namespace(names=[]) %}
+      {% set body = r.payload if r.payload is mapping else {} %}
+      {% for sid, sres in body.items() if sres is mapping and sres.get("result") == false %}
+      {% if ns.names|length < 5 %}{% set ns.names = ns.names + [sid] %}{% endif %}
+      {% endfor %}
+      {% set fails = body.get("failures") %}
+      {% if fails is iterable and fails is not string and fails is not mapping %}
+      {% for f in fails %}{% if ns.names|length < 5 %}{% set ns.names = ns.names + [f] %}{% endif %}{% endfor %}
+      {% endif %}
+      {% if ns.names %}<p class="text-xs mb-2"><span class="opacity-70">Failed states:</span> <span class="font-mono">{{ ns.names|join(", ") }}</span></p>{% endif %}
+      <pre class="mockup-code text-xs overflow-x-auto"><code>{{ r.payload | tojson(indent=1) }}</code></pre>
+    </div>
   </details>
 {% endfor %}
 {% if not returns %}

@@ -17,7 +17,7 @@
         <span class="icon-[lucide--menu] size-5" aria-hidden="true"></span>
       </label>
       <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2 lg:hidden">
-        <span class="bg-primary text-primary-content font-bold rounded w-7 h-7 grid place-items-center text-sm">O</span>
+        <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-7 h-7">
         <span class="font-bold">Overstate</span>
       </a>
       <div class="ml-auto flex items-center gap-2">
@@ -52,13 +52,30 @@
       </div>
     </header>
     <main class="p-4 lg:p-6 w-full max-w-7xl mx-auto grow">
-      {% with messages = get_flashed_messages() %}
+      {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          {% for m in messages %}
+          {% for category, m in messages %}
+          {% if category == "success" %}
+          <div class="alert alert-success mb-4" role="alert">
+            <span class="icon-[lucide--circle-check] size-5 shrink-0" aria-hidden="true"></span>
+            <span>{{ m }}</span>
+          </div>
+          {% elif category == "warning" %}
           <div class="alert alert-warning mb-4" role="alert">
             <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
             <span>{{ m }}</span>
           </div>
+          {% elif category in ("error", "danger") %}
+          <div class="alert alert-error mb-4" role="alert">
+            <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
+            <span>{{ m }}</span>
+          </div>
+          {% else %}
+          <div class="alert alert-info mb-4" role="alert">
+            <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
+            <span>{{ m }}</span>
+          </div>
+          {% endif %}
           {% endfor %}
         {% endif %}
       {% endwith %}
@@ -70,7 +87,7 @@
     <label for="nav" aria-label="Close navigation" class="drawer-overlay"></label>
     <aside class="bg-base-100 border-r border-base-300 min-h-full w-64 flex flex-col">
       <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2.5 px-5 h-16 border-b border-base-300">
-        <span class="bg-primary text-primary-content font-bold rounded w-8 h-8 grid place-items-center">O</span>
+        <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-8 h-8">
         <span class="font-bold text-lg tracking-tight">Overstate</span>
       </a>
       <nav class="p-3 overflow-y-auto grow">

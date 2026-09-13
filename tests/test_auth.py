@@ -31,6 +31,14 @@ def test_login_logout_roundtrip(client):
     assert client.get("/").status_code == 302
 
 
+def test_login_page_shows_logo(client):
+    html = client.get("/login").data.decode()
+    assert "overstate.svg" in html
+    rv = client.get("/static/overstate.svg")
+    assert rv.status_code == 200
+    assert rv.data.lstrip().startswith(b"<?xml")
+
+
 def test_bad_password_rejected(client):
     rv = client.post("/login", data={"username": "admin", "password": "wrong"})
     assert rv.status_code == 200

@@ -142,6 +142,22 @@ def test_resolve_group_target_errors(app):
         assert targets == ["web-01"] and stale == 1
 
 
+def test_success_flash_renders_success(admin):
+    rv = admin.post("/groups", data={"name": "ok", "members": ["web-01"]},
+                    follow_redirects=True)
+    html = rv.data.decode()
+    assert "alert-success" in html
+    assert "alert-warning" not in html
+
+
+def test_error_flash_renders_error(admin):
+    rv = admin.post("/groups", data={"name": "", "members": ["m1"]},
+                    follow_redirects=True)
+    html = rv.data.decode()
+    assert "alert-error" in html
+    assert "alert-warning" not in html
+
+
 def test_groups_page_renders_table_and_modal(admin):
     html = admin.get("/groups/").data.decode()
     assert "Groups" in html

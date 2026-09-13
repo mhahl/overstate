@@ -89,7 +89,37 @@ def test_detail_and_history_render(client):
         sync_job("20260910123000000002")
     html = client.get("/jobs/20260910123000000002").data.decode()
     assert "tw-minion-02" in html and "failed" in html
-    assert "Sync now" in html
+    assert "Sync results" in html
+
+
+def test_detail_recovery_links(client):
+    from overstate_ui.models import AuditEvent
+
+    with client.app.app_context():
+        sync_job("20260910123000000002")
+        get_session().add(AuditEvent(user="admin",
+                                     action="kill:20260910123000000002",
+                                     jid="kk"))
+        get_session().commit()
+    html = client.get("/jobs/20260910123000000002").data.decode()
+    assert html.count("Re-run") == 1
+    assert "tgt=tw-minion-02" in html and "tgt_type=list" in html
+    assert "Failed states:" in html
+    assert "pkg_|-nginx_|-nginx_|-installed" in html
+    assert "check presence" in html
+
+
+def test_new_prefills_fun_and_args(client):
+    html = client.get("/jobs/new?tgt=x&tgt_type=glob&fun=test.ping&args=a"
+                      ).data.decode()
+    assert 'name="fun" value="test.ping"' in html
+    assert 'name="args" value="a"' in html
+
+
+def test_jobs_page_pause_labels_scope(client):
+    html = client.get("/jobs/").data.decode()
+    assert "Pause live updates" in html
+    assert "all pages" in html
 
 
 def test_stream_completes_for_old_job(client):
@@ -124,6 +154,7 @@ def test_new_renders_operation_library(client):
     assert 'id="op-search"' in html
     assert 'id="fun-list"' in html
     assert 'id="blast"' not in html
+    assert "os:Debian" in html
     for group, ops in OPERATION_GROUPS:
         assert group.replace("&", "&amp;") in html
         for op in ops:

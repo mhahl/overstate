@@ -171,6 +171,114 @@ def salt_overview_task() -> dict:
         return salt_overview_now(build_client())
 
 
+def normalize_versions(payload) -> dict[str, int]:
+    """{version: count} from a manage.versions return. Verified live:
+    grouped labels map to {minion: version-string} plus a "Master"
+    key ({"Up to date": {"m1": "3008.2"}, "Master": "3008.2"}).
+    The flat {minion: version} shape counts too. Anything else
+    (offline bools, strings, None) yields {} and the caller falls
+    back to grain snapshots."""
+    counts: dict[str, int] = {}
+    if not isinstance(payload, dict):
+        return counts
+    for key, value in payload.items():
+        if key == "Master":
+            continue
+        if isinstance(value, dict):
+            for version in value.values():
+                if isinstance(version, str):
+                    counts[version] = counts.get(version, 0) + 1
+        elif isinstance(value, str):
+            counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def fleet_truth_now(client) -> dict:
+    """Live versions + master-active JIDs. Never raises: each panel
+    falls back independently when its call fails or surprises."""
+    out: dict = {"versions": {}, "active_jids": [],
+                 "versions_live": False, "active_live": False}
+    try:
+        versions = normalize_versions(client.runner("manage.versions")[0])
+    except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
+        versions = {}
+    if versions:
+        out["versions"] = versions
+        out["versions_live"] = True
+    try:
+        active = client.runner("jobs.active")[0]
+    except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
+        active = None
+    # Only JID-shaped keys count: anything else is not a jobs.active
+    # payload (e.g. an unexpected dict), so fall back to the DB count
+    # instead of reporting a false live zero.
+    if isinstance(active, dict) and all(
+            isinstance(k, str) and k.isdigit() for k in active):
+        out["active_jids"] = sorted(active)
+        out["active_live"] = True
+    return out
+
+
+def fleet_truth_task() -> dict:
+    with isolated_app():
+        return fleet_truth_now(build_client())
+
+
+def list_functions_now(client, minion: str) -> list[str]:
+    """Live execution-function index from one minion.
+
+    Raises SaltApiError on failure (caller falls back to presets).
+    """
+    payload = client.local(minion, "sys.list_functions")[0].get(minion, [])
+    names: set[str] = set()
+    if isinstance(payload, dict):
+        for funs in payload.values():
+            if isinstance(funs, list):
+                names.update(str(f) for f in funs)
+    elif isinstance(payload, list):
+        names.update(str(f) for f in payload)
+    return sorted(names)
+
+
+def fun_index_task(minion: str) -> list[str]:
+    with isolated_app():
+        return list_functions_now(build_client(), minion)
+
+
+def show_sls_now(client, minion: str, sls_list: list[str],
+                 via: str = "local") -> dict:
+    """Render SLS files via state.show_sls on one minion.
+
+    Returns {sls: {state-id: ...}}. Raises SaltApiError on failure;
+    the view degrades to the unavailable note. Tolerates string,
+    dict, and None payloads per file.
+    """
+    rendered: dict = {}
+    for sls in sls_list:
+        payload = client.local(minion, "state.show_sls", arg=[sls],
+                               timeout=30, via=via)[0].get(minion)
+        if isinstance(payload, dict):
+            rendered[sls] = payload
+    return rendered
+
+
+def show_sls_task(minion: str, sls_list: list[str],
+                  via: str = "local") -> dict:
+    with isolated_app():
+        return show_sls_now(build_client(), minion, sls_list, via)
+
+
+FUN_DOC_LINES = 40
+
+
+def fun_doc_now(client, minion: str, fun: str) -> str:
+    """Trimmed sys.doc text for one function. Empty when Salt says
+    nothing (caller renders the no-docs note)."""
+    payload = client.local(minion, "sys.doc", arg=[fun])[0].get(minion, {})
+    text = payload.get(fun, "") if isinstance(payload, dict) else payload
+    return "\n".join(str(text or "").strip().splitlines()[:FUN_DOC_LINES])
+
+
 def probe_capabilities(client, ping_target: str | None = None) -> dict:
     """One probe per door the UI depends on. Never raises for Salt."""
     out: dict[str, Any] = {c["key"]: False for c in CAPABILITY_CHECKS}

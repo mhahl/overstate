@@ -5,7 +5,7 @@
   <table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('minions.detail', 'jid', 'JID', sort, direction, {'mid': mid, 'tab': 'jobs'}, '#minion-returns', false) }}{{ m.sort_th('minions.detail', 'status', 'Result', sort, direction, {'mid': mid, 'tab': 'jobs'}, '#minion-returns', false) }}</tr></thead><tbody>
     {% for r in data.returns %}
     <tr>
-      <td class="font-mono text-xs">{{ r.jid }}</td>
+      <td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=r.jid) }}">{{ r.jid }}</a></td>
       <td>{% if r.success %}<span class="badge badge-sm badge-success">ok</span>
       {% else %}<span class="badge badge-sm badge-error">failed, retcode {{ r.retcode }}</span>{% endif %}</td>
     </tr>

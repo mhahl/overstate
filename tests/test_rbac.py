@@ -53,6 +53,8 @@ MUTATIONS = [
     ("post", "/keys/accept", {}),
     ("post", "/schedules/m1/enable", {}),
     ("post", "/schedules/m1/add", {}),
+    ("post", "/minions/m1/beacons/enable", {}),
+    ("post", "/minions/m1/beacons/disable", {}),
     ("post", "/settings/", {"theme": "dark"}),
     ("get", "/users/", None),
 ]

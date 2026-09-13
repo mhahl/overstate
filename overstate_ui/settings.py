@@ -163,5 +163,5 @@ def save():
         else:
             row.value = value
     session.commit()
-    flash("Settings saved.")
+    flash("Settings saved.", "success")
     return redirect(url_for("settings.index"))

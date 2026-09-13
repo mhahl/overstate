@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import time
 
+import httpx
 from flask import (
     Blueprint,
     Response,
@@ -20,7 +22,7 @@ from flask_login import current_user, login_required
 from .auth import roles_required
 
 from .audit import log_event
-from .dashboard import get_salt
+from .dashboard import get_salt, ping_target
 from .db import get_session
 from .models import Job, JobReturn, SaltReturn, SavedJob
 from .salt_client import SaltApiError
@@ -30,6 +32,7 @@ bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 TGT_TYPES = ["glob", "list", "grain", "compound", "nodegroup", "group"]
 COMPLETE_AFTER_SECONDS = 60
 JOB_SORT_COLUMNS = ("started", "fun", "user")
+FUN_RE = re.compile(r"^[A-Za-z0-9_.]+$")
 
 
 def sort_jobs(rows: list, sort: str, direction: str) -> list:
@@ -71,11 +74,21 @@ def suggest_glob(ids: list[str], roster: list[str]) -> tuple[str, list, list]:
     covered = sorted(m for m in roster if m.startswith(prefix))
     return glob, selected, covered
 
-# Functions that change fleet state: the run form must carry a typed
-# confirmation of the target before launch() fires.
+# Functions that change fleet state: the run form must pass a one-click
+# review (function, target, matched minions) before launch() fires.
 DESTRUCTIVE_FUNS = frozenset({
     "pkg.install", "pkg.remove", "service.restart", "ps.kill_pid",
 })
+
+# Everything gated by the review modal: DESTRUCTIVE_FUNS plus the
+# fleet-reconfiguring state runs. Test-mode state runs are exempt.
+CONFIRM_FUNS = DESTRUCTIVE_FUNS | {"state.apply", "state.highstate"}
+
+
+def is_test_mode(fun: str, args: list[str]) -> bool:
+    """True for state runs that change nothing (test=True arg)."""
+    return fun in ("state.apply", "state.highstate") and any(
+        a.lower() == "test=true" for a in args)
 
 FLEET_PRESETS = {
     "pkg-install": {"tgt": "*", "tgt_type": "glob", "fun": "pkg.install",
@@ -185,6 +198,79 @@ def sync_job(jid: str) -> Job | None:
     return job
 
 
+def live_returns_now(client, jid: str) -> list:
+    """Display-only live returns from the master job cache.
+
+    Never raises; [] when the cache expired the JID. Rows are
+    lightweight stand-ins marked live=True — never DB rows, so
+    the merge below can't duplicate or rewrite history.
+    """
+    from types import SimpleNamespace
+
+    try:
+        payload = client.runner("jobs.lookup_jid", jid=jid)[0]
+    except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
+        return []
+    data = payload.get(jid, payload) if isinstance(payload, dict) else {}
+    if not isinstance(data, dict):
+        return []
+    rows = []
+    for mid, ret in data.items():
+        # Verified live: values are the raw returns ({minion: True}
+        # for test.ping) or per-minion dicts for richer jobs.
+        if isinstance(ret, dict):
+            success = bool(ret.get("success", True))
+            rows.append(SimpleNamespace(
+                minion_id=mid, success=success,
+                retcode=ret.get("retcode", 0),
+                payload=ret.get("return", ret), live=True))
+        else:
+            rows.append(SimpleNamespace(
+                minion_id=mid, success=bool(ret), retcode=0,
+                payload=ret, live=True))
+    return rows
+
+
+def build_sls_preview(fun: str, args: list[str], matched: list | None,
+                      via: str) -> tuple[list, str | None, str | None]:
+    """(sections, minion, note) for the review page.
+
+    Sections are [(sls, {state-id: ...})]; note explains a missing
+    or failed render. Only state.apply with sls args renders;
+    anything else returns ([], None, None) and the page is
+    unchanged. Firing is never blocked: failures become notes.
+    """
+    if fun != "state.apply" or not args:
+        return [], None, None
+    from .dashboard import ping_target
+
+    minion = (matched or [None])[0] or ping_target()
+    if minion is None:
+        return [], None, "No minion available to render against."
+    from .tasks import queue_or_none, show_sls_now, show_sls_task, wait_for
+
+    try:
+        queued = queue_or_none(show_sls_task, minion, args, via)
+        if queued is None:
+            rendered = show_sls_now(get_salt(), minion, args, via)
+        else:
+            status, value = wait_for(queued, wait=8.0)
+            if status == "pending":
+                return [], minion, ("Preview unavailable: render still "
+                                    "running — firing stays available.")
+            if status != "ready":
+                return [], minion, ("Preview unavailable: render failed "
+                                    f"in the background: {value}")
+            rendered = value
+    except (SaltApiError, httpx.HTTPError) as exc:
+        return [], minion, f"Preview unavailable: salt-api error: {exc}"
+    sections = [(sls, rendered[sls]) for sls in args if sls in rendered]
+    missing = [sls for sls in args if sls not in rendered]
+    note = (f"Preview unavailable for: {', '.join(missing)}."
+            if missing else None)
+    return sections, minion, note
+
+
 def resolve_group_target(name: str) -> tuple[list[str], int]:
     """Group members pinned to the snapshot roster.
 
@@ -211,7 +297,7 @@ def launch(tgt: str, tgt_type: str, fun: str, args: list,
     if tgt_type == "group":
         targets, stale = resolve_group_target(tgt)
         if stale:
-            flash(f"Group '{tgt}': {stale} stale members skipped.")
+            flash(f"Group '{tgt}': {stale} stale members skipped.", "warning")
         tgt, tgt_type = ",".join(targets), "list"
     if via == "ssh":
         # salt-ssh has no async path: synchronous over the roster, returns
@@ -310,15 +396,59 @@ def new():
         pre_type = request.args.get("tgt_type", "")
         if pre_tgt and pre_type in TGT_TYPES:
             preset = {"tgt": pre_tgt, "tgt_type": pre_type}
+            pre_fun = request.args.get("fun", "").strip()
+            if pre_fun:
+                preset["fun"] = pre_fun
+            pre_args = request.args.get("args", "").strip()
+            if pre_args:
+                preset["args"] = pre_args
     if not saved and "tgt" not in preset:
         from .settings import get_setting
 
         preset["tgt"] = get_setting("default_target")
+    op_functions = OP_FUNCTIONS
+    doc_minion = ping_target()
+    if doc_minion:
+        from .tasks import fun_index_task, list_functions_now, queue_or_none, wait_for
+
+        try:
+            queued = queue_or_none(fun_index_task, doc_minion)
+            if queued is None:
+                live = list_functions_now(get_salt(), doc_minion)
+            else:
+                status, value = wait_for(queued, wait=6.0)
+                live = value if status == "ready" else None
+        except (SaltApiError, httpx.HTTPError):
+            live = None
+        if live:
+            known = {f["fun"] for f in OP_FUNCTIONS}
+            op_functions = OP_FUNCTIONS + [
+                {"fun": name, "about": ""}
+                for name in live if name not in known
+            ]
     return render_template("job_new.html", tgt_types=TGT_TYPES,
                            preset=preset, saved=saved, bulk=bulk,
                            bulk_ignored=bulk_ignored,
                            op_groups=OPERATION_GROUPS,
-                           op_functions=OP_FUNCTIONS)
+                           op_functions=op_functions,
+                           doc_minion=doc_minion)
+
+
+@bp.get("/fun-doc")
+@login_required
+def fun_doc():
+    """sys.doc fragment for one function, read from one minion."""
+    fun = request.args.get("fun", "").strip()
+    minion = request.args.get("minion", "").strip()
+    if not FUN_RE.match(fun) or not minion:
+        return "Invalid function name.", 400
+    from .tasks import fun_doc_now
+
+    try:
+        doc = fun_doc_now(get_salt(), minion, fun)
+    except (SaltApiError, httpx.HTTPError):
+        doc = ""
+    return render_template("_fun_doc.html", fun=fun, doc=doc)
 
 
 @bp.post("/run")
@@ -334,13 +464,17 @@ def run():
     if via not in ("local", "ssh"):
         via = "local"
     if not fun or tgt_type not in TGT_TYPES:
-        flash("Target type and function are required.")
+        flash("Target type and function are required.", "error")
         return redirect(url_for("jobs.new"))
     if via == "ssh" and asynchronous:
         asynchronous = False
-        flash("salt-ssh runs synchronously; switched to sync mode.")
-    if fun in DESTRUCTIVE_FUNS and request.form.get("confirm", "") != tgt:
+        flash("salt-ssh runs synchronously; switched to sync mode.", "info")
+    if (fun in CONFIRM_FUNS and not is_test_mode(fun, args)
+            and request.form.get("confirmed", "") != "yes"):
         batch_preview = parse_batch_fields(request.form) or {}
+        matched = resolve_batch_roster(tgt, tgt_type)
+        preview, preview_minion, preview_note = build_sls_preview(
+            fun, args, matched, via)
         return render_template("job_confirm.html", tgt=tgt, tgt_type=tgt_type,
                                fun=fun, raw_args=raw_args,
                                mode=request.form.get("mode", "async"),
@@ -348,7 +482,10 @@ def run():
                                save_as=request.form.get("save_as", ""),
                                batch_mode=batch_preview.get("mode", "off"),
                                batch_size=batch_preview.get("size", 25),
-                               stop_after=batch_preview.get("stop_after", 1))
+                               stop_after=batch_preview.get("stop_after", 1),
+                               matched=matched, preview=preview,
+                               preview_minion=preview_minion,
+                               preview_note=preview_note)
     batch = parse_batch_fields(request.form)
     if batch is not None:
         return run_batched(tgt, tgt_type, fun, args, batch,
@@ -356,7 +493,7 @@ def run():
     try:
         jid = launch(tgt, tgt_type, fun, args, asynchronous, via=via)
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}")
+        flash(f"salt-api error: {exc}", "error")
         return redirect(url_for("jobs.new"))
     if request.form.get("save_as"):
         session = get_session()
@@ -413,10 +550,10 @@ def run_batched(tgt: str, tgt_type: str, fun: str, args: list,
 
     roster = resolve_batch_roster(tgt, tgt_type)
     if roster is None:
-        flash("Batch mode supports list, glob, and group targets.")
+        flash("Batch mode supports list, glob, and group targets.", "error")
         return redirect(url_for("jobs.new"))
     if not roster:
-        flash("Batch roster is empty: no known minions match.")
+        flash("Batch roster is empty: no known minions match.", "error")
         return redirect(url_for("jobs.new"))
     from .tasks import split_roster
 
@@ -442,9 +579,9 @@ def run_batched(tgt: str, tgt_type: str, fun: str, args: list,
         result = run_wave_batch(group, waves, fun, args,
                                 batch["stop_after"], current_user.username)
         flash(f"Batch {result['status']}: "
-              f"{result['failures']} failures over {len(waves)} waves.")
+              f"{result['failures']} failures over {len(waves)} waves.", "warning")
     else:
-        flash(f"Batch queued: {len(waves)} waves. Watch this page.")
+        flash(f"Batch queued: {len(waves)} waves. Watch this page.", "success")
     return redirect(url_for("jobs.detail", jid=f"batch-{group}"))
 
 
@@ -475,13 +612,13 @@ def orchestrate_run():
         try:
             pillar = _json.loads(raw_pillar)
         except ValueError:
-            flash("Pillar override is not valid JSON.")
+            flash("Pillar override is not valid JSON.", "error")
             return redirect(url_for("jobs.orchestrate"))
         if not isinstance(pillar, dict):
-            flash("Pillar override must be a JSON object.")
+            flash("Pillar override must be a JSON object.", "error")
             return redirect(url_for("jobs.orchestrate"))
     if not mods or not MODS_RE.match(mods):
-        flash("Mods must be a dotted orchestration name.")
+        flash("Mods must be a dotted orchestration name.", "error")
         return redirect(url_for("jobs.orchestrate"))
     jid = f"orch-{int(_time.time())}"
     session = get_session()
@@ -496,9 +633,9 @@ def orchestrate_run():
 
         run_inline(jid, mods, saltenv, test, pillar,
                    current_user.username)
-        flash("Orchestration finished synchronously.")
+        flash("Orchestration finished synchronously.", "success")
     else:
-        flash("Orchestration queued. Watch this page.")
+        flash("Orchestration queued. Watch this page.", "success")
     return redirect(url_for("jobs.detail", jid=jid))
 
 
@@ -508,10 +645,10 @@ def cancel_batch(group: str):
     from .tasks import request_batch_cancel
 
     if request_batch_cancel(group):
-        flash("Cancel requested: no new waves will start.")
+        flash("Cancel requested: no new waves will start.", "info")
     else:
         flash("Cancel flag not stored (no queue); "
-              "a running inline batch cannot stop.")
+              "a running inline batch cannot stop.", "warning")
     return redirect(url_for("jobs.detail", jid=f"batch-{group}"))
 
 
@@ -521,7 +658,7 @@ def detail(jid: str):
     session = get_session()
     job = session.get(Job, jid)
     if job is None:
-        flash("Unknown job.")
+        flash("Unknown job.", "error")
         return redirect(url_for("jobs.index", tab="history"))
     waves: list = []
     batch_state: dict | None = None
@@ -536,6 +673,15 @@ def detail(jid: str):
     else:
         sync_job(jid)
     returns = session.query(JobReturn).filter_by(jid=jid).all()
+    if not job.complete:
+        # Live master-cache rows for minions the returner hasn't
+        # recorded yet (DB rows win, so no duplicates). The sync
+        # button redirects here, so it shares this merge.
+        seen = {r.minion_id for r in returns}
+        returns = returns + [
+            r for r in live_returns_now(get_salt(), jid)
+            if r.minion_id not in seen
+        ]
     kill_reports: list = []
     if not (job.batch_group and jid == f"batch-{job.batch_group}"):
         from .models import AuditEvent
@@ -569,17 +715,17 @@ def kill(jid: str):
     session = get_session()
     job = session.get(Job, jid)
     if job is None:
-        flash("Unknown job.")
+        flash("Unknown job.", "error")
         return redirect(url_for("jobs.index", tab="history"))
     if not killable(job):
-        flash("Only running Salt jobs with minion targets can be killed.")
+        flash("Only running Salt jobs with minion targets can be killed.", "error")
         return redirect(url_for("jobs.detail", jid=jid))
     tgt, tgt_type = job.tgt, job.tgt_type
     if tgt_type == "group":
         try:
             targets, _ = resolve_group_target(tgt)
         except SaltApiError as exc:
-            flash(f"salt-api error: {exc}")
+            flash(f"salt-api error: {exc}", "error")
             return redirect(url_for("jobs.detail", jid=jid))
         tgt, tgt_type = ",".join(targets), "list"
     client = get_salt()
@@ -589,13 +735,13 @@ def kill(jid: str):
         kill_jid = (result[0]["jid"] if isinstance(result, list)
                     else result["jid"])
     except (SaltApiError, KeyError, IndexError, TypeError) as exc:
-        flash(f"kill failed: {exc}")
+        flash(f"kill failed: {exc}", "error")
         return redirect(url_for("jobs.detail", jid=jid))
     session.add(Job(jid=kill_jid, fun="saltutil.kill_job", tgt=tgt,
                     tgt_type=tgt_type, user=current_user.username))
     session.commit()
     log_event(current_user.username, f"kill:{jid}", jid=kill_jid)
-    flash(f"Kill published for {jid}: minions report back here.")
+    flash(f"Kill published for {jid}: minions report back here.", "success")
     return redirect(url_for("jobs.detail", jid=jid))
 
 
@@ -605,7 +751,7 @@ def sync(jid: str):
     try:
         sync_job(jid)
     except (SaltApiError, ValueError) as exc:
-        flash(f"sync error: {exc}")
+        flash(f"sync error: {exc}", "error")
     return redirect(url_for("jobs.detail", jid=jid))
 
 
@@ -617,7 +763,7 @@ def delete_saved(saved_id: int):
     if saved:
         session.delete(saved)
         session.commit()
-        flash(f"Deleted saved job '{saved.name}'.")
+        flash(f"Deleted saved job '{saved.name}'.", "success")
     return redirect(url_for("jobs.index", tab="saved"))
 
 

@@ -180,7 +180,7 @@ def login():
     form = LoginForm()
     if form.validate_on_submit():
         if _rate_limited(request.remote_addr or "unknown"):
-            flash("Too many attempts. Try again later.")
+            flash("Too many attempts. Try again later.", "error")
             return render_template("login.html", form=form,
                                    sso=oidc_enabled()), 429
         user = get_session().query(User).filter_by(username=form.username.data).first()
@@ -196,7 +196,7 @@ def login():
             _attempts.pop(request.remote_addr or "unknown", None)
             login_user(user)
             return redirect(url_for("dashboard.index"))
-        flash("Invalid credentials.")
+        flash("Invalid credentials.", "error")
     return render_template("login.html", form=form, sso=oidc_enabled())
 
 
@@ -216,7 +216,7 @@ def oidc_callback():
         token = _oauth_client().authorize_access_token()
         userinfo = token.get("userinfo") or _oauth_client().userinfo(token=token)
     except Exception as exc:  # noqa: BLE001 — provider/network failures
-        flash(f"SSO login failed: {exc}")
+        flash(f"SSO login failed: {exc}", "error")
         return redirect(url_for("auth.login"))
     from .settings import get_setting
 
@@ -226,7 +226,7 @@ def oidc_callback():
             get_setting("oidc_issuer").rstrip("/"),
         )
     except ValueError as exc:
-        flash(f"SSO login failed: {exc}")
+        flash(f"SSO login failed: {exc}", "error")
         return redirect(url_for("auth.login"))
     login_user(user)
     return redirect(url_for("dashboard.index"))

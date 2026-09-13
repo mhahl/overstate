@@ -16,7 +16,7 @@
 {% endif %}
 {% if bulk_ignored and not bulk %}
 <div class="alert alert-warning mb-4" role="note">
-  <span>Bulk selection ignored: a preset or saved job is active. Clear it to use the bulk target.</span>
+  <span>Bulk selection ignored: a preset or saved job is active. <a class="link" href="{{ url_for('jobs.new') }}">Start over</a> to use the bulk target.</span>
 </div>
 {% endif %}
 <div class="collapse collapse-arrow bg-base-100 border border-base-300 shadow-sm mb-4">
@@ -64,7 +64,7 @@
           {% endfor %}
         </select>
       </label>
-      <p class="md:col-span-2 text-xs opacity-70">Target a saved minion group with type “group” (<a class="link" href="{{ url_for('groups.index') }}">manage groups</a>).</p>
+      <p class="md:col-span-2 text-xs opacity-70">Examples: glob <span class="font-mono">web-*</span>, list <span class="font-mono">web-01,web-02</span>, grain <span class="font-mono">os:Debian</span>, compound <span class="font-mono">G@os:Debian and web-*</span>. Target a saved minion group with type “group” (<a class="link" href="{{ url_for('groups.index') }}">manage groups</a>).</p>
     </div>
     <div class="border-t border-base-300 py-5 fieldset relative">
       <span class="fieldset-legend">Function</span>
@@ -80,6 +80,7 @@
         {% endfor %}
       </ul>
       <span class="fieldset-label">Pick a known function or type any other.</span>
+      <div id="fun-doc" data-doc-minion="{{ doc_minion or '' }}" data-doc-url="{{ url_for('jobs.fun_doc') }}"></div>
     </div>
     <label class="fieldset pb-5">
       <span class="fieldset-legend">Args (space-separated)</span>
@@ -151,6 +152,19 @@
 
   var funInput = document.getElementById('job-fun');
   var funList = document.getElementById('fun-list');
+  var funDoc = document.getElementById('fun-doc');
+  function loadFunDoc(fun) {
+    var minion = funDoc.getAttribute('data-doc-minion');
+    if (!fun || !minion) {
+      funDoc.innerHTML = '';
+      return;
+    }
+    fetch(funDoc.getAttribute('data-doc-url') + '?fun=' + encodeURIComponent(fun) +
+          '&minion=' + encodeURIComponent(minion))
+      .then(function (r) { return r.text(); })
+      .then(function (html) { funDoc.innerHTML = html; })
+      .catch(function () {});
+  }
   function funOptions() {
     return Array.from(funList.querySelectorAll('[role=option]'));
   }
@@ -188,7 +202,11 @@
     funList.classList.add('hidden');
     funInput.setAttribute('aria-expanded', 'false');
     funInput.focus();
+    loadFunDoc(funInput.value.trim());
   });
+  if (funInput.value.trim()) {
+    loadFunDoc(funInput.value.trim());
+  }
 })();
 </script>
 {% endblock %}

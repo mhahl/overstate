@@ -3,3 +3,19 @@
   themes: light, dark --prefersdark, wireframe;
 }
 @plugin "@iconify/tailwind4";
+/* Dynamic OS brand icons (minion overview): force-generate every slug the
+   os_icon_slug mapper can emit, since the scanner cannot see them. */
+@source inline("icon-[simple-icons--fedora]");
+@source inline("icon-[simple-icons--opensuse]");
+@source inline("icon-[simple-icons--ubuntu]");
+@source inline("icon-[simple-icons--debian]");
+@source inline("icon-[simple-icons--centos]");
+@source inline("icon-[simple-icons--redhat]");
+@source inline("icon-[simple-icons--almalinux]");
+@source inline("icon-[simple-icons--rockylinux]");
+@source inline("icon-[simple-icons--archlinux]");
+@source inline("icon-[simple-icons--gentoo]");
+@source inline("icon-[simple-icons--freebsd]");
+@source inline("icon-[simple-icons--windows]");
+@source inline("icon-[simple-icons--apple]");
+@source inline("icon-[simple-icons--linux]");

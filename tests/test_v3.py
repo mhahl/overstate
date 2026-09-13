@@ -123,6 +123,7 @@ def test_suggest_glob_single_host_is_exact():
 def test_bulk_ignored_by_preset_shows_note(client):
     html = client.get("/jobs/new?bulk=web-01,web-02&preset=ping").data.decode()
     assert "Bulk selection ignored" in html
+    assert "Start over" in html
     assert "Bulk selection (" not in html
 
 

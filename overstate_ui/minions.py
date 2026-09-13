@@ -8,16 +8,21 @@ from flask import Blueprint, Response, flash, jsonify, redirect, render_template
 from flask_login import current_user, login_required
 from .auth import roles_required
 
+from .audit import log_event
 from .dashboard import get_salt
 from .db import get_session
 from .inventory import GRAIN_COLUMNS, refresh_inventory
-from .models import JobReturn, Minion
+from .models import Job, JobReturn, Minion
 from .salt_client import SaltApiError
 
 bp = Blueprint("minions", __name__, url_prefix="/minions")
 
 PAGE_SIZES = (10, 25, 50)
 DETAIL_TABS = ["overview", "states", "jobs", "schedule", "pillar", "beacons"]
+BEACON_ACTIONS = {
+    "enable": "beacons.enable_beacon",
+    "disable": "beacons.disable_beacon",
+}
 SORT_COLUMNS = ("id", "key", "presence", "os")
 PRESENCE_ORDER = {"up": 0, "dead": 1, "down": 2}
 ONBOARD_DISTROS = ("opensuse", "fedora")
@@ -28,12 +33,51 @@ ONBOARD_INSTALL = {
 HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$")
 
 
+OS_ICONS = (
+    ("fedora", "fedora"),
+    ("opensuse", "opensuse"),
+    ("suse", "opensuse"),
+    ("ubuntu", "ubuntu"),
+    ("debian", "debian"),
+    ("centos", "centos"),
+    ("red hat", "redhat"),
+    ("rhel", "redhat"),
+    ("alma", "almalinux"),
+    ("rocky", "rockylinux"),
+    ("arch", "archlinux"),
+    ("gentoo", "gentoo"),
+    ("freebsd", "freebsd"),
+    ("windows", "windows"),
+    ("macos", "apple"),
+    ("darwin", "apple"),
+)
+
+
+def os_icon_slug(grains: dict) -> str:
+    """Simple Icons slug for the minion OS; generic Linux fallback."""
+    hay = f"{grains.get('os', '')} {grains.get('osfinger', '')}".lower()
+    for needle, slug in OS_ICONS:
+        if needle in hay:
+            return slug
+    return "linux"
+
+
 def presence_of(row: dict) -> str:
     if row["up"]:
         return "up"
     if row["dead"]:
         return "dead"
     return "down"
+
+
+def parse_beacon_list(value) -> dict:
+    """Parse beacons.list output. With ``return_yaml=False`` this is a
+    mapping of beacon name to config; anything else (a YAML string on
+    older renders, None on an empty set) yields {} and the caller
+    shows the raw payload or the empty state instead."""
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
 
 
 def live_roster(client) -> tuple[dict[str, str], set[str]]:
@@ -209,11 +253,11 @@ def refresh():
     else:
         status, value = wait_for(job, wait=10.0)
         if status == "ready":
-            flash(f"Inventory refreshed: {value['count']} minions.")
+            flash(f"Inventory refreshed: {value['count']} minions.", "success")
         elif status == "pending":
-            flash("Refresh queued in the background — reload to see it.")
+            flash("Refresh queued in the background — reload to see it.", "info")
         else:
-            flash(f"refresh failed in the background: {value}")
+            flash(f"refresh failed in the background: {value}", "error")
     return redirect(url_for("minions.index"))
 
 
@@ -224,9 +268,9 @@ def refresh_sync() -> None:
         statuses, _ = live_roster(client)
         count = refresh_inventory(client, statuses)
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}")
+        flash(f"salt-api error: {exc}", "error")
     else:
-        flash(f"Inventory refreshed: {count} minions.")
+        flash(f"Inventory refreshed: {count} minions.", "success")
 
 
 
@@ -260,7 +304,7 @@ def onboard_inputs(args) -> tuple[str, str, str] | None:
     master = args.get("master", get_setting("master_host")).strip()
     if (not mid or distro not in ONBOARD_DISTROS or not HOST_RE.match(mid)
             or not master or not HOST_RE.match(master)):
-        flash("Minion id and master must be valid hostnames; pick a distribution.")
+        flash("Minion id and master must be valid hostnames; pick a distribution.", "error")
         return None
     return (distro, master, mid)
 
@@ -315,11 +359,38 @@ def detail(mid: str):
         elif tab == "states":
             data["highstate"] = client.local(mid, "state.show_highstate")[0].get(mid)
         elif tab == "schedule":
-            data["schedule"] = client.local(mid, "schedule.list")[0].get(mid)
+            # return_yaml=False keeps this a real mapping: an empty
+            # schedule arrives as {} so the empty state triggers,
+            # not as the string "schedule: {}\n" (see schedules.index).
+            data["schedule"] = client.local(
+                mid, "schedule.list",
+                kwarg={"return_yaml": False})[0].get(mid, {})
         elif tab == "pillar":
             data["pillar"] = client.local(mid, "pillar.items")[0].get(mid)
         elif tab == "beacons":
-            data["beacons"] = client.local(mid, "beacons.list")[0].get(mid)
+            # return_yaml=False keeps this a real mapping (see
+            # schedules.index). A second pillar-excluded call
+            # attributes the `pillar` source badge; when it fails
+            # no badge is shown rather than a wrong one.
+            value = client.local(mid, "beacons.list",
+                                 kwarg={"return_yaml": False})[0].get(mid, {})
+            entries = parse_beacon_list(value)
+            data["beacon_entries"] = entries
+            data["beacon_pillar"] = set()
+            if not entries and isinstance(value, str) and value.strip():
+                data["beacon_raw"] = value
+            elif entries:
+                try:
+                    local_value = client.local(
+                        mid, "beacons.list",
+                        kwarg={"return_yaml": False,
+                               "include_pillar": False})[0].get(mid, {})
+                except SaltApiError:
+                    pass
+                else:
+                    data["beacon_pillar"] = (set(entries)
+                                             - set(parse_beacon_list(
+                                                 local_value)))
     except SaltApiError as exc:
         error = str(exc)
     sort = request.args.get("sort", "jid")
@@ -344,8 +415,43 @@ def detail(mid: str):
 
         data["returns"] = sorted(returns, key=ret_key,
                                  reverse=(direction == "desc"))
+    recent = []
+    if tab == "overview":
+        recent_returns = (
+            get_session().query(JobReturn).filter_by(minion_id=mid)
+            .order_by(JobReturn.jid.desc()).limit(5).all())
+        funs = {j.jid: j.fun for j in get_session().query(Job).filter(
+            Job.jid.in_([r.jid for r in recent_returns])).all()}
+        recent = [{"ret": r, "fun": funs.get(r.jid, "—")}
+                  for r in recent_returns]
     ctx = dict(mid=mid, tab=tab, tabs=DETAIL_TABS, data=data, error=error,
-               snapshot=bool(row), sort=sort, direction=direction)
+               snapshot=bool(row), sort=sort, direction=direction,
+               key_status=row.key_status if row else None,
+               last_seen=row.last_seen if row else None,
+               conformity=(row.conformity or {}) if row else {},
+               recent=recent, os_icon=os_icon_slug(data["grains"]))
     if tab == "jobs" and request.headers.get("HX-Request") == "true":
         return render_template("_minion_returns.html", **ctx)
     return render_template("minion_detail.html", **ctx)
+
+
+@bp.post("/<mid>/beacons/<action>")
+@roles_required("operator")
+def beacon_act(mid: str, action: str):
+    """Enable/disable one beacon (runtime state only; definitions live
+    in pillar and are never edited here)."""
+    if action not in BEACON_ACTIONS:
+        flash("Unknown beacon action.", "error")
+        return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
+    name = request.form.get("beacon", "")
+    if not name:
+        flash("Beacon name is required.", "error")
+        return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
+    try:
+        get_salt().local(mid, BEACON_ACTIONS[action], arg=[name])
+    except SaltApiError as exc:
+        flash(f"salt-api error: {exc}", "error")
+    else:
+        log_event(current_user.username, f"beacon-{action}:{name}")
+        flash(f"{mid}/{name}: {action}d.", "success")
+    return redirect(url_for("minions.detail", mid=mid, tab="beacons"))

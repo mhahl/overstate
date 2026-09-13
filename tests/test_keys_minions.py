@@ -45,7 +45,13 @@ def fake_transport() -> httpx.MockTransport:
                                "num_cpus": 4, "saltversion": "3006.5"}}]})
             if fun in ("schedule.list", "pillar.items", "state.show_highstate",
                        "beacons.list"):
-                return httpx.Response(200, json={"return": [{"web-01": {}}]})
+                value = {}
+                if fun == "schedule.list" and (
+                        body.get("kwarg") or {}).get("return_yaml") is not False:
+                    # Older renders arrive as YAML text, not a mapping.
+                    value = "schedule: {}\n"
+                return httpx.Response(200, json={"return": [{"web-01":
+                                                             value}]})
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -63,6 +69,7 @@ def client():
         seed_admin(password="pw")
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
+    c.app = app
     return c
 
 
@@ -194,3 +201,85 @@ def test_minion_detail_tabs(client):
         rv = client.get(f"/minions/web-01?tab={tab}")
         assert rv.status_code == 200, tab
     assert "osfinger" in client.get("/minions/web-01").data.decode()
+
+
+def test_schedule_pillar_empty_states_link_docs_no_raw(client):
+    html = client.get("/minions/web-01?tab=schedule").data.decode()
+    assert "No schedules on web-01" in html
+    assert "salt.modules.schedule" in html
+    assert "mockup-code" not in html  # no raw dump below the empty state
+    html = client.get("/minions/web-01?tab=pillar").data.decode()
+    assert "No pillar data for web-01" in html
+    assert "topics/pillar" in html
+    assert "mockup-code" not in html
+
+
+def test_minion_overview_dashboard(client):
+    html = client.get("/minions/web-01").data.decode()
+    for heading in ("Presence", "Key", "Conformity", "Last seen",
+                    "Machine", "Recent activity", "All grain facts"):
+        assert heading in html
+    assert "Fedora Linux 41" in html and "10.0.0.1" in html
+    assert "icon-[simple-icons--fedora]" in html
+    assert "Run job on this minion" in html
+    assert "not in snapshot cache" in html
+    assert "No highstate-style job has reported" in html
+
+
+def test_minions_page_pause_labels_scope(client):
+    html = client.get("/minions/").data.decode()
+    assert "Pause live updates" in html
+    assert "all pages" in html
+
+
+def test_os_icon_slug():
+    from overstate_ui.minions import os_icon_slug
+
+    assert os_icon_slug({"os": "Fedora"}) == "fedora"
+    assert os_icon_slug({"osfinger": "openSUSE Leap 15.6"}) == "opensuse"
+    assert os_icon_slug({"os": "SUSE"}) == "opensuse"
+    assert os_icon_slug({"os": "Red Hat Enterprise Linux"}) == "redhat"
+    assert os_icon_slug({"os": "Windows"}) == "windows"
+    assert os_icon_slug({}) == "linux"
+    assert os_icon_slug({"osfinger": "Something Else"}) == "linux"
+
+
+def test_minion_overview_snapshot_and_activity(client):
+    import datetime as dt
+
+    from overstate_ui.models import Job, JobReturn
+
+    with client.app.app_context():
+        get_session().add(Minion(
+            id="web-01", grains={}, conformity={"status": "ok", "jid": "j1"},
+            key_status="accepted",
+            last_seen=dt.datetime(2026, 9, 1, 12, 0)))
+        get_session().add(Job(jid="j1", fun="test.ping", tgt="*",
+                              tgt_type="glob", user="admin", complete=True))
+        get_session().add(JobReturn(jid="j1", minion_id="web-01",
+                                    success=True, retcode=0))
+        get_session().commit()
+    html = client.get("/minions/web-01").data.decode()
+    assert "not in snapshot cache" not in html
+    assert ">accepted<" in html
+    assert "2026-09-01 12:00" in html
+    assert ">ok<" in html and "j1" in html
+    assert "test.ping" in html
+    assert "Nothing has run" not in html
+    jobs_html = client.get("/minions/web-01?tab=jobs").data.decode()
+    assert 'href="/jobs/j1"' in jobs_html
+
+
+def test_minion_overview_hides_run_for_viewer(client):
+    from overstate_ui.auth import _ph
+    from overstate_ui.models import User
+
+    with client.app.app_context():
+        get_session().add(User(username="v", password_hash=_ph.hash("pw"),
+                               role="viewer"))
+        get_session().commit()
+    viewer = client.app.test_client()
+    viewer.post("/login", data={"username": "v", "password": "pw"})
+    html = viewer.get("/minions/web-01").data.decode()
+    assert "Run job on this minion" not in html
+    assert "Recent activity" in html

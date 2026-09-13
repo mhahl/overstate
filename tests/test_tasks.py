@@ -189,6 +189,7 @@ def test_dashboard_renders_capability_checklist(app, admin):
 def test_rotation_page_and_verify(monkeypatch, admin):
     html = admin.get("/users/rotation").data.decode()
     assert "Rotate salt-api password" in html
+    assert "locks the app out" in html  # danger banner above the steps
 
     class LoginOk:
         def login(self):

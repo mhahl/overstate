@@ -82,7 +82,7 @@ def watch():
     if sls and not session.query(WatchedState).filter_by(sls=sls).first():
         session.add(WatchedState(sls=sls))
         session.commit()
-        flash(f"Watching '{sls}'.")
+        flash(f"Watching '{sls}'.", "success")
     return redirect(url_for("states.index"))
 
 
@@ -101,5 +101,5 @@ def unwatch(wid: int):
 @roles_required("operator")
 def recompute():
     jid = recompute_conformity()
-    flash(f"Conformity recomputed from {jid}." if jid else "No state jobs yet.")
+    flash(f"Conformity recomputed from {jid}." if jid else "No state jobs yet.", "info")
     return redirect(url_for("states.index"))

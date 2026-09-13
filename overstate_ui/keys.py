@@ -70,7 +70,7 @@ def index():
     try:
         data = get_key_data(get_salt())
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}")
+        flash(f"salt-api error: {exc}", "error")
         data = {t: [] for t, _ in TABS}
     counts = {t: len(data[t]) for t, _ in TABS}
     masters = [m.strip() for m in
@@ -84,15 +84,15 @@ def index():
 @roles_required("operator")
 def act(action: str):
     if action not in ACTIONS:
-        flash("Unknown key action.")
+        flash("Unknown key action.", "error")
         return redirect(url_for("keys.index"))
     mid = request.form.get("id", "")
     tab = request.form.get("tab", "pending")
     try:
         get_salt().wheel(ACTIONS[action], match=mid)
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}")
+        flash(f"salt-api error: {exc}", "error")
     else:
         log_event(current_user.username, f"{action}-key")
-        flash(f"{mid}: {action}ed.")
+        flash(f"{mid}: {action}ed.", "success")
     return redirect(url_for("keys.index", tab=tab))

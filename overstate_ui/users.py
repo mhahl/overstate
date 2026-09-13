@@ -24,15 +24,15 @@ def set_role(uid: int):
     user = session.get(User, uid)
     role = request.form.get("role", "")
     if user is None:
-        flash("Unknown user.")
+        flash("Unknown user.", "error")
     elif role not in LEVELS:
-        flash("Unknown role.")
+        flash("Unknown role.", "error")
     elif user.id == current_user.id and role != "admin":
-        flash("You cannot demote yourself.")
+        flash("You cannot demote yourself.", "error")
     else:
         user.role = role
         session.commit()
-        flash(f"'{user.username}' is now {role}.")
+        flash(f"'{user.username}' is now {role}.", "success")
     return redirect(url_for("users.index"))
 
 
@@ -59,17 +59,17 @@ def rotation_verify():
 
     password = request.form.get("password", "")
     if not password:
-        flash("Paste the new password to verify it.")
+        flash("Paste the new password to verify it.", "info")
         return redirect(url_for("users.rotation"))
     candidate = build_client()
     candidate.password = password
     try:
         candidate.login()
     except SaltApiError as exc:
-        flash(f"verification failed: {exc}")
+        flash(f"verification failed: {exc}", "error")
     else:
         log_event(current_user.username, "eauth-rotation-verified")
-        flash("New eauth password works. Update the app environment to match.")
+        flash("New eauth password works. Update the app environment to match.", "warning")
     return redirect(url_for("users.rotation"))
 
 
@@ -79,11 +79,11 @@ def delete(uid: int):
     session = get_session()
     user = session.get(User, uid)
     if user is None:
-        flash("Unknown user.")
+        flash("Unknown user.", "error")
     elif user.id == current_user.id:
-        flash("You cannot delete yourself.")
+        flash("You cannot delete yourself.", "error")
     else:
         session.delete(user)
         session.commit()
-        flash(f"Deleted '{user.username}'.")
+        flash(f"Deleted '{user.username}'.", "success")
     return redirect(url_for("users.index"))

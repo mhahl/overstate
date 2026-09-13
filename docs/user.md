@@ -25,9 +25,9 @@ Three roles exist. Each higher role includes everything below it.
 
 - **Viewer.** You see everything: minions, jobs, states, pillar,
   schedules, events. You change nothing.
-- **Operator.** You run jobs, accept keys, manage schedules, capture
-  pillar snapshots, and edit watched states. You cannot touch users,
-  settings, or roles.
+- **Operator.** You run jobs, accept keys, manage schedules, toggle
+  beacons, capture pillar snapshots, and edit watched states. You
+  cannot touch users, settings, or roles.
 - **Admin.** You do all of that plus users and settings.
 
 Buttons for actions above your role do not appear, and the server
@@ -96,7 +96,8 @@ Click a minion ID for its detail page. Tabs organize the facts:
 - **Jobs.** Recent jobs that touched this minion.
 - **Schedule.** That minion's scheduled jobs.
 - **Pillar.** Pillar data, read-only.
-- **Beacons.** Beacon configuration, read-only.
+- **Beacons.** Beacon list with enable / disable toggles.
+  Definitions live in pillar and are never edited here.
 
 ### Onboard a new minion
 
@@ -163,6 +164,12 @@ Destructive functions (`pkg.install`, `pkg.remove`,
 target to prove you aimed where you meant. The **save as** field
 stores the finished form as a named saved job for reuse.
 
+State applies get a review step with an SLS preview: the page
+lists the states about to be enforced, rendered on the first
+matched minion (base environment) with foldable raw data. The
+preview is advisory — if rendering fails, a note says so and
+firing stays available.
+
 For wide targets, switch batch mode from off to a wave size (count
 or percent) and set a stop-after-failures limit. The run pins the
 matching minions from inventory, executes wave by wave with one job
@@ -227,6 +234,21 @@ minutes, hours, days), and the enabled flag. The name must be unique
 on that minion. Enable and disable flip the flag without deleting the
 entry. Delete removes it. Every change runs through salt-api, so a
 minion that is down reports an error instead of pretending.
+
+## Beacons
+
+Beacons watch things on the minion (processes, load, files) and fire
+events. Their definitions live in pillar, so Overstate never edits
+them here — the same read-only rule as the Pillar page.
+
+The Beacons tab on a minion lists each configured beacon with its
+configuration. Entries defined in pillar carry a pillar badge;
+minion-local ones are marked minion. Enable and disable flip a
+beacon's runtime state without touching its definition. Every
+toggle runs through salt-api, so a minion that is down reports an
+error instead of pretending, and each toggle lands in the audit
+trail. Whether a toggle survives a pillar refresh depends on your
+master; when in doubt, change the definition in pillar instead.
 
 ## Pillar
 
