@@ -74,6 +74,18 @@ reloads systemd, and restarts the master. The dev compose stack
 deliberately does not publish these ports: its master runs with
 `auto_accept` and a built-in minion only.
 
+### If a minion was auto-accepted
+
+Installs before this fix deployed the dev-only `auto_accept` config to
+`/etc/overstate/salt-config/dev.conf`, so any minion that connected was
+accepted without fingerprint review. `update.sh` (or a re-run of
+`install.sh`) deletes that file and restarts the master, which stops
+future auto-accepts — but keys accepted while it was on stay accepted.
+For each such minion: review the Keys page for anything you did not
+manually accept, delete the key, and let the minion re-enroll so it
+lands under Pending. Then verify the fingerprint, accept it by hand,
+and run `test.ping` from the Jobs page.
+
 ## Update / uninstall
 
 ```sh

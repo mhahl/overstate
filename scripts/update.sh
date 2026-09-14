@@ -43,6 +43,14 @@ if [ "$CHANGED" -eq 1 ]; then
   systemctl enable overstate-salt-api-tls.service
 fi
 
+# dev.conf enables auto_accept for the dev stack only and must never sit
+# on a real master. Hosts installed before install.sh stripped it heal
+# here; the restart below applies the removal.
+if [ -f "$ETC/salt-config/dev.conf" ]; then
+  echo "==> removing dev-only auto_accept config (not for production)"
+  rm -f "$ETC/salt-config/dev.conf"
+fi
+
 echo "==> restarting salt-master, worker, app, caddy"
 systemctl restart overstate-salt-master.service
 API_UP=""

@@ -87,6 +87,14 @@ if [ ! -d "$ETC/salt-config" ]; then
   cp -r "$REPO/salt-config" "$ETC/salt-config"
   chmod 755 "$ETC/salt-config"
 fi
+# dev.conf enables auto_accept for the dev stack's built-in minion. It must
+# never sit on a real master: any minion pointing at it would be accepted
+# without fingerprint review. Strip it on every run so hosts installed
+# before this exclusion are healed too (the restart below applies it).
+if [ -f "$ETC/salt-config/dev.conf" ]; then
+  echo "==> removing dev-only auto_accept config (not for production)"
+  rm -f "$ETC/salt-config/dev.conf"
+fi
 if [ ! -f "$VAR/srv/top.sls" ] && [ -f "$REPO/salt-srv/salt/top.sls" ]; then
   cp -r "$REPO/salt-srv/salt/." "$VAR/srv/"
 fi
@@ -170,11 +178,12 @@ if [ -f "$ETC/salt-config/returner.conf" ]; then
 else
   echo "WARNING: $ETC/salt-config/returner.conf missing; job history will not persist" >&2
 fi
-# Salt reads the returner config once at startup; on a re-run over a live
-# master the new password needs a restart (fresh installs have nothing
-# running yet, so this is a no-op there; the api-tls unit refires by itself).
+# Salt reads its config once at startup; on a re-run over a live master
+# the returner password and the dev.conf strip above need a restart
+# (fresh installs have nothing running yet, so this is a no-op there;
+# the api-tls unit refires by itself).
 if systemctl is-active -q overstate-salt-master.service 2>/dev/null; then
-  echo "==> restarting salt-master to apply returner config"
+  echo "==> restarting salt-master to apply salt-config changes"
   systemctl restart overstate-salt-master.service
 fi
 

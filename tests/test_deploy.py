@@ -61,6 +61,22 @@ def test_salt_master_publishes_minion_ports():
     ]
 
 
+def test_prod_scripts_strip_dev_auto_accept():
+    # install.sh copies salt-config/ wholesale, which includes the dev-only
+    # auto_accept file; both scripts must remove it from the deployed copy
+    # so a real master never auto-accepts minion keys.
+    for script in ("install.sh", "update.sh"):
+        text = (REPO / "scripts" / script).read_text()
+        assert 'rm -f "$ETC/salt-config/dev.conf"' in text
+
+
+def test_auto_accept_lives_only_in_dev_only_file():
+    confs = sorted((REPO / "salt-config").glob("*.conf"))
+    assert len(confs) >= 2
+    hits = [path.name for path in confs if "auto_accept" in path.read_text()]
+    assert hits == ["dev.conf"]
+
+
 def test_quadlet_names_cover_every_dialed_host():
     import re
 
