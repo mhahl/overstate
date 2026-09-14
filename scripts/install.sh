@@ -236,6 +236,8 @@ cat <<EOF
 Overstate is starting:
   web:      https://$APP_DOMAIN (Caddy, automatic ACME TLS)
   salt-api: https://$API_DOMAIN (Caddy) and 127.0.0.1:8001 (localhost only)
+  minions:  TCP 4505+4506 published for real minions (open them in the
+            host firewall; salt-api stays localhost-only by design)
   data:     $VAR, $ETC, volumes overstate-pgdata/overstate-saltdata/caddy-data
   needs:    DNS A records for both names at this host; ports 80+443 reachable
             or Caddy cannot issue certificates

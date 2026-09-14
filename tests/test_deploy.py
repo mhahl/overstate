@@ -45,6 +45,22 @@ def test_quadlet_units_cover_all_services():
     assert "PublishPort" not in app  # Caddy is the only front door
 
 
+def test_salt_master_publishes_minion_ports():
+    lines = (
+        (REPO / "deploy" / "quadlet" / "overstate-salt-master.container")
+        .read_text()
+        .splitlines()
+    )
+    published = [line for line in lines if line.startswith("PublishPort=")]
+    assert "PublishPort=4505:4505" in published
+    assert "PublishPort=4506:4506" in published
+    # salt-api stays localhost-only behind Caddy; only the minion ports
+    # are reachable from the network.
+    assert [line for line in published if ":8000" in line] == [
+        "PublishPort=127.0.0.1:8001:8000"
+    ]
+
+
 def test_quadlet_names_cover_every_dialed_host():
     import re
 

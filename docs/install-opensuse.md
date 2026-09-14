@@ -37,6 +37,43 @@ at the host, inbound ports 80+443 open. Override the names with
 `APP_DOMAIN` / `API_DOMAIN` in `overstate.env`. Edit `/etc/overstate/Caddyfile`
 for extra routes, then `systemctl restart overstate-caddy`.
 
+## Minion ports and firewall
+
+The `overstate-salt-master` unit publishes the master's ZeroMQ ports on
+all host interfaces: 4505/tcp (publish) and 4506/tcp (request/return).
+Minions initiate both connections, so minion-side firewalls need
+outbound 4505+4506 only, no inbound rules. salt-api is intentionally
+not published: it stays on `127.0.0.1:8001` and is fronted by Caddy,
+so never open port 8001 to a network.
+
+On the master host (firewalld on Leap 16):
+
+```sh
+sudo firewall-cmd --permanent --add-port=4505/tcp --add-port=4506/tcp
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-ports  # expect 4505/tcp 4506/tcp (plus 80/443)
+```
+
+Then confirm the ports listen before enrolling:
+
+```sh
+ss -ltn | grep -E '4505|4506'
+```
+
+A minion that reaches the master shows up under Pending on the Keys
+page.
+
+Point each minion at the master hostname (`master: <host>` in
+`/etc/salt/minion`), start it, accept its key on the Keys page after
+checking the fingerprint, and run `test.ping` from the Jobs page.
+Details live in `docs/deployment.md` under "Enroll minions".
+
+Existing installs pick the published ports up with
+`sudo ./scripts/update.sh`, which reinstalls changed units,
+reloads systemd, and restarts the master. The dev compose stack
+deliberately does not publish these ports: its master runs with
+`auto_accept` and a built-in minion only.
+
 ## Update / uninstall
 
 ```sh

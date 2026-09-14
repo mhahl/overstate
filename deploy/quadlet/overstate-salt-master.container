@@ -1,6 +1,8 @@
 # Salt master + salt-api. Production posture, unlike compose.yml:
 # no built-in minion (SALT_MINION_ENABLED=False) and salt-api listens on
-# localhost only. Master keys live in the overstate-saltdata volume; the
+# localhost only. The ZeroMQ minion ports are published on all interfaces
+# so real minions can reach the master (salt-api stays localhost-only
+# behind Caddy). Master keys live in the overstate-saltdata volume; the
 # read-only binds below overlay config, TLS, and state/pillar roots.
 [Unit]
 Description=Overstate Salt master and salt-api
@@ -12,6 +14,8 @@ ContainerName=salt-master
 Image=localhost/overstate-salt-master:latest
 Network=overstate.network
 PublishPort=127.0.0.1:8001:8000
+PublishPort=4505:4505
+PublishPort=4506:4506
 Environment=SALT_API_ENABLED=True
 Environment=SALT_API_USER=overstate
 Environment=SALT_MINION_ENABLED=False
