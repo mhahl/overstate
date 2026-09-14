@@ -170,6 +170,13 @@ if [ -f "$ETC/salt-config/returner.conf" ]; then
 else
   echo "WARNING: $ETC/salt-config/returner.conf missing; job history will not persist" >&2
 fi
+# Salt reads the returner config once at startup; on a re-run over a live
+# master the new password needs a restart (fresh installs have nothing
+# running yet, so this is a no-op there; the api-tls unit refires by itself).
+if systemctl is-active -q overstate-salt-master.service 2>/dev/null; then
+  echo "==> restarting salt-master to apply returner config"
+  systemctl restart overstate-salt-master.service
+fi
 
 echo "==> installing Quadlet units"
 cp "$REPO"/deploy/quadlet/overstate-*.container "$REPO"/deploy/quadlet/overstate.network "$UNITS/"

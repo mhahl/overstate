@@ -100,6 +100,7 @@ def test_install_syncs_returner_password():
     install = (REPO / "scripts" / "install.sh").read_text()
     assert "returner.pgjsonb.pass" in install
     assert "POSTGRES_PASSWORD" in install
+    assert "restart overstate-salt-master" in install
 
 
 def test_api_key_readable_by_salt_user():
