@@ -246,16 +246,29 @@ def refresh_one(mid: str):
 @roles_required("operator")
 def remove(mid: str):
     """Drop a minion's snapshot row from the database. Job history is
-    kept and the Salt key on the master is untouched — delete that on
-    the Keys page."""
+    kept. The Salt key on the master is only deleted when the remove
+    dialog's checkbox asks for it — and then only when the wheel call
+    succeeds, so a failed key delete leaves the snapshot in place
+    instead of half-finishing."""
     session = get_session()
     row = session.get(Minion, mid)
     if row is None:
         flash(f"Unknown minion '{mid}'.", "error")
+        return redirect(url_for("minions.index"))
+    delete_key = request.form.get("delete_key") == "yes"
+    if delete_key:
+        try:
+            get_salt().wheel("key.delete", match=mid)
+        except SaltApiError as exc:
+            flash(f"salt-api error: {exc}", "error")
+            return redirect(url_for("minions.index"))
+        log_event(current_user.username, f"delete-key:{mid}")
+    session.delete(row)
+    session.commit()
+    log_event(current_user.username, f"minion-remove:{mid}")
+    if delete_key:
+        flash(f"{mid} removed; Salt key deleted.", "success")
     else:
-        session.delete(row)
-        session.commit()
-        log_event(current_user.username, f"minion-remove:{mid}")
         flash(f"{mid} removed from the inventory cache.", "success")
     return redirect(url_for("minions.index"))
 

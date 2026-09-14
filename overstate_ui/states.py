@@ -72,7 +72,11 @@ def index():
 def watch():
     sls = request.form.get("sls", "").strip()
     session = get_session()
-    if sls and not session.query(WatchedState).filter_by(sls=sls).first():
+    if not sls:
+        flash("Enter a state name to watch.", "error")
+    elif session.query(WatchedState).filter_by(sls=sls).first():
+        flash(f"Already watching '{sls}'.", "info")
+    else:
         session.add(WatchedState(sls=sls))
         session.commit()
         flash(f"Watching '{sls}'.", "success")
@@ -84,7 +88,10 @@ def watch():
 def unwatch(wid: int):
     session = get_session()
     row = session.get(WatchedState, wid)
-    if row:
+    if row is None:
+        flash("Nothing to unwatch.", "error")
+    else:
+        flash(f"Stopped watching '{row.sls}'.", "success")
         session.delete(row)
         session.commit()
     return redirect(url_for("states.index"))

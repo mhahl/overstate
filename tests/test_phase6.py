@@ -136,6 +136,32 @@ def test_settings_page_read_only_for_viewers(client):
     assert viewer.post("/settings/", data={}).status_code == 403
 
 
+def test_unwatch_flashes_confirmation(client):
+    from overstate_ui.models import WatchedState
+
+    with client.app.app_context():
+        wid = get_session().query(WatchedState).filter_by(sls="common").one().id
+    rv = client.post(f"/states/unwatch/{wid}")
+    assert rv.status_code == 302
+    assert "Stopped watching" in client.get(rv.headers["Location"]).data.decode()
+    rv = client.post("/states/unwatch/999999")
+    assert "Nothing to unwatch" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_watch_duplicate_flashes_info(client):
+    rv = client.post("/states/watch", data={"sls": "common"})
+    assert rv.status_code == 302
+    assert "Already watching" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_every_submit_shows_pending_state(client):
+    html = client.get("/states/").data.decode()
+    assert "data-pending-spinner" in html
+    assert "htmx:afterRequest" in html
+    assert "getAttribute('method') === 'dialog'" in html
+    assert "data-download" in client.get("/minions/").data.decode()
+
+
 def test_states_watch_recompute(client):
     rv = client.post("/states/watch", data={"sls": "webserver"})
     assert rv.status_code == 302
