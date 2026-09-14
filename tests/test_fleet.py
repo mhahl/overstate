@@ -67,6 +67,64 @@ def test_blank_bulk_param_prefills_no_target(client):
     assert "Target prefilled as" not in html
 
 
+def test_run_validation_failure_preserves_input(client):
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "web-*",
+            "tgt_type": "glob",
+            "fun": "",
+            "mode": "sync",
+            "via": "ssh",
+            "save_as": "recall",
+            "batch_mode": "count",
+            "batch_size": "5",
+            "stop_after": "2",
+        },
+    )
+    assert rv.status_code == 302
+    html = client.get(rv.headers["Location"]).data.decode()
+    assert 'value="web-*"' in html
+    assert '<option value="sync" selected>' in html
+    assert '<option value="ssh" selected>' in html
+    assert 'value="recall"' in html
+    assert '<option value="count" selected>' in html
+    assert 'value="5"' in html
+
+
+def test_fun_picker_keyboard_hooks_present(client):
+    html = client.get("/jobs/new").data.decode()
+    assert "aria-activedescendant" in html
+    assert "ArrowDown" in html
+    assert 'id="fun-list"' in html
+
+
+def test_confirm_cancel_carries_state(client):
+    from flask import render_template
+
+    with client.app.test_request_context("/"):
+        html = render_template(
+            "job_confirm.html",
+            tgt="web-*",
+            tgt_type="glob",
+            fun="state.highstate",
+            raw_args="",
+            mode="sync",
+            via="local",
+            save_as="",
+            batch_mode="off",
+            batch_size=25,
+            stop_after=1,
+            matched=[],
+            preview=None,
+            preview_minion=None,
+            preview_note=None,
+        )
+    assert "tgt=web-*" in html
+    assert "mode=sync" in html
+    assert "fun=state.highstate" in html
+
+
 def test_fleet_presets_prefill(client):
     rv = client.get("/jobs/new", query_string={"preset": "service-restart"})
     assert rv.status_code == 200

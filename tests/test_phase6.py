@@ -174,6 +174,40 @@ def test_states_watch_recompute(client):
     assert "webserver" in html
 
 
+def test_schedules_action_empty_job_rejected(client):
+    with client.app.app_context():
+        from overstate_ui.models import AuditEvent
+
+        before = (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action.like("schedule-%"))
+            .count()
+        )
+    rv = client.post("/schedules/web-01/delete", data={"job": ""})
+    assert rv.status_code == 302
+    assert "Pick a scheduled job" in client.get(rv.headers["Location"]).data.decode()
+    with client.app.app_context():
+        assert (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action.like("schedule-%"))
+            .count()
+            == before
+        )
+
+
+def test_schedules_action_failed_return_flashes_error(client, monkeypatch):
+    salt = client.app.extensions["salt_client"]
+    monkeypatch.setattr(
+        salt, "local", lambda *a, **k: [{"web-01": {"result": False, "comment": "nope"}}]
+    )
+    rv = client.post("/schedules/web-01/delete", data={"job": "daily"})
+    assert rv.status_code == 302
+    html = client.get(rv.headers["Location"]).data.decode()
+    assert "nope" in html
+
+
 def test_schedules_index_and_actions(client):
     html = client.get("/schedules/").data.decode()
     assert "daily" in html and "state.highstate" in html
@@ -479,3 +513,13 @@ def test_minions_csv_export(client):
     text = rv.data.decode()
     assert text.splitlines()[0].startswith("id,key_status,presence")
     assert "fedora-web-01" in text
+
+
+def test_minions_csv_export_honors_filter(client):
+    full = client.get("/minions/export.csv").data.decode()
+    assert "fedora-web-01" in full
+    filtered = client.get("/minions/export.csv?q=z-nothing-matches").data.decode()
+    assert "fedora-web-01" not in filtered
+    assert filtered.splitlines()[0].startswith("id,key_status,presence")
+    bogus = client.get("/minions/export.csv?status=bogus").data.decode()
+    assert "fedora-web-01" in bogus  # invalid status falls back to all

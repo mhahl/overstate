@@ -52,6 +52,13 @@ class StubSalt:
         return [{"jid": "kj1"}]
 
 
+def test_running_job_detail_handles_stream_drop(admin):
+    html = admin.get("/jobs/abc123").data.decode()
+    assert "onerror" in html
+    assert "Connection lost" in html
+    assert 'aria-live="polite"' in html
+
+
 def test_killable_matrix(app):
     from overstate_ui.jobs import killable
 

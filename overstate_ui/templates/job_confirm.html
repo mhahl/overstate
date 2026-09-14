@@ -71,7 +71,7 @@
       <input type="hidden" name="stop_after" value="{{ stop_after | default(1) }}">
       <input type="hidden" name="confirmed" value="yes">
       <div class="card-actions justify-end">
-        <a class="btn btn-ghost" href="{{ url_for('jobs.new') }}">Cancel</a>
+        <a class="btn btn-ghost" href="{{ url_for('jobs.new', tgt=tgt, tgt_type=tgt_type, fun=fun, args=raw_args, mode=mode, via=via, save_as=save_as, batch_mode=batch_mode, batch_size=batch_size, stop_after=stop_after) }}">Cancel</a>
         {% if current_user.role in ["operator", "admin"] %}
         <button class="btn btn-warning">Run {{ fun }}</button>
         {% else %}

@@ -189,6 +189,7 @@
       nameInput.value = '';
     }
     dialog.showModal();
+    nameInput.focus();
   };
   document.getElementById('group-modal-form').addEventListener('submit', function (ev) {
     var name = document.getElementById('group-modal-name').value.trim();

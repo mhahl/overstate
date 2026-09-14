@@ -118,12 +118,15 @@ def act(action: str):
     if action not in ACTIONS:
         flash("Unknown key action.", "error")
         return redirect(url_for("keys.index"))
-    mid = request.form.get("id", "")
+    mid = request.form.get("id", "").strip()
     tab = request.form.get("tab", "pending")
     keep = {"tab": tab}
     for f in ("q", "sort", "dir"):
         if request.form.get(f):
             keep[f] = request.form[f]
+    if not mid:
+        flash("Select a minion first: an empty key selection never fires.", "error")
+        return redirect(url_for("keys.index", **keep))
     try:
         get_salt().wheel(ACTIONS[action], match=mid)
     except SaltApiError as exc:

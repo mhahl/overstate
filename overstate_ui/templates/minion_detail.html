@@ -141,7 +141,7 @@
 <div class="overflow-x-auto rounded-box border border-base-300">
 <table class="table table-sm table-zebra"><thead><tr><th>Function</th><th>Stored value</th></tr></thead><tbody>
 <tr><td class="font-mono text-xs">{{ data.mine_fun }}</td>
-<td class="font-mono text-xs break-all">{{ data.mine_value | tojson }}</td></tr>
+<td class="font-mono text-xs break-all whitespace-pre-wrap">{{ data.mine_value | tojson(indent=1) }}</td></tr>
 </tbody></table>
 </div>
 <p class="text-xs opacity-70">Mine data is cached. This minion last reported it on its own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>.</p>
@@ -167,7 +167,7 @@
 <table class="table table-sm table-zebra"><thead><tr><th>Beacon</th><th>Configuration</th><th>Source</th><th class="text-right"></th></tr></thead><tbody>
 {% for name, conf in data.beacon_entries.items() %}
 <tr><td class="font-mono text-xs">{{ name }}</td>
-<td class="font-mono text-xs break-all">{{ conf | tojson }}</td>
+<td class="font-mono text-xs break-all whitespace-pre-wrap">{{ conf | tojson(indent=1) }}</td>
 <td>{% if name in data.beacon_pillar %}<span class="badge badge-sm badge-outline">pillar</span>{% else %}<span class="badge badge-sm badge-ghost">minion</span>{% endif %}</td>
 <td class="text-right">
   {% if current_user.role in ["operator", "admin"] %}

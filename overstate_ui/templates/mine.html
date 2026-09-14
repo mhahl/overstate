@@ -37,7 +37,7 @@
 <table class="table table-sm table-zebra"><thead><tr><th aria-sort="{{ direction }}"><a href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir='desc' if direction == 'asc' else 'asc') }}" class="inline-flex items-center gap-1 hover:underline">Minion <span aria-hidden="true">{{ '↑' if direction == 'asc' else '↓' }}</span></a></th><th>Value</th></tr></thead><tbody>
 {% for mid, value in entries.items()|sort(reverse=(direction == 'desc')) %}
 <tr><td class="font-mono text-xs"><a class="link" href="{{ url_for('minions.detail', mid=mid) }}">{{ mid }}</a></td>
-<td class="font-mono text-xs break-all">{{ value | tojson }}</td></tr>
+<td class="font-mono text-xs break-all whitespace-pre-wrap">{{ value | tojson(indent=1) }}</td></tr>
 {% endfor %}
 </tbody></table>
 </div>

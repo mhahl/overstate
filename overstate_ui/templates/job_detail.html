@@ -31,7 +31,7 @@
 <div class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
     <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ job.tgt }} <span class="opacity-60">— by {{ job.user }}</span></p>
-    <p class="ml-auto"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
+    <p class="ml-auto" aria-live="polite"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
   </div>
 </div>
 {% if batch_state %}
@@ -104,6 +104,10 @@
     }
   };
   src.addEventListener("done", function () { src.close(); });
+  src.onerror = function () {
+    document.getElementById("live-note").textContent = "Connection lost. Reload to retry.";
+    src.close();
+  };
 })();
 </script>
 {% endif %}

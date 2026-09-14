@@ -86,6 +86,12 @@ def test_run_requires_fun(client):
     assert "new" in rv.headers["Location"]
 
 
+def test_delete_saved_unknown_id_flashes(client):
+    rv = client.post("/jobs/saved/999999/delete")
+    assert rv.status_code == 302
+    assert "No such saved job." in client.get(rv.headers["Location"]).data.decode()
+
+
 def test_sync_copies_returner_rows(client):
     with client.app.app_context():
         job = sync_job("20260910123000000002")

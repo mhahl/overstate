@@ -49,7 +49,10 @@
   <p id="op-empty" class="text-sm opacity-70 hidden">No operations match. Type any function name below.</p>
   </div>
 </div>
-<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ saved.batch.mode if saved and saved.batch else 'off' }}' }">
+{% set batch_mode = saved.batch.mode if saved and saved.batch else preset.get('batch_mode', 'off') %}
+{% set batch_size = saved.batch.size if saved and saved.batch else preset.get('batch_size', '25') %}
+{% set batch_stop = saved.batch.stop_after if saved and saved.batch else preset.get('stop_after', '1') %}
+<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ batch_mode }}' }">
   <div class="card-body gap-0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid md:grid-cols-[minmax(0,1fr)_13rem] gap-x-4 pb-5">
@@ -72,7 +75,7 @@
       <input id="job-fun" name="fun" value="{{ saved.fun if saved else preset.get('fun', '') }}" class="input font-mono w-full" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="fun-list" aria-autocomplete="list" required>
       <ul id="fun-list" role="listbox" aria-label="Known functions" class="hidden absolute z-10 top-full mt-1 w-full menu bg-base-100 border border-base-300 rounded-lg shadow-md max-h-56 overflow-auto p-1">
         {% for f in op_functions %}
-        <li role="option" aria-selected="false" data-fun="{{ f.fun }}" data-text="{{ (f.fun ~ ' ' ~ f.about)|lower }}">
+        <li role="option" id="fun-opt-{{ loop.index }}" aria-selected="false" data-fun="{{ f.fun }}" data-text="{{ (f.fun ~ ' ' ~ f.about)|lower }}">
           <button type="button" data-pick="{{ f.fun }}" class="flex gap-2 items-baseline text-left w-full">
             <span class="font-mono text-sm">{{ f.fun }}</span>
             <span class="text-xs opacity-70">{{ f.about }}</span>
@@ -91,38 +94,38 @@
       <label class="fieldset">
         <span class="fieldset-legend">Mode</span>
         <select id="job-mode" name="mode" class="select w-full">
-          <option value="async">async (returns JID)</option>
-          <option value="sync">sync (wait up to 60s)</option>
+          <option value="async"{% if preset.get('mode', 'async') == 'async' %} selected{% endif %}>async (returns JID)</option>
+          <option value="sync"{% if preset.get('mode') == 'sync' %} selected{% endif %}>sync (wait up to 60s)</option>
         </select>
       </label>
       <label class="fieldset">
         <span class="fieldset-legend">Transport</span>
         <select id="job-via" name="via" class="select w-full">
-          <option value="local">ZeroMQ (minions)</option>
-          <option value="ssh">salt-ssh (roster, sync only)</option>
+          <option value="local"{% if preset.get('via', 'local') == 'local' %} selected{% endif %}>ZeroMQ (minions)</option>
+          <option value="ssh"{% if preset.get('via') == 'ssh' %} selected{% endif %}>salt-ssh (roster, sync only)</option>
         </select>
       </label>
       <label class="fieldset">
         <span class="fieldset-legend">Save as (optional)</span>
-        <input name="save_as" placeholder="Saved job name" class="input w-full">
+        <input name="save_as" placeholder="Saved job name" value="{{ preset.get('save_as', '') }}" class="input w-full">
       </label>
     </div>
     <div class="grid sm:grid-cols-[1fr_7rem_8rem] gap-4 border-t border-base-300 py-5">
       <label class="fieldset">
         <span class="fieldset-legend">Batch mode</span>
         <select name="batch_mode" class="select w-full" x-model="batch">
-          <option value="off"{% if not saved or not saved.batch %} selected{% endif %}>off (whole target at once)</option>
-          <option value="count"{% if saved and saved.batch and saved.batch.mode == "count" %} selected{% endif %}>rolling: minions per wave</option>
-          <option value="percent"{% if saved and saved.batch and saved.batch.mode == "percent" %} selected{% endif %}>rolling: percent per wave</option>
+          <option value="off"{% if batch_mode == 'off' %} selected{% endif %}>off (whole target at once)</option>
+          <option value="count"{% if batch_mode == 'count' %} selected{% endif %}>rolling: minions per wave</option>
+          <option value="percent"{% if batch_mode == 'percent' %} selected{% endif %}>rolling: percent per wave</option>
         </select>
       </label>
       <label class="fieldset">
         <span class="fieldset-legend">Wave size</span>
-        <input name="batch_size" value="{{ saved.batch.size if saved and saved.batch else 25 }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
+        <input name="batch_size" value="{{ batch_size }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
       </label>
       <label class="fieldset">
         <span class="fieldset-legend">Stop after failures</span>
-        <input name="stop_after" value="{{ saved.batch.stop_after if saved and saved.batch else 1 }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
+        <input name="stop_after" value="{{ batch_stop }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
       </label>
     </div>
     <p class="text-xs opacity-70 pb-5">Rolling batches run list and glob targets wave by wave from the pinned roster. They stop at the failure limit.</p>
@@ -173,6 +176,28 @@
   function funOptions() {
     return Array.from(funList.querySelectorAll('[role=option]'));
   }
+  function visibleOptions() {
+    return funOptions().filter(function (opt) { return !opt.classList.contains('hidden'); });
+  }
+  function markActive(opt) {
+    funOptions().forEach(function (o) { o.setAttribute('aria-selected', 'false'); });
+    if (opt) {
+      opt.setAttribute('aria-selected', 'true');
+      funInput.setAttribute('aria-activedescendant', opt.id);
+    } else {
+      funInput.removeAttribute('aria-activedescendant');
+    }
+  }
+  function pickOption(opt) {
+    var btn = opt.querySelector('[data-pick]');
+    if (!btn) return;
+    funInput.value = btn.getAttribute('data-pick');
+    funList.classList.add('hidden');
+    funInput.setAttribute('aria-expanded', 'false');
+    markActive(null);
+    funInput.focus();
+    loadFunDoc(funInput.value.trim());
+  }
   function filterFunctions() {
     var q = funInput.value.toLowerCase().trim();
     var visible = 0;
@@ -197,17 +222,31 @@
     if (ev.key === 'Escape') {
       funList.classList.add('hidden');
       funInput.setAttribute('aria-expanded', 'false');
+      markActive(null);
+      return;
     }
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp' && ev.key !== 'Enter') return;
+    var visible = visibleOptions();
+    if (!visible.length) return;
+    ev.preventDefault();
+    var current = visible.indexOf(funOptions().filter(function (o) {
+      return o.getAttribute('aria-selected') === 'true';
+    })[0]);
+    if (ev.key === 'Enter') {
+      if (current !== -1) pickOption(visible[current]);
+      return;
+    }
+    var next = ev.key === 'ArrowDown'
+      ? (current + 1) % visible.length
+      : (current - 1 + visible.length) % visible.length;
+    markActive(visible[next]);
+    visible[next].scrollIntoView({ block: 'nearest' });
   });
   funList.addEventListener('mousedown', function (ev) {
     var btn = ev.target.closest('[data-pick]');
     if (!btn) return;
     ev.preventDefault();
-    funInput.value = btn.getAttribute('data-pick');
-    funList.classList.add('hidden');
-    funInput.setAttribute('aria-expanded', 'false');
-    funInput.focus();
-    loadFunDoc(funInput.value.trim());
+    pickOption(btn.closest('[role=option]') || btn.parentElement);
   });
   if (funInput.value.trim()) {
     loadFunDoc(funInput.value.trim());

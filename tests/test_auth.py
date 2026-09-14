@@ -37,6 +37,13 @@ def test_login_page_shows_logo(client):
     assert rv.data.lstrip().startswith(b"<?xml")
 
 
+def test_events_note_is_live_region(client):
+    client.post("/login", data={"username": "admin", "password": "test-password"})
+    html = client.get("/events/").data.decode()
+    assert 'id="event-note"' in html
+    assert 'aria-live="polite"' in html
+
+
 def test_bad_password_rejected(client):
     rv = client.post("/login", data={"username": "admin", "password": "wrong"})
     assert rv.status_code == 200

@@ -416,6 +416,35 @@
       form.addEventListener('htmx:sendError', function h() { restore(form); }, { once: true });
     }
   });
+  // Copy buttons: data-copy="<element id>" copies that element's text.
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest ? ev.target.closest('[data-copy]') : null;
+    if (!btn) return;
+    var el = document.getElementById(btn.getAttribute('data-copy'));
+    if (!el) return;
+    var text = el.textContent;
+    function done() {
+      var original = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = original; }, 1500);
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        done();
+      } catch (err) {}
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  });
   // Downloads navigate nowhere, so the link spins briefly on its own.
   document.addEventListener('click', function (ev) {
     var a = ev.target.closest ? ev.target.closest('a[data-download]') : null;

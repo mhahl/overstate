@@ -156,8 +156,12 @@ def presence():
 @bp.route("/export.csv")
 @login_required
 def export_csv():
+    q = request.args.get("q", "").strip()
+    status_filter = request.args.get("status", "")
+    if status_filter not in ("", "accepted", "pending", "rejected", "denied"):
+        status_filter = ""
     statuses, up, _ = live_roster(get_salt())
-    rows = minion_rows(statuses, up, "", "")
+    rows = minion_rows(statuses, up, q, status_filter)
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(

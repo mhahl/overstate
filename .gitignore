@@ -10,3 +10,6 @@ salt-config/tls/
 # Retired planning artifacts. Do not re-add.
 PLAN.md
 .impeccable/
+# Local tooling state (IDE, agent sessions). Never commit.
+.idea/
+.agents/

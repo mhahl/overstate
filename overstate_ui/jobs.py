@@ -221,6 +221,24 @@ def new():
             pre_args = request.args.get("args", "").strip()
             if pre_args:
                 preset["args"] = pre_args
+        # Echo-back after a validation failure or a confirm cancel: only
+        # allow-listed values land in the form, so a crafted URL cannot
+        # smuggle markup into the rendered fields.
+        for key, allowed in (
+            ("mode", ("async", "sync")),
+            ("via", ("local", "ssh")),
+            ("batch_mode", ("off", "count", "percent")),
+        ):
+            value = request.args.get(key, "")
+            if value in allowed:
+                preset[key] = value
+        save_as = request.args.get("save_as", "")
+        if save_as:
+            preset["save_as"] = save_as
+        for key in ("batch_size", "stop_after"):
+            value = request.args.get(key, "")
+            if value.isdigit():
+                preset[key] = value
     if not saved and "tgt" not in preset:
         from .settings import get_setting
 
@@ -274,6 +292,28 @@ def fun_doc():
     return render_template("_fun_doc.html", fun=fun, doc=doc)
 
 
+def _new_url():
+    """Back to the run form with the submitted values echoed as preset
+    args, so a validation failure never wipes what was typed."""
+    params = {}
+    for key in (
+        "tgt",
+        "tgt_type",
+        "fun",
+        "args",
+        "mode",
+        "via",
+        "save_as",
+        "batch_mode",
+        "batch_size",
+        "stop_after",
+    ):
+        value = request.form.get(key, "")
+        if value:
+            params[key] = value
+    return url_for("jobs.new", **params)
+
+
 @bp.post("/run")
 @roles_required("operator")
 def run():
@@ -288,10 +328,15 @@ def run():
         via = "local"
     if not fun or tgt_type not in TGT_TYPES:
         flash("Pick a target type and a function.", "error")
-        return redirect(url_for("jobs.new"))
+        return redirect(_new_url())
     if not tgt:
         flash("Pick a target: an empty target never fires.", "error")
-        return redirect(url_for("jobs.new"))
+        return redirect(_new_url())
+    if request.form.get("batch_mode", "off") in ("count", "percent") and parse_batch_fields(
+        request.form
+    ) is None:
+        flash("Batch wave size and stop-after must be positive numbers.", "error")
+        return redirect(_new_url())
     if via == "ssh" and asynchronous:
         asynchronous = False
         flash("salt-ssh runs synchronously, in sync mode only.", "info")
@@ -331,7 +376,7 @@ def run():
         jid = launch(tgt, tgt_type, fun, args, asynchronous, via=via)
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
-        return redirect(url_for("jobs.new"))
+        return redirect(_new_url())
     if request.form.get("save_as"):
         session = get_session()
         session.add(
@@ -556,7 +601,9 @@ def sync(jid: str):
 def delete_saved(saved_id: int):
     session = get_session()
     saved = session.get(SavedJob, saved_id)
-    if saved:
+    if saved is None:
+        flash("No such saved job.", "error")
+    else:
         session.delete(saved)
         session.commit()
         flash(f"Deleted saved job '{saved.name}'.", "success")

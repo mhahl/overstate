@@ -13,7 +13,7 @@
     <button class="btn btn-sm btn-primary">Refresh inventory</button>
   </form>
   {% endif %}
-  <a class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.export_csv') }}">Export CSV</a>
+  <a id="export-csv" class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.export_csv') }}">Export CSV</a>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.onboard') }}">Onboard minion</a>
 </div>
 {% if not reachable %}
@@ -57,7 +57,7 @@
           <span class="label-text">Also delete its Salt key on the master</span>
         </label>
         <div class="modal-action">
-          <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('remove-modal').close()">Cancel</button>
+          <button type="button" id="remove-modal-cancel" class="btn btn-sm btn-ghost" onclick="document.getElementById('remove-modal').close()">Cancel</button>
           <button type="submit" class="btn btn-sm btn-error">Remove</button>
         </div>
       </form>
@@ -137,6 +137,7 @@
       {{ url_for('minions.remove', mid='__MID__')|tojson }}.replace('__MID__', encodeURIComponent(mid));
     document.getElementById('remove-modal-delete-key').checked = false;
     document.getElementById('remove-modal').showModal();
+    document.getElementById('remove-modal-cancel').focus();
   };
   document.addEventListener('click', function (ev) {
     if (!ev.target.closest || !ev.target.closest('details[data-kebab]')) closeAll(null);
@@ -149,6 +150,22 @@
 </script>
 <script>
 (function () {
+  // Export follows the active filter: the filter form swaps the table via
+  // HTMX with hx-push-url, so the address bar always holds the filter the
+  // user sees. Stamp it onto the download link at click time.
+  var exportLink = document.getElementById('export-csv');
+  var exportBase = exportLink ? exportLink.getAttribute('href') : null;
+  if (exportLink && exportBase) {
+    exportLink.addEventListener('click', function () {
+      var current = new URLSearchParams(location.search);
+      var params = new URLSearchParams();
+      ['q', 'status'].forEach(function (k) {
+        if (current.get(k)) params.set(k, current.get(k));
+      });
+      var query = params.toString();
+      exportLink.href = query ? exportBase + '?' + query : exportBase;
+    });
+  }
   // bulk-selection: preserve checked minion ids across HTMX table swaps.
   var kept = new Set();
   document.addEventListener("change", function (ev) {

@@ -15,13 +15,14 @@
       <div>
         <div class="flex items-center gap-2">
           <h2 class="card-title text-base mr-auto">1. New password</h2>
+          <button type="button" class="btn btn-xs btn-ghost" data-copy="rotation-password">Copy</button>
           <form method="post" action="{{ url_for('users.rotation_regenerate') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-xs btn-ghost">Generate new</button>
           </form>
         </div>
         <p class="text-sm opacity-70 mt-0.5">Stays the same until you verify it or generate a new one. Copy it now. It lives only in your login session.</p>
-        <p class="font-mono text-sm bg-base-200 rounded px-3 py-2 mt-2 break-all">{{ password }}</p>
+        <p id="rotation-password" class="font-mono text-sm bg-base-200 rounded px-3 py-2 mt-2 break-all">{{ password }}</p>
       </div>
       <div>
         <h2 class="card-title text-base">2. Apply on the master</h2>

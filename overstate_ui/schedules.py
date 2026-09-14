@@ -162,12 +162,22 @@ def act(mid: str, action: str):
     if action not in SCHEDULE_ACTIONS:
         flash("Unknown schedule action.", "error")
         return redirect(url_for("schedules.index", minion=mid))
-    job_name = request.form.get("job", "")
+    job_name = request.form.get("job", "").strip()
+    if not job_name:
+        flash("Pick a scheduled job first: an empty selection never fires.", "error")
+        return redirect(url_for("schedules.index", minion=mid))
     try:
-        get_salt().local(mid, SCHEDULE_ACTIONS[action], arg=[job_name])
+        payload = get_salt().local(mid, SCHEDULE_ACTIONS[action], arg=[job_name])
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
     else:
-        log_event(current_user.username, f"schedule-{action}:{job_name}")
-        flash(f"{mid}/{job_name}: {action}d.", "success")
+        data = payload[0].get(mid) if payload else None
+        if isinstance(data, dict) and data.get("result") is False:
+            flash(
+                f"{mid}/{job_name}: {action} failed: {data.get('comment', 'no detail')}",
+                "error",
+            )
+        else:
+            log_event(current_user.username, f"schedule-{action}:{job_name}")
+            flash(f"{mid}/{job_name}: {action}d.", "success")
     return redirect(url_for("schedules.index", minion=mid))

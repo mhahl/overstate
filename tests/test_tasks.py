@@ -337,6 +337,12 @@ def test_rotation_regenerate_replaces_password(admin):
     assert second and second != first
 
 
+def test_rotation_password_copy_button(admin):
+    html = admin.get("/users/rotation").data.decode()
+    assert 'data-copy="rotation-password"' in html
+    assert 'id="rotation-password"' in html
+
+
 def test_rotation_forbidden_for_operator(app):
     from overstate_ui.models import User
 

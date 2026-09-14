@@ -31,6 +31,41 @@ def admin(app):
     return client
 
 
+def test_invalid_batch_config_does_not_fire(admin, app, monkeypatch):
+    import overstate_ui.jobs_service as jobs_service
+
+    fired = []
+
+    class FireSalt:
+        def local(self, *a, **k):
+            fired.append(True)
+            return [{"jid": "w9"}]
+
+    monkeypatch.setattr(jobs_service, "get_salt", lambda: FireSalt())
+    with app.app_context():
+        before = get_session().query(Job).count()
+    rv = admin.post(
+        "/jobs/run",
+        data={
+            "tgt": "web-*",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "mode": "async",
+            "via": "local",
+            "batch_mode": "count",
+            "batch_size": "0",
+            "stop_after": "1",
+        },
+    )
+    assert rv.status_code == 302
+    assert "/jobs/detail" not in rv.headers["Location"]
+    assert "/jobs/batch-" not in rv.headers["Location"]
+    assert fired == []
+    with app.app_context():
+        assert get_session().query(Job).count() == before
+    assert "Batch" in admin.get(rv.headers["Location"]).data.decode()
+
+
 class StubSalt:
     def __init__(self):
         self.published = []

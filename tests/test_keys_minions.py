@@ -189,6 +189,7 @@ def test_minions_row_kebab_menu_for_operator(client):
     # Placement is decided at click time (the page script floats the menu
     # above the scroll wrapper), so no static open direction is baked in.
     assert "dropdown-top" not in body
+    assert 'id="remove-modal-cancel"' in html
 
 
 def test_minions_row_menu_hidden_for_viewer(client):
@@ -206,6 +207,12 @@ def test_minions_row_menu_hidden_for_viewer(client):
     assert "web-01" in html  # list itself stays visible
     assert "ellipsis-vertical" not in html
     assert 'id="remove-modal"' not in html
+
+
+def test_key_act_empty_id_rejected(client):
+    rv = client.post("/keys/delete", data={"id": "", "tab": "accepted"})
+    assert rv.status_code == 302
+    assert "Select a minion first" in client.get(rv.headers["Location"]).data.decode()
 
 
 def test_key_act_honors_next(client):
@@ -399,6 +406,8 @@ def test_onboard_generates_script(client):
     assert "master: salt.example.com" in html
     assert "id: db-02" in html
     assert "onboard/script" in html and "Download" in html
+    assert 'data-copy="onboard-script"' in html
+    assert 'id="onboard-script"' in html
 
 
 def test_onboard_rejects_bad_input(client):

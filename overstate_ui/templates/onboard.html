@@ -47,8 +47,9 @@
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base mr-auto"><span class="badge badge-neutral">2</span> Run this on the new machine as root</h2>
         <a class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.onboard_script', mid=request.args.get('mid', ''), distro=request.args.get('distro', 'opensuse'), master=request.args.get('master', master_host)) }}">Download .sh</a>
+        <button type="button" class="btn btn-sm btn-ghost" data-copy="onboard-script">Copy</button>
       </div>
-      <pre class="mockup-code text-xs overflow-x-auto p-4"><code>{{ script }}</code></pre>
+      <pre class="mockup-code text-xs overflow-x-auto p-4"><code id="onboard-script">{{ script }}</code></pre>
     </div>
   </section>
   {% endif %}
