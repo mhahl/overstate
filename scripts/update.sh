@@ -40,6 +40,7 @@ if [ "$CHANGED" -eq 1 ]; then
   cp "$REPO/scripts/install-api-tls.sh" /usr/local/sbin/overstate-install-api-tls.sh
   chmod 755 /usr/local/sbin/overstate-install-api-tls.sh
   systemctl daemon-reload
+  systemctl enable overstate-salt-api-tls.service
 fi
 
 echo "==> restarting salt-master, worker, app, caddy"

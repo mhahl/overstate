@@ -28,6 +28,18 @@ done
 podman cp "$CRT" "$MASTER:/etc/pki/tls/certs/localhost.crt"
 podman cp "$KEY" "$MASTER:/etc/pki/tls/certs/localhost.key"
 podman exec "$MASTER" supervisorctl restart salt-api
-sleep 5
-curl --cacert "$(dirname "$CRT")/ca.crt" -s -o /dev/null \
-  -w "salt-api TLS with our CA: %{http_code}\n" https://127.0.0.1:8001/login
+# CherryPy needs more than a moment after restart; poll instead of
+# failing on the first attempt (curl exits 7 while nothing listens,
+# which used to fail the whole unit under set -e).
+CODE=""
+for _ in $(seq 1 12); do
+  CODE="$(curl --cacert "$(dirname "$CRT")/ca.crt" -s -o /dev/null \
+    -w '%{http_code}' https://127.0.0.1:8001/login || true)"
+  [ "$CODE" = "401" ] && break
+  sleep 5
+done
+echo "salt-api TLS with our CA: $CODE"
+[ "$CODE" = "401" ] || {
+  echo "error: salt-api did not come back with our cert" >&2
+  exit 1
+}
