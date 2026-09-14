@@ -96,6 +96,17 @@ def test_install_tolerates_generator_wiring():
     assert "systemctl enable --now overstate-" not in install
 
 
+def test_install_syncs_returner_password():
+    install = (REPO / "scripts" / "install.sh").read_text()
+    assert "returner.pgjsonb.pass" in install
+    assert "POSTGRES_PASSWORD" in install
+
+
+def test_api_key_readable_by_salt_user():
+    install = (REPO / "scripts" / "install.sh").read_text()
+    assert 'chmod 644 "$ETC/tls/api.key"' in install
+
+
 def test_app_cert_covers_internal_dial_name():
     install = (REPO / "scripts" / "install.sh").read_text()
     assert "DNS:overstate-app" in install

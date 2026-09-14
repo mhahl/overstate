@@ -122,6 +122,9 @@ gen_cert api "DNS:salt-master,DNS:localhost,IP:127.0.0.1"
 # overstate-app is the name Caddy dials inside the container network, so it
 # must be a SAN or backend verification fails with 502.
 gen_cert app "DNS:$HOSTNAME,DNS:overstate-app,DNS:localhost,IP:127.0.0.1"
+# salt-api runs as the image's salt user, which must read the key it serves
+# (dev does the same in gen-dev-certs.sh; the key is worthless without the CA).
+chmod 644 "$ETC/tls/api.key"
 
 echo "==> secrets in $ETC/overstate.env"
 rand() { openssl rand -hex 24; }
@@ -156,6 +159,16 @@ done
 if [ -n "$ADMIN_PASSWORD" ] && ! grep -q "^ADMIN_PASSWORD=" "$ENV_FILE"; then
   printf 'ADMIN_PASSWORD=%s\n' "$ADMIN_PASSWORD" >> "$ENV_FILE"
   chmod 600 "$ENV_FILE"
+fi
+# The returner logs in with its own password line (dev default "overstate");
+# keep the deployed copy in sync with the database or job history silently
+# stops. Runs on every install so a regenerated env cannot drift.
+PG_PASS="$(grep '^POSTGRES_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
+if [ -f "$ETC/salt-config/returner.conf" ]; then
+  sed -i "s|^returner.pgjsonb.pass:.*|returner.pgjsonb.pass: $PG_PASS|" \
+    "$ETC/salt-config/returner.conf"
+else
+  echo "WARNING: $ETC/salt-config/returner.conf missing; job history will not persist" >&2
 fi
 
 echo "==> installing Quadlet units"
