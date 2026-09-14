@@ -11,7 +11,8 @@
         {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error">{{ cstatus }}</span>
         {% else %}<span class="badge badge-sm badge-neutral">{{ cstatus }}</span>{% endif %}
       </td>
-      <td class="font-mono text-xs">{{ (m.conformity or {}).get("jid", "–") }}</td></tr>
+      {% set src_jid = (m.conformity or {}).get("jid") %}
+      <td class="font-mono text-xs">{% if src_jid %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}–{% endif %}</td></tr>
       {% endfor %}
       </tbody></table>
       </div>

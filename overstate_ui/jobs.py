@@ -443,9 +443,20 @@ def detail(jid: str):
         for child in waves:
             sync_job(child.jid)
         batch_state = job.batch_state or {}
+        # The parent row is a grouping record Salt never ran, so it has
+        # no returns of its own: aggregate the wave returns instead.
+        wave_jids = [child.jid for child in waves]
+        returns = (
+            session.query(JobReturn)
+            .filter(JobReturn.jid.in_(wave_jids))
+            .order_by(JobReturn.minion_id)
+            .all()
+            if wave_jids
+            else []
+        )
     else:
         sync_job(jid)
-    returns = session.query(JobReturn).filter_by(jid=jid).all()
+        returns = session.query(JobReturn).filter_by(jid=jid).all()
     if not job.complete:
         # Live master-cache rows for minions the returner hasn't
         # recorded yet (DB rows win, so no duplicates). The sync
@@ -558,7 +569,22 @@ def stream(jid: str):
     def events():
         for _ in range(30):
             job = sync_job(jid)
-            returns = get_session().query(JobReturn).filter_by(jid=jid).all()
+            jids = [jid]
+            if (
+                job is not None
+                and job.batch_group
+                and jid == f"batch-{job.batch_group}"
+            ):
+                rows = (
+                    get_session()
+                    .query(Job.jid)
+                    .filter(Job.batch_group == job.batch_group, Job.jid != jid)
+                    .all()
+                )
+                jids = [row[0] for row in rows] or [jid]
+            returns = (
+                get_session().query(JobReturn).filter(JobReturn.jid.in_(jids)).all()
+            )
             payload = {
                 "jid": jid,
                 "complete": bool(job and job.complete),

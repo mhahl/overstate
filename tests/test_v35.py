@@ -211,6 +211,12 @@ def test_conformity_ok_renders_success(client):
     assert '<span class="badge badge-sm badge-success">ok</span>' in html
 
 
+def test_conformity_source_jid_links_to_job(client):
+    html = client.get("/states/").data.decode()
+    assert '<a class="link link-primary" href="/jobs/1">1</a>' in html
+    assert ">–<" in html  # minion without conformity data keeps the dash
+
+
 def test_minion_returns_partial_and_sort(client):
     html = partial(client, "/minions/web-01?tab=jobs&sort=status&dir=asc")
     assert 'id="minion-returns"' in html

@@ -231,6 +231,37 @@ def test_batched_run_view_inline(monkeypatch, app, admin):
     assert "Stop batch" not in html  # finished batches offer no cancel
 
 
+def test_batch_parent_page_aggregates_wave_returns(monkeypatch, app, admin):
+    """The batch parent row is a grouping record Salt never ran: its
+    page must aggregate the wave returns instead of showing a complete
+    batch above a permanent 'No returns yet'."""
+    import overstate_ui.tasks as tasks_mod
+
+    stub = StubSalt()
+    monkeypatch.setattr(tasks_mod, "build_client", lambda: stub)
+    with app.app_context():
+        seed_returns("w1", [("web-01", True)])
+        seed_returns("w2", [("web-02", False)])
+    rv = admin.post(
+        "/jobs/run",
+        data={
+            "tgt": "web-*",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "mode": "async",
+            "via": "local",
+            "batch_mode": "count",
+            "batch_size": "1",
+            "stop_after": "1",
+        },
+    )
+    group = rv.headers["Location"].rsplit("batch-", 1)[1]
+    html = admin.get(f"/jobs/batch-{group}").data.decode()
+    assert "No returns yet" not in html
+    assert "web-01" in html and "web-02" in html
+    assert ">2</span> returned" in html and ">1</span> failed" in html
+
+
 def test_batched_run_rejects_ungroupable_target(admin):
     rv = admin.post(
         "/jobs/run",

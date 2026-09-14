@@ -88,8 +88,13 @@
 {% endfor %}
 {% if not returns %}
 <div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
+  {% if job.complete %}
+  <p class="font-medium">No returns recorded</p>
+  <p class="text-sm opacity-70">No minion reported back for this job.</p>
+  {% else %}
   <p class="font-medium">No returns yet</p>
   <p class="text-sm opacity-70">Waiting on minions. This page updates live.</p>
+  {% endif %}
 </div></div>
 {% endif %}
 </div>
