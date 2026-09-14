@@ -24,10 +24,13 @@ fi
 
 echo "==> stopping and disabling units"
 for u in overstate-app overstate-worker overstate-salt-master \
-    overstate-postgres overstate-redis overstate-caddy; do
+    overstate-postgres overstate-redis overstate-caddy \
+    overstate-salt-api-tls; do
   systemctl disable --now "$u.service" 2>/dev/null || true
 done
 rm -f "$UNITS"/overstate-*.container "$UNITS"/overstate.network
+rm -f /etc/systemd/system/overstate-salt-api-tls.service
+rm -f /usr/local/sbin/overstate-install-api-tls.sh
 systemctl daemon-reload
 podman network rm overstate 2>/dev/null || true
 

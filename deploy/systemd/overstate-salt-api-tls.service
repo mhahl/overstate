@@ -1,0 +1,12 @@
+[Unit]
+Description=Install CA-signed salt-api certificate
+After=overstate-salt-master.service
+BindsTo=overstate-salt-master.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/overstate-install-api-tls.sh
+
+[Install]
+WantedBy=overstate-salt-master.service

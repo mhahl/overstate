@@ -160,7 +160,11 @@ fi
 
 echo "==> installing Quadlet units"
 cp "$REPO"/deploy/quadlet/overstate-*.container "$REPO"/deploy/quadlet/overstate.network "$UNITS/"
+cp "$REPO/deploy/systemd/overstate-salt-api-tls.service" /etc/systemd/system/
+cp "$REPO/scripts/install-api-tls.sh" /usr/local/sbin/overstate-install-api-tls.sh
+chmod 755 /usr/local/sbin/overstate-install-api-tls.sh
 systemctl daemon-reload
+systemctl enable overstate-salt-api-tls.service
 enable_unit() { # enable + start one service, tolerating generator wiring
   # The Quadlet generator wires [Install] WantedBy itself at reload, and
   # systemd then refuses `enable` on the generated file ("transient or
@@ -190,6 +194,12 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 [ -n "$API_UP" ] || echo "WARNING: salt-api is not answering; check 'journalctl -u overstate-salt-master'" >&2
+
+echo "==> installing CA-signed salt-api cert"
+# The unit is WantedBy the master, so it also runs on every future
+# master (re)start by itself; starting it here gates the install on
+# the cert being in place and verified.
+systemctl start overstate-salt-api-tls.service
 
 enable_unit overstate-worker.service
 enable_unit overstate-app.service

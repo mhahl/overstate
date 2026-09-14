@@ -33,9 +33,15 @@ our certs over the image's paths and restarts salt-api; `dev-up.sh` and
 
 ## Production checklist
 
-- Use a real master setup where your `ssl_crt`/`ssl_key` actually win, or
-  keep an equivalent post-boot install; verify with
-  `curl --cacert <ca> https://<master>:8000/login`.
+- The Quadlet master regenerates a self-signed salt-api cert at every
+  boot, exactly like dev, so no declarative config can stick. A
+  oneshot unit (`deploy/systemd/overstate-salt-api-tls.service`,
+  wanted by the master) reinstalls the CA-signed pair after every
+  master start, including reboots; `install.sh` and `update.sh`
+  gate on it. After a manual master restart outside those flows,
+  run `/usr/local/sbin/overstate-install-api-tls.sh` by hand.
+  Verify with `curl --cacert /etc/overstate/tls/ca.crt
+  https://127.0.0.1:8001/login` (expect 401).
 - Never set `SALT_API_VERIFY_CA=false` outside local dev.
 - The app serves 8000/TLS when `TLS_CERT`/`TLS_KEY` are mounted, otherwise
   plain HTTP with a warning.

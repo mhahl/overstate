@@ -68,6 +68,27 @@ def test_every_mount_carries_selinux_relabel():
                 assert re.search(r"[:,][zZ](,|$)", line), f"{unit.name}: {line}"
 
 
+def test_api_tls_install_wired_into_flows():
+    helper = REPO / "scripts" / "install-api-tls.sh"
+    assert helper.is_file()
+    text = helper.read_text()
+    assert "supervisorctl restart salt-api" in text
+    assert "localhost.crt" in text
+    unit = REPO / "deploy" / "systemd" / "overstate-salt-api-tls.service"
+    assert unit.is_file()
+    unit_text = unit.read_text()
+    assert "WantedBy=overstate-salt-master.service" in unit_text
+    assert "BindsTo=overstate-salt-master.service" in unit_text
+    assert "overstate-install-api-tls.sh" in unit_text
+    install = (REPO / "scripts" / "install.sh").read_text()
+    assert "deploy/systemd/overstate-salt-api-tls.service" in install
+    assert "overstate-salt-api-tls.service" in install
+    update = (REPO / "scripts" / "update.sh").read_text()
+    assert "overstate-salt-api-tls.service" in update
+    uninstall = (REPO / "scripts" / "uninstall.sh").read_text()
+    assert "overstate-salt-api-tls" in uninstall
+
+
 def test_install_tolerates_generator_wiring():
     install = (REPO / "scripts" / "install.sh").read_text()
     assert "enable_unit()" in install

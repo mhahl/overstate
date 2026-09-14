@@ -25,6 +25,10 @@ CHANGED=0
 for unit in "$REPO"/deploy/quadlet/overstate-*.container "$REPO"/deploy/quadlet/overstate.network; do
   cmp -s "$unit" "$UNITS/$(basename "$unit")" 2>/dev/null || CHANGED=1
 done
+cmp -s "$REPO/deploy/systemd/overstate-salt-api-tls.service" \
+  /etc/systemd/system/overstate-salt-api-tls.service 2>/dev/null || CHANGED=1
+cmp -s "$REPO/scripts/install-api-tls.sh" \
+  /usr/local/sbin/overstate-install-api-tls.sh 2>/dev/null || CHANGED=1
 if [ ! -f "$ETC/Caddyfile" ]; then
   cp "$REPO/deploy/Caddyfile" "$ETC/Caddyfile"
   chmod 644 "$ETC/Caddyfile"
@@ -32,6 +36,9 @@ fi
 if [ "$CHANGED" -eq 1 ]; then
   echo "==> unit files changed; reinstalling"
   cp "$REPO"/deploy/quadlet/overstate-*.container "$REPO"/deploy/quadlet/overstate.network "$UNITS/"
+  cp "$REPO/deploy/systemd/overstate-salt-api-tls.service" /etc/systemd/system/
+  cp "$REPO/scripts/install-api-tls.sh" /usr/local/sbin/overstate-install-api-tls.sh
+  chmod 755 /usr/local/sbin/overstate-install-api-tls.sh
   systemctl daemon-reload
 fi
 
@@ -47,6 +54,9 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 [ -n "$API_UP" ] || echo "WARNING: salt-api is not answering; check 'journalctl -u overstate-salt-master'" >&2
+# The fresh master serves a self-signed cert until the api-tls unit
+# reinstalls ours; starting it here blocks until verification passes.
+systemctl start overstate-salt-api-tls.service
 systemctl restart overstate-worker.service overstate-app.service \
   overstate-caddy.service
 systemctl --no-pager --lines=0 status overstate-app.service \
