@@ -79,6 +79,43 @@
 </script>
 <script>
 (function () {
+  // Kebab menus float above the table's scroll wrapper: that wrapper clips
+  // on both the bottom and the top edge, so no static open direction fits
+  // every row. On open, pin the menu to the viewport beside its button,
+  // opening downward unless space runs short.
+  function closeAll(except) {
+    document.querySelectorAll('details[data-kebab][open]').forEach(function (d) {
+      if (d !== except) d.removeAttribute('open');
+    });
+  }
+  // toggle does not bubble; catch it on the way down.
+  document.addEventListener('toggle', function (ev) {
+    var d = ev.target && ev.target.closest ? ev.target.closest('details[data-kebab]') : null;
+    if (!d || !d.hasAttribute('open')) return;
+    closeAll(d);
+    var btn = d.querySelector('summary');
+    var menu = d.querySelector('.dropdown-content');
+    if (!btn || !menu) return;
+    var r = btn.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.inset = 'auto';
+    menu.style.zIndex = '60';
+    var mw = menu.offsetWidth, mh = menu.offsetHeight;
+    menu.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + 'px';
+    var roomBelow = window.innerHeight - r.bottom;
+    menu.style.top = (roomBelow >= mh + 8 ? r.bottom + 4 : Math.max(8, r.top - mh - 4)) + 'px';
+  }, true);
+  document.addEventListener('click', function (ev) {
+    if (!ev.target.closest || !ev.target.closest('details[data-kebab]')) closeAll(null);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') closeAll(null);
+  });
+  window.addEventListener('scroll', function () { closeAll(null); }, true);
+})();
+</script>
+<script>
+(function () {
   // bulk-selection: preserve checked minion ids across HTMX table swaps.
   var kept = new Set();
   document.addEventListener("change", function (ev) {

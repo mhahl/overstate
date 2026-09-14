@@ -171,15 +171,17 @@ def test_minions_list_search_paginate(client):
 def test_minions_row_kebab_menu_for_operator(client):
     html = client.get("/minions/").data.decode()
     assert "ellipsis-vertical" in html
-    assert 'href="/jobs/new?bulk=web-01"' in html
-    assert 'href="/jobs/new?tgt=web-01&amp;tgt_type=list&amp;fun=test.ping"' in html
-    # Flat job menu only: no headings, no key ops (those live on Keys).
+    assert "data-kebab" in html
     body = html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    assert 'action="/minions/web-01/refresh"' in body
+    assert 'action="/minions/web-01/remove"' in body
+    # Flat two-item menu: no headings, no job links, no key ops.
     assert "menu-title" not in body
-    assert 'action="/keys/accept"' not in body
-    assert 'action="/keys/delete"' not in body
-    # Rows near the panel bottom open upward so the menu is not clipped.
-    assert "dropdown-top" in html
+    assert "jobs/new" not in body
+    assert "/keys/" not in body
+    # Placement is decided at click time (the page script floats the menu
+    # above the scroll wrapper), so no static open direction is baked in.
+    assert "dropdown-top" not in body
 
 
 def test_minions_row_menu_hidden_for_viewer(client):
@@ -204,6 +206,94 @@ def test_key_act_honors_next(client):
     assert rv.headers["Location"] == "/minions/"
     rv = client.post("/keys/delete", data={"id": "new-01", "next": "https://evil/"})
     assert rv.headers["Location"].startswith("/keys/")
+
+
+def test_minion_row_refresh_updates_snapshot(client):
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        get_session().commit()
+    rv = client.post("/minions/web-01/refresh")
+    assert rv.status_code == 302
+    assert rv.headers["Location"] == "/minions/"
+    with client.app.app_context():
+        row = get_session().get(Minion, "web-01")
+        assert row.grains["osfinger"] == "Fedora Linux 41"
+        assert row.last_seen is not None
+    assert "refreshed" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_row_refresh_without_grains_keeps_snapshot(client):
+    with client.app.app_context():
+        get_session().add(
+            Minion(
+                id="ghost-01",
+                grains={"os": "X"},
+                conformity={},
+                key_status="accepted",
+            )
+        )
+        get_session().commit()
+    rv = client.post("/minions/ghost-01/refresh")
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().get(Minion, "ghost-01").grains == {"os": "X"}
+    assert "no grain data" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_row_remove_deletes_snapshot_keeps_history(client):
+    from overstate_ui.models import Job, JobReturn
+
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        session.add(
+            Job(
+                jid="j1",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=True,
+            )
+        )
+        session.add(
+            JobReturn(jid="j1", minion_id="web-01", success=True, retcode=0, payload={})
+        )
+        session.commit()
+    rv = client.post("/minions/web-01/remove")
+    assert rv.status_code == 302
+    assert rv.headers["Location"] == "/minions/"
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+        assert (
+            get_session().query(JobReturn).filter_by(minion_id="web-01").count() == 1
+        )
+    assert "removed" in client.get("/minions/").data.decode().lower()
+
+
+def test_minion_row_remove_unknown_minion(client):
+    rv = client.post("/minions/nope-01/remove")
+    assert rv.status_code == 302
+    assert "Unknown minion" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_row_actions_forbidden_for_viewer(client):
+    from overstate_ui.auth import _ph
+    from overstate_ui.models import User
+
+    with client.app.app_context():
+        get_session().add(
+            User(username="v", password_hash=_ph.hash("pw"), role="viewer")
+        )
+        get_session().commit()
+    viewer = client.app.test_client()
+    viewer.post("/login", data={"username": "v", "password": "pw"})
+    assert viewer.post("/minions/web-01/refresh").status_code == 403
+    assert viewer.post("/minions/web-01/remove").status_code == 403
 
 
 def test_minions_refresh_caches_grains(client):

@@ -6,6 +6,7 @@ paths keep working.
 """
 
 import csv
+import datetime as dt
 import io
 
 from flask import (
@@ -214,6 +215,48 @@ def refresh():
             flash("Refresh queued in the background — reload to see it.", "info")
         else:
             flash(f"refresh failed in the background: {value}", "error")
+    return redirect(url_for("minions.index"))
+
+
+@bp.post("/<mid>/refresh")
+@roles_required("operator")
+def refresh_one(mid: str):
+    """Re-pull grains for a single minion into the snapshot cache."""
+    row = get_session().get(Minion, mid)
+    if row is None:
+        flash(f"Unknown minion '{mid}'.", "error")
+        return redirect(url_for("minions.index"))
+    try:
+        grains = get_salt().local(mid, "grains.items")[0].get(mid)
+    except SaltApiError as exc:
+        flash(f"salt-api error: {exc}", "error")
+        return redirect(url_for("minions.index"))
+    if not isinstance(grains, dict):
+        flash(f"{mid} returned no grain data.", "error")
+        return redirect(url_for("minions.index"))
+    row.grains = normalize_grains(grains)
+    row.last_seen = dt.datetime.now(dt.UTC)
+    get_session().commit()
+    log_event(current_user.username, f"minion-refresh:{mid}")
+    flash(f"{mid} refreshed.", "success")
+    return redirect(url_for("minions.index"))
+
+
+@bp.post("/<mid>/remove")
+@roles_required("operator")
+def remove(mid: str):
+    """Drop a minion's snapshot row from the database. Job history is
+    kept and the Salt key on the master is untouched — delete that on
+    the Keys page."""
+    session = get_session()
+    row = session.get(Minion, mid)
+    if row is None:
+        flash(f"Unknown minion '{mid}'.", "error")
+    else:
+        session.delete(row)
+        session.commit()
+        log_event(current_user.username, f"minion-remove:{mid}")
+        flash(f"{mid} removed from the inventory cache.", "success")
     return redirect(url_for("minions.index"))
 
 
