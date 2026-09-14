@@ -90,6 +90,10 @@ def test_shell_polls_without_touching_salt(monkeypatch):
     assert "&amp;started=" in html  # poll clock for the stale-probe cutoff
     assert 'hx-trigger="every 2s"' in html  # no load trigger: it refires on every swap
     assert html.index("Refreshing live data") < html.index("Live events")  # header slot
+    # Reachability is still unknown while probes are in flight: no
+    # "unreachable" banner until polling settles (else it flashes on
+    # every load and vanishes seconds later).
+    assert "Database history only" not in html
     assert "3006.5" in html  # snapshot versions paint immediately
     assert ">2<" in html  # DB in-flight count, not live
 
@@ -235,6 +239,9 @@ def test_panels_fall_back_to_snapshot_when_gone(monkeypatch):
     assert "No capability data yet." in html
     assert "hx-get" not in html
     assert "opacity-60 invisible" in html  # slot reserved, buttons unmoved
+    # Polling settled with nothing live: reachability resolved False,
+    # so the banner legitimately appears here (unlike the probing shell).
+    assert "Database history only" in html
 
 
 def test_panels_give_up_after_stale_cutoff(monkeypatch):

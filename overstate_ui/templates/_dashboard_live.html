@@ -26,7 +26,9 @@ resolved renders drop those attributes so polling stops on its own. #}
   <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
   <span>Background worker unreachable — showing snapshot data.</span>
 </div>
-{% elif not stats.reachable %}
+{# Reachability is unknown while probes are in flight: the spinner above
+already says so. Only claim "unreachable" once polling settled. #}
+{% elif not probing and not stats.reachable %}
 <div class="alert alert-error" role="alert">
   <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
   <span>salt-api unreachable. Database history only.</span>
