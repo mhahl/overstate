@@ -1,6 +1,6 @@
 """Admin user management. Lists users, changes roles, deletes users."""
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user
 
 from .auth import LEVELS, roles_required
@@ -60,16 +60,35 @@ def set_role(uid: int):
 @bp.route("/rotation")
 @roles_required("admin")
 def rotation():
-    """Step 1: show a fresh password plus the two-sided apply steps."""
+    """Step 1: show the pending password plus the two-sided apply steps.
+
+    The password is minted once and kept in the login session until it is
+    verified or regenerated: re-rendering the page must never silently
+    swap the password the admin is mid-applying."""
     import secrets
 
     from flask import current_app
 
+    password = session.get("rotation_password")
+    if not password:
+        password = secrets.token_urlsafe(18)
+        session["rotation_password"] = password
     return render_template(
         "users_rotation.html",
-        password=secrets.token_urlsafe(18),
+        password=password,
         eauth_user=current_app.config["SALT_EAUTH_USER"],
     )
+
+
+@bp.post("/rotation/regenerate")
+@roles_required("admin")
+def rotation_regenerate():
+    """Mint a fresh pending password, discarding the unapplied one."""
+    import secrets
+
+    session["rotation_password"] = secrets.token_urlsafe(18)
+    flash("Generated a new password; the previous one was discarded.", "info")
+    return redirect(url_for("users.rotation"))
 
 
 @bp.post("/rotation/verify")
@@ -91,6 +110,7 @@ def rotation_verify():
     except SaltApiError as exc:
         flash(f"verification failed: {exc}", "error")
     else:
+        session.pop("rotation_password", None)
         log_event(current_user.username, "eauth-rotation-verified")
         flash(
             "New eauth password works. Update the app environment to match.", "warning"

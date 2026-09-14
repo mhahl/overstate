@@ -47,6 +47,26 @@ def client():
     return c
 
 
+def test_empty_target_never_fires(client):
+    from overstate_ui.db import get_session as _session
+
+    with client.app.app_context():
+        before = _session().query(Job).count()
+    rv = client.post(
+        "/jobs/run",
+        data={"tgt": "", "tgt_type": "glob", "fun": "test.ping", "mode": "async"},
+    )
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert _session().query(Job).count() == before
+    assert "never fires" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_blank_bulk_param_prefills_no_target(client):
+    html = client.get("/jobs/new?bulk=").data.decode()
+    assert "Target prefilled as" not in html
+
+
 def test_fleet_presets_prefill(client):
     rv = client.get("/jobs/new", query_string={"preset": "service-restart"})
     assert rv.status_code == 200

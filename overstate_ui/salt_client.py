@@ -53,15 +53,18 @@ class SaltClient:
         return time.monotonic() - self._token_issued if self._token else -1.0
 
     def login(self, http_timeout: float | None = None) -> None:
-        resp = self._http.post(
-            "/login",
-            json={
-                "username": self.username,
-                "password": self.password,
-                "eauth": self.eauth,
-            },
-            timeout=http_timeout if http_timeout is not None else self._default_timeout,
-        )
+        try:
+            resp = self._http.post(
+                "/login",
+                json={
+                    "username": self.username,
+                    "password": self.password,
+                    "eauth": self.eauth,
+                },
+                timeout=http_timeout if http_timeout is not None else self._default_timeout,
+            )
+        except httpx.HTTPError as exc:
+            raise SaltApiError(f"salt-api unreachable: {exc}") from exc
         if resp.status_code != 200:
             raise SaltApiError(f"salt-api login failed: HTTP {resp.status_code}")
         try:
@@ -82,9 +85,12 @@ class SaltClient:
         if self._token is None:
             self.login(http_timeout=http_timeout)
         timeout = http_timeout if http_timeout is not None else self._default_timeout
-        resp = self._http.post(
-            "/", json=payload, headers={"X-Auth-Token": self._token}, timeout=timeout
-        )
+        try:
+            resp = self._http.post(
+                "/", json=payload, headers={"X-Auth-Token": self._token}, timeout=timeout
+            )
+        except httpx.HTTPError as exc:
+            raise SaltApiError(f"salt-api unreachable: {exc}") from exc
         if resp.status_code == 401 and retry:
             self.login(http_timeout=http_timeout)
             return self._post(payload, retry=False, http_timeout=http_timeout)
@@ -168,28 +174,36 @@ class SaltClient:
         """
         if self._token is None:
             self.login()
-        with self._http.stream(
-            "GET",
-            "/events",
-            headers={"X-Auth-Token": self._token},
-            timeout=httpx.Timeout(idle_timeout),
-        ) as resp:
-            if resp.status_code == 401:
-                self.login()
-                yield from self.event_stream()
-                return
-            if resp.status_code != 200:
-                raise SaltApiError(f"salt-api /events failed: HTTP {resp.status_code}")
-            data = ""
-            for line in resp.iter_lines():
-                if line.startswith("data:"):
-                    data = line[5:].strip()
-                elif line == "" and data:
-                    try:
-                        yield json.loads(data)
-                    except ValueError:
-                        pass
-                    data = ""
+        try:
+            with self._http.stream(
+                "GET",
+                "/events",
+                headers={"X-Auth-Token": self._token},
+                timeout=httpx.Timeout(idle_timeout),
+            ) as resp:
+                if resp.status_code == 401:
+                    self.login()
+                    yield from self.event_stream()
+                    return
+                if resp.status_code != 200:
+                    raise SaltApiError(
+                        f"salt-api /events failed: HTTP {resp.status_code}"
+                    )
+                data = ""
+                for line in resp.iter_lines():
+                    if line.startswith("data:"):
+                        data = line[5:].strip()
+                    elif line == "" and data:
+                        try:
+                            yield json.loads(data)
+                        except ValueError:
+                            pass
+                        data = ""
+        except httpx.TimeoutException:
+            # Idle expiry is the caller's graceful end-of-stream signal.
+            raise
+        except httpx.HTTPError as exc:
+            raise SaltApiError(f"salt-api unreachable: {exc}") from exc
 
     def health(self) -> dict:
         """Probe what the dashboard needs: token age + @wheel/@runner reach."""

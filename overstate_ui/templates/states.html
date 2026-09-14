@@ -14,10 +14,12 @@
         {% for w in watched %}
         <li class="flex items-center gap-2 py-2 border-b border-base-200 last:border-0">
           <span class="font-mono text-sm mr-auto">{{ w.sls }}</span>
-          <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}">
+          {% if current_user.role in ["operator", "admin"] %}
+          <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" data-confirm="Stop watching '{{ w.sls }}'?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-ghost">Unwatch</button>
           </form>
+          {% endif %}
         </li>
         {% endfor %}
       </ul>
@@ -27,11 +29,13 @@
         <p class="text-sm opacity-70">Watch an SLS to track it here.</p>
       </div>
       {% endif %}
+      {% if current_user.role in ["operator", "admin"] %}
       <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-2 mt-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input name="sls" placeholder="e.g. baseline" class="input input-sm flex-1" required>
         <button class="btn btn-sm btn-primary">Watch</button>
       </form>
+      {% endif %}
       <a class="btn btn-sm btn-outline mt-3 self-start" href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a>
     </div>
   </section>
@@ -39,10 +43,12 @@
     <div class="card-body">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base mr-auto">Conformity</h2>
+        {% if current_user.role in ["operator", "admin"] %}
         <form method="post" action="{{ url_for('states.recompute') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-xs btn-ghost">Recompute</button>
         </form>
+        {% endif %}
       </div>
       {% include "_conformity_rows.html" %}
     </div>

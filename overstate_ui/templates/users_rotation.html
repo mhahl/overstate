@@ -10,16 +10,17 @@
     <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
     <span>A halfway rotation locks the app out: every Salt call fails until the master and the app share the new password. Finish all four steps in one session.</span>
   </div>
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      {% for m in messages %}<div class="alert alert-info mb-2" role="alert">{{ m }}</div>{% endfor %}
-    {% endif %}
-  {% endwith %}
   <section class="card bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body gap-4">
       <div>
-        <h2 class="card-title text-base">1. New password</h2>
-        <p class="text-sm opacity-70 mt-0.5">Generated fresh on every visit. Copy it now. The app never stores it.</p>
+        <div class="flex items-center gap-2">
+          <h2 class="card-title text-base mr-auto">1. New password</h2>
+          <form method="post" action="{{ url_for('users.rotation_regenerate') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-xs btn-ghost">Generate new</button>
+          </form>
+        </div>
+        <p class="text-sm opacity-70 mt-0.5">Stays the same until you verify it or generate a new one. Copy it now. It lives only in your login session.</p>
         <p class="font-mono text-sm bg-base-200 rounded px-3 py-2 mt-2 break-all">{{ password }}</p>
       </div>
       <div>

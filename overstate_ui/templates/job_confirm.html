@@ -72,7 +72,11 @@
       <input type="hidden" name="confirmed" value="yes">
       <div class="card-actions justify-end">
         <a class="btn btn-ghost" href="{{ url_for('jobs.new') }}">Cancel</a>
+        {% if current_user.role in ["operator", "admin"] %}
         <button class="btn btn-warning">Run {{ fun }}</button>
+        {% else %}
+        <p class="text-sm opacity-70 self-center">Only operators can fire jobs.</p>
+        {% endif %}
       </div>
     </div>
   </form>

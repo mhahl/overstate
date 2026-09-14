@@ -40,7 +40,7 @@ def suggest_glob(ids: list[str], roster: list[str]) -> tuple[str, list, list]:
     selected = sorted({i.strip() for i in ids if i and i.strip()})
     roster = sorted(set(roster))
     if not selected:
-        return "*", [], roster
+        return "", [], []
     if roster and set(selected) >= set(roster):
         return "*", selected, roster
     if len(selected) == 1:
@@ -48,7 +48,10 @@ def suggest_glob(ids: list[str], roster: list[str]) -> tuple[str, list, list]:
         return only, selected, [only] if only in roster else []
     prefix = os.path.commonprefix(selected)
     if not prefix:
-        return "*", selected, roster
+        # No single glob expresses this selection: returning "*" here
+        # would silently widen to the fleet, so return no target and let
+        # the run form (which blocks empty targets) ask for one by hand.
+        return "", selected, []
     glob = prefix + "*"
     covered = sorted(m for m in roster if m.startswith(prefix))
     return glob, selected, covered

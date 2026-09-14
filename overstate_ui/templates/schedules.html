@@ -56,17 +56,17 @@
 <div class="card bg-base-100 border border-base-300 shadow-sm">
 <div class="overflow-x-auto">
 {% import "_macros.html" as m %}
-<table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th_plain('schedules.index', 'name', 'Job', sort, direction, {'minion': mid}) }}{{ m.sort_th_plain('schedules.index', 'function', 'Function', sort, direction, {'minion': mid}) }}<th>When</th><th>Enabled</th><th class="text-right"></th></tr></thead><tbody>
+<table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th_plain('schedules.index', 'name', 'Job', sort, direction, {'minion': mid}) }}{{ m.sort_th_plain('schedules.index', 'function', 'Function', sort, direction, {'minion': mid}) }}<th>When</th><th>Enabled</th>{% if current_user.role in ["operator", "admin"] %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for name, job in entries.items() %}
 <tr><td class="font-mono text-xs">{{ name }}</td>
 <td class="font-mono text-xs">{{ job.get("function", "–") }}</td>
-<td class="font-mono text-xs">{{ job.get("seconds", job.get("minutes", job.get("hours", job.get("cron", "–")))) }}</td>
+<td class="font-mono text-xs">{{ job.get("seconds", job.get("minutes", job.get("hours", job.get("days", job.get("cron", "–"))))) }}</td>
 <td>{% if job.get("enabled") is false %}<span class="badge badge-sm badge-neutral">no</span>{% else %}<span class="badge badge-sm badge-success">yes</span>{% endif %}</td>
-<td class="text-right"><span class="join join-horizontal">
+{% if current_user.role in ["operator", "admin"] %}<td class="text-right"><span class="join join-horizontal">
   <form method="post" action="{{ url_for('schedules.act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
-  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='disable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
-  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
-</span></td></tr>
+  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='disable') }}" data-confirm="Disable job '{{ name }}' on {{ mid }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
+  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='delete') }}" data-confirm="Delete job '{{ name }}' on {{ mid }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
+</span></td>{% endif %}</tr>
 {% endfor %}
 </tbody></table>
 </div>

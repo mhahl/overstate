@@ -7,10 +7,12 @@
     <p class="text-sm opacity-70 mt-0.5">Inventory snapshots with live presence.</p>
   </div>
   <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on all pages" aria-label="Pause live updates on all pages">Pause live updates</button>
+  {% if current_user.role in ["operator", "admin"] %}
   <form method="post" action="{{ url_for('minions.refresh') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-primary">Refresh inventory</button>
   </form>
+  {% endif %}
   <a class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.export_csv') }}">Export CSV</a>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.onboard') }}">Onboard minion</a>
 </div>

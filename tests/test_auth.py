@@ -41,6 +41,9 @@ def test_bad_password_rejected(client):
     rv = client.post("/login", data={"username": "admin", "password": "wrong"})
     assert rv.status_code == 200
     assert client.get("/").status_code == 302
+    # Categorized: an error looks like an error, not a soft warning.
+    assert "alert-error" in rv.data.decode()
+    assert "Invalid credentials." in rv.data.decode()
 
 
 def test_successful_login_resets_rate_limit(client):

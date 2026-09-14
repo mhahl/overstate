@@ -51,7 +51,7 @@
             </select>
             <button class="btn btn-sm join-item">Set</button>
           </form>
-          <form method="post" action="{{ url_for('users.delete', uid=u.id) }}">
+          <form method="post" action="{{ url_for('users.delete', uid=u.id) }}" data-confirm="Delete user '{{ u.username }}'?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-error btn-outline join-item">Delete</button>
           </form>

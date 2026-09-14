@@ -10,7 +10,7 @@
     <button class="btn btn-sm">Sync results</button>
   </form>
   {% if killable and current_user.role in ["operator", "admin"] %}
-  <form method="post" action="{{ url_for('jobs.kill', jid=job.jid) }}">
+  <form method="post" action="{{ url_for('jobs.kill', jid=job.jid) }}" data-confirm="Kill job {{ job.jid }}? Running minions stop where they are.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-error btn-outline">Kill job</button>
   </form>
@@ -41,8 +41,8 @@
       <h2 class="card-title text-base">Batch</h2>
       <span class="badge badge-sm {{ 'badge-success' if batch_state.status == 'complete' else ('badge-error' if batch_state.status in ('stopped', 'cancelled') else 'badge-info') }}">{{ batch_state.status }}</span>
       <span class="text-sm opacity-70">{{ batch_state.waves_done | default(0) }}/{{ batch_state.waves }} waves · {{ batch_state.failures | default(0) }} failures · stop after {{ batch_state.stop_after }}</span>
-      {% if batch_state.status == "running" %}
-      <form method="post" action="{{ url_for('jobs.cancel_batch', group=job.batch_group) }}" class="ml-auto">
+      {% if batch_state.status == "running" and current_user.role in ["operator", "admin"] %}
+      <form method="post" action="{{ url_for('jobs.cancel_batch', group=job.batch_group) }}" class="ml-auto" data-confirm="Stop batch {{ job.batch_group }}? Remaining waves will not run.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-sm btn-error btn-outline">Stop batch</button>
       </form>

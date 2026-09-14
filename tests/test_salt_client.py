@@ -144,11 +144,39 @@ def test_http_timeout_bounds_wedged_server():
     try:
         client = SaltClient(f"http://127.0.0.1:{server.server_port}", "u", "p")
         start = time.monotonic()
-        with pytest.raises(httpx.TimeoutException):
+        # Timeouts surface as SaltApiError like every other transport
+        # failure, so views degrade instead of 500ing.
+        with pytest.raises(SaltApiError):
             client.runner("manage.versions", http_timeout=0.5)
         assert time.monotonic() - start < 5
     finally:
         server.shutdown()
+
+
+def _dead_transport() -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("master down")
+
+    return httpx.MockTransport(handler)
+
+
+def test_transport_errors_surface_as_salt_api_error():
+    client = SaltClient("https://salt:8000", "u", "p", transport=_dead_transport())
+    with pytest.raises(SaltApiError):
+        client.wheel("key.list_all")
+
+
+def test_login_transport_error_surfaces_as_salt_api_error():
+    client = SaltClient("https://salt:8000", "u", "p", transport=_dead_transport())
+    with pytest.raises(SaltApiError):
+        client.login()
+
+
+def test_event_stream_connection_error_surfaces_as_salt_api_error():
+    client = SaltClient("https://salt:8000", "u", "p", transport=_dead_transport())
+    client._token = "tok"  # skip login so the stream setup itself fails
+    with pytest.raises(SaltApiError):
+        next(iter(client.event_stream()))
 
 
 def test_401_triggers_relogin():

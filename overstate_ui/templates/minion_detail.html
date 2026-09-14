@@ -173,7 +173,7 @@
   {% if current_user.role in ["operator", "admin"] %}
   <span class="join join-horizontal">
   <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
-  <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='disable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
+  <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='disable') }}" data-confirm="Disable beacon '{{ name }}' on {{ mid }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
   </span>
   {% endif %}
 </td></tr>

@@ -42,14 +42,14 @@
     <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=row.id) }}">{{ row.id }}</a></td>
     <td class="font-mono text-xs break-all">{{ row.fingerprint }}</td>
     <td class="text-right">
-      <span class="join join-horizontal">
+      {% if current_user.role in ["operator", "admin"] %}<span class="join join-horizontal">
       {% if tab == "pending" %}
       <form method="post" action="{{ url_for('keys.act', action='accept') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-success join-item">Accept</button></form>
-      <form method="post" action="{{ url_for('keys.act', action='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm join-item">Reject</button></form>
+      <form method="post" action="{{ url_for('keys.act', action='reject') }}" data-confirm="Reject key for '{{ row.id }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm join-item">Reject</button></form>
       {% else %}
-      <form method="post" action="{{ url_for('keys.act', action='delete') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
+      <form method="post" action="{{ url_for('keys.act', action='delete') }}" data-confirm="Delete key for '{{ row.id }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
       {% endif %}
-      </span>
+      </span>{% endif %}
     </td>
   </tr>
   {% endfor %}

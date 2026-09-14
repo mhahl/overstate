@@ -120,6 +120,18 @@ def test_diff_with_no_snapshots_shows_no_data(client):
     assert "No pillar data to compare" in html
 
 
+def test_pillar_detail_dead_master_renders_fallback(client):
+    def dead(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("master down")
+
+    client.app.extensions["salt_client"] = SaltClient(
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(dead)
+    )
+    rv = client.get("/pillar/web-01")
+    assert rv.status_code == 200
+    assert "unreachable" in rv.data.decode()
+
+
 def test_diff_unit():
     rows = diff_pillars({"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 3}})
     assert rows == [{"path": "b.c", "kind": "changed", "old": 2, "new": 3}]
@@ -134,6 +146,18 @@ def test_suggest_glob_unit():
     assert covered == ["web-01", "web-02"]
     glob_all, _, _ = suggest_glob(["web-01", "db-01"], ["web-01", "db-01"])
     assert glob_all == "*"
+
+
+def test_suggest_glob_never_defaults_to_fleet():
+    # Empty selection: no target, not "*".
+    assert suggest_glob([], ["web-01", "db-01"]) == ("", [], [])
+    assert suggest_glob([" ", ""], ["web-01"]) == ("", [], [])
+    # No shared prefix: no target rather than a fleet-wide glob.
+    glob, selected, covered = suggest_glob(
+        ["web-01", "db-01"], ["web-01", "db-01", "other-01"]
+    )
+    assert (glob, covered) == ("", [])
+    assert selected == ["db-01", "web-01"]
 
 
 def test_suggest_glob_single_host_is_exact():

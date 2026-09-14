@@ -208,7 +208,8 @@ def test_sort_jobs_started_uses_datetime():
 
 def test_conformity_ok_renders_success(client):
     html = client.get("/states/").data.decode()
-    assert '<span class="badge badge-sm badge-success">ok</span>' in html
+    assert '<span class="badge badge-sm badge-success"' in html
+    assert ">ok</span>" in html
 
 
 def test_conformity_source_jid_links_to_job(client):

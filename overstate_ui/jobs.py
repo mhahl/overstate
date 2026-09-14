@@ -201,7 +201,7 @@ def new():
     bulk = None
     raw_bulk = []
     for value in request.args.getlist("bulk"):
-        raw_bulk.extend(value.split(","))
+        raw_bulk.extend(v for v in value.split(",") if v.strip())
     if raw_bulk and not saved and not preset:
         from .models import Minion
 
@@ -277,7 +277,7 @@ def fun_doc():
 @bp.post("/run")
 @roles_required("operator")
 def run():
-    tgt = request.form.get("tgt", "*").strip()
+    tgt = request.form.get("tgt", "").strip()
     tgt_type = request.form.get("tgt_type", "glob")
     fun = request.form.get("fun", "").strip()
     raw_args = request.form.get("args", "").strip()
@@ -288,6 +288,9 @@ def run():
         via = "local"
     if not fun or tgt_type not in TGT_TYPES:
         flash("Pick a target type and a function.", "error")
+        return redirect(url_for("jobs.new"))
+    if not tgt:
+        flash("Pick a target: an empty target never fires.", "error")
         return redirect(url_for("jobs.new"))
     if via == "ssh" and asynchronous:
         asynchronous = False

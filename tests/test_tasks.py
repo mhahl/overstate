@@ -298,6 +298,45 @@ def test_rotation_page_and_verify(monkeypatch, admin):
     assert "verification failed" in rv.data.decode()
 
 
+def _rotation_password(client):
+    import re
+
+    html = client.get("/users/rotation").data.decode()
+    return re.search(
+        r'font-mono text-sm bg-base-200 rounded px-3 py-2 mt-2 break-all">([^<]+)<',
+        html,
+    ).group(1)
+
+
+def test_rotation_password_stable_until_consumed(monkeypatch, admin):
+    assert _rotation_password(admin) == _rotation_password(admin)
+
+    class LoginOk:
+        def login(self):
+            return None
+
+    monkeypatch.setattr("overstate_ui.tasks.build_client", lambda: LoginOk())
+    # Consumed on verify: the next visit mints a fresh one.
+    admin.post("/users/rotation/verify", data={"password": "new"})
+    first = _rotation_password(admin)
+    admin.post("/users/rotation/verify", data={"password": "new"})
+    assert _rotation_password(admin) != first
+
+
+def test_rotation_regenerate_replaces_password(admin):
+    import re
+
+    first = _rotation_password(admin)
+    rv = admin.post("/users/rotation/regenerate", follow_redirects=True)
+    assert rv.status_code == 200
+    assert "discarded" in rv.data.decode()
+    second = re.search(
+        r'font-mono text-sm bg-base-200 rounded px-3 py-2 mt-2 break-all">([^<]+)<',
+        rv.data.decode(),
+    ).group(1)
+    assert second and second != first
+
+
 def test_rotation_forbidden_for_operator(app):
     from overstate_ui.models import User
 

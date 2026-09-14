@@ -7,9 +7,9 @@
       {% set cstatus = (m.conformity or {}).get("status", "unknown") %}
       <tr><td class="font-mono text-xs">{{ m.id }}</td>
       <td>
-        {% if cstatus == "ok" %}<span class="badge badge-sm badge-success">ok</span>
-        {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error">{{ cstatus }}</span>
-        {% else %}<span class="badge badge-sm badge-neutral">{{ cstatus }}</span>{% endif %}
+        {% if cstatus == "ok" %}<span class="badge badge-sm badge-success" role="status" aria-label="Conformity: ok">ok</span>
+        {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>
+        {% else %}<span class="badge badge-sm badge-neutral" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>{% endif %}
       </td>
       {% set src_jid = (m.conformity or {}).get("jid") %}
       <td class="font-mono text-xs">{% if src_jid and cstatus != "unknown" %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}–{% endif %}</td></tr>
