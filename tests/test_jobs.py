@@ -178,11 +178,11 @@ def test_detail_counts_real_state_payload(client):
                 success=False,
                 retcode=1,
                 payload={
-                    "pkg_|-nginx_|-nginx_|-installed": {
+                    "web_|-pkg_|-nginx_|-installed": {
                         "result": True,
                         "changes": {},
                     },
-                    "service_|-nginx_|-nginx_|-running": {
+                    "web_|-service_|-nginx_|-running": {
                         "result": False,
                         "changes": {},
                     },
@@ -218,6 +218,88 @@ def test_summarize_state_return_counts_results():
             "not-a-state": {"changes": {}},
         }
     ) == {"succeeded": 2, "failed": 1}
+
+
+def test_describe_return_shapes():
+    from overstate_ui.jobs_helpers import describe_return
+
+    state = describe_return(
+        {
+            "web_|-service_|-nginx_|-running": {
+                "result": False,
+                "comment": "Failed!\nsecond line",
+                "duration": 12.0,
+                "changes": {},
+            },
+            "web_|-pkg_|-nginx_|-installed": {
+                "result": True,
+                "comment": "All good",
+                "duration": 3.0,
+                "changes": {"installed": ["x"]},
+            },
+            "odd": {"changes": {}},
+        }
+    )
+    assert state["kind"] == "state"
+    assert state["summary"] == {"succeeded": 1, "failed": 1}
+    assert [(s["module"], s["name"]) for s in state["states"]] == [
+        ("service", "nginx"),
+        ("pkg", "nginx"),
+    ]  # failures first
+    assert state["states"][0]["comment"] == "Failed!"  # first line only
+    assert state["states"][0]["changes"] is None  # empty changes fade out
+    assert state["states"][1]["changes"] == {"installed": ["x"]}
+
+    assert describe_return(True)["text"] == "Returned True"
+    assert describe_return("hello")["kind"] == "scalar"
+    assert describe_return({"a": 1})["kind"] == "unknown"
+    assert describe_return([True, "x"])["text"] == "Returned 2 items: True, x"
+    assert describe_return([{"a": 1}])["kind"] == "unknown"
+    seed = describe_return({"succeeded": 1, "failed": 0, "failures": ["a", "b"]})
+    assert seed["kind"] == "summary" and seed["failures"] == ["a", "b"]
+
+
+def test_detail_renders_human_state_rows(client):
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20260910123000000010",
+                fun="state.apply",
+                tgt="web01",
+                tgt_type="list",
+                user="admin",
+                complete=True,
+            )
+        )
+        session.add(
+            JobReturn(
+                jid="20260910123000000010",
+                minion_id="web01",
+                success=False,
+                retcode=1,
+                payload={
+                    "web_|-service_|-nginx_|-running": {
+                        "result": False,
+                        "comment": "Service failed to start",
+                        "duration": 42.0,
+                        "changes": {},
+                    },
+                    "web_|-pkg_|-nginx_|-installed": {
+                        "result": True,
+                        "comment": "Already installed",
+                        "changes": {"x": 1},
+                    },
+                },
+            )
+        )
+        session.commit()
+    html = client.get("/jobs/20260910123000000010").data.decode()
+    assert "service: nginx" in html  # human row, failed first
+    assert html.index("service: nginx") < html.index("pkg: nginx")
+    assert "Service failed to start" in html
+    assert "42.0 ms" in html
+    assert "Raw output" in html  # full JSON one click away
 
 
 def test_new_prefills_fun_and_args(client):

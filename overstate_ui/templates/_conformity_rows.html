@@ -12,7 +12,7 @@
         {% else %}<span class="badge badge-sm badge-neutral">{{ cstatus }}</span>{% endif %}
       </td>
       {% set src_jid = (m.conformity or {}).get("jid") %}
-      <td class="font-mono text-xs">{% if src_jid %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}–{% endif %}</td></tr>
+      <td class="font-mono text-xs">{% if src_jid and cstatus != "unknown" %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}–{% endif %}</td></tr>
       {% endfor %}
       </tbody></table>
       </div>

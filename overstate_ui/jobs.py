@@ -39,6 +39,7 @@ from .jobs_helpers import (
     OP_FUNCTIONS,
     OPERATION_GROUPS,
     TGT_TYPES,
+    describe_return,
     is_test_mode,
     killable,
     parse_batch_fields,
@@ -489,6 +490,7 @@ def detail(jid: str):
         killable=killable(job),
         kill_reports=kill_reports,
         state_summary=summarize_state_return,
+        describe_return=describe_return,
     )
 
 

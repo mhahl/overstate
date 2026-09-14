@@ -107,6 +107,107 @@ def summarize_state_return(payload) -> dict | None:
     return {"succeeded": succeeded, "failed": failed}
 
 
+def _is_state_mapping(payload: dict) -> bool:
+    return any(
+        isinstance(result, dict) and "result" in result for result in payload.values()
+    )
+
+
+def _split_state_id(key: str) -> tuple[str, str]:
+    """(module, name) from a ``id_|-state_|-name_|-fun`` key, falling
+    back to the raw key when it does not split."""
+    parts = key.split("_|-")
+    if len(parts) >= 3:
+        return (parts[1], parts[2])
+    return (key, "")
+
+
+def _first_line(text: object, limit: int = 200) -> str:
+    line = str(text or "").strip().splitlines()
+    line = line[0] if line else ""
+    return line if len(line) <= limit else line[:limit] + "…"
+
+
+def describe_return(payload) -> dict:
+    """Normalized view of one minion's return payload for human
+    rendering. ``kind`` is ``state`` (per-state rows), ``summary``
+    (seed-style succeeded/failed counts only), ``scalar`` (one human
+    sentence), or ``unknown`` (render today's raw JSON). Failures sort
+    first so the eye lands on what broke.
+    """
+    if isinstance(payload, dict):
+        summary = summarize_state_return(payload)
+        if summary is not None and _is_state_mapping(payload):
+            states = []
+            for key, result in payload.items():
+                if not isinstance(result, dict) or "result" not in result:
+                    continue
+                module, name = _split_state_id(key)
+                states.append(
+                    {
+                        "module": module,
+                        "name": name,
+                        "result": result.get("result"),
+                        "comment": _first_line(result.get("comment")),
+                        "duration": result.get("duration"),
+                        "changes": result.get("changes") or None,
+                    }
+                )
+            states.sort(key=lambda s: s["result"] is not False)
+            return {
+                "kind": "state",
+                "summary": summary,
+                "states": states,
+                "text": None,
+            }
+        if summary is not None:
+            failures = payload.get("failures")
+            names = (
+                [str(f) for f in failures[:5]]
+                if isinstance(failures, list)
+                and all(isinstance(f, str) for f in failures)
+                else []
+            )
+            return {
+                "kind": "summary",
+                "summary": summary,
+                "failures": names,
+                "states": [],
+                "text": None,
+            }
+        return {"kind": "unknown", "summary": None, "states": [], "text": None}
+    if payload is None or isinstance(payload, (bool, int, float)):
+        return {
+            "kind": "scalar",
+            "summary": None,
+            "states": [],
+            "text": f"Returned {payload}",
+        }
+    if isinstance(payload, str):
+        return {
+            "kind": "scalar",
+            "summary": None,
+            "states": [],
+            "text": _first_line(payload, limit=500),
+        }
+    if (
+        isinstance(payload, list)
+        and len(payload) <= 10
+        and all(
+            item is None or isinstance(item, (bool, int, float, str))
+            for item in payload
+        )
+    ):
+        return {
+            "kind": "scalar",
+            "summary": None,
+            "states": [],
+            "text": f"Returned {len(payload)} items: "
+            + ", ".join(_first_line(item, limit=80) for item in payload),
+        }
+    return {"kind": "unknown", "summary": None, "states": [], "text": None}
+
+
 FLEET_PRESETS = {
     "pkg-install": {"tgt": "*", "tgt_type": "glob", "fun": "pkg.install", "args": ""},
     "pkg-remove": {"tgt": "*", "tgt_type": "glob", "fun": "pkg.remove", "args": ""},

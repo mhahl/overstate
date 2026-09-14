@@ -131,4 +131,7 @@ def act(action: str):
     else:
         log_event(current_user.username, f"{action}-key")
         flash(f"{mid}: {action}ed.", "success")
+    nxt = request.form.get("next", "")
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
     return redirect(url_for("keys.index", **keep))

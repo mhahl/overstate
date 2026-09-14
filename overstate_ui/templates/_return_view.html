@@ -1,0 +1,40 @@
+{# Human layer for one minion return. Expects `r` (JobReturn) and
+`view` (describe_return payload) from the including scope. Raw output
+stays one click away in every variant. #}
+{% if view.kind == "summary" and view.failures %}
+<p class="text-xs mb-2"><span class="opacity-70">Failed states:</span> <span class="font-mono">{{ view.failures|join(", ") }}</span></p>
+{% endif %}
+{% if view.kind == "state" and view.states %}
+<ul class="flex flex-col gap-1 mb-2">
+  {% for s in view.states %}
+  <li>
+    {% if s.changes %}
+    <details {% if s.result == false %}open{% endif %}>
+      <summary class="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+        {% if s.result == false %}<span class="status status-error shrink-0"></span>
+        {% elif s.result is none %}<span class="status status-warning shrink-0"></span>
+        {% else %}<span class="status status-success shrink-0"></span>{% endif %}
+        <span class="font-mono text-xs">{{ s.module }}{% if s.name %}: {{ s.name }}{% endif %}</span>
+        {% if s.duration is not none %}<span class="ml-auto text-xs opacity-60 tabular-nums shrink-0">{{ s.duration }} ms</span>{% endif %}
+      </summary>
+      {% if s.comment %}<p class="text-xs opacity-70 mt-0.5 mb-1">{{ s.comment }}</p>{% endif %}
+      <pre class="mockup-code text-xs overflow-x-auto"><code>{{ s.changes | tojson(indent=1) }}</code></pre>
+    </details>
+    {% else %}
+    <div class="flex items-center gap-2 text-sm py-0.5">
+      {% if s.result == false %}<span class="status status-error shrink-0"></span>
+      {% elif s.result is none %}<span class="status status-warning shrink-0"></span>
+      {% else %}<span class="status status-success shrink-0"></span>{% endif %}
+      <span class="font-mono text-xs">{{ s.module }}{% if s.name %}: {{ s.name }}{% endif %}</span>
+      {% if s.duration is not none %}<span class="ml-auto text-xs opacity-60 tabular-nums shrink-0">{{ s.duration }} ms</span>{% endif %}
+    </div>
+    {% if s.comment %}<p class="text-xs opacity-70 mt-0.5">{{ s.comment }}</p>{% endif %}
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+<details>
+  <summary class="text-xs opacity-70 cursor-pointer py-0.5">Raw output</summary>
+  <pre class="mockup-code text-xs overflow-x-auto mt-1"><code>{{ r.payload | tojson(indent=1) }}</code></pre>
+</details>

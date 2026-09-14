@@ -89,6 +89,7 @@ def test_shell_polls_without_touching_salt(monkeypatch):
     )  # shell seeds the fingerprint so an unchanged first poll is a 204
     assert "&amp;started=" in html  # poll clock for the stale-probe cutoff
     assert 'hx-trigger="every 2s"' in html  # no load trigger: it refires on every swap
+    assert html.index("Refreshing live data") < html.index("Live events")  # header slot
     assert "3006.5" in html  # snapshot versions paint immediately
     assert ">2<" in html  # DB in-flight count, not live
 
@@ -142,7 +143,7 @@ def test_panels_resolve_to_live_and_stop_polling(monkeypatch):
     assert "2 / 0" in html  # live up/down, not snapshot dashes
     assert "Keys" in html  # capability rows rendered from the result
     assert "hx-get" not in html  # polling stopped
-    assert "Refreshing live data" not in html
+    assert "opacity-60 invisible" in html  # spinner slot reserved, buttons unmoved
 
 
 def test_panels_hydrate_fast_panels_while_fanout_waits(monkeypatch):
@@ -198,6 +199,7 @@ def test_panels_skip_unchanged_renders_while_waiting(monkeypatch):
     base = "/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1"
     html = client.get(base).data.decode()
     assert "Refreshing live data" in html
+    assert "invisible" not in html  # spinner slot visible while probing
     seen = re.search(r"seen=([^\"&]+)", html).group(1)
 
     # Unchanged re-poll: 204, so htmx swaps nothing and the spinner
@@ -210,6 +212,7 @@ def test_panels_skip_unchanged_renders_while_waiting(monkeypatch):
     states["k1"] = ("ready", {"reachable": True, "accepted": 2})
     html = client.get(f"{base}&seen={seen}").data.decode()
     assert "Refreshing live data" in html
+    assert "invisible" not in html  # still visible: presence still waiting
     new_seen = re.search(r"seen=([^\"&]+)", html).group(1)
     assert new_seen != seen
 
@@ -231,7 +234,7 @@ def test_panels_fall_back_to_snapshot_when_gone(monkeypatch):
     assert "3006.5" in html
     assert "No capability data yet." in html
     assert "hx-get" not in html
-    assert "Refreshing live data" not in html
+    assert "opacity-60 invisible" in html  # slot reserved, buttons unmoved
 
 
 def test_panels_give_up_after_stale_cutoff(monkeypatch):
@@ -245,7 +248,7 @@ def test_panels_give_up_after_stale_cutoff(monkeypatch):
         .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&started=1")
         .data.decode()
     )
-    assert "Refreshing live data" not in html
+    assert "opacity-60 invisible" in html  # slot reserved, buttons unmoved
     assert "hx-get" not in html
     assert "3006.5" in html  # snapshot versions remain
     assert "No capability data yet." in html
@@ -277,7 +280,7 @@ def test_expired_poll_keeps_resolved_results(monkeypatch):
         .data.decode()
     )
     assert ">5<" in html  # live pending count, not snapshot zero
-    assert "Refreshing live data" not in html
+    assert "opacity-60 invisible" in html  # slot reserved, buttons unmoved
     assert "hx-get" not in html
 
 

@@ -168,6 +168,40 @@ def test_minions_list_search_paginate(client):
     assert "new-01" in html and "web-01" not in html
 
 
+def test_minions_row_kebab_menu_for_operator(client):
+    html = client.get("/minions/").data.decode()
+    assert "ellipsis-vertical" in html
+    assert 'href="/jobs/new?bulk=web-01"' in html
+    assert 'href="/jobs/new?tgt=web-01&amp;tgt_type=list&amp;fun=test.ping"' in html
+    assert 'action="/keys/accept"' in html
+    assert 'action="/keys/delete"' in html
+    assert 'name="next" value="/minions/"' in html
+
+
+def test_minions_row_menu_hidden_for_viewer(client):
+    from overstate_ui.auth import _ph
+    from overstate_ui.models import User
+
+    with client.app.app_context():
+        get_session().add(
+            User(username="v", password_hash=_ph.hash("pw"), role="viewer")
+        )
+        get_session().commit()
+    viewer = client.app.test_client()
+    viewer.post("/login", data={"username": "v", "password": "pw"})
+    html = viewer.get("/minions/").data.decode()
+    assert "web-01" in html  # list itself stays visible
+    assert "ellipsis-vertical" not in html
+
+
+def test_key_act_honors_next(client):
+    rv = client.post("/keys/delete", data={"id": "new-01", "next": "/minions/"})
+    assert rv.status_code == 302
+    assert rv.headers["Location"] == "/minions/"
+    rv = client.post("/keys/delete", data={"id": "new-01", "next": "https://evil/"})
+    assert rv.headers["Location"].startswith("/keys/")
+
+
 def test_minions_refresh_caches_grains(client):
     rv = client.post("/minions/refresh")
     assert rv.status_code == 302

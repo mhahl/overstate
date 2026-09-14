@@ -12,7 +12,10 @@ bp = Blueprint("states", __name__, url_prefix="/states")
 
 def recompute_conformity() -> str | None:
     """Derive ok/drifted per minion from the most recently active state.*
-    job. Returns the source jid (or None). Unknown where no data exists."""
+    job. Returns the source jid (or None). Only minions with a return
+    in that job are updated; everyone else keeps their prior verdict so
+    a job whose target glob does not cover a minion never claims to
+    have checked it."""
     session = get_session()
     latest = (
         session.query(Job.jid)
@@ -25,20 +28,12 @@ def recompute_conformity() -> str | None:
     jid = latest[0]
     if not session.query(JobReturn).filter_by(jid=jid).first():
         return None
-    seen: set[str] = set()
     for ret in session.query(JobReturn).filter_by(jid=jid).all():
-        seen.add(ret.minion_id)
         row = session.get(Minion, ret.minion_id)
         if row is None:
             row = Minion(id=ret.minion_id, grains={}, conformity={})
             session.add(row)
         row.conformity = {"status": "ok" if ret.success else "drifted", "jid": jid}
-    for row in session.query(Minion).all():
-        if row.id not in seen:
-            conf = dict(row.conformity or {})
-            if conf.get("jid") != jid:
-                conf.update({"status": "unknown", "jid": jid})
-                row.conformity = conf
     session.commit()
     return jid
 

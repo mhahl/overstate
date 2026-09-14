@@ -4,14 +4,24 @@ and dashboard.panels (poll hydration). No Salt I/O feeds this template:
 When `probing` with a `poll_qs`, the wrapper re-polls itself via htmx;
 resolved renders drop those attributes so polling stops on its own. #}
 <div id="dashboard-live" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
-{% if probing %}
-<div class="flex justify-end" role="status">
-  <span class="flex items-center gap-1.5 text-xs opacity-60">
-    <span class="icon-[lucide--loader-circle] size-4 shrink-0 animate-spin" aria-hidden="true"></span>
-    <span>Refreshing live data…</span>
-  </span>
+<div class="flex flex-wrap items-end gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Fleet overview</h1>
+    <p class="text-sm opacity-70 mt-0.5">Salt control plane status and recent activity.</p>
+  </div>
+  <div class="flex gap-2 ms-auto items-center">
+    {# Reserved slot: identical content either way, toggled invisible so the
+    buttons never shift when polling resolves. visibility:hidden also hides
+    it from screen readers until it matters. #}
+    <span role="status" class="flex items-center gap-1.5 text-xs opacity-60{% if not probing %} invisible{% endif %}">
+      <span class="icon-[lucide--loader-circle] size-4 shrink-0 animate-spin" aria-hidden="true"></span>
+      <span>Refreshing live data…</span>
+    </span>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('events.index') }}">Live events</a>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}">Run job</a>
+  </div>
 </div>
-{% elif worker_down %}
+{% if worker_down %}
 <div class="alert alert-warning" role="alert">
   <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
   <span>Background worker unreachable — showing snapshot data.</span>

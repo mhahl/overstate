@@ -44,7 +44,7 @@
             <p class="font-medium text-sm">Conformity</p>
           </div>
           <p class="text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-success" title="Last highstate-style run matched the watched states">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-warning" title="Last run reported changes. Open Recent activity, then re-run state.apply to converge">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-error" title="Last run could not reach this minion. Check presence and key state">unreachable</span>{% else %}<span class="badge badge-neutral" title="No highstate-style job has reported for this minion yet">unknown</span>{% endif %}</p>
-          <p class="text-xs text-base-content/60">{% if conformity.get("jid") %}Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% else %}No highstate-style job recorded{% endif %}</p>
+          <p class="text-xs text-base-content/60">{% if conformity.get("jid") and conformity.get("status") != "unknown" %}Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% else %}No highstate-style job recorded{% endif %}</p>
         </div>
       </div>
       <div class="bg-base-200 rounded-box">
