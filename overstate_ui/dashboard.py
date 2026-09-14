@@ -115,7 +115,7 @@ def index():
         "reachable": stats["reachable"],
         "error": caps.get("error"),
     }
-    checks = [{**c, "ok": bool(caps.get(c["key"]))} for c in CAPABILITY_CHECKS]
+    checks = capability_checks(caps)
     return render_template("dashboard.html", stats=stats, health=health, checks=checks)
 
 
@@ -123,3 +123,18 @@ def ping_target() -> str | None:
     """One accepted minion for the execution-door probe, or None."""
     row = get_session().query(Minion.id).order_by(Minion.id).first()
     return row[0] if row else None
+
+
+def capability_checks(caps: dict) -> list:
+    """CAPABILITY_CHECKS annotated with cached probe results. A failed
+    ping probe with no target means there was nothing to ping yet, not
+    missing grants — say so instead of sending the reader to eauth."""
+    from .tasks import CAPABILITY_CHECKS
+
+    checks = []
+    for c in CAPABILITY_CHECKS:
+        check = {**c, "ok": bool(caps.get(c["key"]))}
+        if c["key"] == "ping_ok" and not check["ok"] and not caps.get("ping_target"):
+            check["grant"] = "No minion to ping yet — enroll one first"
+        checks.append(check)
+    return checks

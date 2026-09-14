@@ -138,6 +138,25 @@ def test_probe_capabilities_denied_and_no_target(app):
     assert skipped["ping_ok"] is False and skipped["ping_target"] is None
 
 
+def test_ping_hint_without_target_points_at_enrollment():
+    from overstate_ui.dashboard import capability_checks
+
+    checks = capability_checks({"ping_ok": False, "ping_target": None})
+    ping = next(c for c in checks if c["key"] == "ping_ok")
+    assert not ping["ok"]
+    assert "minion" in ping["grant"].lower()
+    assert "grant" not in ping["grant"].lower()
+
+
+def test_ping_failure_with_target_keeps_grant_guidance():
+    from overstate_ui.dashboard import capability_checks
+
+    checks = capability_checks({"ping_ok": False, "ping_target": "m1"})
+    ping = next(c for c in checks if c["key"] == "ping_ok")
+    assert not ping["ok"]
+    assert ping["grant"] == "Grant execution functions to the eauth user"
+
+
 def test_isolated_app_teardown_uses_live_registry(app):
     """Fresh worker processes start with db._Session unset; teardown
     must use the registry rebound by create_app, not a stale import."""
