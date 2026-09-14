@@ -1,8 +1,6 @@
 """Dashboard truth tests: live version skew and master-active
 in-flight counts, with snapshot/DB fallbacks when denied."""
 
-import json
-
 import httpx
 
 from overstate_ui import create_app
@@ -12,62 +10,23 @@ from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.models import Job, Minion
 from overstate_ui.salt_client import SaltClient
 
-DENY_RUNNERS = False
-GROUPED_VERSIONS = False
 
+def _raising_transport() -> httpx.MockTransport:
+    """Salt-api transport that fails any call loudly: the dashboard
+    request paths must never touch Salt, so any attempt is a bug."""
 
-def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/login":
-            return httpx.Response(
-                200, json={"return": [{"token": "tok", "expire": 99}]}
-            )
-        body = json.loads(request.content or b"{}")
-        if body.get("client") == "wheel":
-            return httpx.Response(
-                200,
-                json={
-                    "return": [
-                        {
-                            "data": {
-                                "return": {
-                                    "minions": ["web-01"],
-                                    "minions_pre": [],
-                                    "minions_rejected": [],
-                                    "minions_denied": [],
-                                }
-                            }
-                        }
-                    ]
-                },
-            )
-        if body.get("client") == "runner":
-            if DENY_RUNNERS and body.get("fun") in ("manage.versions", "jobs.active"):
-                return httpx.Response(500, json={})
-            if body.get("fun") == "manage.versions":
-                if GROUPED_VERSIONS:
-                    versions = {"Up to date": ["web-01"]}
-                else:
-                    versions = {"web-01": "3006.5", "db-01": "3006.5"}
-                return httpx.Response(200, json={"return": [versions]})
-            if body.get("fun") == "jobs.active":
-                return httpx.Response(
-                    200, json={"return": [{"12345": {"fun": "state.highstate"}}]}
-                )
-            return httpx.Response(
-                200, json={"return": [{"up": ["web-01"], "down": []}]}
-            )
-        return httpx.Response(200, json={"return": [{}]})
+        raise AssertionError("dashboard must not call salt-api")
 
     return httpx.MockTransport(handler)
 
 
-def make_client():
+def _dashboard_client():
     init_db("sqlite://")
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport()
+        "https://salt:8000", "u", "p", transport=_raising_transport()
     )
     with app.app_context():
         create_all()
@@ -98,38 +57,131 @@ def make_client():
         get_session().commit()
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
-    c.app = app
     return c
 
 
-def test_dashboard_shows_live_versions_and_in_flight():
-    html = make_client().get("/").data.decode()
-    assert "3006.5" in html  # live skew from manage.versions
-    assert "Live from master" in html
+def _fake_queue(monkeypatch):
+    """Pretend the RQ worker accepted the dashboard probes."""
+    import types
+
+    ids = {
+        "salt_overview_task": "o1",
+        "fleet_truth_task": "t1",
+        "capabilities_task": "c1",
+    }
+
+    def fake(func, *args, **kwargs):
+        return types.SimpleNamespace(id=ids[func.__name__])
+
+    monkeypatch.setattr("overstate_ui.tasks.queue_or_none", fake)
+
+
+def test_shell_polls_without_touching_salt(monkeypatch):
+    """Core async guarantee: the shell enqueues probes, renders the
+    snapshot instantly, and polls — performing zero salt-api calls."""
+    _fake_queue(monkeypatch)
+    html = _dashboard_client().get("/").data.decode()
+    assert "Refreshing live data" in html
+    assert 'hx-get="/dashboard/panels?overview=o1&amp;truth=t1&amp;caps=c1"' in html
+    assert "3006.5" in html  # snapshot versions paint immediately
+    assert ">2<" in html  # DB in-flight count, not live
+
+
+def test_shell_shows_worker_warning_without_redis():
+    """No queue (Redis down in tests) means no panels: snapshot shell
+    with a worker warning instead of a salt-api claim we never tested."""
+    html = _dashboard_client().get("/").data.decode()
+    assert "Background worker unreachable" in html
+    assert "Database history only" not in html
+    assert ">2<" in html
+    assert "3006.5" in html
+
+
+def test_panels_resolve_to_live_and_stop_polling(monkeypatch):
+    import overstate_ui.dashboard as dashboard_mod
+
+    def fake_describe(jid):
+        return (
+            "ready",
+            {
+                "o1": {
+                    "reachable": True,
+                    "accepted": 2,
+                    "pending": 0,
+                    "up": 2,
+                    "down": 0,
+                },
+                "t1": {
+                    "versions": {"3006.9": 2},
+                    "versions_live": True,
+                    "active_jids": ["12345"],
+                    "active_live": True,
+                },
+                "c1": {
+                    "wheel_ok": True,
+                    "runner_ok": True,
+                    "history_ok": True,
+                    "ping_ok": True,
+                    "ping_target": "web-01",
+                    "error": None,
+                },
+            }[jid],
+        )
+
+    monkeypatch.setattr(dashboard_mod, "describe_job", fake_describe)
+    html = (
+        _dashboard_client()
+        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1")
+        .data.decode()
+    )
+    assert "3006.9" in html and "Live from master" in html
     assert ">1<" in html  # only the master-active JID counts
+    assert "Keys" in html  # capability rows rendered from the result
+    assert "hx-get" not in html  # polling stopped
+    assert "Refreshing live data" not in html
 
 
-def test_denied_runners_fall_back_to_snapshot_and_db():
-    global DENY_RUNNERS
-    DENY_RUNNERS = True
-    try:
-        html = make_client().get("/").data.decode()
-    finally:
-        DENY_RUNNERS = False
-    assert "3006.5" in html  # snapshot grains still feed the panel
-    assert "Live from master" not in html
-    assert ">2<" in html  # both DB-incomplete jobs count
+def test_panels_keep_polling_while_waiting(monkeypatch):
+    import overstate_ui.dashboard as dashboard_mod
+
+    monkeypatch.setattr(dashboard_mod, "describe_job", lambda jid: ("waiting", None))
+    html = (
+        _dashboard_client()
+        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1")
+        .data.decode()
+    )
+    assert "hx-get" in html and "Refreshing live data" in html
+    assert "3006.5" in html  # snapshot still shown meanwhile
 
 
-def test_grouped_versions_fall_back_to_snapshot():
-    global GROUPED_VERSIONS
-    GROUPED_VERSIONS = True
-    try:
-        html = make_client().get("/").data.decode()
-    finally:
-        GROUPED_VERSIONS = False
-    assert "3006.5" in html  # snapshot, not the unparseable grouping
-    assert "Up to date" not in html
+def test_panels_fall_back_to_snapshot_when_gone(monkeypatch):
+    import overstate_ui.dashboard as dashboard_mod
+
+    monkeypatch.setattr(dashboard_mod, "describe_job", lambda jid: ("gone", None))
+    html = (
+        _dashboard_client()
+        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1")
+        .data.decode()
+    )
+    assert "3006.5" in html
+    assert "No capability data yet." in html
+    assert "hx-get" not in html
+    assert "Refreshing live data" not in html
+
+
+def test_describe_job_never_raises(monkeypatch):
+    import redis
+
+    from overstate_ui import tasks_queue
+
+    assert tasks_queue.describe_job(None) == ("gone", None)
+    assert tasks_queue.describe_job("") == ("gone", None)
+
+    def boom():
+        raise redis.exceptions.ConnectionError("down")
+
+    monkeypatch.setattr(tasks_queue, "get_redis_client", boom)
+    assert tasks_queue.describe_job("abc123") == ("gone", None)
 
 
 def test_normalize_versions_shapes():

@@ -26,6 +26,10 @@ if [ -z "$MIGRATED" ]; then
   exit 1
 fi
 ARGS="-b 0.0.0.0:8000"
+# Worker timeout must exceed the dashboard's worst-case synchronous Salt
+# budget (~7 sequential probe calls x dashboard.SYNC_HTTP_TIMEOUT) so a
+# sick master degrades the page instead of killing the worker mid-request.
+ARGS="$ARGS --timeout 90"
 if [ -n "${TLS_CERT:-}" ] && [ -n "${TLS_KEY:-}" ] \
     && [ -f "$TLS_CERT" ] && [ -f "$TLS_KEY" ]; then
   echo "serving HTTPS (cert $TLS_CERT)"

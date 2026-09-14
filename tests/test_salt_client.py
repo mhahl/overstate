@@ -87,6 +87,70 @@ def test_local_forwards_kwargs():
     assert seen["kwarg"] == {"function": "test.ping", "seconds": 60}
 
 
+def test_http_timeout_never_reaches_salt_payload():
+    import json as _json
+
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
+        seen.append(_json.loads(request.content or b"{}"))
+        return httpx.Response(200, json={"return": [{}]})
+
+    client = SaltClient(
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler)
+    )
+    client.runner("manage.status", http_timeout=8)
+    client.wheel("key.list_all", http_timeout=8)
+    client.local("m", "test.ping", timeout=10, http_timeout=8)
+    assert len(seen) == 3
+    assert all("http_timeout" not in body for body in seen)
+    assert seen[2]["timeout"] == 10  # Salt job timeout still forwarded
+
+
+def test_http_timeout_reaches_transport_call():
+    client = make_client()
+    calls = []
+    real_post = client._http.post
+
+    def spy(url, **kwargs):
+        calls.append(kwargs.get("timeout"))
+        return real_post(url, **kwargs)
+
+    client._http.post = spy
+    client.runner("manage.status")
+    client.runner("manage.status", http_timeout=8)
+    assert calls[-2] == 30.0
+    assert calls[-1] == 8
+
+
+def test_http_timeout_bounds_wedged_server():
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Hang(BaseHTTPRequestHandler):
+        def do_POST(self):
+            time.sleep(10)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Hang)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        client = SaltClient(f"http://127.0.0.1:{server.server_port}", "u", "p")
+        start = time.monotonic()
+        with pytest.raises(httpx.TimeoutException):
+            client.runner("manage.versions", http_timeout=0.5)
+        assert time.monotonic() - start < 5
+    finally:
+        server.shutdown()
+
+
 def test_401_triggers_relogin():
     bad = httpx.MockTransport(
         lambda req: (
@@ -128,12 +192,13 @@ def app_client():
     return client
 
 
-def test_dashboard_live(app_client):
+def test_dashboard_shell_renders_snapshot_without_salt(app_client):
     rv = app_client.get("/")
     assert rv.status_code == 200
     html = rv.data.decode()
-    assert "1 / 1" in html  # up / down
     assert "salt-api health" in html
+    assert "Background worker unreachable" in html
+    assert "Database history only" not in html
 
 
 def test_dashboard_offline_degrades():
@@ -165,7 +230,21 @@ def test_collect_stats_db_counts():
         create_all()
         _seed(get_session())
         stats = collect_stats(make_client())
-    assert stats["accepted"] == 2
-    assert stats["pending"] == 1
+        live = collect_stats(
+            make_client(),
+            overview={
+                "reachable": True,
+                "accepted": 2,
+                "pending": 1,
+                "up": 1,
+                "down": 0,
+            },
+            truth={"versions": {"3006.5": 2}, "versions_live": True},
+        )
+    assert stats["accepted"] == 0  # no live overview without an RQ result
     assert stats["in_flight"] == 1
     assert len(stats["last_failures"]) == 1
+    assert live["accepted"] == 2 and live["pending"] == 1
+    assert live["reachable"] is True
+    assert live["versions"] == {"3006.5": 2} and live["versions_live"] is True
+    assert live["in_flight"] == 1  # DB count retained without live actives

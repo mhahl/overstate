@@ -3,8 +3,10 @@
 Long or fleet-wide Salt calls run in a worker so the request thread
 stays fast. Views enqueue with :func:`queue_or_none` and wait briefly
 with :func:`wait_for`; when Redis is unreachable the job is None and
-the view runs the same code synchronously. Task functions must stay
-importable by path and JSON-serializable in and out.
+other views run the same code synchronously, while the dashboard
+renders its snapshot instantly and polls job state instead. Task
+functions must stay importable by path and JSON-serializable in and
+out.
 
 Split from a single 512-line module: queue plumbing lives in
 :mod:`overstate_ui.tasks_queue`, per-domain Salt wrappers in

@@ -135,7 +135,9 @@ for SQLite ALTER limitations.
   clamps between 0.05 and 5 seconds. Cap loops; streams must end.
 - Fleet-wide or multi-call Salt queries go through the worker:
   `queue_or_none` enqueues, `wait_for` blocks briefly, and the view
-  runs the same code synchronously when Redis is unreachable. Task
+  runs the same code synchronously when Redis is unreachable — except
+  the dashboard, which renders its snapshot instantly and polls job
+  state via `describe_job` instead of ever blocking on Salt. Task
   functions build their own app inside `isolated_app` and must stay
   importable by path with JSON-serializable returns. Capability
   results cache in Redis with a short TTL; probe functions stay

@@ -61,12 +61,12 @@ def refresh_inventory_task() -> dict:
         return {"count": refresh_now(build_client())}
 
 
-def salt_overview_now(client) -> dict:
+def salt_overview_now(client, http_timeout: float | None = None) -> dict:
     """Key and presence counts. Raises SaltApiError on failure."""
-    keys = client.wheel("key.list_all")[0]["data"]["return"]
+    keys = client.wheel("key.list_all", http_timeout=http_timeout)[0]["data"]["return"]
     accepted = keys.get("minions", [])
     pending = keys.get("minions_pre", [])
-    status = client.runner("manage.status")[0]
+    status = client.runner("manage.status", http_timeout=http_timeout)[0]
     return {
         "reachable": True,
         "accepted": len(accepted),
@@ -105,7 +105,7 @@ def normalize_versions(payload) -> dict[str, int]:
     return counts
 
 
-def fleet_truth_now(client) -> dict:
+def fleet_truth_now(client, http_timeout: float | None = None) -> dict:
     """Live versions + master-active JIDs. Never raises: each panel
     falls back independently when its call fails or surprises."""
     out: dict = {
@@ -115,14 +115,16 @@ def fleet_truth_now(client) -> dict:
         "active_live": False,
     }
     try:
-        versions = normalize_versions(client.runner("manage.versions")[0])
+        versions = normalize_versions(
+            client.runner("manage.versions", http_timeout=http_timeout)[0]
+        )
     except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
         versions = {}
     if versions:
         out["versions"] = versions
         out["versions_live"] = True
     try:
-        active = client.runner("jobs.active")[0]
+        active = client.runner("jobs.active", http_timeout=http_timeout)[0]
     except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
         active = None
     # Only JID-shaped keys count: anything else is not a jobs.active
@@ -219,15 +221,17 @@ def fun_doc_now(client, minion: str, fun: str) -> str:
     return "\n".join(str(text or "").strip().splitlines()[:FUN_DOC_LINES])
 
 
-def probe_capabilities(client, ping_target: str | None = None) -> dict:
+def probe_capabilities(
+    client, ping_target: str | None = None, http_timeout: float | None = None
+) -> dict:
     """One probe per door the UI depends on. Never raises for Salt."""
     out: dict[str, Any] = {c["key"]: False for c in CAPABILITY_CHECKS}
     out["ping_target"] = ping_target
     out["error"] = None
     try:
-        client.wheel("key.list_all")
+        client.wheel("key.list_all", http_timeout=http_timeout)
         out["wheel_ok"] = True
-        client.runner("manage.status")
+        client.runner("manage.status", http_timeout=http_timeout)
         out["runner_ok"] = True
         from .db import get_session
         from .models import SaltReturn
@@ -235,7 +239,7 @@ def probe_capabilities(client, ping_target: str | None = None) -> dict:
         get_session().query(SaltReturn.jid).limit(1).all()
         out["history_ok"] = True
         if ping_target:
-            client.local(ping_target, "test.ping")
+            client.local(ping_target, "test.ping", http_timeout=http_timeout)
             out["ping_ok"] = True
     except (SaltApiError, httpx.HTTPError) as exc:
         out["error"] = str(exc)

@@ -1,9 +1,9 @@
 """RQ plumbing for background Salt queries.
 
 Queue access, short waits, app contexts, and the capability cache.
-Views enqueue with :func:`queue_or_none` and wait briefly with
-:func:`wait_for`; when Redis is unreachable the job is None and the
-view runs the same code synchronously.
+Views enqueue with :func:`queue_or_none`. The dashboard never blocks on
+jobs: it renders instantly and polls their state with :func:`describe_job`
+until each panel resolves to live data or the snapshot fallback.
 """
 
 from __future__ import annotations
@@ -45,6 +45,35 @@ def queue_or_none(
         )
     except redis.exceptions.RedisError:
         return None
+
+
+def describe_job(jid: str | None) -> tuple[str, Any]:
+    """Non-blocking job state for dashboard polling. Never raises and
+    never touches Salt: only fast Redis lookups. Returns ("ready",
+    result), ("waiting", None), or ("gone", None) for missing, failed,
+    expired, or unreachable jobs — "gone" panels fall back to snapshot
+    data so polling always terminates."""
+    if not jid:
+        return ("gone", None)
+    import redis
+    from rq import Queue
+
+    try:
+        job = Queue(QUEUE_NAME, connection=get_redis_client()).fetch_job(jid)
+    except redis.exceptions.RedisError:
+        return ("gone", None)
+    if job is None:
+        return ("gone", None)
+    try:
+        state = job.get_status()
+        result = job.result if state == "finished" else None
+    except redis.exceptions.RedisError:
+        return ("gone", None)
+    if state == "finished" and result is not None:
+        return ("ready", result)
+    if state in ("failed", "stopped", "canceled"):
+        return ("gone", None)
+    return ("waiting", None)
 
 
 def wait_for(job, wait: float = 8.0) -> tuple[str, Any]:

@@ -1,12 +1,17 @@
-"""Dashboard: live counts from salt-api, history from Postgres."""
+"""Dashboard: snapshot shell rendered instantly, live panels hydrated
+by polling. No Salt I/O happens in these request paths — only fast DB
+reads and Redis job lookups — so a slow or sick master can never pin a
+gunicorn worker. History always comes from Postgres."""
 
-import httpx
-from flask import Blueprint, current_app, render_template
+from typing import Any
+
+from flask import Blueprint, current_app, render_template, request
 from flask_login import login_required
 
 from .db import get_session
 from .models import Job, JobReturn, Minion
-from .salt_client import SaltApiError, SaltClient
+from .salt_client import SaltClient
+from .tasks_queue import describe_job
 
 bp = Blueprint("dashboard", __name__)
 
@@ -27,133 +32,187 @@ def snapshot_versions() -> dict[str, int]:
     return counts
 
 
+def snapshot_stats() -> dict:
+    """Database-only dashboard numbers. No Salt I/O, so the shell and
+    the poll endpoint serve it on every load while live panels resolve
+    in the background."""
+    return {
+        "reachable": False,
+        "accepted": 0,
+        "pending": 0,
+        "up": 0,
+        "down": 0,
+        "in_flight": in_flight_db_count(),
+        "in_flight_live": False,
+        "versions": snapshot_versions(),
+        "versions_live": False,
+        "last_failures": last_failure_returns(limit=5),
+    }
+
+
+def in_flight_db_count() -> int:
+    return get_session().query(Job.jid).filter_by(complete=False).count()
+
+
+def last_failure_returns(limit: int = 5) -> list:
+    return (
+        get_session()
+        .query(JobReturn)
+        .filter_by(success=False)
+        .order_by(JobReturn.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 def collect_stats(
     client: SaltClient, overview: dict | None = None, truth: dict | None = None
 ) -> dict:
-    """Live key/presence counts; falls back to unreachable marker.
-
-    Pass worker-computed `overview`/`truth` to skip the Salt calls;
-    None runs them synchronously (fallback and test path).
+    """Snapshot numbers plus any live results handed over (RQ job
+    results or tests). Never calls Salt itself: live data arrives
+    through the arguments. ``client`` is accepted for backward
+    compatibility with existing callers.
     """
-    from .tasks import fleet_truth_now, salt_overview_now
-
-    stats: dict = {"reachable": False}
-    try:
-        stats.update(overview if overview is not None else salt_overview_now(client))
-    except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
-        pass
-    if truth is None:
-        truth = fleet_truth_now(client)
-    session = get_session()
-    incomplete = {r[0] for r in session.query(Job.jid).filter_by(complete=False).all()}
+    stats = snapshot_stats()
+    if overview is not None:
+        try:
+            stats.update(overview)
+        except (KeyError, IndexError, TypeError):
+            pass
+    truth = truth or {}
+    incomplete = {
+        r[0] for r in get_session().query(Job.jid).filter_by(complete=False).all()
+    }
     if truth.get("active_live"):
         active = set(truth.get("active_jids") or [])
         stats["in_flight"] = len(incomplete & active)
         stats["in_flight_live"] = True
-    else:
-        stats["in_flight"] = len(incomplete)
-        stats["in_flight_live"] = False
     if truth.get("versions"):
         stats["versions"] = truth["versions"]
         stats["versions_live"] = True
-    else:
-        stats["versions"] = snapshot_versions()
-        stats["versions_live"] = False
-    stats["last_failures"] = (
-        session.query(JobReturn)
-        .filter_by(success=False)
-        .order_by(JobReturn.id.desc())
-        .limit(5)
-        .all()
-    )
     return stats
 
 
 @bp.route("/")
 @login_required
 def index():
+    """Dashboard shell: enqueue live probes, render snapshot instantly.
+
+    No Salt I/O happens here — panels hydrate through :func:`panels`
+    below, so a slow or sick master can never pin a worker. Each panel
+    resolves to live data, or keeps the snapshot fallback it already
+    shows, which also terminates its polling.
+    """
     from .tasks import (
-        CAPABILITY_CHECKS,
         capabilities_task,
         fleet_truth_task,
-        probe_capabilities,
         queue_or_none,
         read_capability_cache,
         salt_overview_task,
-        wait_for,
     )
 
-    client = get_salt()
-    overview: dict | None = None
-    job = queue_or_none(salt_overview_task)
-    if job is not None:
-        status, value = wait_for(job, wait=6.0)
-        if status == "ready":
-            overview = value
-    truth: dict | None = None
+    overview_job = queue_or_none(salt_overview_task)
     truth_job = queue_or_none(fleet_truth_task)
-    if truth_job is not None:
-        status, value = wait_for(truth_job, wait=6.0)
-        if status == "ready":
-            truth = value
-    stats = collect_stats(client, overview=overview, truth=truth)
-    caps = read_capability_cache()
+    target = ping_target()
+    caps_job = queue_or_none(capabilities_task, target) if target is not None else None
+    panels = {
+        "overview": overview_job.id if overview_job is not None else None,
+        "truth": truth_job.id if truth_job is not None else None,
+        "caps": caps_job.id if caps_job is not None else None,
+    }
+    client = get_salt()
+    stats = collect_stats(client)
+    cached = read_capability_cache()
+    health, checks = build_health(
+        client, stats["reachable"], cached, probing=any(panels.values())
+    )
+    return render_template(
+        "dashboard.html",
+        stats=stats,
+        health=health,
+        checks=checks,
+        panels=panels,
+        poll_qs=_poll_qs(panels),
+        probing=any(panels.values()),
+        worker_down=not any(panels.values()),
+    )
+
+
+@bp.get("/dashboard/panels")
+@login_required
+def panels():
+    """Live fragments for dashboard polling. Reads finished RQ results
+    and re-renders the live region; never touches Salt, so polling a
+    sick master stays cheap. Panels whose jobs died, expired, or were
+    never queued resolve to snapshot data, which stops their polling."""
+    from .tasks import read_capability_cache
+
+    client = get_salt()
+    jids = {key: request.args.get(key) or None for key in ("overview", "truth", "caps")}
+    live: dict[str, Any] = {}
+    probing = False
+    for key, jid in jids.items():
+        state, value = describe_job(jid)
+        if state == "ready":
+            live[key] = value
+        elif state == "waiting":
+            probing = True
+    stats = collect_stats(
+        client, overview=live.get("overview"), truth=live.get("truth")
+    )
+    caps = live.get("caps")
     if caps is None:
-        target = ping_target()
-        if target is None:
-            # Fresh enrollment with no snapshot rows yet: refresh once so
-            # the probe has something to ping instead of reporting no
-            # target. Best effort — falls back to probing as before.
-            target = refresh_then_target(client)
-        probe_job = queue_or_none(capabilities_task, target)
-        if probe_job is not None:
-            status, value = wait_for(probe_job, wait=5.0)
-            if status == "ready":
-                caps = value
-        if caps is None:
-            caps = probe_capabilities(client, target)
+        caps = read_capability_cache()
+    health, checks = build_health(
+        client, stats["reachable"], caps, probing=probing and caps is None
+    )
+    return render_template(
+        "_dashboard_live.html",
+        stats=stats,
+        health=health,
+        checks=checks,
+        probing=probing,
+        worker_down=False,
+        poll_qs=_poll_qs(jids) if probing else None,
+    )
+
+
+def _poll_qs(panels: dict[str, str | None]) -> str | None:
+    qs = "&".join(f"{key}={jid}" for key, jid in panels.items() if jid)
+    return qs or None
+
+
+def build_health(
+    client: SaltClient, reachable: bool, caps: dict | None, probing: bool
+) -> tuple[dict, list | None]:
+    """Health panel + capability rows for a live-region render. ``caps``
+    None while probing renders a "checking" state; None afterwards
+    means the probe never produced data."""
+    if caps is None:
+        health = {
+            "url": client.base_url,
+            "token_age": client.token_age,
+            "wheel_ok": None,
+            "runner_ok": None,
+            "reachable": reachable,
+            "error": None,
+        }
+        return (health, None if probing else [])
     health = {
         "url": client.base_url,
         "token_age": client.token_age,
         "wheel_ok": caps["wheel_ok"],
         "runner_ok": caps["runner_ok"],
-        "reachable": stats["reachable"],
+        "reachable": reachable,
         "error": caps.get("error"),
     }
-    checks = capability_checks(caps)
-    return render_template("dashboard.html", stats=stats, health=health, checks=checks)
+    return (health, capability_checks(caps))
 
 
 def ping_target() -> str | None:
     """One accepted minion for the execution-door probe, or None."""
     row = get_session().query(Minion.id).order_by(Minion.id).first()
     return row[0] if row else None
-
-
-def refresh_then_target(client, wait: float = 10.0) -> str | None:
-    """Best-effort fleet refresh so the ping probe has a target after a
-    fresh enrollment. Offline-safe: any Salt failure yields None and the
-    caller probes as before. Only runs on a cache miss with an empty
-    snapshot table, so steady-state dashboard loads pay nothing."""
-    from .tasks import queue_or_none, refresh_inventory_task, wait_for
-
-    job = queue_or_none(refresh_inventory_task)
-    if job is None:
-        # No worker/Redis: synchronous fallback (dev fleets are tiny).
-        from .inventory import refresh_inventory
-        from .minions_helpers import live_roster
-        from .salt_client import SaltApiError
-
-        try:
-            statuses, _, _ = live_roster(client)
-            refresh_inventory(client, statuses)
-        except (SaltApiError, httpx.HTTPError):
-            return None
-    else:
-        status, _ = wait_for(job, wait=wait)
-        if status != "ready":
-            return ping_target()
-    return ping_target()
 
 
 def capability_checks(caps: dict) -> list:
