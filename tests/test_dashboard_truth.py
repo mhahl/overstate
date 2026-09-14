@@ -82,7 +82,12 @@ def test_shell_polls_without_touching_salt(monkeypatch):
     _fake_queue(monkeypatch)
     html = _dashboard_client().get("/").data.decode()
     assert "Refreshing live data" in html
-    assert 'hx-get="/dashboard/panels?overview=o1&amp;truth=t1&amp;caps=c1"' in html
+    assert (
+        'hx-get="/dashboard/panels?overview=o1&amp;truth=t1&amp;caps=c1&amp;seen='
+        in html
+    )  # shell seeds the fingerprint so an unchanged first poll is a 204
+    assert "&amp;started=" in html  # poll clock for the stale-probe cutoff
+    assert 'hx-trigger="every 2s"' in html  # no load trigger: it refires on every swap
     assert "3006.5" in html  # snapshot versions paint immediately
     assert ">2<" in html  # DB in-flight count, not live
 
@@ -141,17 +146,39 @@ def test_panels_resolve_to_live_and_stop_polling(monkeypatch):
     assert "Refreshing live data" not in html
 
 
-def test_panels_keep_polling_while_waiting(monkeypatch):
+def test_panels_skip_unchanged_renders_while_waiting(monkeypatch):
+    """No 204 churn: while nothing new is ready the poll answers 204 so
+    htmx swaps nothing and the probing spinner keeps spinning instead
+    of restarting on an identical re-render."""
+    import re
+
     import overstate_ui.dashboard as dashboard_mod
 
-    monkeypatch.setattr(dashboard_mod, "describe_job", lambda jid: ("waiting", None))
-    html = (
-        _dashboard_client()
-        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1")
-        .data.decode()
-    )
-    assert "hx-get" in html and "Refreshing live data" in html
-    assert "3006.5" in html  # snapshot still shown meanwhile
+    states = {"o1": ("waiting", None), "t1": ("waiting", None), "c1": ("waiting", None)}
+    monkeypatch.setattr(dashboard_mod, "describe_job", states.get)
+    client = _dashboard_client()
+    base = "/dashboard/panels?overview=o1&truth=t1&caps=c1"
+    html = client.get(base).data.decode()
+    assert "Refreshing live data" in html
+    seen = re.search(r"seen=([^\"&]+)", html).group(1)
+
+    # Unchanged re-poll: 204, so htmx swaps nothing and the spinner
+    # keeps spinning instead of restarting on an identical render.
+    rv = client.get(f"{base}&seen={seen}")
+    assert rv.status_code == 204
+    assert rv.data == b""
+
+    # One panel resolves: full re-render carrying the new fingerprint...
+    states["o1"] = ("ready", {"reachable": True, "accepted": 2})
+    html = client.get(f"{base}&seen={seen}").data.decode()
+    assert "Refreshing live data" in html
+    new_seen = re.search(r"seen=([^\"&]+)", html).group(1)
+    assert new_seen != seen
+
+    # ...and a re-poll with that fingerprint is a 204 again.
+    rv = client.get(f"{base}&seen={new_seen}")
+    assert rv.status_code == 204
+    assert rv.data == b""
 
 
 def test_panels_fall_back_to_snapshot_when_gone(monkeypatch):
@@ -167,6 +194,47 @@ def test_panels_fall_back_to_snapshot_when_gone(monkeypatch):
     assert "No capability data yet." in html
     assert "hx-get" not in html
     assert "Refreshing live data" not in html
+
+
+def test_panels_give_up_after_stale_cutoff(monkeypatch):
+    """Worker died mid-probe: a poll older than the cutoff renders its
+    final state — banner gone, polling stopped, snapshot fallbacks."""
+    import overstate_ui.dashboard as dashboard_mod
+
+    monkeypatch.setattr(dashboard_mod, "describe_job", lambda jid: ("waiting", None))
+    html = (
+        _dashboard_client()
+        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1&started=1")
+        .data.decode()
+    )
+    assert "Refreshing live data" not in html
+    assert "hx-get" not in html
+    assert "3006.5" in html  # snapshot versions remain
+    assert "No capability data yet." in html
+
+
+def test_expired_poll_keeps_resolved_results(monkeypatch):
+    """Give-up keeps whatever did resolve instead of blanking to pure
+    snapshot: live overview paints, the rest falls back, polling stops."""
+    import overstate_ui.dashboard as dashboard_mod
+
+    def fake_describe(jid):
+        if jid == "o1":
+            return (
+                "ready",
+                {"reachable": True, "accepted": 2, "pending": 5, "up": 2, "down": 0},
+            )
+        return ("waiting", None)
+
+    monkeypatch.setattr(dashboard_mod, "describe_job", fake_describe)
+    html = (
+        _dashboard_client()
+        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1&started=1")
+        .data.decode()
+    )
+    assert ">5<" in html  # live pending count, not snapshot zero
+    assert "Refreshing live data" not in html
+    assert "hx-get" not in html
 
 
 def test_describe_job_never_raises(monkeypatch):

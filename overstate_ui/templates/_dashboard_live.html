@@ -3,7 +3,7 @@ and dashboard.panels (poll hydration). No Salt I/O feeds this template:
 `stats`/`health`/`checks` are snapshot data until a panel resolves.
 When `probing` with a `poll_qs`, the wrapper re-polls itself via htmx;
 resolved renders drop those attributes so polling stops on its own. #}
-<div id="dashboard-live"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="load, every 2s" hx-swap="outerHTML"{% endif %}>
+<div id="dashboard-live" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
 {% if probing %}
 <div class="alert alert-info" role="status">
   <span class="icon-[lucide--loader-circle] size-5 shrink-0 animate-spin" aria-hidden="true"></span>

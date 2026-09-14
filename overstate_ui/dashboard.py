@@ -3,6 +3,7 @@ by polling. No Salt I/O happens in these request paths — only fast DB
 reads and Redis job lookups — so a slow or sick master can never pin a
 gunicorn worker. History always comes from Postgres."""
 
+import time
 from typing import Any
 
 from flask import Blueprint, current_app, render_template, request
@@ -14,6 +15,14 @@ from .salt_client import SaltClient
 from .tasks_queue import describe_job
 
 bp = Blueprint("dashboard", __name__)
+
+POLL_STALE_AFTER_S = 300
+"""Give up dashboard polling five minutes after the shell queued the
+probes. Normal probes resolve in seconds (the worker-side salt-api
+timeout is 8s), so anything older means the worker died mid-probe and
+the spinner would otherwise spin forever. An expired poll renders its
+final state — whatever resolved plus snapshot — with no banner and no
+further polling."""
 
 
 def get_salt() -> SaltClient:
@@ -132,7 +141,7 @@ def index():
         health=health,
         checks=checks,
         panels=panels,
-        poll_qs=_poll_qs(panels),
+        poll_qs=_poll_qs(panels, _fingerprint({}, cached, stats), int(time.time())),
         probing=any(panels.values()),
         worker_down=not any(panels.values()),
     )
@@ -163,6 +172,16 @@ def panels():
     caps = live.get("caps")
     if caps is None:
         caps = read_capability_cache()
+    fingerprint = _fingerprint(live, caps, stats)
+    if probing and _poll_expired(request.args.get("started")):
+        # Worker died mid-probe: keep whatever resolved, fall back the
+        # rest to snapshot, and stop polling instead of spinning forever.
+        probing = False
+    if probing and fingerprint == request.args.get("seen", ""):
+        # Nothing changed since the client's last render: answer 204 so
+        # htmx swaps nothing and the spinner keeps spinning instead of
+        # restarting on an identical re-render.
+        return ("", 204)
     health, checks = build_health(
         client, stats["reachable"], caps, probing=probing and caps is None
     )
@@ -173,13 +192,52 @@ def panels():
         checks=checks,
         probing=probing,
         worker_down=False,
-        poll_qs=_poll_qs(jids) if probing else None,
+        poll_qs=(
+            _poll_qs(jids, fingerprint, _poll_started(request.args.get("started")))
+            if probing
+            else None
+        ),
     )
 
 
-def _poll_qs(panels: dict[str, str | None]) -> str | None:
-    qs = "&".join(f"{key}={jid}" for key, jid in panels.items() if jid)
-    return qs or None
+def _fingerprint(live: dict[str, Any], caps: dict | None, stats: dict) -> str:
+    """What the client already shows: ready panel keys, whether caps
+    rendered (job result or cache), and the DB counts that paint while
+    probing — so a re-poll only re-renders on a visible change."""
+    shown = set(live)
+    if caps is not None:
+        shown.add("caps")
+    parts = sorted(shown)
+    parts.append(f"in-flight-{stats['in_flight']}")
+    parts.append(f"failures-{len(stats['last_failures'])}")
+    return ",".join(parts)
+
+
+def _poll_started(raw: str | None) -> int:
+    """Poll-clock from the query string; missing or junk means the poll
+    just started, so a bare panels URL always renders instead of 204ing
+    or expiring on its first hit."""
+    try:
+        return int(raw or 0) or int(time.time())
+    except (TypeError, ValueError):
+        return int(time.time())
+
+
+def _poll_expired(raw: str | None) -> bool:
+    return time.time() - _poll_started(raw) > POLL_STALE_AFTER_S
+
+
+def _poll_qs(
+    panels: dict[str, str | None], seen: str | None = None, started: int | None = None
+) -> str | None:
+    parts = [f"{key}={jid}" for key, jid in panels.items() if jid]
+    if not parts:
+        return None
+    if seen:
+        parts.append(f"seen={seen}")
+    if started is not None:
+        parts.append(f"started={started}")
+    return "&".join(parts)
 
 
 def build_health(
