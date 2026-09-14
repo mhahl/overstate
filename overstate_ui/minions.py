@@ -108,7 +108,7 @@ def index():
     direction = request.args.get("dir", "asc")
     if direction not in ("asc", "desc"):
         direction = "asc"
-    statuses, up = live_roster(get_salt())
+    statuses, up, reachable = live_roster(get_salt())
     rows = minion_rows(statuses, up, q, status_filter, sort, direction)
     total = len(rows)
     pages = max(1, (total + per_page - 1) // per_page)
@@ -122,7 +122,7 @@ def index():
         "per_page": per_page,
         "total": total,
         "grains": GRAIN_COLUMNS,
-        "reachable": bool(statuses or up),
+        "reachable": reachable,
         "sort": sort,
         "direction": direction,
     }
@@ -147,7 +147,7 @@ def search():
 def presence():
     """Lightweight presence map for in-place dot updates. Never re-renders
     the table, so bulk checkbox selections survive polling."""
-    statuses, up = live_roster(get_salt())
+    statuses, up, _ = live_roster(get_salt())
     rows = minion_rows(statuses, up, "", "")
     return jsonify({r["id"]: presence_of(r) for r in rows})
 
@@ -155,7 +155,7 @@ def presence():
 @bp.route("/export.csv")
 @login_required
 def export_csv():
-    statuses, up = live_roster(get_salt())
+    statuses, up, _ = live_roster(get_salt())
     rows = minion_rows(statuses, up, "", "")
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -225,7 +225,7 @@ def onboard():
     itself stays on Keys."""
     from .settings import get_setting
 
-    statuses, _ = live_roster(get_salt())
+    statuses, _, reachable = live_roster(get_salt())
     pending = sorted(m for m, st in statuses.items() if st == "pending")
     master_host = get_setting("master_host")
     inputs = onboard_inputs(request.args)
@@ -234,7 +234,7 @@ def onboard():
         "onboard.html",
         master_host=master_host,
         pending=pending,
-        reachable=bool(statuses),
+        reachable=reachable,
         script=script,
     )
 

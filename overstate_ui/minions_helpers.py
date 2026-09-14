@@ -184,7 +184,7 @@ def refresh_sync() -> None:
 
     client = get_salt()
     try:
-        statuses, _ = live_roster(client)
+        statuses, _, _ = live_roster(client)
         count = refresh_inventory(client, statuses)
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")

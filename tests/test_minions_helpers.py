@@ -24,30 +24,56 @@ class StubClient:
 
 KEYS = [{"data": {"return": {"minions": ["web-01"], "minions_pre": []}}}]
 STATUS = [{"up": ["web-01"], "down": []}]
+EMPTY_KEYS = [{"data": {"return": {}}}]
+EMPTY_STATUS = [{"up": [], "down": []}]
 
 
 def test_roster_keeps_keys_when_presence_fails(caplog):
     client = StubClient(wheel=KEYS, runner=SaltApiError("runner down"))
     with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
-        statuses, up = live_roster(client)
+        statuses, up, reachable = live_roster(client)
     assert statuses == {"web-01": "accepted"}
     assert up == set()
+    assert reachable is True
     assert "live presence unavailable" in caplog.text
 
 
 def test_roster_keeps_presence_when_keys_fail(caplog):
     client = StubClient(wheel=SaltApiError("wheel down"), runner=STATUS)
     with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
-        statuses, up = live_roster(client)
+        statuses, up, reachable = live_roster(client)
     assert statuses == {}
     assert up == {"web-01"}
+    assert reachable is True
     assert "live key list unavailable" in caplog.text
+
+
+def test_roster_unreachable_when_both_fail(caplog):
+    client = StubClient(
+        wheel=SaltApiError("wheel down"), runner=SaltApiError("runner down")
+    )
+    with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
+        statuses, up, reachable = live_roster(client)
+    assert statuses == {}
+    assert up == set()
+    assert reachable is False
+
+
+def test_empty_fleet_is_reachable_not_an_outage(caplog):
+    client = StubClient(wheel=EMPTY_KEYS, runner=EMPTY_STATUS)
+    with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
+        statuses, up, reachable = live_roster(client)
+    assert statuses == {}
+    assert up == set()
+    assert reachable is True
+    assert caplog.text == ""
 
 
 def test_roster_happy_path_silent(caplog):
     client = StubClient(wheel=KEYS, runner=STATUS)
     with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
-        statuses, up = live_roster(client)
+        statuses, up, reachable = live_roster(client)
     assert statuses == {"web-01": "accepted"}
     assert up == {"web-01"}
+    assert reachable is True
     assert caplog.text == ""

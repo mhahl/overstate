@@ -50,7 +50,7 @@ def refresh_now(client) -> int:
     from .inventory import refresh_inventory
     from .minions import live_roster
 
-    statuses, _ = live_roster(client)
+    statuses, _, _ = live_roster(client)
     return refresh_inventory(client, statuses)
 
 

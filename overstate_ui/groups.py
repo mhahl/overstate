@@ -49,7 +49,7 @@ def index():
         all_groups.sort(key=lambda g: g.name, reverse=True)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(max(1, page), pages)
-    statuses, _ = live_roster(get_salt())
+    statuses, _, _ = live_roster(get_salt())
     roster = sorted(row.id for row in get_session().query(Minion.id).all())
     return render_template(
         "groups.html",

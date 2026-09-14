@@ -68,7 +68,7 @@ def parse_schedule_list(value) -> dict:
 def index():
     mid = request.args.get("minion", "")
     client = get_salt()
-    statuses, _ = live_roster(client)
+    statuses, _, _ = live_roster(client)
     accepted = sorted(m for m, st in statuses.items() if st == "accepted")
     if not mid and accepted:
         mid = accepted[0]
