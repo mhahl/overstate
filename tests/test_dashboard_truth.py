@@ -65,8 +65,9 @@ def _fake_queue(monkeypatch):
     import types
 
     ids = {
-        "salt_overview_task": "o1",
-        "fleet_truth_task": "t1",
+        "fleet_keys_task": "k1",
+        "fleet_presence_task": "p1",
+        "fleet_versions_task": "v1",
         "capabilities_task": "c1",
     }
 
@@ -83,7 +84,7 @@ def test_shell_polls_without_touching_salt(monkeypatch):
     html = _dashboard_client().get("/").data.decode()
     assert "Refreshing live data" in html
     assert (
-        'hx-get="/dashboard/panels?overview=o1&amp;truth=t1&amp;caps=c1&amp;seen='
+        'hx-get="/dashboard/panels?keys=k1&amp;presence=p1&amp;versions=v1&amp;caps=c1&amp;seen='
         in html
     )  # shell seeds the fingerprint so an unchanged first poll is a 204
     assert "&amp;started=" in html  # poll clock for the stale-probe cutoff
@@ -109,19 +110,15 @@ def test_panels_resolve_to_live_and_stop_polling(monkeypatch):
         return (
             "ready",
             {
-                "o1": {
+                "k1": {
                     "reachable": True,
                     "accepted": 2,
-                    "pending": 0,
-                    "up": 2,
-                    "down": 0,
-                },
-                "t1": {
-                    "versions": {"3006.9": 2},
-                    "versions_live": True,
+                    "pending": 3,
                     "active_jids": ["12345"],
                     "active_live": True,
                 },
+                "p1": {"reachable": True, "up": 2, "down": 0},
+                "v1": {"versions": {"3006.9": 2}},
                 "c1": {
                     "wheel_ok": True,
                     "runner_ok": True,
@@ -136,14 +133,50 @@ def test_panels_resolve_to_live_and_stop_polling(monkeypatch):
     monkeypatch.setattr(dashboard_mod, "describe_job", fake_describe)
     html = (
         _dashboard_client()
-        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1")
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1")
         .data.decode()
     )
     assert "3006.9" in html and "Live from master" in html
     assert ">1<" in html  # only the master-active JID counts
+    assert ">3<" in html  # live pending keys, not snapshot zero
+    assert "2 / 0" in html  # live up/down, not snapshot dashes
     assert "Keys" in html  # capability rows rendered from the result
     assert "hx-get" not in html  # polling stopped
     assert "Refreshing live data" not in html
+
+
+def test_panels_hydrate_fast_panels_while_fanout_waits(monkeypatch):
+    """Dead-minion regression: master-local panels (keys) paint live
+    while fan-out panels (presence) are still waiting — one down minion
+    must no longer blank the whole dashboard."""
+    import overstate_ui.dashboard as dashboard_mod
+
+    states = {
+        "k1": (
+            "ready",
+            {
+                "reachable": True,
+                "accepted": 2,
+                "pending": 3,
+                "active_jids": [],
+                "active_live": True,
+            },
+        ),
+        "p1": ("waiting", None),
+        "v1": ("waiting", None),
+        "c1": ("gone", None),
+    }
+    monkeypatch.setattr(dashboard_mod, "describe_job", states.get)
+    html = (
+        _dashboard_client()
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1")
+        .data.decode()
+    )
+    assert ">2<" in html and ">3<" in html  # keys live despite dead minion
+    assert ">–<" in html  # up/down stay snapshot dashes while presence waits
+    assert "3006.5" in html  # versions still snapshot meanwhile
+    assert "Probing capabilities" in html  # caps job gone, presence still waiting
+    assert "Refreshing live data" in html and "hx-get" in html  # keeps polling
 
 
 def test_panels_skip_unchanged_renders_while_waiting(monkeypatch):
@@ -154,10 +187,15 @@ def test_panels_skip_unchanged_renders_while_waiting(monkeypatch):
 
     import overstate_ui.dashboard as dashboard_mod
 
-    states = {"o1": ("waiting", None), "t1": ("waiting", None), "c1": ("waiting", None)}
+    states = {
+        "k1": ("waiting", None),
+        "p1": ("waiting", None),
+        "v1": ("waiting", None),
+        "c1": ("waiting", None),
+    }
     monkeypatch.setattr(dashboard_mod, "describe_job", states.get)
     client = _dashboard_client()
-    base = "/dashboard/panels?overview=o1&truth=t1&caps=c1"
+    base = "/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1"
     html = client.get(base).data.decode()
     assert "Refreshing live data" in html
     seen = re.search(r"seen=([^\"&]+)", html).group(1)
@@ -169,7 +207,7 @@ def test_panels_skip_unchanged_renders_while_waiting(monkeypatch):
     assert rv.data == b""
 
     # One panel resolves: full re-render carrying the new fingerprint...
-    states["o1"] = ("ready", {"reachable": True, "accepted": 2})
+    states["k1"] = ("ready", {"reachable": True, "accepted": 2})
     html = client.get(f"{base}&seen={seen}").data.decode()
     assert "Refreshing live data" in html
     new_seen = re.search(r"seen=([^\"&]+)", html).group(1)
@@ -187,7 +225,7 @@ def test_panels_fall_back_to_snapshot_when_gone(monkeypatch):
     monkeypatch.setattr(dashboard_mod, "describe_job", lambda jid: ("gone", None))
     html = (
         _dashboard_client()
-        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1")
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1")
         .data.decode()
     )
     assert "3006.5" in html
@@ -204,7 +242,7 @@ def test_panels_give_up_after_stale_cutoff(monkeypatch):
     monkeypatch.setattr(dashboard_mod, "describe_job", lambda jid: ("waiting", None))
     html = (
         _dashboard_client()
-        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1&started=1")
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&started=1")
         .data.decode()
     )
     assert "Refreshing live data" not in html
@@ -219,17 +257,23 @@ def test_expired_poll_keeps_resolved_results(monkeypatch):
     import overstate_ui.dashboard as dashboard_mod
 
     def fake_describe(jid):
-        if jid == "o1":
+        if jid == "k1":
             return (
                 "ready",
-                {"reachable": True, "accepted": 2, "pending": 5, "up": 2, "down": 0},
+                {
+                    "reachable": True,
+                    "accepted": 2,
+                    "pending": 5,
+                    "active_jids": [],
+                    "active_live": True,
+                },
             )
         return ("waiting", None)
 
     monkeypatch.setattr(dashboard_mod, "describe_job", fake_describe)
     html = (
         _dashboard_client()
-        .get("/dashboard/panels?overview=o1&truth=t1&caps=c1&started=1")
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&started=1")
         .data.decode()
     )
     assert ">5<" in html  # live pending count, not snapshot zero
@@ -266,12 +310,15 @@ def test_normalize_versions_shapes():
 
 
 def test_non_jid_active_payload_falls_back():
-    from overstate_ui.tasks import fleet_truth_now
+    from overstate_ui.tasks import fleet_keys_now
 
     class OddClient:
+        def wheel(self, fun, **kwargs):
+            return [{"data": {"return": {"minions": ["m1"], "minions_pre": []}}}]
+
         def runner(self, fun, **kwargs):
             return [{"up": ["a"], "down": []}]
 
-    out = fleet_truth_now(OddClient())
+    out = fleet_keys_now(OddClient())
     assert out["active_live"] is False
     assert out["active_jids"] == []

@@ -49,8 +49,10 @@ def snapshot_stats() -> dict:
         "reachable": False,
         "accepted": 0,
         "pending": 0,
+        "keys_live": False,
         "up": 0,
         "down": 0,
+        "presence_live": False,
         "in_flight": in_flight_db_count(),
         "in_flight_live": False,
         "versions": snapshot_versions(),
@@ -75,29 +77,37 @@ def last_failure_returns(limit: int = 5) -> list:
 
 
 def collect_stats(
-    client: SaltClient, overview: dict | None = None, truth: dict | None = None
+    client: SaltClient,
+    keys: dict | None = None,
+    presence: dict | None = None,
+    versions: dict | None = None,
 ) -> dict:
     """Snapshot numbers plus any live results handed over (RQ job
     results or tests). Never calls Salt itself: live data arrives
     through the arguments. ``client`` is accepted for backward
-    compatibility with existing callers.
+    compatibility with existing callers. Each panel merges
+    independently, so a dead minion stalling the fan-out panels
+    (presence, versions) no longer blanks the master-local keys panel.
     """
     stats = snapshot_stats()
-    if overview is not None:
-        try:
-            stats.update(overview)
-        except (KeyError, IndexError, TypeError):
-            pass
-    truth = truth or {}
+    if keys is not None or presence is not None or versions is not None:
+        stats["reachable"] = True
     incomplete = {
         r[0] for r in get_session().query(Job.jid).filter_by(complete=False).all()
     }
-    if truth.get("active_live"):
-        active = set(truth.get("active_jids") or [])
-        stats["in_flight"] = len(incomplete & active)
-        stats["in_flight_live"] = True
-    if truth.get("versions"):
-        stats["versions"] = truth["versions"]
+    if keys is not None:
+        stats["accepted"] = keys.get("accepted", 0)
+        stats["pending"] = keys.get("pending", 0)
+        stats["keys_live"] = True
+        if keys.get("active_live"):
+            stats["in_flight"] = len(incomplete & set(keys.get("active_jids") or []))
+            stats["in_flight_live"] = True
+    if presence is not None:
+        stats["up"] = presence.get("up", 0)
+        stats["down"] = presence.get("down", 0)
+        stats["presence_live"] = True
+    if versions is not None and versions.get("versions"):
+        stats["versions"] = versions["versions"]
         stats["versions_live"] = True
     return stats
 
@@ -114,19 +124,22 @@ def index():
     """
     from .tasks import (
         capabilities_task,
-        fleet_truth_task,
+        fleet_keys_task,
+        fleet_presence_task,
+        fleet_versions_task,
         queue_or_none,
         read_capability_cache,
-        salt_overview_task,
     )
 
-    overview_job = queue_or_none(salt_overview_task)
-    truth_job = queue_or_none(fleet_truth_task)
+    keys_job = queue_or_none(fleet_keys_task)
+    presence_job = queue_or_none(fleet_presence_task)
+    versions_job = queue_or_none(fleet_versions_task)
     target = ping_target()
     caps_job = queue_or_none(capabilities_task, target) if target is not None else None
     panels = {
-        "overview": overview_job.id if overview_job is not None else None,
-        "truth": truth_job.id if truth_job is not None else None,
+        "keys": keys_job.id if keys_job is not None else None,
+        "presence": presence_job.id if presence_job is not None else None,
+        "versions": versions_job.id if versions_job is not None else None,
         "caps": caps_job.id if caps_job is not None else None,
     }
     client = get_salt()
@@ -157,7 +170,10 @@ def panels():
     from .tasks import read_capability_cache
 
     client = get_salt()
-    jids = {key: request.args.get(key) or None for key in ("overview", "truth", "caps")}
+    jids = {
+        key: request.args.get(key) or None
+        for key in ("keys", "presence", "versions", "caps")
+    }
     live: dict[str, Any] = {}
     probing = False
     for key, jid in jids.items():
@@ -167,7 +183,10 @@ def panels():
         elif state == "waiting":
             probing = True
     stats = collect_stats(
-        client, overview=live.get("overview"), truth=live.get("truth")
+        client,
+        keys=live.get("keys"),
+        presence=live.get("presence"),
+        versions=live.get("versions"),
     )
     caps = live.get("caps")
     if caps is None:

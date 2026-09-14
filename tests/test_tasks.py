@@ -99,10 +99,10 @@ class StubJob:
 
 
 def test_queue_or_none_returns_none_without_redis(app):
-    from overstate_ui.tasks import queue_or_none, salt_overview_task
+    from overstate_ui.tasks import fleet_keys_task, queue_or_none
 
     with app.app_context():
-        assert queue_or_none(salt_overview_task) is None
+        assert queue_or_none(fleet_keys_task) is None
 
 
 def test_wait_for_ready_error_and_timeout():
@@ -129,13 +129,32 @@ def test_probe_capabilities_denied_and_no_target(app):
     from overstate_ui.tasks import probe_capabilities
 
     with app.app_context():
-        out = probe_capabilities(StubClient(deny={"key.list_all"}))
+        out = probe_capabilities(StubClient(deny={"key.list_all"}), ping_target="m1")
     assert out["wheel_ok"] is False
-    assert out["runner_ok"] is False  # never reached past the first denial
-    assert out["ping_ok"] is False and out["error"]
+    assert out["runner_ok"] is True  # doors are independent: one denial blanks one door
+    assert out["ping_ok"] is True and out["error"]
     with app.app_context():
         skipped = probe_capabilities(StubClient())
     assert skipped["ping_ok"] is False and skipped["ping_target"] is None
+
+
+def test_probe_ping_uses_short_salt_timeout(app):
+    """The ping door must not wait out a dead minion: it carries a short
+    Salt job timeout instead of relying on the HTTP backstop."""
+    from overstate_ui.tasks import probe_capabilities
+    from overstate_ui.tasks_salt import PING_SALT_TIMEOUT
+
+    seen: dict = {}
+
+    class RecordingClient(StubClient):
+        def local(self, tgt, fun, **kwargs):
+            seen.update(kwargs)
+            return super().local(tgt, fun, **kwargs)
+
+    with app.app_context():
+        out = probe_capabilities(RecordingClient(), ping_target="m1")
+    assert out["ping_ok"] is True
+    assert seen.get("timeout") == PING_SALT_TIMEOUT
 
 
 def test_ping_hint_without_target_points_at_enrollment():
@@ -179,14 +198,57 @@ def test_capability_checks_carry_guidance():
         assert check["feature"] and check["fun"] and check["grant"]
 
 
-def test_salt_overview_parses_and_raises(app):
-    from overstate_ui.tasks import salt_overview_now
+def test_fleet_keys_parses_actives_and_raises(app):
+    """Master-local probe: key counts plus JID-shaped active jobs. Never
+    fans out, so it stays instant with any number of dead minions."""
+    from overstate_ui.tasks import fleet_keys_now
+
+    class ActiveClient(StubClient):
+        def runner(self, fun, **kwargs):
+            if fun == "jobs.active":
+                return [
+                    {"111": {"fun": "test.ping"}, "222": {"fun": "state.highstate"}}
+                ]
+            return super().runner(fun, **kwargs)
 
     with app.app_context():
-        out = salt_overview_now(StubClient())
-    assert out == {"reachable": True, "accepted": 1, "pending": 1, "up": 1, "down": 0}
+        out = fleet_keys_now(ActiveClient())
+    assert out["accepted"] == 1 and out["pending"] == 1
+    assert out["active_jids"] == ["111", "222"] and out["active_live"] is True
+
+    class OddClient(StubClient):
+        def runner(self, fun, **kwargs):
+            return [{"up": ["a"], "down": []}]  # not a jobs.active payload
+
+    with app.app_context():
+        bad_shape = fleet_keys_now(OddClient())
+    assert bad_shape["active_live"] is False
+    assert bad_shape["active_jids"] == []
     with app.app_context(), pytest.raises(SaltApiError):
-        salt_overview_now(StubClient(deny={"key.list_all"}))
+        fleet_keys_now(StubClient(deny={"key.list_all"}))
+    with app.app_context(), pytest.raises(SaltApiError):
+        fleet_keys_now(StubClient(deny={"jobs.active"}))
+
+
+def test_fleet_presence_and_versions_parse_and_raise(app):
+    from overstate_ui.tasks import fleet_presence_now, fleet_versions_now
+
+    class VersionClient(StubClient):
+        def runner(self, fun, **kwargs):
+            if fun == "manage.versions":
+                return [{"Up to date": {"m1": "3006.5"}, "Master": "3008.2"}]
+            return super().runner(fun, **kwargs)
+
+    with app.app_context():
+        presence = fleet_presence_now(StubClient())
+    assert presence == {"reachable": True, "up": 1, "down": 0}
+    with app.app_context():
+        versions = fleet_versions_now(VersionClient())
+    assert versions == {"versions": {"3006.5": 1}}
+    with app.app_context(), pytest.raises(SaltApiError):
+        fleet_presence_now(StubClient(deny={"manage.status"}))
+    with app.app_context(), pytest.raises(SaltApiError):
+        fleet_versions_now(StubClient(deny={"manage.versions"}))
 
 
 def test_refresh_uses_worker_result(monkeypatch, admin):

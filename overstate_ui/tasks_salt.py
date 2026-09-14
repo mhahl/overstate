@@ -44,6 +44,16 @@ CAPABILITY_CHECKS = [
 
 FUN_DOC_LINES = 40
 
+FANOUT_HTTP_TIMEOUT = 15.0
+"""HTTP backstop for probes that fan out to minions (presence,
+versions, capabilities). Healthy fleets answer in a second or two; a
+dead minion burns the whole backstop, so master-local probes live in
+separate jobs below and stay instant regardless of fleet state."""
+
+PING_SALT_TIMEOUT = 5
+"""Salt job timeout for the capability ping door: a dead target fails
+fast at the master instead of waiting out the HTTP backstop."""
+
 
 def refresh_now(client) -> int:
     """Fleet grains refresh. Shared by the view fallback and the task."""
@@ -61,26 +71,51 @@ def refresh_inventory_task() -> dict:
         return {"count": refresh_now(build_client())}
 
 
-def salt_overview_now(client, http_timeout: float | None = None) -> dict:
-    """Key and presence counts. Raises SaltApiError on failure."""
-    keys = client.wheel("key.list_all", http_timeout=http_timeout)[0]["data"]["return"]
-    accepted = keys.get("minions", [])
-    pending = keys.get("minions_pre", [])
+def fleet_keys_now(client) -> dict:
+    """Master-local fleet counts plus active JIDs. Raises SaltApiError
+    on failure. Never fans out to minions, so this stays instant no
+    matter how many minions are down."""
+    keys = client.wheel("key.list_all")[0]["data"]["return"]
+    active = client.runner("jobs.active")[0]
+    # Only JID-shaped keys count: anything else is not a jobs.active
+    # payload (e.g. an unexpected dict), so report no live actives and
+    # let the caller fall back to the DB count instead of a false zero.
+    live = isinstance(active, dict) and all(
+        isinstance(k, str) and k.isdigit() for k in active
+    )
+    return {
+        "reachable": True,
+        "accepted": len(keys.get("minions", [])),
+        "pending": len(keys.get("minions_pre", [])),
+        "active_jids": sorted(active) if live else [],
+        "active_live": live,
+    }
+
+
+def fleet_keys_task() -> dict:
+    from .tasks import build_client
+
+    with isolated_app():
+        return fleet_keys_now(build_client())
+
+
+def fleet_presence_now(client, http_timeout: float | None = None) -> dict:
+    """Up/down presence. Raises SaltApiError on failure. Fans out to
+    minions, so a dead minion burns the HTTP backstop — keys, versions,
+    and capabilities resolve in their own jobs meanwhile."""
     status = client.runner("manage.status", http_timeout=http_timeout)[0]
     return {
         "reachable": True,
-        "accepted": len(accepted),
-        "pending": len(pending),
         "up": len(status.get("up", [])),
         "down": len(status.get("down", [])),
     }
 
 
-def salt_overview_task() -> dict:
+def fleet_presence_task() -> dict:
     from .tasks import build_client
 
     with isolated_app():
-        return salt_overview_now(build_client())
+        return fleet_presence_now(build_client(), http_timeout=FANOUT_HTTP_TIMEOUT)
 
 
 def normalize_versions(payload) -> dict[str, int]:
@@ -105,44 +140,21 @@ def normalize_versions(payload) -> dict[str, int]:
     return counts
 
 
-def fleet_truth_now(client, http_timeout: float | None = None) -> dict:
-    """Live versions + master-active JIDs. Never raises: each panel
-    falls back independently when its call fails or surprises."""
-    out: dict = {
-        "versions": {},
-        "active_jids": [],
-        "versions_live": False,
-        "active_live": False,
-    }
-    try:
-        versions = normalize_versions(
-            client.runner("manage.versions", http_timeout=http_timeout)[0]
-        )
-    except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
-        versions = {}
-    if versions:
-        out["versions"] = versions
-        out["versions_live"] = True
-    try:
-        active = client.runner("jobs.active", http_timeout=http_timeout)[0]
-    except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
-        active = None
-    # Only JID-shaped keys count: anything else is not a jobs.active
-    # payload (e.g. an unexpected dict), so fall back to the DB count
-    # instead of reporting a false live zero.
-    if isinstance(active, dict) and all(
-        isinstance(k, str) and k.isdigit() for k in active
-    ):
-        out["active_jids"] = sorted(active)
-        out["active_live"] = True
-    return out
+def fleet_versions_now(client, http_timeout: float | None = None) -> dict:
+    """Live version counts. Raises SaltApiError on failure. Fans out to
+    minions; an empty result means no minion reported a version, so the
+    caller keeps the grain-snapshot counts."""
+    versions = normalize_versions(
+        client.runner("manage.versions", http_timeout=http_timeout)[0]
+    )
+    return {"versions": versions}
 
 
-def fleet_truth_task() -> dict:
+def fleet_versions_task() -> dict:
     from .tasks import build_client
 
     with isolated_app():
-        return fleet_truth_now(build_client())
+        return fleet_versions_now(build_client(), http_timeout=FANOUT_HTTP_TIMEOUT)
 
 
 def list_functions_now(client, minion: str) -> list[str]:
@@ -224,27 +236,51 @@ def fun_doc_now(client, minion: str, fun: str) -> str:
 def probe_capabilities(
     client, ping_target: str | None = None, http_timeout: float | None = None
 ) -> dict:
-    """One probe per door the UI depends on. Never raises for Salt."""
+    """One probe per door the UI depends on. Never raises for Salt, and
+    each door reports independently: a slow or denied wheel door must
+    not blank the runner, history, or ping doors behind it."""
     out: dict[str, Any] = {c["key"]: False for c in CAPABILITY_CHECKS}
     out["ping_target"] = ping_target
     out["error"] = None
-    try:
-        client.wheel("key.list_all", http_timeout=http_timeout)
-        out["wheel_ok"] = True
-        client.runner("manage.status", http_timeout=http_timeout)
-        out["runner_ok"] = True
+
+    def attempt(key: str, func) -> None:
+        try:
+            func()
+        except (SaltApiError, httpx.HTTPError) as exc:
+            if out["error"] is None:
+                out["error"] = str(exc)
+        else:
+            out[key] = True
+
+    attempt("wheel_ok", lambda: client.wheel("key.list_all", http_timeout=http_timeout))
+    attempt(
+        "runner_ok",
+        lambda: client.runner("manage.status", http_timeout=http_timeout),
+    )
+
+    def check_history() -> None:
         from .db import get_session
         from .models import SaltReturn
 
         get_session().query(SaltReturn.jid).limit(1).all()
-        out["history_ok"] = True
-        if ping_target:
-            client.local(ping_target, "test.ping", http_timeout=http_timeout)
-            out["ping_ok"] = True
-    except (SaltApiError, httpx.HTTPError) as exc:
-        out["error"] = str(exc)
+
+    try:
+        check_history()
     except Exception as exc:  # noqa: BLE001 — DB problems degrade too
-        out["error"] = str(exc)
+        if out["error"] is None:
+            out["error"] = str(exc)
+    else:
+        out["history_ok"] = True
+    if ping_target:
+        attempt(
+            "ping_ok",
+            lambda: client.local(
+                ping_target,
+                "test.ping",
+                timeout=PING_SALT_TIMEOUT,
+                http_timeout=http_timeout,
+            ),
+        )
     return out
 
 
@@ -254,6 +290,8 @@ def capabilities_task(ping_target: str | None = None) -> dict:
     with isolated_app():
         from .tasks_queue import write_capability_cache
 
-        out = probe_capabilities(build_client(), ping_target)
+        out = probe_capabilities(
+            build_client(), ping_target, http_timeout=FANOUT_HTTP_TIMEOUT
+        )
         write_capability_cache(out)
         return out

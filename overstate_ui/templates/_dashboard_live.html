@@ -28,7 +28,7 @@ resolved renders drop those attributes so polling stops on its own. #}
       </div>
       <div>
         <p class="font-medium">Accepted minions</p>
-        <p class="text-3xl font-semibold tabular-nums">{{ stats.accepted if stats.reachable else "–" }}</p>
+        <p class="text-3xl font-semibold tabular-nums">{{ stats.accepted if stats.keys_live else "–" }}</p>
         <p class="text-xs opacity-70">Keys in accepted state</p>
       </div>
     </div>
@@ -40,7 +40,7 @@ resolved renders drop those attributes so polling stops on its own. #}
       </div>
       <div>
         <p class="font-medium">Pending keys</p>
-        <p class="text-3xl font-semibold tabular-nums">{{ stats.pending if stats.reachable else "–" }}</p>
+        <p class="text-3xl font-semibold tabular-nums">{{ stats.pending if stats.keys_live else "–" }}</p>
         <p class="text-xs opacity-70"><a class="link" href="{{ url_for('keys.index', tab='pending') }}">Review queue</a></p>
       </div>
     </div>
@@ -52,7 +52,7 @@ resolved renders drop those attributes so polling stops on its own. #}
       </div>
       <div>
         <p class="font-medium">Minions up / down</p>
-        <p class="text-3xl font-semibold tabular-nums">{{ (stats.up|string) + " / " + (stats.down|string) if stats.reachable else "–" }}</p>
+        <p class="text-3xl font-semibold tabular-nums">{{ (stats.up|string) + " / " + (stats.down|string) if stats.presence_live else "–" }}</p>
         <p class="text-xs opacity-70"><a class="link" href="{{ url_for('minions.index') }}">Browse inventory</a></p>
       </div>
     </div>

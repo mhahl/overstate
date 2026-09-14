@@ -232,19 +232,22 @@ def test_collect_stats_db_counts():
         stats = collect_stats(make_client())
         live = collect_stats(
             make_client(),
-            overview={
+            keys={
                 "reachable": True,
                 "accepted": 2,
                 "pending": 1,
-                "up": 1,
-                "down": 0,
+                "active_jids": [],
+                "active_live": True,
             },
-            truth={"versions": {"3006.5": 2}, "versions_live": True},
+            presence={"reachable": True, "up": 1, "down": 0},
+            versions={"versions": {"3006.5": 2}},
         )
-    assert stats["accepted"] == 0  # no live overview without an RQ result
+    assert stats["accepted"] == 0  # no live panels without RQ results
     assert stats["in_flight"] == 1
     assert len(stats["last_failures"]) == 1
     assert live["accepted"] == 2 and live["pending"] == 1
+    assert live["up"] == 1 and live["down"] == 0
     assert live["reachable"] is True
+    assert live["keys_live"] and live["presence_live"]
     assert live["versions"] == {"3006.5": 2} and live["versions_live"] is True
-    assert live["in_flight"] == 1  # DB count retained without live actives
+    assert live["in_flight"] == 0  # live actives (none) replace the DB count

@@ -56,10 +56,11 @@ def test_tasks_shim_matches_canonical():
         assert getattr(tasks, name) is getattr(tasks_queue, name), name
     for name in (
         "normalize_versions",
-        "fleet_truth_now",
+        "fleet_keys_now",
+        "fleet_presence_now",
+        "fleet_versions_now",
         "probe_capabilities",
         "CAPABILITY_CHECKS",
-        "salt_overview_now",
         "show_sls_now",
     ):
         assert getattr(tasks, name) is getattr(tasks_salt, name), name
