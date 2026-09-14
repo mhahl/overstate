@@ -47,11 +47,13 @@ echo "==> restarting salt-master, worker, app, caddy"
 systemctl restart overstate-salt-master.service
 API_UP=""
 for _ in $(seq 1 30); do
-  if [ "$(curl -sk -o /dev/null -w '%{http_code}' \
-    https://127.0.0.1:8001/login)" = "401" ]; then
-    API_UP=1
-    break
-  fi
+  case "$(curl -sk -o /dev/null -w '%{http_code}' \
+    https://127.0.0.1:8001/login)" in
+    200|401)
+      API_UP=1
+      break
+      ;;
+  esac
   sleep 2
 done
 [ -n "$API_UP" ] || echo "WARNING: salt-api is not answering; check 'journalctl -u overstate-salt-master'" >&2

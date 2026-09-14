@@ -205,12 +205,15 @@ enable_unit overstate-salt-master.service
 echo "==> waiting for salt-api"
 API_UP=""
 for _ in $(seq 1 30); do
-  # 401 from /login proves the API is up (no token yet).
-  if [ "$(curl -sk -o /dev/null -w '%{http_code}' \
-    https://127.0.0.1:8001/login)" = "401" ]; then
-    API_UP=1
-    break
-  fi
+  # Any HTTP answer from /login proves the API is up (no token yet);
+  # versions differ on 200 vs 401 for the anonymous check.
+  case "$(curl -sk -o /dev/null -w '%{http_code}' \
+    https://127.0.0.1:8001/login)" in
+    200|401)
+      API_UP=1
+      break
+      ;;
+  esac
   sleep 2
 done
 [ -n "$API_UP" ] || echo "WARNING: salt-api is not answering; check 'journalctl -u overstate-salt-master'" >&2

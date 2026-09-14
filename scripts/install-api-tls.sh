@@ -17,10 +17,15 @@ if ! podman container exists "$MASTER" >/dev/null 2>&1; then
   echo "error: container '$MASTER' does not exist" >&2
   exit 1
 fi
+api_up() { # any HTTP answer proves salt-api listens; /login needs no token
+  case "$(curl -sk -o /dev/null -w '%{http_code}' \
+    https://127.0.0.1:8001/login || true)" in
+    200|401) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 for _ in $(seq 1 30); do
-  # 401 from /login proves salt-api is up (no token yet).
-  if [ "$(curl -sk -o /dev/null -w '%{http_code}' \
-    https://127.0.0.1:8001/login)" = "401" ]; then
+  if api_up; then
     break
   fi
   sleep 2
@@ -35,11 +40,16 @@ CODE=""
 for _ in $(seq 1 12); do
   CODE="$(curl --cacert "$(dirname "$CRT")/ca.crt" -s -o /dev/null \
     -w '%{http_code}' https://127.0.0.1:8001/login || true)"
-  [ "$CODE" = "401" ] && break
+  case "$CODE" in
+    200|401) break ;;
+  esac
   sleep 5
 done
 echo "salt-api TLS with our CA: $CODE"
-[ "$CODE" = "401" ] || {
-  echo "error: salt-api did not come back with our cert" >&2
-  exit 1
-}
+case "$CODE" in
+  200|401) ;;
+  *)
+    echo "error: salt-api did not come back with our cert" >&2
+    exit 1
+    ;;
+esac

@@ -19,7 +19,7 @@ def _stub(path, body):
     os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
 
 
-def test_api_tls_waits_for_restarted_api(tmp_path):
+def _run_script(tmp_path, ok_code):
     bindir = tmp_path / "bin"
     bindir.mkdir()
     counter = tmp_path / "curl.calls"
@@ -33,7 +33,7 @@ def test_api_tls_waits_for_restarted_api(tmp_path):
         f"n=$(cat {counter} 2>/dev/null || echo 0)\n"
         f"echo $((n + 1)) > {counter}\n"
         'if [ "$n" -lt 2 ]; then printf "%s" "000"; exit 7; fi\n'
-        'printf "%s" "401"\n',
+        f'printf "%s" "{ok_code}"\n',
     )
     tls = tmp_path / "tls"
     tls.mkdir()
@@ -55,6 +55,18 @@ def test_api_tls_waits_for_restarted_api(tmp_path):
         timeout=120,
         check=False,
     )
+    return proc, counter
+
+
+def test_api_tls_waits_for_restarted_api(tmp_path):
+    proc, counter = _run_script(tmp_path, "401")
     assert proc.returncode == 0, proc.stderr
     assert "401" in proc.stdout
     assert int(counter.read_text()) >= 3  # polled, not single-shot
+
+
+def test_api_tls_accepts_200_from_login(tmp_path):
+    # Some salt-api versions answer the anonymous /login check with 200.
+    proc, _ = _run_script(tmp_path, "200")
+    assert proc.returncode == 0, proc.stderr
+    assert "200" in proc.stdout
