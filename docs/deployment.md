@@ -227,9 +227,12 @@ Wrong time breaks key exchange in confusing ways; run NTP everywhere.
   logs a warning; that mode exists for local dev only.
 - Set real Postgres passwords in compose or your secrets manager.
   The defaults are public.
-- Put the app behind a reverse proxy that forwards the client IP.
-  The login rate limit counts per address per worker; without the
-  real IP, everyone behind the proxy shares one budget.
+- Put the app behind a reverse proxy that forwards the client IP
+  and host (`X-Forwarded-For/Host/Port`; the `deploy/Caddyfile`
+  already does). The app trusts one proxy hop for these, which the
+  login CSRF origin check requires. The login rate limit counts per
+  address per worker; without the real IP, everyone behind the
+  proxy shares one budget.
 - Run one gunicorn worker per CPU as a starting point and raise it
   when dashboard loads slow down. Each worker holds its own rate
   limit counters and salt-api token.

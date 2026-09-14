@@ -11,6 +11,10 @@
 {$APP_DOMAIN:overstate.sigaint.au} {
 	encode gzip
 	reverse_proxy https://overstate-app:8000 {
+		# The app trusts one proxy (ProxyFix) and reads the public
+		# host/port from these for CSRF origin checks and url_for.
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Port {http.request.port}
 		transport http {
 			tls
 			tls_trust_pool file /etc/caddy/ca.crt
@@ -21,6 +25,8 @@
 {$API_DOMAIN:overstate-api.sigaint.au} {
 	encode gzip
 	reverse_proxy https://overstate-salt-master:8000 {
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Port {http.request.port}
 		transport http {
 			tls
 			tls_trust_pool file /etc/caddy/ca.crt

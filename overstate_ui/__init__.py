@@ -2,6 +2,7 @@
 
 from flask import Flask
 from flask_wtf import CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import (
     audit,
@@ -31,6 +32,13 @@ def create_app(config: type[Config] = Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config)
     app.config.setdefault("SECRET_KEY", config.SECRET_KEY)
+    # Behind Caddy the app sees the internal address (overstate-app:8000);
+    # trust the forwarded host/port/scheme so CSRF origin checks, url_for,
+    # and the rate limiter see the public request. Direct access sends no
+    # forwarded headers, so this is a no-op in dev.
+    app.wsgi_app = ProxyFix(  # type: ignore[method-assign]
+        app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1
+    )
 
     init_db(config.SQLALCHEMY_DATABASE_URI)
     app.teardown_appcontext(close_session)
