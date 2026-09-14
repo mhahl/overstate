@@ -5,9 +5,11 @@ When `probing` with a `poll_qs`, the wrapper re-polls itself via htmx;
 resolved renders drop those attributes so polling stops on its own. #}
 <div id="dashboard-live" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
 {% if probing %}
-<div class="alert alert-info" role="status">
-  <span class="icon-[lucide--loader-circle] size-5 shrink-0 animate-spin" aria-hidden="true"></span>
-  <span>Refreshing live data…</span>
+<div class="flex justify-end" role="status">
+  <span class="flex items-center gap-1.5 text-xs opacity-60">
+    <span class="icon-[lucide--loader-circle] size-4 shrink-0 animate-spin" aria-hidden="true"></span>
+    <span>Refreshing live data…</span>
+  </span>
 </div>
 {% elif worker_down %}
 <div class="alert alert-warning" role="alert">
