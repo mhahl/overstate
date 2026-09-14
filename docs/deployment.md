@@ -265,6 +265,17 @@ Wrong time breaks key exchange in confusing ways; run NTP everywhere.
   `sudo ./scripts/update.sh`. If it persists, check Unix ownership
   versus MAC with `podman exec salt-master ls -laZ
   /home/salt/data/keys/` and `podman exec salt-master id`.
+- **Migrations fail with "password authentication failed for user
+  overstate".** Postgres sets its password only on first init, so a
+  regenerated `overstate.env` no longer matches the data volume. On a
+  fresh deploy with nothing to keep, stop the app and postgres,
+  drop the stale volume, and start again: `systemctl stop
+  overstate-app.service overstate-worker.service
+  overstate-postgres.service && podman volume rm overstate-pgdata
+  && systemctl start overstate-postgres.service
+  overstate-app.service overstate-worker.service`. To keep existing
+  data instead, `ALTER USER overstate PASSWORD` to the value in
+  `DATABASE_URL` over the local socket.
 - **Dashboard shows salt-api unreachable.** Check the URL, the CA
   mount, and the eauth password. `curl` the `/login` endpoint from
   the app container with the service credentials.

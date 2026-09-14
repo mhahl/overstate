@@ -119,7 +119,9 @@ gen_cert() { # name, SANs
   chmod 644 "$ETC/tls/$name.crt"
 }
 gen_cert api "DNS:salt-master,DNS:localhost,IP:127.0.0.1"
-gen_cert app "DNS:$HOSTNAME,DNS:localhost,IP:127.0.0.1"
+# overstate-app is the name Caddy dials inside the container network, so it
+# must be a SAN or backend verification fails with 502.
+gen_cert app "DNS:$HOSTNAME,DNS:overstate-app,DNS:localhost,IP:127.0.0.1"
 
 echo "==> secrets in $ETC/overstate.env"
 rand() { openssl rand -hex 24; }

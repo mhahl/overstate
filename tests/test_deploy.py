@@ -75,6 +75,11 @@ def test_install_tolerates_generator_wiring():
     assert "systemctl enable --now overstate-" not in install
 
 
+def test_app_cert_covers_internal_dial_name():
+    install = (REPO / "scripts" / "install.sh").read_text()
+    assert "DNS:overstate-app" in install
+
+
 def test_install_targets_leap_16():
     install = (REPO / "scripts" / "install.sh").read_text()
     assert "opensuse-leap" in install
