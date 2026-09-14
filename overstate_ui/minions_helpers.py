@@ -6,7 +6,10 @@ Pure functions and their constants; the routes stay in
 
 from __future__ import annotations
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 OS_ICONS = (
     ("fedora", "fedora"),
@@ -63,12 +66,19 @@ def parse_beacon_list(value) -> dict:
     return {}
 
 
-def live_roster(client) -> tuple[dict[str, str], set[str]]:
-    """Return ({minion_id: key_status}, {up minion ids}); offline-safe."""
+def live_roster(client) -> tuple[dict[str, str], set[str], bool]:
+    """Return ({minion_id: key_status}, {up minion ids}, reachable).
+
+    Offline-safe: each half fails independently and logs. Reachable is
+    true when either call succeeds, even with zero minions — an empty
+    fleet is not an outage, and the banner must not claim one.
+    """
     from .salt_client import SaltApiError
 
     statuses: dict[str, str] = {}
     up: set[str] = set()
+    keys_ok = False
+    presence_ok = False
     try:
         listed = client.wheel("key.list_all")[0]["data"]["return"]
         for mid in listed.get("minions", []):
@@ -79,10 +89,19 @@ def live_roster(client) -> tuple[dict[str, str], set[str]]:
             statuses[mid] = "rejected"
         for mid in listed.get("minions_denied", []):
             statuses[mid] = "denied"
+    except (SaltApiError, KeyError, IndexError, TypeError) as exc:
+        # The minions page degrades to the snapshot cache on empty output,
+        # so log the cause here: otherwise the banner is the only evidence.
+        logger.warning("live key list unavailable: %s", exc)
+    else:
+        keys_ok = True
+    try:
         up = set(client.runner("manage.status")[0].get("up", []))
-    except (SaltApiError, KeyError, IndexError, TypeError):
-        pass
-    return statuses, up
+    except (SaltApiError, KeyError, IndexError, TypeError) as exc:
+        logger.warning("live presence unavailable: %s", exc)
+    else:
+        presence_ok = True
+    return statuses, up, keys_ok or presence_ok
 
 
 def normalize_grains(grains) -> dict:
