@@ -6,6 +6,7 @@ paths keep working.
 """
 
 import csv
+import datetime as dt
 import io
 
 from flask import (
@@ -214,6 +215,61 @@ def refresh():
             flash("Refresh queued in the background — reload to see it.", "info")
         else:
             flash(f"refresh failed in the background: {value}", "error")
+    return redirect(url_for("minions.index"))
+
+
+@bp.post("/<mid>/refresh")
+@roles_required("operator")
+def refresh_one(mid: str):
+    """Re-pull grains for a single minion into the snapshot cache."""
+    row = get_session().get(Minion, mid)
+    if row is None:
+        flash(f"Unknown minion '{mid}'.", "error")
+        return redirect(url_for("minions.index"))
+    try:
+        grains = get_salt().local(mid, "grains.items")[0].get(mid)
+    except SaltApiError as exc:
+        flash(f"salt-api error: {exc}", "error")
+        return redirect(url_for("minions.index"))
+    if not isinstance(grains, dict):
+        flash(f"{mid} returned no grain data.", "error")
+        return redirect(url_for("minions.index"))
+    row.grains = normalize_grains(grains)
+    row.last_seen = dt.datetime.now(dt.UTC)
+    get_session().commit()
+    log_event(current_user.username, f"minion-refresh:{mid}")
+    flash(f"{mid} refreshed.", "success")
+    return redirect(url_for("minions.index"))
+
+
+@bp.post("/<mid>/remove")
+@roles_required("operator")
+def remove(mid: str):
+    """Drop a minion's snapshot row from the database. Job history is
+    kept. The Salt key on the master is only deleted when the remove
+    dialog's checkbox asks for it — and then only when the wheel call
+    succeeds, so a failed key delete leaves the snapshot in place
+    instead of half-finishing."""
+    session = get_session()
+    row = session.get(Minion, mid)
+    if row is None:
+        flash(f"Unknown minion '{mid}'.", "error")
+        return redirect(url_for("minions.index"))
+    delete_key = request.form.get("delete_key") == "yes"
+    if delete_key:
+        try:
+            get_salt().wheel("key.delete", match=mid)
+        except SaltApiError as exc:
+            flash(f"salt-api error: {exc}", "error")
+            return redirect(url_for("minions.index"))
+        log_event(current_user.username, f"delete-key:{mid}")
+    session.delete(row)
+    session.commit()
+    log_event(current_user.username, f"minion-remove:{mid}")
+    if delete_key:
+        flash(f"{mid} removed; Salt key deleted.", "success")
+    else:
+        flash(f"{mid} removed from the inventory cache.", "success")
     return redirect(url_for("minions.index"))
 
 

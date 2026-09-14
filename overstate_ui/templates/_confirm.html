@@ -1,0 +1,50 @@
+{# Shared destructive-action confirm. Any form with data-confirm="message"
+   pauses its submit in this dialog; Confirm resubmits once. Schedules and
+   states templates already carry data-confirm attributes. Without JS the
+   form submits directly (same as before this partial existed). #}
+<dialog id="confirm-modal" class="modal" aria-labelledby="confirm-modal-title">
+  <div class="modal-box">
+    <h3 id="confirm-modal-title" class="font-bold text-lg">Are you sure?</h3>
+    <p id="confirm-modal-message" class="py-2 text-sm"></p>
+    <div class="modal-action">
+      <button type="button" class="btn btn-sm btn-ghost" id="confirm-modal-cancel">Cancel</button>
+      <button type="button" class="btn btn-sm btn-error" id="confirm-modal-ok">Confirm</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+<script>
+(function () {
+  var dialog = document.getElementById('confirm-modal');
+  if (!dialog) return;
+  var message = document.getElementById('confirm-modal-message');
+  var pendingForm = null;
+  // Capture: runs before the pending-state spinner, which must not spin
+  // for a submit we are about to cancel.
+  document.addEventListener('submit', function (ev) {
+    var form = ev.target;
+    if (!form || form.tagName !== 'FORM') return;
+    var text = form.getAttribute('data-confirm');
+    if (!text || form.hasAttribute('data-confirmed')) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    pendingForm = form;
+    message.textContent = text;
+    dialog.showModal();
+  }, true);
+  document.getElementById('confirm-modal-ok').addEventListener('click', function () {
+    dialog.close();
+    if (pendingForm) {
+      pendingForm.setAttribute('data-confirmed', '1');
+      pendingForm.requestSubmit();
+      pendingForm = null;
+    }
+  });
+  function cancel() {
+    dialog.close();
+    pendingForm = null;
+  }
+  document.getElementById('confirm-modal-cancel').addEventListener('click', cancel);
+  dialog.addEventListener('close', function () { pendingForm = null; });
+})();
+</script>

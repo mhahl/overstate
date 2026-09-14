@@ -11,7 +11,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-primary">Refresh inventory</button>
   </form>
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.export_csv') }}">Export CSV</a>
+  <a class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.export_csv') }}">Export CSV</a>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.onboard') }}">Onboard minion</a>
 </div>
 {% if not reachable %}
@@ -41,6 +41,29 @@
 <form method="get" action="{{ url_for('jobs.new') }}" class="card bg-base-100 border border-base-300 shadow-sm">
 {% include "_minion_rows.html" %}
 </form>
+{% if current_user.role in ["operator", "admin"] %}
+<dialog id="remove-modal" class="modal" aria-labelledby="remove-modal-title">
+  <div class="modal-box">
+    <h3 id="remove-modal-title" class="font-bold text-lg">Remove <span id="remove-modal-mid" class="font-mono"></span>?</h3>
+    <div class="py-2 text-sm flex flex-col gap-2">
+      <p>This deletes the minion's snapshot row — grains, conformity verdict, last seen — from the database. Job history is kept.</p>
+      <p class="opacity-70">If its key is still on the master, the minion will reappear in this list. Tick the box to delete the key as well.</p>
+      <form id="remove-modal-form" method="post" action="">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" id="remove-modal-delete-key" name="delete_key" value="yes" class="checkbox checkbox-sm">
+          <span class="label-text">Also delete its Salt key on the master</span>
+        </label>
+        <div class="modal-action">
+          <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('remove-modal').close()">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-error">Remove</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endif %}
 <script>
 (function () {
   var btn = document.getElementById("live-toggle");
@@ -75,6 +98,51 @@
       })
       .catch(function () {});
   }, 15000);
+})();
+</script>
+<script>
+(function () {
+  // Kebab menus float above the table's scroll wrapper: that wrapper clips
+  // on both the bottom and the top edge, so no static open direction fits
+  // every row. On open, pin the menu to the viewport beside its button,
+  // opening downward unless space runs short.
+  function closeAll(except) {
+    document.querySelectorAll('details[data-kebab][open]').forEach(function (d) {
+      if (d !== except) d.removeAttribute('open');
+    });
+  }
+  // toggle does not bubble; catch it on the way down.
+  document.addEventListener('toggle', function (ev) {
+    var d = ev.target && ev.target.closest ? ev.target.closest('details[data-kebab]') : null;
+    if (!d || !d.hasAttribute('open')) return;
+    closeAll(d);
+    var btn = d.querySelector('summary');
+    var menu = d.querySelector('.dropdown-content');
+    if (!btn || !menu) return;
+    var r = btn.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.inset = 'auto';
+    menu.style.zIndex = '60';
+    var mw = menu.offsetWidth, mh = menu.offsetHeight;
+    menu.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + 'px';
+    var roomBelow = window.innerHeight - r.bottom;
+    menu.style.top = (roomBelow >= mh + 8 ? r.bottom + 4 : Math.max(8, r.top - mh - 4)) + 'px';
+  }, true);
+  window.openRemoveModal = function (mid) {
+    closeAll(null);
+    document.getElementById('remove-modal-mid').textContent = mid;
+    document.getElementById('remove-modal-form').action =
+      {{ url_for('minions.remove', mid='__MID__')|tojson }}.replace('__MID__', encodeURIComponent(mid));
+    document.getElementById('remove-modal-delete-key').checked = false;
+    document.getElementById('remove-modal').showModal();
+  };
+  document.addEventListener('click', function (ev) {
+    if (!ev.target.closest || !ev.target.closest('details[data-kebab]')) closeAll(null);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') closeAll(null);
+  });
+  window.addEventListener('scroll', function () { closeAll(null); }, true);
 })();
 </script>
 <script>

@@ -374,5 +374,63 @@
   });
 })();
 </script>
+<script>
+(function () {
+  // Every submit shows work at once: lock its buttons and spin the one
+  // pressed, so a slow Salt call can't be fired twice while the page sits
+  // unchanged. Plain forms navigate away (no restore needed); HTMX filter
+  // forms restore when the swap — or the error — lands.
+  function restore(form) {
+    form.querySelectorAll('[data-pending]').forEach(function (b) {
+      b.disabled = false;
+      b.removeAttribute('data-pending');
+      b.classList.remove('opacity-70');
+      b.querySelectorAll('[data-pending-spinner]').forEach(function (s) { s.remove(); });
+    });
+  }
+  function isHtmx(form) {
+    return form.hasAttribute('hx-get') || form.hasAttribute('hx-post') ||
+      form.hasAttribute('hx-put') || form.hasAttribute('hx-delete');
+  }
+  document.addEventListener('submit', function (ev) {
+    var form = ev.target;
+    if (!form || form.tagName !== 'FORM') return;
+    if (form.getAttribute('method') === 'dialog' || form.hasAttribute('data-no-pending')) return;
+    var btns = Array.prototype.filter.call(
+      form.querySelectorAll('button:not([type="button"]):not([type="reset"]), input[type="submit"]'),
+      function (b) { return !b.disabled; }
+    );
+    if (!btns.length) return;
+    var pressed = btns.indexOf(ev.submitter) !== -1 ? ev.submitter : btns[0];
+    btns.forEach(function (b) {
+      b.disabled = true;
+      b.setAttribute('data-pending', '1');
+    });
+    if (pressed.tagName === 'BUTTON') {
+      pressed.insertAdjacentHTML('afterbegin', '<span class="loading loading-spinner loading-xs" aria-hidden="true" data-pending-spinner></span> ');
+    } else {
+      pressed.classList.add('opacity-70');
+    }
+    if (isHtmx(form)) {
+      form.addEventListener('htmx:afterRequest', function h() { restore(form); }, { once: true });
+      form.addEventListener('htmx:sendError', function h() { restore(form); }, { once: true });
+    }
+  });
+  // Downloads navigate nowhere, so the link spins briefly on its own.
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest ? ev.target.closest('a[data-download]') : null;
+    if (!a || a.hasAttribute('data-downloading')) return;
+    a.setAttribute('data-downloading', '1');
+    var original = a.innerHTML;
+    a.classList.add('pointer-events-none', 'opacity-70');
+    a.insertAdjacentHTML('afterbegin', '<span class="loading loading-spinner loading-xs" aria-hidden="true"></span> ');
+    setTimeout(function () {
+      a.removeAttribute('data-downloading');
+      a.classList.remove('pointer-events-none', 'opacity-70');
+      a.innerHTML = original;
+    }, 4000);
+  });
+})();
+</script>
 </body>
 </html>

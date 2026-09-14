@@ -25,17 +25,18 @@
       <td class="font-mono text-xs">{{ r.grains.get("saltversion", "–") }}</td>
       {% if current_user.role in ["operator", "admin"] %}
       <td class="text-right">
-        <details class="dropdown dropdown-end{% if loop.last %} dropdown-top{% endif %}">
+        {# Per-row actions. Menu-item styling applies to direct li children,
+           so the form (not a display:contents wrapper) carries Refresh and
+           Remove is a plain button opening the remove dialog. Placement is
+           set by the page script (data-kebab): the table's scroll wrapper
+           clips on both edges, so no static open direction fits every row. #}
+        <details class="dropdown dropdown-end" data-kebab>
           <summary class="btn btn-ghost btn-xs [&::-webkit-details-marker]:hidden" aria-label="Actions for {{ r.id }}">
             <span class="icon-[lucide--ellipsis-vertical] size-4" aria-hidden="true"></span>
           </summary>
           <ul class="menu dropdown-content bg-base-100 border border-base-300 rounded-box shadow-md w-44 p-2 z-10">
-            <li><a href="{{ url_for('jobs.new', bulk=r.id) }}">Run job</a></li>
-            <li><a href="{{ url_for('jobs.new', tgt=r.id, tgt_type='list', fun='test.ping') }}">Test ping</a></li>
-            <li class="menu-title"><span>Key</span></li>
-            <li><form method="post" action="{{ url_for('keys.act', action='accept') }}" class="contents"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="next" value="/minions/"><button type="submit">Accept key</button></form></li>
-            <li><form method="post" action="{{ url_for('keys.act', action='reject') }}" class="contents"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="next" value="/minions/"><button type="submit">Reject key</button></form></li>
-            <li><form method="post" action="{{ url_for('keys.act', action='delete') }}" class="contents"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="next" value="/minions/"><button type="submit" class="text-error">Delete key</button></form></li>
+            <li><form method="post" action="{{ url_for('minions.refresh_one', mid=r.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="w-full text-left">Refresh</button></form></li>
+            <li><button type="button" class="w-full text-left text-error" onclick='openRemoveModal({{ r.id|tojson }})'>Remove</button></li>
           </ul>
         </details>
       </td>

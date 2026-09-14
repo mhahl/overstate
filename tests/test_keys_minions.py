@@ -171,11 +171,24 @@ def test_minions_list_search_paginate(client):
 def test_minions_row_kebab_menu_for_operator(client):
     html = client.get("/minions/").data.decode()
     assert "ellipsis-vertical" in html
-    assert 'href="/jobs/new?bulk=web-01"' in html
-    assert 'href="/jobs/new?tgt=web-01&amp;tgt_type=list&amp;fun=test.ping"' in html
-    assert 'action="/keys/accept"' in html
-    assert 'action="/keys/delete"' in html
-    assert 'name="next" value="/minions/"' in html
+    assert "data-kebab" in html
+    body = html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    assert 'action="/minions/web-01/refresh"' in body
+    # Both items are direct li children, so daisyUI styles them as menu
+    # items (no display:contents wrapper swallowing the item box).
+    assert 'class="contents"' not in body
+    assert "openRemoveModal" in body
+    # Remove goes through the warning dialog, not a direct POST.
+    assert 'action="/minions/web-01/remove"' not in body
+    assert 'id="remove-modal"' in html
+    assert 'name="delete_key"' in html
+    # Flat two-item menu: no headings, no job links, no key ops.
+    assert "menu-title" not in body
+    assert "jobs/new" not in body
+    assert "/keys/" not in body
+    # Placement is decided at click time (the page script floats the menu
+    # above the scroll wrapper), so no static open direction is baked in.
+    assert "dropdown-top" not in body
 
 
 def test_minions_row_menu_hidden_for_viewer(client):
@@ -192,6 +205,7 @@ def test_minions_row_menu_hidden_for_viewer(client):
     html = viewer.get("/minions/").data.decode()
     assert "web-01" in html  # list itself stays visible
     assert "ellipsis-vertical" not in html
+    assert 'id="remove-modal"' not in html
 
 
 def test_key_act_honors_next(client):
@@ -200,6 +214,163 @@ def test_key_act_honors_next(client):
     assert rv.headers["Location"] == "/minions/"
     rv = client.post("/keys/delete", data={"id": "new-01", "next": "https://evil/"})
     assert rv.headers["Location"].startswith("/keys/")
+
+
+def test_minion_row_refresh_updates_snapshot(client):
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        get_session().commit()
+    rv = client.post("/minions/web-01/refresh")
+    assert rv.status_code == 302
+    assert rv.headers["Location"] == "/minions/"
+    with client.app.app_context():
+        row = get_session().get(Minion, "web-01")
+        assert row.grains["osfinger"] == "Fedora Linux 41"
+        assert row.last_seen is not None
+    assert "refreshed" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_row_refresh_without_grains_keeps_snapshot(client):
+    with client.app.app_context():
+        get_session().add(
+            Minion(
+                id="ghost-01",
+                grains={"os": "X"},
+                conformity={},
+                key_status="accepted",
+            )
+        )
+        get_session().commit()
+    rv = client.post("/minions/ghost-01/refresh")
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().get(Minion, "ghost-01").grains == {"os": "X"}
+    assert "no grain data" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_row_remove_deletes_snapshot_keeps_history(client):
+    from overstate_ui.models import Job, JobReturn
+
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        session.add(
+            Job(
+                jid="j1",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                complete=True,
+            )
+        )
+        session.add(
+            JobReturn(jid="j1", minion_id="web-01", success=True, retcode=0, payload={})
+        )
+        session.commit()
+    rv = client.post("/minions/web-01/remove")
+    assert rv.status_code == 302
+    assert rv.headers["Location"] == "/minions/"
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+        assert (
+            get_session().query(JobReturn).filter_by(minion_id="web-01").count() == 1
+        )
+    assert "removed" in client.get("/minions/").data.decode().lower()
+
+
+def test_minion_row_remove_with_key_deletes_both(client, monkeypatch):
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        get_session().commit()
+    calls = []
+    salt = client.app.extensions["salt_client"]
+    orig_wheel = salt.wheel
+
+    def rec(fun, **kwargs):
+        calls.append((fun, kwargs))
+        return orig_wheel(fun, **kwargs)
+
+    monkeypatch.setattr(salt, "wheel", rec)
+    rv = client.post("/minions/web-01/remove", data={"delete_key": "yes"})
+    assert rv.status_code == 302
+    assert ("key.delete", {"match": "web-01"}) in calls
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+    assert "Salt key deleted" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_row_remove_without_key_leaves_key_alone(client, monkeypatch):
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        get_session().commit()
+    calls = []
+    salt = client.app.extensions["salt_client"]
+    orig_wheel = salt.wheel
+
+    def rec(fun, **kwargs):
+        calls.append((fun, kwargs))
+        return orig_wheel(fun, **kwargs)
+
+    monkeypatch.setattr(salt, "wheel", rec)
+    rv = client.post("/minions/web-01/remove")
+    assert rv.status_code == 302
+    assert [fun for fun, _ in calls if fun == "key.delete"] == []
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+
+
+def test_minion_row_remove_key_failure_keeps_snapshot(client, monkeypatch):
+    from overstate_ui.salt_client import SaltApiError
+
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        get_session().commit()
+    salt = client.app.extensions["salt_client"]
+    orig_wheel = salt.wheel
+
+    def boom(fun, **kwargs):
+        if fun == "key.delete":
+            raise SaltApiError("key busy")
+        return orig_wheel(fun, **kwargs)
+
+    monkeypatch.setattr(salt, "wheel", boom)
+    rv = client.post("/minions/web-01/remove", data={"delete_key": "yes"})
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is not None
+    assert "salt-api error" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_row_remove_unknown_minion(client):
+    rv = client.post("/minions/nope-01/remove")
+    assert rv.status_code == 302
+    assert "Unknown minion" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_row_actions_forbidden_for_viewer(client):
+    from overstate_ui.auth import _ph
+    from overstate_ui.models import User
+
+    with client.app.app_context():
+        get_session().add(
+            User(username="v", password_hash=_ph.hash("pw"), role="viewer")
+        )
+        get_session().commit()
+    viewer = client.app.test_client()
+    viewer.post("/login", data={"username": "v", "password": "pw"})
+    assert viewer.post("/minions/web-01/refresh").status_code == 403
+    assert viewer.post("/minions/web-01/remove").status_code == 403
 
 
 def test_minions_refresh_caches_grains(client):
