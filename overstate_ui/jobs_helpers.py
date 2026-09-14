@@ -77,6 +77,36 @@ def is_test_mode(fun: str, args: list[str]) -> bool:
     )
 
 
+def summarize_state_return(payload) -> dict | None:
+    """Succeeded/failed counts for one minion's return payload.
+
+    Real Salt minion returns carry no summary — only seed/mock rows do
+    — so count per-state ``result`` flags instead. ``True`` and ``None``
+    (test-mode "would change") count as succeeded, matching the job-level
+    ``success`` flag, which is False only when a state result is False.
+    Returns None when the payload isn't a state-result mapping, in which
+    case the caller renders no counts rather than "?".
+    """
+    if not isinstance(payload, dict):
+        return None
+    if isinstance(payload.get("succeeded"), int) and isinstance(
+        payload.get("failed"), int
+    ):
+        return {"succeeded": payload["succeeded"], "failed": payload["failed"]}
+    succeeded = failed = states = 0
+    for result in payload.values():
+        if not isinstance(result, dict) or "result" not in result:
+            continue
+        states += 1
+        if result["result"] is False:
+            failed += 1
+        else:
+            succeeded += 1
+    if not states:
+        return None
+    return {"succeeded": succeeded, "failed": failed}
+
+
 FLEET_PRESETS = {
     "pkg-install": {"tgt": "*", "tgt_type": "glob", "fun": "pkg.install", "args": ""},
     "pkg-remove": {"tgt": "*", "tgt_type": "glob", "fun": "pkg.remove", "args": ""},

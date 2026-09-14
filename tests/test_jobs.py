@@ -156,6 +156,70 @@ def test_detail_recovery_links(client):
     assert "check presence" in html
 
 
+def test_detail_counts_real_state_payload(client):
+    """Regression: real state returns carry no succeeded/failed keys —
+    the page must count per-state results instead of showing '?'."""
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20260910123000000009",
+                fun="state.apply",
+                tgt="web01",
+                tgt_type="list",
+                user="admin",
+                complete=True,
+            )
+        )
+        session.add(
+            JobReturn(
+                jid="20260910123000000009",
+                minion_id="web01",
+                success=False,
+                retcode=1,
+                payload={
+                    "pkg_|-nginx_|-nginx_|-installed": {
+                        "result": True,
+                        "changes": {},
+                    },
+                    "service_|-nginx_|-nginx_|-running": {
+                        "result": False,
+                        "changes": {},
+                    },
+                    "file_|-motd_|-/etc/motd_|-managed": {
+                        "result": True,
+                        "changes": {},
+                    },
+                },
+            )
+        )
+        session.commit()
+    html = client.get("/jobs/20260910123000000009").data.decode()
+    assert "2 succeeded, 1 failed" in html
+    assert "? succeeded" not in html
+
+
+def test_summarize_state_return_counts_results():
+    from overstate_ui.jobs_helpers import summarize_state_return
+
+    assert summarize_state_return(True) is None
+    assert summarize_state_return("ok") is None
+    assert summarize_state_return({}) is None
+    assert summarize_state_return({"outputter": "highstate"}) is None
+    assert summarize_state_return({"succeeded": 42, "failed": 0}) == {
+        "succeeded": 42,
+        "failed": 0,
+    }
+    assert summarize_state_return(
+        {
+            "a_|-b_|-c_|-d": {"result": True},
+            "e_|-f_|-g_|-h": {"result": False},
+            "i_|-j_|-k_|-l": {"result": None},
+            "not-a-state": {"changes": {}},
+        }
+    ) == {"succeeded": 2, "failed": 1}
+
+
 def test_new_prefills_fun_and_args(client):
     html = client.get(
         "/jobs/new?tgt=x&tgt_type=glob&fun=test.ping&args=a"

@@ -44,6 +44,7 @@ from .jobs_helpers import (
     parse_batch_fields,
     sort_jobs,
     suggest_glob,
+    summarize_state_return,
 )
 from .jobs_service import (
     build_sls_preview,
@@ -476,6 +477,7 @@ def detail(jid: str):
         batch_state=batch_state,
         killable=killable(job),
         kill_reports=kill_reports,
+        state_summary=summarize_state_return,
     )
 
 
