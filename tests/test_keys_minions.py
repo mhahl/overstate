@@ -173,9 +173,13 @@ def test_minions_row_kebab_menu_for_operator(client):
     assert "ellipsis-vertical" in html
     assert 'href="/jobs/new?bulk=web-01"' in html
     assert 'href="/jobs/new?tgt=web-01&amp;tgt_type=list&amp;fun=test.ping"' in html
-    assert 'action="/keys/accept"' in html
-    assert 'action="/keys/delete"' in html
-    assert 'name="next" value="/minions/"' in html
+    # Flat job menu only: no headings, no key ops (those live on Keys).
+    body = html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    assert "menu-title" not in body
+    assert 'action="/keys/accept"' not in body
+    assert 'action="/keys/delete"' not in body
+    # Rows near the panel bottom open upward so the menu is not clipped.
+    assert "dropdown-top" in html
 
 
 def test_minions_row_menu_hidden_for_viewer(client):
