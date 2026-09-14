@@ -100,6 +100,11 @@ def index():
     caps = read_capability_cache()
     if caps is None:
         target = ping_target()
+        if target is None:
+            # Fresh enrollment with no snapshot rows yet: refresh once so
+            # the probe has something to ping instead of reporting no
+            # target. Best effort — falls back to probing as before.
+            target = refresh_then_target(client)
         probe_job = queue_or_none(capabilities_task, target)
         if probe_job is not None:
             status, value = wait_for(probe_job, wait=5.0)
@@ -123,6 +128,32 @@ def ping_target() -> str | None:
     """One accepted minion for the execution-door probe, or None."""
     row = get_session().query(Minion.id).order_by(Minion.id).first()
     return row[0] if row else None
+
+
+def refresh_then_target(client, wait: float = 10.0) -> str | None:
+    """Best-effort fleet refresh so the ping probe has a target after a
+    fresh enrollment. Offline-safe: any Salt failure yields None and the
+    caller probes as before. Only runs on a cache miss with an empty
+    snapshot table, so steady-state dashboard loads pay nothing."""
+    from .tasks import queue_or_none, refresh_inventory_task, wait_for
+
+    job = queue_or_none(refresh_inventory_task)
+    if job is None:
+        # No worker/Redis: synchronous fallback (dev fleets are tiny).
+        from .inventory import refresh_inventory
+        from .minions_helpers import live_roster
+        from .salt_client import SaltApiError
+
+        try:
+            statuses, _, _ = live_roster(client)
+            refresh_inventory(client, statuses)
+        except (SaltApiError, httpx.HTTPError):
+            return None
+    else:
+        status, _ = wait_for(job, wait=wait)
+        if status != "ready":
+            return ping_target()
+    return ping_target()
 
 
 def capability_checks(caps: dict) -> list:

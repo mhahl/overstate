@@ -157,6 +157,48 @@ def test_ping_failure_with_target_keeps_grant_guidance():
     assert ping["grant"] == "Grant execution functions to the eauth user"
 
 
+def test_refresh_then_target_populates_empty_fleet(app):
+    from overstate_ui.dashboard import ping_target, refresh_then_target
+    from overstate_ui.db import get_session
+    from overstate_ui.models import Minion
+
+    class GrainsClient:
+        def wheel(self, fun, **kwargs):
+            return [{"data": {"return": {"minions": ["m1"], "minions_pre": []}}}]
+
+        def runner(self, fun, **kwargs):
+            return [{"up": ["m1"], "down": []}]
+
+        def local(self, tgt, fun, **kwargs):
+            if fun == "grains.items":
+                return [{"m1": {"osfinger": "TestOS"}}]
+            return [{tgt: True}]
+
+    with app.app_context():
+        assert get_session().query(Minion).count() == 0
+        assert ping_target() is None
+        assert refresh_then_target(GrainsClient()) == "m1"
+        assert ping_target() == "m1"
+
+
+def test_refresh_then_target_offline_safe(app):
+    from overstate_ui.dashboard import refresh_then_target
+    from overstate_ui.salt_client import SaltApiError
+
+    class DownClient:
+        def wheel(self, fun, **kwargs):
+            raise SaltApiError("refused")
+
+        def runner(self, fun, **kwargs):
+            raise SaltApiError("refused")
+
+        def local(self, tgt, fun, **kwargs):
+            raise SaltApiError("refused")
+
+    with app.app_context():
+        assert refresh_then_target(DownClient()) is None
+
+
 def test_isolated_app_teardown_uses_live_registry(app):
     """Fresh worker processes start with db._Session unset; teardown
     must use the registry rebound by create_app, not a stale import."""
