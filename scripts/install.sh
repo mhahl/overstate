@@ -170,6 +170,16 @@ for var in "APP_DOMAIN=overstate.sigaint.au" \
     "API_DOMAIN=overstate-api.sigaint.au"; do
   grep -q "^${var%%=*}=" "$ENV_FILE" || printf '%s\n' "$var" >> "$ENV_FILE"
 done
+# The app container runs as root while the states checkout is typically
+# owned by the admin user, so git would refuse it as "dubious ownership"
+# and the Files page would report "not a git checkout". Mark the shared
+# checkout safe (append-if-absent, like the domains above, so re-runs
+# and manual edits survive).
+for var in "GIT_CONFIG_COUNT=1" \
+    "GIT_CONFIG_KEY_0=safe.directory" \
+    "GIT_CONFIG_VALUE_0=/srv/states"; do
+  grep -q "^${var%%=*}=" "$ENV_FILE" || printf '%s\n' "$var" >> "$ENV_FILE"
+done
 if [ -n "$ADMIN_PASSWORD" ] && ! grep -q "^ADMIN_PASSWORD=" "$ENV_FILE"; then
   printf 'ADMIN_PASSWORD=%s\n' "$ADMIN_PASSWORD" >> "$ENV_FILE"
   chmod 600 "$ENV_FILE"

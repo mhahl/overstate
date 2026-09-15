@@ -8,6 +8,12 @@ RUN npm run build:css -- --minify
 
 FROM python:3.12-slim
 
+# git powers the Files page "Sync now" button (fetch + pull --ff-only
+# on the file-roots checkout). No openssh-client: remotes are https.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY pyproject.toml requirements.lock ./
 COPY alembic.ini ./

@@ -86,10 +86,14 @@ states. Follow the whole chain before changing any link of it:
 
 Sync activates only when the directory is a git checkout with an
 upstream: the install seed is plain files, so turn it into a checkout
-(clone your states repo there) to light up the button. Anything else
-— diverged branches, uncommitted trees, missing upstream — makes Sync
-refuse with the git reason and change nothing, and every attempt is
-audited.
+(clone your states repo there) to light up the button. Two prerequisites
+are handled for you — git ships in the app image (`Containerfile`),
+and `install.sh` marks `/srv/states` a safe directory in
+`overstate.env` because the container runs as root while the checkout
+is usually owned by your admin user (without that, git refuses and the
+page reports "not a git checkout"). Anything else — diverged branches,
+uncommitted trees, missing upstream — makes Sync refuse with the git
+reason and change nothing, and every attempt is audited.
 
 ## Set up the Salt master
 
