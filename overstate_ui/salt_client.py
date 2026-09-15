@@ -19,6 +19,15 @@ class SaltApiError(RuntimeError):
     pass
 
 
+def _short_reason(resp: httpx.Response) -> str:
+    """Last body line, capped: runner tracebacks end with the real error."""
+    try:
+        lines = [ln.strip() for ln in resp.text.splitlines() if ln.strip()]
+    except Exception:  # noqa: BLE001 — best effort only
+        return ""
+    return f": {lines[-1][:200]}" if lines else ""
+
+
 class SaltClient:
     def __init__(
         self,
@@ -100,7 +109,9 @@ class SaltClient:
             self.login(http_timeout=http_timeout)
             return self._post(payload, retry=False, http_timeout=http_timeout)
         if resp.status_code != 200:
-            raise SaltApiError(f"salt-api call failed: HTTP {resp.status_code}")
+            raise SaltApiError(
+                f"salt-api call failed: HTTP {resp.status_code}{_short_reason(resp)}"
+            )
         return resp.json()["return"]
 
     def wheel(self, fun: str, http_timeout: float | None = None, **kwargs: Any) -> Any:

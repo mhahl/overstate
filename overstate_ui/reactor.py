@@ -33,6 +33,8 @@ bp = Blueprint("reactor", __name__, url_prefix="/reactor")
 
 # Event tags are slash-separated globs; quotes and shell metacharacters
 # never belong in one.
+NOT_RUNNING = "Reactor system is not running"
+
 EVENT_RE = re.compile(r"^[A-Za-z0-9_./*?\[\]{}|+=:,@-]+$")
 SLS_RE = re.compile(r"^[A-Za-z0-9_./:\-]+$")
 MAX_EVENT_LEN = 256
@@ -148,6 +150,9 @@ def index():
         entries, raw = parse_reactor_list(value)
     except SaltApiError as exc:
         error = f"salt-api error: {exc}"
+    # A master without reactor configured answers with "Reactor system
+    # is not running" — an empty state with setup guidance, not an error.
+    disabled = error is not None and NOT_RUNNING in error
     rows = [
         {
             "event": event,
@@ -168,7 +173,8 @@ def index():
         "reactor.html",
         rows=rows,
         raw=raw,
-        error=error,
+        error=None if disabled else error,
+        disabled=disabled,
         q=request.args.get("q", ""),
         sort=sort,
         direction=direction,
@@ -294,6 +300,7 @@ def export():
         entries, _ = parse_reactor_list(value)
     except SaltApiError as exc:
         error = f"salt-api error: {exc}"
+    disabled = error is not None and NOT_RUNNING in error
     body = render_export(entries) if not error else ""
     if request.args.get("download") == "1" and not error:
         return Response(
@@ -302,5 +309,9 @@ def export():
             headers={"Content-Disposition": "attachment; filename=reactor.conf"},
         )
     return render_template(
-        "reactor_export.html", body=body, error=error, total=len(entries)
+        "reactor_export.html",
+        body=body,
+        error=None if disabled else error,
+        disabled=disabled,
+        total=len(entries),
     )
