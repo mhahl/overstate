@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from .models import JobReturn
 from .salt_client import SaltApiError
 from .tasks_queue import app_context, get_redis_client
 
@@ -72,6 +73,7 @@ def run_wave_batch(
     session = get_session()
     client = build_client()
     failures = 0
+    missing_total = 0
     status = "complete"
     for num, wave in enumerate(waves, 1):
         if batch_cancelled(group):
@@ -122,13 +124,23 @@ def run_wave_batch(
             if done or time.monotonic() >= deadline:
                 break
             time.sleep(5)
+        returned = session.query(JobReturn).filter_by(jid=jid).count()
         wave_failures = (
             session.query(JobReturn).filter_by(jid=jid, success=False).count()
         )
-        failures += wave_failures
+        # Silent minions trip the failure gate too: no return by the
+        # deadline counts the same as a failed return.
+        missing = max(0, len(targets) - returned)
+        missing_total += missing
+        failures += wave_failures + missing
         log_event(user, f"batch-wave:{group}:{num}", jid=jid)
         parent, state = _parent_state(session, group)
-        state.update(failures=failures, waves_done=num, status="running")
+        state.update(
+            failures=failures,
+            waves_done=num,
+            status="running",
+            missing=missing_total,
+        )
         parent.batch_state = state
         session.commit()
         if failures >= stop_after:
@@ -139,7 +151,7 @@ def run_wave_batch(
     if parent is not None:
         parent.complete = True
         _, state = _parent_state(session, group)
-        state.update(failures=failures, status=status)
+        state.update(failures=failures, status=status, missing=missing_total)
         parent.batch_state = state
         session.commit()
     log_event(user, f"batch-{status}:{group}")
@@ -169,23 +181,54 @@ def _orch_success(payload: Any) -> bool:
     return True
 
 
+def _store_job_return(session, jid: str, mid: str, success: bool, payload) -> None:
+    """Insert or update one job return: retries must merge, not duplicate."""
+    existing = session.query(JobReturn).filter_by(jid=jid, minion_id=mid).first()
+    if existing is None:
+        session.add(
+            JobReturn(
+                jid=jid,
+                minion_id=mid,
+                success=success,
+                retcode=0 if success else 1,
+                payload=payload,
+            )
+        )
+    else:
+        existing.success = success
+        existing.payload = payload
+
+
 def run_orchestrate_task(
     jid: str, mods: str, saltenv: str, test: bool, pillar: dict, user: str
 ) -> dict:
     """Run state.orchestrate and store its output as job returns."""
+    from .audit import log_event
     from .db import get_session
-    from .models import Job, JobReturn
+    from .models import Job
     from .tasks import build_client
 
     with app_context():
         client = build_client()
-        result = client.runner(
-            "state.orchestrate",
-            mods=mods,
-            saltenv=saltenv or "base",
-            pillar=pillar or {},
-            test=test,
-        )
+        try:
+            result = client.runner(
+                "state.orchestrate",
+                mods=mods,
+                saltenv=saltenv or "base",
+                pillar=pillar or {},
+                test=test,
+            )
+        except (SaltApiError, httpx.HTTPError) as exc:
+            # A denied or unreachable orchestrate must land in History as
+            # a visible failure, never sit Running forever.
+            session = get_session()
+            job = session.get(Job, jid)
+            if job is not None:
+                job.complete = True
+            _store_job_return(session, jid, "master", False, {"output": str(exc)})
+            session.commit()
+            log_event(user, f"orchestrate-failed:{mods}", jid=jid)
+            return {"jid": jid, "minions": 0, "error": str(exc)}
         returns = result[0] if isinstance(result, list) else result
         if not isinstance(returns, dict):
             returns = {"output": returns}
@@ -196,14 +239,6 @@ def run_orchestrate_task(
         for mid, payload in returns.items():
             if not isinstance(payload, dict):
                 payload = {"output": payload}
-            session.add(
-                JobReturn(
-                    jid=jid,
-                    minion_id=str(mid),
-                    success=_orch_success(payload),
-                    retcode=0,
-                    payload=payload,
-                )
-            )
+            _store_job_return(session, jid, str(mid), _orch_success(payload), payload)
         session.commit()
         return {"jid": jid, "minions": len(returns)}

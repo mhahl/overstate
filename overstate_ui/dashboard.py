@@ -33,8 +33,9 @@ def snapshot_versions() -> dict[str, int]:
     """{saltversion: count} from the grain snapshot cache. Fallback
     when the master won't answer manage.versions."""
     counts: dict[str, int] = {}
-    for row in get_session().query(Minion).all():
-        version = (row.grains or {}).get("saltversion")
+    # Grains column only: full rows would drag every minion's grains JSON.
+    for (grains,) in get_session().query(Minion.grains).all():
+        version = (grains or {}).get("saltversion")
         if version:
             version = str(version)
             counts[version] = counts.get(version, 0) + 1

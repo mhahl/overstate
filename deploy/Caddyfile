@@ -9,10 +9,15 @@
 }
 
 {$APP_DOMAIN:overstate.sigaint.au} {
-	encode gzip
+	# EventSource requests accept SSE; leave them unencoded so events
+	# flush as yielded instead of buffering behind gzip.
+	@notsse {
+		not header Accept text/event-stream*
+	}
+	encode @notsse gzip
 	reverse_proxy https://overstate-app:8000 {
-		# The app trusts one proxy (ProxyFix) and reads the public
-		# host/port from these for CSRF origin checks and url_for.
+		# The app trusts one proxy (ProxyFix, TRUST_PROXY=1) and reads
+		# the public host/port from these for CSRF origin checks and url_for.
 		header_up X-Forwarded-Host {host}
 		header_up X-Forwarded-Port {http.request.port}
 		transport http {
@@ -23,7 +28,11 @@
 }
 
 {$API_DOMAIN:overstate-api.sigaint.au} {
-	encode gzip
+	# Same SSE exclusion as the app block: never gzip event streams.
+	@notsse {
+		not header Accept text/event-stream*
+	}
+	encode @notsse gzip
 	reverse_proxy https://overstate-salt-master:8000 {
 		header_up X-Forwarded-Host {host}
 		header_up X-Forwarded-Port {http.request.port}

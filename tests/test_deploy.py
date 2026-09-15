@@ -154,6 +154,13 @@ def test_install_targets_leap_16():
     assert guide.startswith("# Install on openSUSE Leap 16")
 
 
+def test_caddy_skips_gzip_for_event_streams():
+    text = (REPO / "deploy" / "Caddyfile").read_text()
+    assert "text/event-stream" in text
+    assert "encode @notsse gzip" in text
+    assert "not header Accept text/event-stream" in text
+
+
 def test_install_wires_domains_and_caddy():
     install = (REPO / "scripts" / "install.sh").read_text()
     assert "APP_DOMAIN=overstate.sigaint.au" in install
@@ -164,3 +171,17 @@ def test_install_wires_domains_and_caddy():
     assert "overstate-caddy.service" in update
     uninstall = (REPO / "scripts" / "uninstall.sh").read_text()
     assert "overstate-caddy" in uninstall
+
+
+def test_redis_requires_a_password():
+    compose = (REPO / "compose.yml").read_text()
+    assert "--requirepass" in compose
+    assert "REDIS_PASSWORD" in compose
+    assert "redis://redis:6379/0" not in compose
+    redis_unit = (REPO / "deploy" / "quadlet" / "overstate-redis.container").read_text()
+    assert "--requirepass" in redis_unit
+    install = (REPO / "scripts" / "install.sh").read_text()
+    assert "REDIS_PASSWORD" in install
+    assert "REDIS_URL=redis://:" in install
+    example = (REPO / ".env.example").read_text()
+    assert "REDIS_PASSWORD" in example

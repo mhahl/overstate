@@ -25,6 +25,7 @@
     <form method="post" class="card-body md:col-span-3 gap-3 md:p-8">
       <h1 class="card-title text-lg">Log in</h1>
       {{ form.csrf_token }}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, m in messages %}<div class="alert {{ 'alert-error' if category == 'error' else 'alert-info' }} mb-2" role="alert">{{ m }}</div>{% endfor %}
@@ -42,7 +43,7 @@
         <button class="btn btn-primary btn-block">Log in</button>
         {% if sso %}
         <div class="divider my-1">or</div>
-        <a class="btn btn-outline btn-block" href="{{ url_for('auth.oidc_login') }}">
+        <a class="btn btn-outline btn-block" href="{{ url_for('auth.oidc_login', next=next) if next else url_for('auth.oidc_login') }}">
           <span class="icon-[lucide--key] size-4" aria-hidden="true"></span>
           Log in with SSO
         </a>

@@ -40,7 +40,7 @@
     <div class="flex flex-wrap items-center gap-2">
       <h2 class="card-title text-base">Batch</h2>
       <span class="badge badge-sm {{ 'badge-success' if batch_state.status == 'complete' else ('badge-error' if batch_state.status in ('stopped', 'cancelled') else 'badge-info') }}">{{ batch_state.status }}</span>
-      <span class="text-sm opacity-70">{{ batch_state.waves_done | default(0) }}/{{ batch_state.waves }} waves · {{ batch_state.failures | default(0) }} failures · stop after {{ batch_state.stop_after }}</span>
+      <span class="text-sm opacity-70">{{ batch_state.waves_done | default(0) }}/{{ batch_state.waves }} waves · {{ batch_state.failures | default(0) }} failures{% if batch_state.missing %} ({{ batch_state.missing }} missing){% endif %} · stop after {{ batch_state.stop_after }}</span>
       {% if batch_state.status == "running" and current_user.role in ["operator", "admin"] %}
       <form method="post" action="{{ url_for('jobs.cancel_batch', group=job.batch_group) }}" class="ml-auto" data-confirm="Stop batch {{ job.batch_group }}? Remaining waves will not run.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -85,36 +85,54 @@
   var note = document.getElementById("live-note");
   var lastReturned = -1;
   var completeSeen = false;
-  var missing = {};
+  var reconnecting = false;
+  var sessionExpired = false;
+  var pending = {};
+  var liveSrc = null;
+  function setNote(text) { if (note) note.textContent = text; }
   function fetchPanel(mid, onload) {
+    if (pending[mid]) return;
+    pending[mid] = true;
     fetch(panelUrl.split("__MID__").join(encodeURIComponent(mid)))
       .then(function (r) { if (!r.ok) throw new Error("panel"); return r.text(); })
-      .then(onload)
-      .catch(function () { missing[mid] = true; });
+      .then(function (html) {
+        delete pending[mid];
+        var tmp = document.createElement("div");
+        tmp.innerHTML = html;
+        if (!tmp.querySelector("[data-panel-mid]")) {
+          sessionExpired = true;
+          if (liveSrc) liveSrc.close();
+          setNote("Session expired. Reload.");
+          return;
+        }
+        onload(html);
+      })
+      .catch(function () { delete pending[mid]; });
   }
   function upgradePanels(s) {
     (s.minions || []).forEach(function (mid) {
-      if (missing[mid]) return;
-      var existing = panels.querySelectorAll('[data-panel-mid="' + CSS.escape(mid) + '"]');
+      if (pending[mid]) return;
+      var sel = '[data-panel-mid="' + CSS.escape(mid) + '"]';
+      var existing = panels.querySelectorAll(sel);
       if (!existing.length) {
         fetchPanel(mid, function (html) {
+          if (panels.querySelector(sel)) return;
           var empty = document.getElementById("no-returns");
           if (empty) empty.remove();
           panels.insertAdjacentHTML("beforeend", html);
         });
       } else if (s.returned > lastReturned) {
         // A panel rendered from the live cache upgrades once its
-        // returner row lands; settled panels are never refetched,
-        // so open ones stay exactly as left.
+        // returner row lands; settled panels are never refetched.
         var live = Array.from(existing).filter(function (el) {
           return el.getAttribute("data-live") === "1";
         });
         if (live.length) {
           fetchPanel(mid, function (html) {
+            var tmp = document.createElement("div");
+            tmp.innerHTML = html;
+            var fresh = tmp.querySelector("[data-panel-mid]") || tmp.firstElementChild;
             live.forEach(function (el) {
-              var tmp = document.createElement("div");
-              tmp.innerHTML = html;
-              var fresh = tmp.firstElementChild;
               if (el.open) fresh.open = true;
               el.replaceWith(fresh.cloneNode(true));
             });
@@ -126,31 +144,36 @@
   }
   function connect() {
     var src = new EventSource("{{ url_for('jobs.stream', jid=job.jid) }}");
+    liveSrc = src;
+    src.onopen = function () {
+      reconnecting = false;
+      if (!completeSeen && !sessionExpired) setNote("Live…");
+    };
     src.onmessage = function (ev) {
       var s = JSON.parse(ev.data);
       document.getElementById("live-returned").textContent = s.returned;
       document.getElementById("live-failed").textContent = s.failed;
-      if (s.returned !== lastReturned) missing = {};
+      if (!completeSeen && !sessionExpired) setNote("Live…");
       upgradePanels(s);
       if (s.complete) {
         completeSeen = true;
-        note.textContent = "Complete. Reloading…";
+        setNote("Complete. Reloading…");
         src.close();
         setTimeout(function () { location.reload(); }, 1500);
       }
     };
     src.addEventListener("done", function () {
-      // The server caps each connection; jobs outliving it reconnect
-      // instead of freezing on a stale "Live…" note.
+      // Server ends the stream after 30 ticks; open a new EventSource.
       src.close();
-      if (!completeSeen) {
-        note.textContent = "Reconnecting…";
-        setTimeout(connect, 2000);
-      }
+      if (completeSeen) return;
+      reconnecting = true;
+      setNote("Reconnecting…");
+      setTimeout(connect, 2000);
     });
     src.onerror = function () {
-      note.textContent = "Connection lost. Reload to retry.";
       src.close();
+      if (completeSeen || reconnecting) return;
+      setNote("Connection lost. Reload to retry.");
     };
   }
   connect();

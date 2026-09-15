@@ -90,7 +90,10 @@ class JobReturn(Base):
     retcode: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     payload: Mapped[dict] = mapped_column("return", JSON, nullable=False, default=dict)
 
-    __table_args__ = (Index("ix_job_returns_jid", "jid"),)
+    __table_args__ = (
+        Index("ix_job_returns_jid", "jid"),
+        UniqueConstraint("jid", "minion_id", name="uq_job_returns_jid_minion"),
+    )
 
 
 class AuditEvent(Base):

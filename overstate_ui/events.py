@@ -74,4 +74,8 @@ def stream():
             yield 'event: error\ndata: {"error": "event stream idle timeout"}\n\n'
         yield "event: done\ndata: {}\n\n"
 
-    return Response(stream_with_context(filtered()), mimetype="text/event-stream")
+    return Response(
+        stream_with_context(filtered()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

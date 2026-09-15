@@ -61,7 +61,9 @@ class SaltClient:
                     "password": self.password,
                     "eauth": self.eauth,
                 },
-                timeout=http_timeout if http_timeout is not None else self._default_timeout,
+                timeout=http_timeout
+                if http_timeout is not None
+                else self._default_timeout,
             )
         except httpx.HTTPError as exc:
             raise SaltApiError(f"salt-api unreachable: {exc}") from exc
@@ -87,7 +89,10 @@ class SaltClient:
         timeout = http_timeout if http_timeout is not None else self._default_timeout
         try:
             resp = self._http.post(
-                "/", json=payload, headers={"X-Auth-Token": self._token}, timeout=timeout
+                "/",
+                json=payload,
+                headers={"X-Auth-Token": self._token},
+                timeout=timeout,
             )
         except httpx.HTTPError as exc:
             raise SaltApiError(f"salt-api unreachable: {exc}") from exc

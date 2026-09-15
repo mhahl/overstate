@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from .auth import roles_required
@@ -15,6 +15,15 @@ from .models import Minion, PillarSnapshot
 from .salt_client import SaltApiError
 
 bp = Blueprint("pillar", __name__, url_prefix="/pillar")
+
+
+def _exact_mid(mid: str) -> str:
+    """A path minion id is one exact minion: glob characters would fan a
+    single-minion read out to the fleet, so they 404 instead."""
+    if not mid or any(c in mid for c in "*?[]"):
+        abort(404)
+    return mid
+
 
 SNAPSHOT_LIMIT = 10
 
@@ -56,7 +65,7 @@ def capture_pillar(mid: str) -> PillarSnapshot:
     """Fetch rendered pillar via salt-api and store a snapshot, pruning to
     the newest SNAPSHOT_LIMIT rows for the minion."""
     client = get_salt()
-    payload = client.local(mid, "pillar.items")[0].get(mid)
+    payload = client.local(mid, "pillar.items", tgt_type="list")[0].get(mid)
     if not isinstance(payload, dict):
         raise SaltApiError(f"no pillar data returned for {mid}")
     session = get_session()
@@ -134,11 +143,12 @@ def index():
 @bp.route("/<mid>")
 @login_required
 def detail(mid: str):
+    mid = _exact_mid(mid)
     snaps = snapshots_for(mid)
     live = None
     error = None
     try:
-        live = get_salt().local(mid, "pillar.items")[0].get(mid)
+        live = get_salt().local(mid, "pillar.items", tgt_type="list")[0].get(mid)
     except SaltApiError as exc:
         error = str(exc)
     return render_template(
@@ -154,6 +164,7 @@ def detail(mid: str):
 @bp.post("/<mid>/capture")
 @roles_required("operator")
 def capture(mid: str):
+    mid = _exact_mid(mid)
     try:
         capture_pillar(mid)
     except SaltApiError as exc:
@@ -201,7 +212,7 @@ def _resolve(mid: str, rev: str) -> dict | None:
     session = get_session()
     if rev == "live":
         try:
-            data = get_salt().local(mid, "pillar.items")[0].get(mid)
+            data = get_salt().local(mid, "pillar.items", tgt_type="list")[0].get(mid)
         except SaltApiError:
             return None
         return data if isinstance(data, dict) else None

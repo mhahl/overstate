@@ -8,9 +8,9 @@
 </div>
 {% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
 <div class="card bg-base-100 border border-base-300 shadow-sm">
-<div class="tabs tabs-border px-3 pt-2" role="tablist">
+<div class="tabs tabs-border px-3 pt-2">
   {% for t in tabs %}
-  <a role="tab" href="{{ url_for('minions.detail', mid=mid, tab=t) }}" class="tab{% if tab == t %} tab-active{% endif %}">{{ t|capitalize }}</a>
+  <a href="{{ url_for('minions.detail', mid=mid, tab=t) }}" class="tab{% if tab == t %} tab-active{% endif %}">{{ t|capitalize }}</a>
   {% endfor %}
 </div>
 <div class="border-t border-base-300">
@@ -110,18 +110,32 @@
   </div>
   <script>
   (function () {
-    fetch({{ url_for('minions.presence')|tojson }})
-      .then(function (r) { return r.json(); })
-      .then(function (map) {
-        var state = map[{{ mid|tojson }}];
-        if (!state) return;
-        var dot = document.getElementById('presence-dot');
-        var text = document.getElementById('presence-text');
-        dot.classList.remove('animate-pulse');
-        dot.classList.add(state === 'up' ? 'status-success' : (state === 'dead' ? 'status-warning' : 'status-error'));
-        text.textContent = state === 'up' ? 'up' : (state === 'dead' ? 'accepted, dead' : 'down');
-      })
-      .catch(function () {});
+    // Presence must leave "checking": unknown minions and a down
+    // salt-api both settle the pulse, with one retry on failure.
+    var retries = 1;
+    function settle(text, cls) {
+      var dot = document.getElementById('presence-dot');
+      var label = document.getElementById('presence-text');
+      if (!dot || !label) return;
+      dot.classList.remove('animate-pulse');
+      if (cls) dot.classList.add(cls);
+      label.textContent = text;
+    }
+    function poll() {
+      fetch({{ url_for('minions.presence')|tojson }})
+        .then(function (r) { return r.json(); })
+        .then(function (map) {
+          var state = map[{{ mid|tojson }}];
+          if (!state) { settle('unknown'); return; }
+          settle(state === 'up' ? 'up' : (state === 'dead' ? 'accepted, dead' : 'down'),
+                 state === 'up' ? 'status-success' : (state === 'dead' ? 'status-warning' : 'status-error'));
+        })
+        .catch(function () {
+          if (retries > 0) { retries -= 1; setTimeout(poll, 5000); return; }
+          settle('presence unavailable');
+        });
+    }
+    poll();
   })();
   </script>
 {% elif tab == "jobs" %}
@@ -233,6 +247,41 @@
   <p class="text-sm opacity-70">Beacon definitions live in pillar. <a class="link" href="https://docs.saltproject.io/en/3006/topics/beacons/index.html" target="_blank" rel="noopener">Salt beacon documentation</a></p>
 </div>
 {% endif %}
+</div>
+{% elif tab == "schedule" %}
+<div class="p-4 flex flex-col gap-4">
+<div class="flex flex-wrap items-center gap-2">
+  <p class="font-semibold me-auto">Schedules</p>
+  {% if data.sched_enabled is not none %}{% if data.sched_enabled %}<span class="badge badge-sm badge-success">scheduler enabled</span>{% else %}<span class="badge badge-sm badge-warning">scheduler disabled</span>{% endif %}{% endif %}
+  <a class="link text-xs" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>
+</div>
+{% if data.schedule_rows %}
+<div class="overflow-x-auto rounded-box border border-base-300">
+<table class="table table-sm table-zebra"><thead><tr><th>Job</th><th>Function</th><th>Runs</th><th>Arguments</th><th>Status</th></tr></thead><tbody>
+{% for row in data.schedule_rows %}
+<tr><td class="font-mono text-xs">{{ row.name }}</td>
+<td class="font-mono text-xs break-all">{{ row.function or "–" }}</td>
+<td class="text-xs whitespace-nowrap">{{ row.every }}</td>
+<td class="font-mono text-xs break-all">{% if row.arguments %}{{ row.arguments }}{% else %}–{% endif %}</td>
+<td>{% if row.enabled %}<span class="badge badge-sm badge-success">enabled</span>{% else %}<span class="badge badge-sm badge-ghost">disabled</span>{% endif %}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% endif %}
+{% if data.schedule is mapping %}
+<details class="collapse collapse-arrow border border-base-300"><summary class="collapse-title text-sm font-medium">Raw JSON (advanced)</summary><div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.schedule | tojson(indent=1) }}</code></pre></div></details>
+{% elif data.schedule is string %}
+<pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ data.schedule }}</code></pre>
+{% endif %}
+</div>
+{% elif tab == "pillar" %}
+<div class="p-4 flex flex-col gap-4">
+<div class="flex flex-wrap items-center gap-2">
+  <p class="font-semibold me-auto">Pillar</p>
+  <a class="link text-xs" href="https://docs.saltproject.io/en/3006/topics/pillar/index.html" target="_blank" rel="noopener">Salt pillar documentation</a>
+</div>
+{{ data.pillar_html | safe }}
+<details class="collapse collapse-arrow border border-base-300"><summary class="collapse-title text-sm font-medium">Raw JSON (advanced)</summary><div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.pillar | tojson(indent=1) }}</code></pre></div></details>
 </div>
 {% else %}
 <div class="p-4"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.get(tab, data.get("highstate", data.get("schedule", data.get("pillar", "No data")))) | tojson(indent=1) }}</code></pre></div>

@@ -162,7 +162,9 @@ def list_functions_now(client, minion: str) -> list[str]:
 
     Raises SaltApiError on failure (caller falls back to presets).
     """
-    payload = client.local(minion, "sys.list_functions")[0].get(minion, [])
+    payload = client.local(minion, "sys.list_functions", tgt_type="list")[0].get(
+        minion, []
+    )
     names: set[str] = set()
     if isinstance(payload, dict):
         for funs in payload.values():
@@ -190,7 +192,7 @@ def show_sls_now(client, minion: str, sls_list: list[str], via: str = "local") -
     rendered: dict = {}
     for sls in sls_list:
         payload = client.local(
-            minion, "state.show_sls", arg=[sls], timeout=30, via=via
+            minion, "state.show_sls", arg=[sls], timeout=30, via=via, tgt_type="list"
         )[0].get(minion)
         if isinstance(payload, dict):
             rendered[sls] = payload
@@ -211,7 +213,9 @@ def show_highstate_now(client, minion: str, via: str = "local") -> dict:
     never writes it into job history. Raises SaltApiError on failure;
     the view degrades to stored data plus an advisory note.
     """
-    payload = client.local(minion, "state.show_highstate", via=via)[0].get(minion)
+    payload = client.local(minion, "state.show_highstate", via=via, tgt_type="list")[
+        0
+    ].get(minion)
     return payload if isinstance(payload, dict) else {}
 
 
@@ -246,7 +250,9 @@ def mine_get_task(reader: str, tgt: str, fun: str, tgt_type: str = "glob") -> di
 def fun_doc_now(client, minion: str, fun: str) -> str:
     """Trimmed sys.doc text for one function. Empty when Salt says
     nothing (caller renders the no-docs note)."""
-    payload = client.local(minion, "sys.doc", arg=[fun])[0].get(minion, {})
+    payload = client.local(minion, "sys.doc", arg=[fun], tgt_type="list")[0].get(
+        minion, {}
+    )
     text = payload.get(fun, "") if isinstance(payload, dict) else payload
     return "\n".join(str(text or "").strip().splitlines()[:FUN_DOC_LINES])
 
@@ -297,6 +303,7 @@ def probe_capabilities(
                 "test.ping",
                 timeout=PING_SALT_TIMEOUT,
                 http_timeout=http_timeout,
+                tgt_type="list",
             ),
         )
     return out

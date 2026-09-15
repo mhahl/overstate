@@ -1,6 +1,7 @@
 """Read-only file-roots browser. States live in git; deployment syncs the
 checkout; the app only reads. There is intentionally no write path here."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from flask import (
 from flask_login import current_user, login_required
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
-from pygments.lexers import YamlLexer
+from pygments.lexers import JsonLexer, YamlLexer
 
 from .audit import log_event
 from .auth import roles_required
@@ -45,6 +46,21 @@ def highlight_yaml(content: str) -> str:
     """
     return highlight(
         content, YamlLexer(), HtmlFormatter(linenos="table", cssclass="codehl")
+    )
+
+
+def highlight_json(data) -> str:
+    """Syntax-highlight a JSON-serializable payload as an HTML fragment.
+
+    Shares the ``codehl`` stylesheet and line numbers with
+    :func:`highlight_yaml`; used for structured Salt data (pillar)
+    where YAML source is unavailable. Keys are sorted and exotic
+    values stringified so the view is stable and never crashes.
+    """
+    return highlight(
+        json.dumps(data, indent=1, sort_keys=True, default=str),
+        JsonLexer(),
+        HtmlFormatter(linenos="table", cssclass="codehl"),
     )
 
 

@@ -10,6 +10,7 @@ from flask_login import login_required
 
 from .dashboard import get_salt, ping_target
 from .jobs import TGT_TYPES, resolve_group_target
+from .jobs_helpers import FUN_RE
 from .salt_client import SaltApiError
 
 bp = Blueprint("mine", __name__, url_prefix="/mine")
@@ -28,7 +29,9 @@ def index():
         direction = "asc"
     entries: dict = {}
     error = None
-    if tgt and fun:
+    if fun and not FUN_RE.match(fun):
+        error = "Invalid function name."
+    if tgt and fun and error is None:
         query_tgt, query_type = tgt, tgt_type
         if tgt_type == "group":
             try:

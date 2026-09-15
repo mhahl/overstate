@@ -7,6 +7,10 @@ Wants=network-online.target
 ContainerName=redis
 Image=docker.io/library/redis:7-alpine
 Network=overstate.network
+# RQ pickles job payloads, so the queue is authenticated (REDIS_PASSWORD
+# comes from /etc/overstate/overstate.env, written by install.sh).
+EnvironmentFile=/etc/overstate/overstate.env
+Exec=redis-server --requirepass ${REDIS_PASSWORD}
 
 [Service]
 Restart=always

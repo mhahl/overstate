@@ -7,7 +7,7 @@ from overstate_ui import create_app
 from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
-from overstate_ui.models import Minion, User, WatchedState
+from overstate_ui.models import Minion, User
 from overstate_ui.salt_client import SaltClient
 from overstate_ui.seed_mock import seed as seed_mock
 
@@ -42,11 +42,11 @@ def _transport(schedule_entries):
                 },
             )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [{"up": ["web-01"], "down": []}]})
-        if body.get("client") == "local" and body.get("fun") == "schedule.list":
             return httpx.Response(
-                200, json={"return": [{"web-01": schedule_entries}]}
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
             )
+        if body.get("client") == "local" and body.get("fun") == "schedule.list":
+            return httpx.Response(200, json={"return": [{"web-01": schedule_entries}]})
         return httpx.Response(200, json={"return": [{"web-01": {}}]})
 
     return httpx.MockTransport(handler)
@@ -91,9 +91,7 @@ def _app(schedule_entries=None):
                 conformity={"status": "drifted", "jid": "j2"},
             )
         )
-        session.add(
-            Minion(id="new-01", grains={}, conformity={"status": "unknown"})
-        )
+        session.add(Minion(id="new-01", grains={}, conformity={"status": "unknown"}))
         session.commit()
     return app
 
@@ -110,6 +108,40 @@ def test_unwatch_form_has_data_confirm():
     html = client.get("/states/").data.decode()
     assert "data-confirm=" in html
     assert "Stop watching" in html
+
+
+def test_schedule_add_rejects_disallowed_function():
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/schedules/web-01/add",
+        data={
+            "name": "evil",
+            "function": "cmd.run",
+            "unit": "seconds",
+            "value": "60",
+        },
+        follow_redirects=True,
+    )
+    assert "cannot be scheduled from here" in rv.data.decode()
+
+
+def test_schedule_add_accepts_allowed_function():
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/schedules/web-01/add",
+        data={
+            "name": "pingy",
+            "function": "test.ping",
+            "unit": "seconds",
+            "value": "60",
+        },
+        follow_redirects=True,
+    )
+    assert "did not confirm the add" in rv.data.decode()
 
 
 def test_schedule_delete_disable_forms_have_data_confirm():

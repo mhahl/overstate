@@ -8,9 +8,13 @@ import re
 
 TGT_TYPES = ["glob", "list", "grain", "compound", "nodegroup", "group"]
 COMPLETE_AFTER_SECONDS = 60
+# JID prefixes Salt never writes returner rows for: grouping records and
+# locally synthesized jobs. The worker owns their completion.
+SYNTHETIC_JID_PREFIXES = ("batch-", "orch-", "ssh-", "sync-")
 JOB_SORT_COLUMNS = ("started", "jid", "fun", "user")
 FUN_RE = re.compile(r"^[A-Za-z0-9_.]+$")
 MODS_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+SALTENV_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def sort_jobs(rows: list, sort: str, direction: str) -> list:
@@ -70,7 +74,13 @@ DESTRUCTIVE_FUNS = frozenset(
 
 # Everything gated by the review modal: DESTRUCTIVE_FUNS plus the
 # fleet-reconfiguring state runs. Test-mode state runs are exempt.
-CONFIRM_FUNS = DESTRUCTIVE_FUNS | {"state.apply", "state.highstate"}
+CONFIRM_FUNS = DESTRUCTIVE_FUNS | {
+    "state.apply",
+    "state.highstate",
+    "state.orchestrate",
+    "saltutil.sync_all",
+    "saltutil.refresh_pillar",
+}
 
 
 def is_test_mode(fun: str, args: list[str]) -> bool:
@@ -405,6 +415,32 @@ for _group, _ops in OPERATION_GROUPS:
     for _op in _ops:
         _FUN_ABOUT.setdefault(_op["fun"], _op["about"])
 OP_FUNCTIONS = [{"fun": fun, "about": about} for fun, about in _FUN_ABOUT.items()]
+
+# Functions the run form and schedule-add may fire: the shipped eauth
+# execution list minus @wheel/@runner, narrowed to what the UI calls.
+# Anything else (cmd.*, file.*, system.*) is rejected before Salt.
+ALLOWED_FUNS = frozenset(
+    {op["fun"] for _, ops in OPERATION_GROUPS for op in ops}
+    | {preset["fun"] for preset in FLEET_PRESETS.values()}
+    | {
+        "schedule.list",
+        "schedule.add",
+        "schedule.enable_job",
+        "schedule.disable_job",
+        "schedule.delete",
+        "beacons.list",
+        "beacons.enable_beacon",
+        "beacons.disable_beacon",
+        "grains.items",
+        "pillar.items",
+        "mine.get",
+        "sys.doc",
+        "sys.list_functions",
+        "state.show_highstate",
+        "state.show_sls",
+        "saltutil.kill_job",
+    }
+)
 
 
 def parse_batch_fields(form) -> dict | None:

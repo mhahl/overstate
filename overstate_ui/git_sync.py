@@ -13,11 +13,14 @@ queueing there would only fail elsewhere.
 from __future__ import annotations
 
 import contextlib
+import logging
 import subprocess
 import threading
 from pathlib import Path
 
 from flask import current_app
+
+logger = logging.getLogger(__name__)
 
 GIT_TIMEOUT = 30
 LOG_LINES = 10
@@ -102,10 +105,28 @@ def git_status() -> dict:
 
 
 def _failure(proc: subprocess.CompletedProcess[str] | None, fallback: str) -> str:
-    if proc is None:
-        return fallback
-    err = (proc.stderr or proc.stdout or "").strip().splitlines()
-    return (err[0][:200] if err else fallback) or fallback
+    """Fixed failure words for flashes: git stderr can carry remote URLs
+    with embedded tokens, so it is logged server-side and never shown."""
+    raw = ""
+    if proc is not None:
+        raw = ((proc.stderr or proc.stdout) or "").strip()
+    if raw:
+        logger.warning("git command failed: %s", raw.splitlines()[0][:200])
+    lowered = raw.lower()
+    if "not a git repository" in lowered:
+        return "not a git checkout"
+    if "diverged" in lowered or "need to merge" in lowered:
+        return "branches have diverged"
+    if (
+        "local changes" in lowered
+        or "would be overwritten" in lowered
+        or "dirty" in lowered
+        or "your branch is ahead" in lowered
+    ):
+        return "dirty tree or unpushed work"
+    if "no upstream" in lowered or "no tracking information" in lowered:
+        return "no upstream configured"
+    return fallback
 
 
 def git_sync_now() -> dict:

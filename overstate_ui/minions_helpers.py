@@ -6,6 +6,7 @@ Pure functions and their constants; the routes stay in
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 
@@ -64,6 +65,73 @@ def parse_beacon_list(value) -> dict:
     if isinstance(value, dict):
         return dict(value)
     return {}
+
+
+_INTERVAL_UNITS = (
+    ("days", "day"),
+    ("hours", "hour"),
+    ("minutes", "minute"),
+    ("seconds", "second"),
+)
+
+
+def _interval_text(entry: dict) -> str:
+    parts = []
+    for key, singular in _INTERVAL_UNITS:
+        try:
+            value = int(entry.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            parts.append(f"{value} {singular if value == 1 else key}")
+    return "every " + ", ".join(parts) if parts else ""
+
+
+def summarize_schedule(sched) -> tuple[bool | None, list[dict]]:
+    """Summarize ``schedule.list`` output into table rows.
+
+    Returns ``(scheduler_enabled, rows)``; each row has ``name``,
+    ``function``, ``every`` (human schedule text), ``arguments``
+    (compact ``job_args``/``job_kwargs``) and ``enabled``. The top
+    level ``enabled`` key is scheduler state, not a job, so it is
+    skipped. Non-mapping payloads (older YAML-string renders) yield
+    ``(None, [])`` and the caller shows the raw payload instead.
+    """
+    if not isinstance(sched, dict):
+        return None, []
+    rows = []
+    for name, entry in sched.items():
+        if name == "enabled" or not isinstance(entry, dict):
+            continue
+        every = _interval_text(entry)
+        if not every:
+            if entry.get("cron"):
+                every = f"cron {entry['cron']}"
+            elif entry.get("when"):
+                every = f"at {entry['when']}"
+            elif entry.get("once") or entry.get("once_fmt"):
+                every = f"once {(entry.get('once_fmt') or entry.get('once') or '')}".rstrip()
+            else:
+                every = "no schedule set"
+        if entry.get("splay"):
+            every += f" (+{entry['splay']}s splay)"
+        bits = []
+        if entry.get("job_args"):
+            bits.append(json.dumps(entry["job_args"], default=str))
+        if entry.get("job_kwargs"):
+            bits.append(json.dumps(entry["job_kwargs"], default=str))
+        rows.append(
+            {
+                "name": name,
+                "function": entry.get("function") or "",
+                "every": every,
+                "arguments": " ".join(bits),
+                "enabled": entry.get("enabled", True),
+            }
+        )
+    rows.sort(key=lambda r: r["name"])
+    enabled = sched.get("enabled")
+    return (bool(enabled) if isinstance(enabled, bool) else None), rows
 
 
 def live_roster(client) -> tuple[dict[str, str], set[str], bool]:

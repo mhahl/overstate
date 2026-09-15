@@ -9,16 +9,21 @@ until each panel resolves to live data or the snapshot fallback.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "salt"
 JOB_TIMEOUT = 300
 RESULT_TTL = 600
 CAPABILITY_CACHE_KEY = "salt:capabilities"
 CAPABILITY_TTL = 300
+PRESENCE_CACHE_KEY = "minions:presence"
+PRESENCE_TTL = 15
 
 
 def get_redis_client():
@@ -80,7 +85,9 @@ def wait_for(job, wait: float = 8.0) -> tuple[str, Any]:
     """Wait up to `wait` seconds for a queued job.
 
     Returns (status, value): "ready" with the return value, "pending"
-    when still running, "error" with the failure line.
+    when still running, "error" with a stable message. Worker tracebacks
+    can carry paths and connection strings, so they are logged
+    server-side and never flashed.
     """
     deadline = time.monotonic() + wait
     while True:
@@ -90,7 +97,10 @@ def wait_for(job, wait: float = 8.0) -> tuple[str, Any]:
             return ("ready", job.result)
         if state == "failed":
             info = (job.exc_info or "").strip().splitlines()
-            return ("error", info[-1] if info else "worker failed")
+            logger.warning(
+                "background job failed: %s", info[-1] if info else "worker failed"
+            )
+            return ("error", "worker failed")
         if time.monotonic() >= deadline:
             return ("pending", None)
         time.sleep(0.25)
@@ -168,5 +178,25 @@ def write_capability_cache(payload: dict) -> None:
         get_redis_client().set(
             CAPABILITY_CACHE_KEY, json.dumps(payload), ex=CAPABILITY_TTL
         )
+    except redis.exceptions.RedisError:
+        pass
+
+
+def read_presence_cache() -> dict | None:
+    """Cached {minion_id: presence} for the minions tab poller."""
+    import redis
+
+    try:
+        raw = get_redis_client().get(PRESENCE_CACHE_KEY)
+        return json.loads(raw) if raw else None
+    except (redis.exceptions.RedisError, ValueError):
+        return None
+
+
+def write_presence_cache(payload: dict) -> None:
+    import redis
+
+    try:
+        get_redis_client().set(PRESENCE_CACHE_KEY, json.dumps(payload), ex=PRESENCE_TTL)
     except redis.exceptions.RedisError:
         pass

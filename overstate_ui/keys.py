@@ -127,6 +127,21 @@ def act(action: str):
     if not mid:
         flash("Select a minion first: an empty key selection never fires.", "error")
         return redirect(url_for("keys.index", **keep))
+    # match= is a Salt glob: a forged "*" would accept or delete every
+    # key, so only exact ids from the roster may pass.
+    if any(c in mid for c in "*?[]"):
+        flash("Key ids with wildcards are never accepted.", "error")
+        return redirect(url_for("keys.index", **keep))
+    try:
+        current_ids = {
+            row["id"] for rows in get_key_data(get_salt()).values() for row in rows
+        }
+    except SaltApiError as exc:
+        flash(f"salt-api error: {exc}", "error")
+        return redirect(url_for("keys.index", **keep))
+    if mid not in current_ids:
+        flash("Unknown key: it is not on the current list.", "error")
+        return redirect(url_for("keys.index", **keep))
     try:
         get_salt().wheel(ACTIONS[action], match=mid)
     except SaltApiError as exc:
@@ -134,7 +149,4 @@ def act(action: str):
     else:
         log_event(current_user.username, f"{action}-key")
         flash(f"{mid}: {action}ed.", "success")
-    nxt = request.form.get("next", "")
-    if nxt.startswith("/") and not nxt.startswith("//"):
-        return redirect(nxt)
     return redirect(url_for("keys.index", **keep))

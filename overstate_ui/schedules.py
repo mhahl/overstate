@@ -6,6 +6,7 @@ from flask_login import current_user, login_required
 from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
+from .jobs_helpers import ALLOWED_FUNS, FUN_RE
 from .minions import live_roster
 from .salt_client import SaltApiError
 
@@ -80,9 +81,9 @@ def index():
             # return_yaml=False keeps this a real mapping: an empty
             # schedule arrives as {} (empty state), not blank YAML text
             # (which the raw fallback would render as a "schedule: {}" box).
-            value = client.local(mid, "schedule.list", kwarg={"return_yaml": False})[
-                0
-            ].get(mid, {})
+            value = client.local(
+                mid, "schedule.list", tgt_type="list", kwarg={"return_yaml": False}
+            )[0].get(mid, {})
             entries = parse_schedule_list(value)
             if not entries and isinstance(value, str) and value.strip():
                 raw = value
@@ -127,10 +128,13 @@ def add(mid: str):
     if not name or not fun or unit not in SCHEDULE_UNITS or value < 1:
         flash("Name, function, and a positive interval are required.", "error")
         return redirect(url_for("schedules.index", minion=mid))
+    if not FUN_RE.match(fun) or fun not in ALLOWED_FUNS:
+        flash("That function cannot be scheduled from here.", "error")
+        return redirect(url_for("schedules.index", minion=mid))
     client = get_salt()
     try:
         entries = parse_schedule_list(
-            client.local(mid, "schedule.list")[0].get(mid, {})
+            client.local(mid, "schedule.list", tgt_type="list")[0].get(mid, {})
         )
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
@@ -143,6 +147,7 @@ def add(mid: str):
             mid,
             "schedule.add",
             arg=[name],
+            tgt_type="list",
             kwarg={"function": fun, unit: value, "enabled": enabled},
         )
     except SaltApiError as exc:

@@ -21,8 +21,12 @@
             <button class="btn btn-xs btn-ghost">Generate new</button>
           </form>
         </div>
-        <p class="text-sm opacity-70 mt-0.5">Stays the same until you verify it or generate a new one. Copy it now. It lives only in your login session.</p>
+        <p class="text-sm opacity-70 mt-0.5">Stays the same until you verify it or generate a new one. Copy it now. It lives on the server until you verify or generate a new one.</p>
+        {% if password %}
         <p id="rotation-password" class="font-mono text-sm bg-base-200 rounded px-3 py-2 mt-2 break-all">{{ password }}</p>
+        {% else %}
+        <p class="text-sm opacity-70 mt-2">No password available: the cache is unreachable.</p>
+        {% endif %}
       </div>
       <div>
         <h2 class="card-title text-base">2. Apply on the master</h2>

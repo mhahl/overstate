@@ -1,23 +1,10 @@
 {% import "_macros.html" as m %}
 <div id="jobs-region"{% if tab == "running" %} data-poll-url="{{ url_for('jobs.index', tab='running', sort=sort, dir=direction, q=q) }}"{% endif %}>
-<form method="get" action="{{ url_for('jobs.index') }}" hx-get="{{ url_for('jobs.index') }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
-  <input type="hidden" name="tab" value="{{ tab }}">
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <input type="hidden" name="dir" value="{{ direction }}">
-  <div class="card-body flex-row flex-wrap items-end gap-2">
-    <label class="fieldset flex-1 min-w-48">
-      <span class="fieldset-legend">Search</span>
-      <input type="search" name="q" value="{{ q }}" placeholder="Search JID, function, target, user…" class="input input-sm">
-    </label>
-    <button class="btn btn-sm mb-1">Filter</button>
-    {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('jobs.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
-  </div>
-</form>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
-<div class="tabs tabs-border px-3 pt-2" role="tablist">
+<div class="tabs tabs-border px-3 pt-2">
   {% for name in ["running", "history", "saved"] %}
   {% set href = url_for('jobs.index', tab=name, sort=sort, dir=direction, q=q) %}
-  <a role="tab" href="{{ href }}" hx-get="{{ href }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-neutral ml-1">{{ running|length }}</span>{% endif %}</a>
+  <a href="{{ href }}" hx-get="{{ href }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-neutral ml-1">{{ running|length }}</span>{% endif %}</a>
   {% endfor %}
 </div>
 <div class="border-t border-base-300">
@@ -42,7 +29,7 @@
 {% set rows = running if tab == "running" else history %}
 {% if rows %}
 <div class="overflow-x-auto">
-<table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('jobs.index', 'jid', 'JID', sort, direction, {'tab': tab, 'q': q}, '#jobs-region', false) }}{{ m.sort_th('jobs.index', 'fun', 'Function', sort, direction, {'tab': tab, 'q': q}, '#jobs-region', false) }}<th>Target</th>{{ m.sort_th('jobs.index', 'user', 'User', sort, direction, {'tab': tab, 'q': q}, '#jobs-region', false) }}{{ m.sort_th('jobs.index', 'started', 'Started', sort, direction, {'tab': tab, 'q': q}, '#jobs-region', false) }}</tr></thead><tbody>
+<table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('jobs.index', 'jid', 'JID', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'fun', 'Function', sort, direction, {'tab': tab, 'q': q}) }}<th>Target</th>{{ m.sort_th('jobs.index', 'user', 'User', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'started', 'Started', sort, direction, {'tab': tab, 'q': q}) }}</tr></thead><tbody>
 {% for j in rows %}
 <tr><td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=j.jid) }}">{{ j.jid }}</a></td>
 <td class="font-mono text-xs">{{ j.fun }}</td><td class="font-mono text-xs">{{ j.tgt_type }}: {{ j.tgt }}</td>
@@ -50,6 +37,13 @@
 {% endfor %}
 </tbody></table>
 </div>
+{% if tab == "history" and pages > 1 %}
+<div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
+  {% if page > 1 %}{{ m.hx_link(url_for('jobs.index', tab=tab, q=q, sort=sort, dir=direction, page=page-1), '#jobs-region', '‹ Prev') }}{% endif %}
+  <span class="text-sm opacity-70">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}{{ m.hx_link(url_for('jobs.index', tab=tab, q=q, sort=sort, dir=direction, page=page+1), '#jobs-region', 'Next ›') }}{% endif %}
+</div>
+{% endif %}
 {% else %}
 <div class="py-8 text-center">
   <p class="font-medium">No {{ tab }} jobs</p>

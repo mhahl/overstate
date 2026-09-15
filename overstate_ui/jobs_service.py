@@ -15,17 +15,59 @@ from flask_login import current_user
 from .audit import log_event
 from .dashboard import get_salt
 from .db import get_session
-from .jobs_helpers import COMPLETE_AFTER_SECONDS
+from .jobs_helpers import COMPLETE_AFTER_SECONDS, SYNTHETIC_JID_PREFIXES
 from .models import Job, JobReturn, SaltReturn, SavedJob
 from .salt_client import SaltApiError
 
 
+def _verdicts_eligible(job: Job | None) -> bool:
+    """Whether a completed job may stamp minion conformity.
+
+    Grouping parents (batch-*) never ran on minions, and runner jobs
+    (tgt_type runner) have no minion target, so neither may mark
+    minions unreachable.
+    """
+    if job is None:
+        return False
+    if (job.jid or "").startswith("batch-"):
+        return False
+    if job.batch_group and job.jid == f"batch-{job.batch_group}":
+        return False
+    return (job.tgt_type or "") != "runner"
+
+
+def _master_minions(jid: str) -> set[str] | None:
+    """Minion ids the master still associates with jid.
+
+    None when the master is silent or has forgotten the JID, so the
+    caller falls back to the quiet-period heuristic.
+    """
+    try:
+        payload = get_salt().runner("jobs.lookup_jid", jid=jid)[0]
+    except Exception:  # noqa: BLE001 — master silent: caller falls back
+        return None
+    # Only an entry keyed by this JID counts: any other shape (a status
+    # payload, an empty cache) means the master has forgotten the JID.
+    data = payload.get(jid) if isinstance(payload, dict) else None
+    if not isinstance(data, dict) or not data:
+        return None
+    return set(data)
+
+
 def sync_job(jid: str) -> Job | None:
-    """Copy returner rows for jid into jobs/job_returns. Heuristic: a job is
-    complete once returns exist and the youngest is older than
-    COMPLETE_AFTER_SECONDS (Salt exposes no completion flag)."""
+    """Copy returner rows for jid into jobs/job_returns.
+
+    Synthetic JIDs (batch-*, orch-*, ssh-*, sync-*) never appear in the
+    returner tables; the worker owns their completion, so sync never
+    completes them. A real JID completes once the master knows no
+    unrecorded minions for it and the youngest return is older than
+    COMPLETE_AFTER_SECONDS; once complete it stays sticky unless new
+    minions report in.
+    """
     session = get_session()
     job = session.get(Job, jid)
+    if job is not None and job.jid.startswith(SYNTHETIC_JID_PREFIXES):
+        return job
     rows = session.query(SaltReturn).filter_by(jid=jid).all()
     now = dt.datetime.now(dt.UTC)
 
@@ -42,9 +84,10 @@ def sync_job(jid: str) -> Job | None:
             and (now - aware(job.started_at)).total_seconds() > COMPLETE_AFTER_SECONDS
         ):
             job.complete = True
-            from .states import apply_sync_verdicts
+            if _verdicts_eligible(job):
+                from .states import apply_sync_verdicts
 
-            apply_sync_verdicts(job, [])
+                apply_sync_verdicts(job, [])
             session.commit()
         return job
     if job is None:
@@ -57,10 +100,12 @@ def sync_job(jid: str) -> Job | None:
             user=current_user.username if current_user.is_authenticated else "unknown",
         )
         session.add(job)
+    stored = {
+        row.minion_id: row for row in session.query(JobReturn).filter_by(jid=jid).all()
+    }
+    new_mids: set[str] = set()
     for r in rows:
-        existing = (
-            session.query(JobReturn).filter_by(jid=jid, minion_id=r.minion_id).first()
-        )
+        existing = stored.get(r.minion_id)
         success = str(r.success).lower() == "true"
         payload = r.payload if isinstance(r.payload, dict) else {}
         if existing is None:
@@ -73,22 +118,32 @@ def sync_job(jid: str) -> Job | None:
                     payload=payload,
                 )
             )
+            new_mids.add(r.minion_id)
         else:
             existing.success = success
             existing.payload = payload
-    youngest = max(
-        (aware(r.alter_time) for r in rows if r.alter_time),
-        default=None,
-    )
-    if youngest is None:
-        job.complete = (
-            now - aware(job.started_at)
-        ).total_seconds() > COMPLETE_AFTER_SECONDS
+    if job.complete and not new_mids:
+        session.commit()
+        return job
+    known = set(stored) | new_mids
+    master_mids = _master_minions(jid)
+    if master_mids is not None and not master_mids <= known:
+        job.complete = False
     else:
-        job.complete = (now - youngest).total_seconds() > COMPLETE_AFTER_SECONDS
-    from .states import apply_sync_verdicts
+        youngest = max(
+            (aware(r.alter_time) for r in rows if r.alter_time),
+            default=None,
+        )
+        if youngest is None:
+            job.complete = (
+                now - aware(job.started_at)
+            ).total_seconds() > COMPLETE_AFTER_SECONDS
+        else:
+            job.complete = (now - youngest).total_seconds() > COMPLETE_AFTER_SECONDS
+    if _verdicts_eligible(job):
+        from .states import apply_sync_verdicts
 
-    apply_sync_verdicts(job, rows)
+        apply_sync_verdicts(job, rows)
     session.commit()
     return job
 
@@ -201,6 +256,44 @@ def resolve_group_target(name: str) -> tuple[list[str], int]:
     return targets, len(group.members or []) - len(targets)
 
 
+SYNC_SALT_TIMEOUT = 60
+SSH_SALT_TIMEOUT = 180
+
+
+def _payload_success(payload) -> bool:
+    """Success flag for a locally observed minion payload: an explicit
+    flag wins, scalars use truthiness, mappings default True."""
+    if isinstance(payload, dict):
+        if "success" in payload:
+            return bool(payload["success"])
+        return True
+    return bool(payload)
+
+
+def _split_sync_result(result) -> tuple[str | None, dict]:
+    """(real JID or None, {minion_id: payload}) from a sync salt-api reply.
+
+    Sync local/ssh replies usually carry just per-minion returns; when
+    the reply keeps the real JID alongside them it is preferred, and a
+    synthetic JID is only used when no JID is present.
+    """
+    items = result if isinstance(result, list) else [result]
+    mapping: dict = {}
+    jid: str | None = None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key, value in item.items():
+            if key == "jid":
+                if value and jid is None:
+                    jid = str(value)
+            elif key == "return" and isinstance(value, dict):
+                mapping.update(value)
+            else:
+                mapping[key] = value
+    return jid, mapping
+
+
 def launch(
     tgt: str,
     tgt_type: str,
@@ -217,10 +310,46 @@ def launch(
             flash(f"Group '{tgt}': {stale} stale members skipped.", "warning")
         tgt, tgt_type = ",".join(targets), "list"
     if via == "ssh":
-        # salt-ssh has no async path: synchronous over the roster, returns
-        # carry no JID, so the job is recorded complete with a synthetic one.
-        client.local(tgt, fun, arg=args, tgt_type=tgt_type, timeout=180, via="ssh")
-        jid = f"ssh-{int(time.time())}"
+        # salt-ssh has no async path: synchronous over the roster. The
+        # HTTP round trip must outlast the Salt timeout, and each minion
+        # payload is stored so the job is complete with returns.
+        result = client.local(
+            tgt,
+            fun,
+            arg=args,
+            tgt_type=tgt_type,
+            timeout=SSH_SALT_TIMEOUT,
+            via="ssh",
+            http_timeout=SSH_SALT_TIMEOUT + 5,
+        )
+        real_jid, mapping = _split_sync_result(result)
+        jid = real_jid or f"ssh-{int(time.time())}"
+        session = get_session()
+        job = Job(
+            jid=jid,
+            fun=fun,
+            tgt=tgt,
+            tgt_type=tgt_type,
+            user=current_user.username,
+        )
+        session.add(job)
+        for mid, payload in mapping.items():
+            session.add(
+                JobReturn(
+                    jid=jid,
+                    minion_id=str(mid),
+                    success=_payload_success(payload),
+                    retcode=0,
+                    payload=payload,
+                )
+            )
+        job.complete = True
+        session.commit()
+        log_event(current_user.username, f"run-ssh:{fun}", jid=jid)
+        return jid
+    if asynchronous:
+        result = client.local(tgt, fun, arg=args, tgt_type=tgt_type, asynchronous=True)
+        jid = result[0]["jid"] if isinstance(result, list) else result["jid"]
         session = get_session()
         session.add(
             Job(
@@ -229,24 +358,36 @@ def launch(
                 tgt=tgt,
                 tgt_type=tgt_type,
                 user=current_user.username,
-                complete=True,
             )
         )
         session.commit()
-        log_event(current_user.username, f"run-ssh:{fun}", jid=jid)
+        log_event(current_user.username, f"run:{fun}", jid=jid)
         return jid
-    if asynchronous:
-        result = client.local(tgt, fun, arg=args, tgt_type=tgt_type, asynchronous=True)
-        jid = result[0]["jid"] if isinstance(result, list) else result["jid"]
-    else:
-        result = client.local(tgt, fun, arg=args, tgt_type=tgt_type, timeout=60)
-        jid = result[0].get("jid", "") if isinstance(result, list) else ""
-        if not jid:  # sync calls may not surface a jid; synthesize one
-            jid = f"sync-{int(time.time())}"
-    session = get_session()
-    session.add(
-        Job(jid=jid, fun=fun, tgt=tgt, tgt_type=tgt_type, user=current_user.username)
+    result = client.local(
+        tgt,
+        fun,
+        arg=args,
+        tgt_type=tgt_type,
+        timeout=SYNC_SALT_TIMEOUT,
+        http_timeout=SYNC_SALT_TIMEOUT + 5,
     )
+    real_jid, mapping = _split_sync_result(result)
+    jid = real_jid or f"sync-{int(time.time())}"
+    session = get_session()
+    job = Job(jid=jid, fun=fun, tgt=tgt, tgt_type=tgt_type, user=current_user.username)
+    session.add(job)
+    for mid, payload in mapping.items():
+        session.add(
+            JobReturn(
+                jid=jid,
+                minion_id=str(mid),
+                success=_payload_success(payload),
+                retcode=0,
+                payload=payload,
+            )
+        )
+    if mapping:
+        job.complete = True
     session.commit()
     log_event(current_user.username, f"run:{fun}", jid=jid)
     return jid

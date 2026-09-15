@@ -34,11 +34,12 @@
     document.getElementById('confirm-modal-cancel').focus();
   }, true);
   document.getElementById('confirm-modal-ok').addEventListener('click', function () {
+    var form = pendingForm;
+    pendingForm = null;
     dialog.close();
-    if (pendingForm) {
-      pendingForm.setAttribute('data-confirmed', '1');
-      pendingForm.requestSubmit();
-      pendingForm = null;
+    if (form) {
+      form.setAttribute('data-confirmed', '1');
+      form.requestSubmit();
     }
   });
   function cancel() {

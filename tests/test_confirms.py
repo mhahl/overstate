@@ -73,9 +73,7 @@ def client():
             SavedJob(name="ping", fun="test.ping", tgt="*", tgt_type="glob", args=[])
         )
         session.add(WatchedState(sls="baseline"))
-        session.add(
-            User(username="op", role="operator", password_hash=_ph.hash("pw"))
-        )
+        session.add(User(username="op", role="operator", password_hash=_ph.hash("pw")))
         session.commit()
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
@@ -99,7 +97,7 @@ def test_keys_destructive_forms_carry_confirm(client):
 
 def test_job_and_saved_delete_forms_carry_confirm(client):
     html = client.get("/jobs/j1").data.decode()
-    assert "data-confirm=\"Kill job j1?" in html
+    assert 'data-confirm="Kill job j1?' in html
     saved = client.get("/jobs/?tab=saved").data.decode()
     assert "data-confirm=\"Delete saved job 'ping'?\"" in saved
 
@@ -109,6 +107,55 @@ def test_users_and_states_forms_carry_confirm(client):
     assert "data-confirm=\"Delete user 'op'?\"" in html
     states = client.get("/states/").data.decode()
     assert "data-confirm=\"Stop watching 'baseline'?\"" in states
+
+
+def test_highstate_with_typed_target_launches(client):
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "*",
+            "tgt_type": "glob",
+            "fun": "state.highstate",
+            "args": "",
+            "mode": "sync",
+            "confirmed": "yes",
+            "confirm_tgt": "*",
+        },
+    )
+    assert rv.status_code == 302
+    assert "/jobs/" in rv.headers["Location"]
+
+
+def test_grain_target_without_preview_needs_checkbox(client):
+    base = {
+        "tgt": "os:Fedora",
+        "tgt_type": "grain",
+        "fun": "state.highstate",
+        "args": "",
+        "mode": "sync",
+        "confirmed": "yes",
+        "confirm_tgt": "os:Fedora",
+    }
+    rv = client.post("/jobs/run", data=base)
+    assert rv.status_code == 200
+    assert "Fire without a match preview" in rv.data.decode()
+    rv = client.post("/jobs/run", data={**base, "no_preview_ok": "on"})
+    assert rv.status_code == 302
+
+
+def test_orchestrate_without_confirm_does_not_queue(client):
+    rv = client.post("/jobs/orchestrate/run", data={"mods": "orch.demo"})
+    assert rv.status_code == 200
+    assert "Review" in rv.data.decode()
+
+
+def test_saltenv_rejects_shell_junk(client):
+    rv = client.post(
+        "/jobs/orchestrate/run",
+        data={"mods": "orch.demo", "saltenv": "base;cat /etc/passwd"},
+        follow_redirects=True,
+    )
+    assert "Saltenv" in rv.data.decode()
 
 
 def test_direct_post_still_works_without_js(client):

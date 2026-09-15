@@ -146,7 +146,8 @@ def test_destructive_without_confirm_shows_review(client):
     )
     assert rv.status_code == 200
     assert b"Review" in rv.data
-    assert b"Type <code>" not in rv.data
+    assert b"Type <code>web-*</code> to confirm" in rv.data
+    assert b'name="confirm_tgt"' in rv.data
     with client.app.app_context():
         assert get_session().query(Job).count() == 0
 
@@ -168,6 +169,25 @@ def test_destructive_with_unconfirmed_value_stays(client):
         assert get_session().query(Job).count() == 0
 
 
+def test_destructive_with_confirmed_but_untyped_stays(client):
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "web-*",
+            "tgt_type": "glob",
+            "fun": "service.restart",
+            "args": "nginx",
+            "mode": "async",
+            "confirmed": "yes",
+        },
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+    assert "Type the target exactly" in rv.data.decode()
+    with client.app.app_context():
+        assert get_session().query(Job).count() == 0
+
+
 def test_destructive_with_confirmed_launches(client):
     rv = client.post(
         "/jobs/run",
@@ -178,6 +198,7 @@ def test_destructive_with_confirmed_launches(client):
             "args": "nginx",
             "mode": "async",
             "confirmed": "yes",
+            "confirm_tgt": "web-*",
         },
     )
     assert rv.status_code == 302

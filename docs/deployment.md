@@ -29,7 +29,13 @@ Five containers start: `overstate`, `worker`, `salt-master`,
 long Salt queries (fleet refresh, dashboard probes); the app falls
 back to synchronous calls when the worker is down, so the stack
 works without it but slower. Redis is the queue transport plus the
-short-TTL capability cache. The master is dev-only: it auto-accepts
+short-TTL capability cache. RQ serializes jobs with pickle, so Redis
+is password-protected: `install.sh` generates `REDIS_PASSWORD` into
+the root-only env file, the redis container runs with
+`--requirepass`, and the app/worker authenticate through `REDIS_URL`.
+Dev compose uses the documented `dev-redis-pass` from `.env.example`.
+Redis exposes no ports; it is reachable only on the container network.
+The master is dev-only: it auto-accepts
 keys and runs a built-in minion so the stack works unattended.
 Never copy that behavior to a real master.
 
@@ -133,7 +139,11 @@ external_auth:
       - state.highstate
       - state.show_highstate
       - state.show_sls
-      - schedule.*
+      - schedule.list
+      - schedule.add
+      - schedule.enable_job
+      - schedule.disable_job
+      - schedule.delete
       - mine.*
       - beacons.list
       - beacons.enable_beacon
@@ -272,24 +282,35 @@ Wrong time breaks key exchange in confusing ways; run NTP everywhere.
   sessions. Generate one per deployment and never commit it.
 - Serve the app over HTTPS. Mount real certificates at `TLS_CERT`
   and `TLS_KEY`. Without them the entrypoint serves plain HTTP and
-  logs a warning; that mode exists for local dev only.
+  logs a warning; that mode exists for local dev only. Session
+  cookies are `Secure` when `TLS_CERT` is set or
+  `OVERSTATE_SECURE_COOKIES=1`, and the app refuses to boot on a
+  placeholder `SECRET_KEY` outside tests.
 - Set real Postgres passwords in compose or your secrets manager.
   The defaults are public.
 - Put the app behind a reverse proxy that forwards the client IP
   and host (`X-Forwarded-For/Host/Port`; the `deploy/Caddyfile`
-  already does). The app trusts one proxy hop for these, which the
-  login CSRF origin check requires. The login rate limit counts per
-  address per worker; without the real IP, everyone behind the
-  proxy shares one budget.
-- Run one gunicorn worker per CPU as a starting point and raise it
-  when dashboard loads slow down. Each worker holds its own rate
-  limit counters and salt-api token.
+  already does). The app trusts one proxy hop for these only when
+  `TRUST_PROXY=1` (set on the production app unit), which the
+  login CSRF origin check requires. Without the real IP, everyone
+  behind the proxy shares one login rate-limit budget. Never set
+  `TRUST_PROXY` where clients reach gunicorn directly: forwarded
+  headers would be spoofable.
+- Run several gunicorn workers (`WEB_CONCURRENCY`, default 4 in the
+  entrypoint) and raise it when dashboard loads slow down. Each SSE
+  stream occupies a sync worker for the stream lifetime, which is
+  why the default is more than one. The login rate limit budget is
+  shared across workers through Redis; each worker still holds its
+  own salt-api token.
 - Back up Postgres nightly at minimum. It holds users, settings,
   inventory snapshots, job history, pillar snapshots, and the audit
   trail. Test restores; an untested backup is a rumor.
-- Never mount the states checkout writable by the app. Sync it from
-  git with `scripts/sync-file-roots.sh`, which refuses non-fast-forward
-  updates instead of forcing them.
+- Keep the states checkout writable by the app alone: the app mount is
+  `:rw` so the operator-gated Files Sync button can `git pull --ff-only`
+  on it, while the salt-master mount stays `:ro`. The app never edits,
+  commits, or pushes. `scripts/sync-file-roots.sh` offers the same
+  fast-forward-only sync for cron or a sidecar — pick one sync actor
+  per site, not both.
 - Podman systems run the stack as systemd services through the
   per-service Quadlet units in `deploy/quadlet/` (app, worker,
   salt-master, postgres, redis, caddy, plus the network). Install

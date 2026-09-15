@@ -9,6 +9,7 @@ existing ``overstate_ui.jobs.*`` import paths keep working.
 from __future__ import annotations
 
 import json
+import logging
 import time
 
 import httpx
@@ -24,12 +25,15 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt, ping_target
 from .db import get_session
 from .jobs_helpers import (
+    ALLOWED_FUNS,
     COMPLETE_AFTER_SECONDS,
     CONFIRM_FUNS,
     DESTRUCTIVE_FUNS,
@@ -39,6 +43,7 @@ from .jobs_helpers import (
     MODS_RE,
     OP_FUNCTIONS,
     OPERATION_GROUPS,
+    SALTENV_RE,
     TGT_TYPES,
     describe_return,
     is_test_mode,
@@ -62,7 +67,10 @@ from .salt_client import SaltApiError
 
 bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 
+logger = logging.getLogger(__name__)
+
 __all__ = [
+    "ALLOWED_FUNS",
     "COMPLETE_AFTER_SECONDS",
     "CONFIRM_FUNS",
     "DESTRUCTIVE_FUNS",
@@ -72,6 +80,7 @@ __all__ = [
     "MODS_RE",
     "OPERATION_GROUPS",
     "OP_FUNCTIONS",
+    "SALTENV_RE",
     "TGT_TYPES",
     "bp",
     "build_sls_preview",
@@ -107,8 +116,9 @@ def index():
     ):
         try:
             sync_job(job.jid)
-        except (SaltApiError, ValueError):
-            pass
+        except (SaltApiError, ValueError) as exc:
+            # Opportunistic sync must never hide a failure from the logs.
+            logger.warning("sync_job(%s) failed: %s", job.jid, exc)
     sort = request.args.get("sort", "started")
     if sort not in JOB_SORT_COLUMNS:
         sort = "started"
@@ -117,6 +127,21 @@ def index():
         direction = "desc"
     q = request.args.get("q", "").strip()
     ql = q.lower()
+    jump = request.args.get("jump", "").strip()
+    if jump:
+        # Exact JID lookup from the history search box: old jobs live
+        # beyond any page window, so jump straight to the detail page.
+        if session.get(Job, jump) is not None:
+            return redirect(url_for("jobs.detail", jid=jump))
+        flash("Unknown job.", "error")
+        return redirect(
+            url_for("jobs.index", tab="history", q=q, sort=sort, dir=direction)
+        )
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
 
     def matches(job) -> bool:
         if not ql:
@@ -138,16 +163,27 @@ def index():
         sort,
         direction,
     )
+    # History search hits the database so a pasted old JID finds its
+    # row instead of only scanning the newest page in Python.
+    hist_query = session.query(Job).filter_by(complete=True)
+    if q:
+        like = f"%{q}%"
+        hist_query = hist_query.filter(
+            or_(
+                Job.jid.ilike(like),
+                Job.fun.ilike(like),
+                Job.tgt.ilike(like),
+                Job.user.ilike(like),
+            )
+        )
+    total = hist_query.count()
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
     history = sort_jobs(
-        [
-            j
-            for j in session.query(Job)
-            .filter_by(complete=True)
-            .order_by(Job.started_at.desc())
-            .limit(200)
-            .all()
-            if matches(j)
-        ][:50],
+        hist_query.order_by(Job.started_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all(),
         sort,
         direction,
     )
@@ -168,6 +204,8 @@ def index():
         "sort": sort,
         "direction": direction,
         "q": q,
+        "page": page,
+        "pages": pages,
     }
     if request.headers.get("HX-Request") == "true":
         return render_template("_job_rows.html", **ctx)
@@ -197,7 +235,16 @@ def new():
     }
     saved = None
     if request.args.get("saved"):
-        saved = get_session().get(SavedJob, int(request.args["saved"]))
+        try:
+            saved = get_session().get(SavedJob, int(request.args["saved"]))
+        except ValueError:
+            # Garbage query args land back on a clean form, never a 500.
+            flash("Saved job reference is not valid.", "error")
+            saved = None
+    if request.args.get("bulk_run") and not request.args.getlist("bulk"):
+        # The minion list submits here with no selection: say so instead
+        # of rendering a blank form as if nothing happened.
+        flash("Select minions first.", "warning")
     preset = dict(presets.get(preset, {}))
     bulk = None
     raw_bulk = []
@@ -282,7 +329,7 @@ def fun_doc():
     """sys.doc fragment for one function, read from one minion."""
     fun = request.args.get("fun", "").strip()
     minion = request.args.get("minion", "").strip()
-    if not FUN_RE.match(fun) or not minion:
+    if not FUN_RE.match(fun) or not minion or any(c in minion for c in "*?[]"):
         return "Invalid function name.", 400
     from .tasks import fun_doc_now
 
@@ -333,41 +380,59 @@ def run():
     if not tgt:
         flash("Pick a target: an empty target never fires.", "error")
         return redirect(_new_url())
-    if request.form.get("batch_mode", "off") in ("count", "percent") and parse_batch_fields(
-        request.form
-    ) is None:
+    if (
+        request.form.get("batch_mode", "off") in ("count", "percent")
+        and parse_batch_fields(request.form) is None
+    ):
         flash("Batch wave size and stop-after must be positive numbers.", "error")
         return redirect(_new_url())
     if via == "ssh" and asynchronous:
         asynchronous = False
         flash("salt-ssh runs synchronously, in sync mode only.", "info")
-    if (
-        fun in CONFIRM_FUNS
-        and not is_test_mode(fun, args)
-        and request.form.get("confirmed", "") != "yes"
-    ):
+    if not FUN_RE.match(fun) or fun not in ALLOWED_FUNS:
+        flash("That function cannot be fired from the run form.", "error")
+        return redirect(_new_url())
+    if fun == "schedule.add":
+        for arg in args:
+            name, sep, value = arg.partition("=")
+            if (
+                sep
+                and name == "function"
+                and (not FUN_RE.match(value) or value not in ALLOWED_FUNS)
+            ):
+                flash("That scheduled function cannot be fired from here.", "error")
+                return redirect(_new_url())
+    if fun in CONFIRM_FUNS and not is_test_mode(fun, args):
         batch_preview = parse_batch_fields(request.form) or {}
         matched = resolve_batch_roster(tgt, tgt_type)
         preview, preview_minion, preview_note = build_sls_preview(
             fun, args, matched, via
         )
-        return render_template(
-            "job_confirm.html",
-            tgt=tgt,
-            tgt_type=tgt_type,
-            fun=fun,
-            raw_args=raw_args,
-            mode=request.form.get("mode", "async"),
-            via=via,
-            save_as=request.form.get("save_as", ""),
-            batch_mode=batch_preview.get("mode", "off"),
-            batch_size=batch_preview.get("size", 25),
-            stop_after=batch_preview.get("stop_after", 1),
-            matched=matched,
-            preview=preview,
-            preview_minion=preview_minion,
-            preview_note=preview_note,
-        )
+        confirmed = request.form.get("confirmed", "") == "yes"
+        typed_ok = request.form.get("confirm_tgt", "") == tgt
+        preview_ok = matched is not None or request.form.get("no_preview_ok") == "on"
+        if not (confirmed and typed_ok and preview_ok):
+            if confirmed and not typed_ok:
+                flash("Type the target exactly to confirm this run.", "error")
+            elif confirmed:
+                flash("Confirm firing without a match preview.", "error")
+            return render_template(
+                "job_confirm.html",
+                tgt=tgt,
+                tgt_type=tgt_type,
+                fun=fun,
+                raw_args=raw_args,
+                mode=request.form.get("mode", "async"),
+                via=via,
+                save_as=request.form.get("save_as", ""),
+                batch_mode=batch_preview.get("mode", "off"),
+                batch_size=batch_preview.get("size", 25),
+                stop_after=batch_preview.get("stop_after", 1),
+                matched=matched,
+                preview=preview,
+                preview_minion=preview_minion,
+                preview_note=preview_note,
+            )
     batch = parse_batch_fields(request.form)
     if batch is not None:
         return run_batched(
@@ -389,7 +454,12 @@ def run():
                 args=args,
             )
         )
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # The job already ran: keep its JID, drop only the duplicate save.
+            session.rollback()
+            flash("Saved job name already exists; the job still ran.", "warning")
     return redirect(url_for("jobs.detail", jid=jid))
 
 
@@ -425,6 +495,48 @@ def orchestrate_run():
     if not mods or not MODS_RE.match(mods):
         flash("Mods must be a dotted orchestration name.", "error")
         return redirect(url_for("jobs.orchestrate"))
+    if not SALTENV_RE.match(saltenv):
+        flash("Saltenv may only contain letters, numbers, dashes.", "error")
+        return redirect(url_for("jobs.orchestrate"))
+
+    def _orchestrate_confirm():
+        summary = f"saltenv={saltenv}{' test=True' if test else ''}"
+        if pillar:
+            summary += " with pillar override"
+        return render_template(
+            "job_confirm.html",
+            tgt=mods,
+            tgt_type="runner",
+            fun="state.orchestrate",
+            raw_args=summary,
+            mode="run",
+            via="master",
+            save_as="",
+            batch_mode="off",
+            batch_size=25,
+            stop_after=1,
+            matched=None,
+            preview=[],
+            preview_minion=None,
+            preview_note=None,
+            confirm_action=url_for("jobs.orchestrate_run"),
+            cancel_url=url_for("jobs.orchestrate"),
+            extra_hidden={
+                "mods": mods,
+                "saltenv": saltenv,
+                "pillar": raw_pillar,
+                "test": "on" if test else "",
+            },
+        )
+
+    if request.form.get("confirmed", "") != "yes":
+        return _orchestrate_confirm()
+    if request.form.get("confirm_tgt", "") != mods:
+        flash("Type the orchestration name exactly to confirm.", "error")
+        return _orchestrate_confirm()
+    if request.form.get("no_preview_ok") != "on":
+        flash("Confirm firing without a match preview.", "error")
+        return _orchestrate_confirm()
     jid = f"orch-{int(_time.time())}"
     session = get_session()
     session.add(
@@ -451,8 +563,11 @@ def orchestrate_run():
     if job is None:
         from .tasks import run_orchestrate_task as run_inline
 
-        run_inline(jid, mods, saltenv, test, pillar, current_user.username)
-        flash("Orchestration finished synchronously.", "success")
+        outcome = run_inline(jid, mods, saltenv, test, pillar, current_user.username)
+        if isinstance(outcome, dict) and outcome.get("error"):
+            flash(f"Orchestration failed: {outcome['error']}", "error")
+        else:
+            flash("Orchestration finished synchronously.", "success")
     else:
         flash("Orchestration queued. Watch this page.", "success")
     return redirect(url_for("jobs.detail", jid=jid))
@@ -679,19 +794,32 @@ def stream(jid: str):
             returns = (
                 get_session().query(JobReturn).filter(JobReturn.jid.in_(jids)).all()
             )
-            mids = {r.minion_id for r in returns}
+            stored_ids = {r.minion_id for r in returns}
+            stored_failed = sum(1 for r in returns if not r.success)
+            mids = set(stored_ids)
             is_parent = bool(
                 job and job.batch_group and jid == f"batch-{job.batch_group}"
             )
-            if job is not None and not job.complete and not is_parent:
+            live_rows: list = []
+            if job is not None and not job.complete:
                 # Live-cache minions the returner hasn't recorded yet so
                 # the page can render their panels before the rows land.
-                mids |= {r.minion_id for r in live_returns_now(get_salt(), jid)}
+                if is_parent:
+                    for wave_jid in jids:
+                        if wave_jid == jid:
+                            continue
+                        live_rows += live_returns_now(get_salt(), wave_jid)
+                else:
+                    live_rows = live_returns_now(get_salt(), jid)
+                mids |= {r.minion_id for r in live_rows}
+            live_only = [r for r in live_rows if r.minion_id not in stored_ids]
             payload = {
                 "jid": jid,
                 "complete": bool(job and job.complete),
-                "returned": len(returns),
-                "failed": sum(1 for r in returns if not r.success),
+                "returned": len(mids),
+                "failed": stored_failed + sum(1 for r in live_only if not r.success),
+                "stored": len(returns),
+                "live": len(live_only),
                 "minions": sorted(mids),
             }
             yield f"data: {json.dumps(payload)}\n\n"
@@ -700,4 +828,8 @@ def stream(jid: str):
             time.sleep(interval)
         yield "event: done\ndata: {}\n\n"
 
-    return Response(stream_with_context(events()), mimetype="text/event-stream")
+    return Response(
+        stream_with_context(events()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

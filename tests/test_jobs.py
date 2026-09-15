@@ -80,6 +80,38 @@ def test_run_async_creates_job_and_audit(client):
         assert saved.fun == "test.ping"
 
 
+def test_run_rejects_disallowed_function(client):
+    rv = client.post(
+        "/jobs/run",
+        data={"tgt": "*", "tgt_type": "glob", "fun": "cmd.run", "args": "id"},
+        follow_redirects=True,
+    )
+    assert "cannot be fired from the run form" in rv.data.decode()
+    with client.app.app_context():
+        assert get_session().query(Job).filter_by(fun="cmd.run").count() == 0
+
+
+def test_run_rejects_scheduled_smuggled_function(client):
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "web-01",
+            "tgt_type": "list",
+            "fun": "schedule.add",
+            "args": "nightly function=cmd.run seconds=60",
+        },
+        follow_redirects=True,
+    )
+    assert "cannot be fired from here" in rv.data.decode()
+    with client.app.app_context():
+        assert get_session().query(Job).filter_by(fun="schedule.add").count() == 0
+
+
+def test_fun_doc_rejects_glob_minion(client):
+    assert client.get("/jobs/fun-doc?fun=test.ping&minion=*").status_code == 400
+    assert client.get("/jobs/fun-doc?fun=test.ping&minion=web-*").status_code == 400
+
+
 def test_run_requires_fun(client):
     rv = client.post("/jobs/run", data={"tgt": "*", "tgt_type": "glob", "fun": ""})
     assert rv.status_code == 302
@@ -382,10 +414,16 @@ def test_running_detail_reconnects_stream(client):
         session.commit()
     html = client.get("/jobs/20260910123000000013").data.decode()
     assert "EventSource" in html
-    # Server caps each connection: the page must reconnect instead of
-    # freezing on a stale "Live…" note for jobs outliving ~60s.
+    # Capped connections reopen; the note tracks reconnect state.
     assert "Reconnecting" in html
     assert "setTimeout(connect" in html
+    assert "var reconnecting = false" in html
+    assert "completeSeen || reconnecting" in html
+    assert "src.onopen" in html
+    assert "missing[mid] = true" not in html
+    assert "pending[mid]" in html
+    assert "if (panels.querySelector(sel)) return;" in html
+    assert "Session expired. Reload." in html
 
 
 def test_describe_return_failure_surface():
@@ -510,8 +548,7 @@ def test_jobs_history_search_filters_rows(client):
 def test_jobs_page_pause_labels_scope(client):
     html = client.get("/jobs/").data.decode()
     assert "Pause live updates" in html
-    # D4 scope: the toggle pauses the job and minion lists only —
-    # dashboard, events, and job-detail streams run their own course.
+    # The toggle pauses the job and minion lists only.
     assert "job and minion lists" in html
     assert "all pages" not in html
 
@@ -594,3 +631,208 @@ def test_run_form_shows_firing_state(client):
     html = client.get("/jobs/new").data.decode()
     assert "data-loading-form" in html
     assert "Firing…" in html
+
+
+def test_duplicate_save_as_still_runs(client):
+    with client.app.app_context():
+        get_session().add(
+            SavedJob(
+                name="ping",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                args=[],
+            )
+        )
+        get_session().commit()
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "*",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "args": "",
+            "mode": "async",
+            "save_as": "ping",
+        },
+    )
+    assert rv.status_code == 302
+    assert "/jobs/99999" in rv.headers["Location"]
+    html = client.get(rv.headers["Location"]).data.decode()
+    assert "Saved job name already exists; the job still ran." in html
+
+
+def test_stream_counts_live_cache_minions(client, monkeypatch):
+    from types import SimpleNamespace
+
+    import overstate_ui.jobs as jobsmod
+
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20260910123000000020",
+                fun="test.ping",
+                tgt="web01",
+                tgt_type="list",
+                user="admin",
+                started_at=dt.datetime.now(dt.UTC),
+                complete=False,
+            )
+        )
+        session.commit()
+    live = [
+        SimpleNamespace(
+            minion_id="web01", success=True, retcode=0, payload=True, live=True
+        )
+    ]
+    monkeypatch.setattr(jobsmod, "live_returns_now", lambda client, jid: live)
+    monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
+    rv = client.get("/jobs/20260910123000000020/stream?interval=0.05")
+    first = rv.data.decode().splitlines()[0]
+    payload = json.loads(first.removeprefix("data: "))
+    assert payload["minions"] == ["web01"]
+    assert payload["returned"] == 1
+    assert payload["live"] == 1
+    assert payload["stored"] == 0
+
+
+def test_stream_sends_live_and_failed_counts(client, monkeypatch):
+    from types import SimpleNamespace
+
+    import overstate_ui.jobs as jobsmod
+
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20260910123000000021",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                started_at=dt.datetime.now(dt.UTC),
+                complete=False,
+            )
+        )
+        session.add(
+            JobReturn(
+                jid="20260910123000000021",
+                minion_id="stored01",
+                success=False,
+                retcode=1,
+                payload=False,
+            )
+        )
+        session.commit()
+    live = [
+        SimpleNamespace(
+            minion_id="live01", success=False, retcode=1, payload=False, live=True
+        )
+    ]
+    monkeypatch.setattr(jobsmod, "live_returns_now", lambda client, jid: live)
+    monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
+    rv = client.get("/jobs/20260910123000000021/stream?interval=0.05")
+    first = rv.data.decode().splitlines()[0]
+    payload = json.loads(first.removeprefix("data: "))
+    assert sorted(payload["minions"]) == ["live01", "stored01"]
+    assert payload["returned"] == 2
+    assert payload["failed"] == 2
+    assert payload["live"] == 1
+    assert payload["stored"] == 1
+
+
+def test_batch_parent_stream_unions_wave_live_rows(client, monkeypatch):
+    from types import SimpleNamespace
+
+    import overstate_ui.jobs as jobsmod
+
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="batch-g1",
+                fun="state.apply",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                batch_group="g1",
+                started_at=dt.datetime.now(dt.UTC),
+                complete=False,
+            )
+        )
+        session.add(
+            Job(
+                jid="20260910123000000030",
+                fun="state.apply",
+                tgt="web01",
+                tgt_type="list",
+                user="admin",
+                batch_group="g1",
+                started_at=dt.datetime.now(dt.UTC),
+                complete=False,
+            )
+        )
+        session.commit()
+
+    def fake_live(client, jid):
+        if jid == "20260910123000000030":
+            return [
+                SimpleNamespace(
+                    minion_id="web01",
+                    success=True,
+                    retcode=0,
+                    payload=True,
+                    live=True,
+                )
+            ]
+        return []
+
+    monkeypatch.setattr(jobsmod, "live_returns_now", fake_live)
+    monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
+    rv = client.get("/jobs/batch-g1/stream?interval=0.05")
+    first = rv.data.decode().splitlines()[0]
+    payload = json.loads(first.removeprefix("data: "))
+    assert payload["minions"] == ["web01"]
+    assert payload["live"] == 1
+
+
+def test_job_sse_response_is_not_buffered(client):
+    rv = client.get("/jobs/20260910123000000012/stream?interval=0.05")
+    assert rv.mimetype == "text/event-stream"
+    assert rv.headers["Cache-Control"] == "no-cache"
+    assert rv.headers["X-Accel-Buffering"] == "no"
+
+
+def test_events_sse_response_is_not_buffered(monkeypatch):
+    from overstate_ui.salt_client import SaltClient
+
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    monkeypatch.setattr(SaltClient, "event_stream", lambda self: iter([]))
+    app.extensions["salt_client"] = SaltClient("https://salt:8000", "u", "p")
+    with app.app_context():
+        create_all()
+        seed_admin(password="pw")
+    c = app.test_client()
+    c.post("/login", data={"username": "admin", "password": "pw"})
+    rv = c.get("/events/stream?tag=salt/job")
+    assert rv.mimetype == "text/event-stream"
+    assert rv.headers["Cache-Control"] == "no-cache"
+    assert rv.headers["X-Accel-Buffering"] == "no"
+
+
+def test_events_stream_settles_done_vs_error():
+    import pathlib
+
+    text = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "overstate_ui"
+        / "templates"
+        / "events.html"
+    ).read_text()
+    assert "var finished = false" in text
+    assert "if (finished) return;" in text
+    assert "Stream ended (cap reached). Re-watch to resume." in text
+    assert "Stream error or salt-api unreachable." in text

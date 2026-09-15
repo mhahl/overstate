@@ -2,10 +2,12 @@ services:
   overstate:
     build: .
     ports:
+      # Direct publish: clients reach gunicorn without a proxy, so
+      # TRUST_PROXY stays unset and X-Forwarded-* headers are ignored.
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg://overstate:overstate@postgres:5432/overstate
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-dev-redis-pass}@redis:6379/0
       SALT_API_URL: ${SALT_API_URL:-https://salt-master:8000}
       SALT_API_VERIFY_CA: /srv/tls/ca.crt
       SALT_EAUTH_USER: ${SALT_EAUTH_USER:-overstate}
@@ -61,7 +63,7 @@ services:
     command: ["python", "-m", "overstate_ui.worker"]
     environment:
       DATABASE_URL: postgresql+psycopg://overstate:overstate@postgres:5432/overstate
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-dev-redis-pass}@redis:6379/0
       SALT_API_URL: ${SALT_API_URL:-https://salt-master:8000}
       SALT_API_VERIFY_CA: /srv/tls/ca.crt
       SALT_EAUTH_USER: ${SALT_EAUTH_USER:-overstate}
@@ -85,6 +87,9 @@ services:
 
   redis:
     image: docker.io/library/redis:7-alpine
+    # RQ pickles job payloads, so the queue is authenticated: the
+    # password is shared with the app and worker through REDIS_URL.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-dev-redis-pass}"]
 
 volumes:
   pgdata:

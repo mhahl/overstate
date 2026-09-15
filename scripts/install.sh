@@ -146,12 +146,16 @@ ENV_FILE="$ETC/overstate.env"
 if [ ! -f "$ENV_FILE" ]; then
   PG_PASS="$(rand)"
   EAUTH_PASS="$(rand)"
+  REDIS_PASS="$(rand)"
   cat > "$ENV_FILE" <<EOF
 # Overstate service environment (root-only, managed by install.sh).
 # DATABASE_URL and POSTGRES_PASSWORD must stay in sync.
 DATABASE_URL=postgresql+psycopg://overstate:${PG_PASS}@postgres:5432/overstate
 POSTGRES_PASSWORD=${PG_PASS}
-REDIS_URL=redis://redis:6379/0
+# RQ pickles job payloads, so Redis requires this password (see the
+# redis Quadlet unit); the app and worker send it via REDIS_URL.
+REDIS_PASSWORD=${REDIS_PASS}
+REDIS_URL=redis://:${REDIS_PASS}@redis:6379/0
 SALT_API_URL=https://salt-master:8000
 SALT_API_VERIFY_CA=/srv/tls/ca.crt
 SALT_EAUTH_USER=overstate
@@ -164,6 +168,18 @@ TLS_KEY=/srv/tls/app.key
 APP_DOMAIN=overstate.sigaint.au
 API_DOMAIN=overstate-api.sigaint.au
 EOF
+  chmod 600 "$ENV_FILE"
+fi
+# Hosts installed before Redis AUTH: add a password and point REDIS_URL
+# at the authed form. Idempotent: skipped once REDIS_PASSWORD exists.
+if ! grep -q "^REDIS_PASSWORD=" "$ENV_FILE"; then
+  REDIS_PW="$(rand)"
+  printf 'REDIS_PASSWORD=%s\n' "$REDIS_PW" >> "$ENV_FILE"
+  if grep -q "^REDIS_URL=" "$ENV_FILE"; then
+    sed -i "s|^REDIS_URL=.*|REDIS_URL=redis://:${REDIS_PW}@redis:6379/0|" "$ENV_FILE"
+  else
+    printf 'REDIS_URL=redis://:%s@redis:6379/0\n' "$REDIS_PW" >> "$ENV_FILE"
+  fi
   chmod 600 "$ENV_FILE"
 fi
 for var in "APP_DOMAIN=overstate.sigaint.au" \

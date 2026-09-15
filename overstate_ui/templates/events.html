@@ -64,10 +64,19 @@
     applyFilter();
     note.textContent = "Streaming (newest first, server-filtered)…";
   };
-  function finish(msg) { note.textContent = msg; src.close(); }
+  var finished = false;
+  function finish(msg) {
+    if (finished) return;
+    finished = true;
+    note.textContent = msg;
+    src.close();
+  }
   src.addEventListener("done", function () { finish("Stream ended (cap reached). Re-watch to resume."); });
   src.addEventListener("error", function () { finish("Stream error or salt-api unreachable."); });
-  src.onerror = function () { finish("Stream error or salt-api unreachable."); };
+  src.onerror = function () {
+    if (finished) return;
+    finish("Stream error or salt-api unreachable.");
+  };
 })();
 </script>
 {% endblock %}

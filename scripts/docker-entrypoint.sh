@@ -26,6 +26,10 @@ if [ -z "$MIGRATED" ]; then
   exit 1
 fi
 ARGS="-b 0.0.0.0:8000"
+# SSE streams hold a sync worker for the stream lifetime (~60s), so one
+# worker stalls every other request; default to more than one.
+WORKERS="${WEB_CONCURRENCY:-4}"
+ARGS="$ARGS -w $WORKERS"
 # Worker timeout must exceed the dashboard's worst-case synchronous Salt
 # budget (~7 sequential probe calls x dashboard.SYNC_HTTP_TIMEOUT) so a
 # sick master degrades the page instead of killing the worker mid-request.

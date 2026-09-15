@@ -56,9 +56,14 @@
     </div>
   </div>
   {% endif %}
-  <form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm">
+  <form method="post" action="{{ confirm_action or url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if extra_hidden %}
+      {% for name, value in extra_hidden.items() %}
+      <input type="hidden" name="{{ name }}" value="{{ value }}">
+      {% endfor %}
+      {% else %}
       <input type="hidden" name="tgt" value="{{ tgt }}">
       <input type="hidden" name="tgt_type" value="{{ tgt_type }}">
       <input type="hidden" name="fun" value="{{ fun }}">
@@ -69,9 +74,22 @@
       <input type="hidden" name="batch_mode" value="{{ batch_mode | default('off') }}">
       <input type="hidden" name="batch_size" value="{{ batch_size | default(25) }}">
       <input type="hidden" name="stop_after" value="{{ stop_after | default(1) }}">
+      {% endif %}
       <input type="hidden" name="confirmed" value="yes">
+      {% if current_user.role in ["operator", "admin"] %}
+      <label class="fieldset">
+        <span class="fieldset-legend">Type <code>{{ tgt }}</code> to confirm</span>
+        <input name="confirm_tgt" class="input w-full font-mono" placeholder="{{ tgt }}" autocomplete="off" required>
+      </label>
+      {% if matched is none %}
+      <label class="fieldset flex-row items-center gap-2">
+        <input name="no_preview_ok" type="checkbox" class="checkbox">
+        <span class="text-sm">Fire without a match preview</span>
+      </label>
+      {% endif %}
+      {% endif %}
       <div class="card-actions justify-end">
-        <a class="btn btn-ghost" href="{{ url_for('jobs.new', tgt=tgt, tgt_type=tgt_type, fun=fun, args=raw_args, mode=mode, via=via, save_as=save_as, batch_mode=batch_mode, batch_size=batch_size, stop_after=stop_after) }}">Cancel</a>
+        <a class="btn btn-ghost" href="{{ cancel_url or url_for('jobs.new', tgt=tgt, tgt_type=tgt_type, fun=fun, args=raw_args, mode=mode, via=via, save_as=save_as, batch_mode=batch_mode, batch_size=batch_size, stop_after=stop_after) }}">Cancel</a>
         {% if current_user.role in ["operator", "admin"] %}
         <button class="btn btn-warning">Run {{ fun }}</button>
         {% else %}

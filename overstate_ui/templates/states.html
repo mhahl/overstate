@@ -43,11 +43,30 @@
       <h2 class="card-title text-base mr-auto">Conformity</h2>
       <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by status">
         {% for opt in ["", "ok", "drifted", "unreachable", "unknown"] %}
-        <a href="{{ url_for('states.index', status=opt, sort=sort, direction=direction) }}" class="btn btn-xs {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}">{{ opt or "all" }}</a>
+        <a data-status-chip href="{{ url_for('states.index', status=opt, sort=sort, dir=direction) }}" class="btn btn-xs {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}">{{ opt or "all" }}</a>
         {% endfor %}
       </div>
     </div>
     {% include "_conformity_rows.html" %}
   </div>
 </section>
+<script>
+(function () {
+  // Chips live outside the swapped table, so an HTMX sort would leave
+  // them carrying the initial sort; rebuild them from the address bar.
+  function syncChips() {
+    var params = new URLSearchParams(location.search);
+    var sort = params.get("sort") || {{ sort|tojson }};
+    var dir = params.get("dir") || {{ direction|tojson }};
+    document.querySelectorAll("[data-status-chip]").forEach(function (a) {
+      var url = new URL(a.getAttribute("href"), location.origin);
+      url.searchParams.set("sort", sort);
+      url.searchParams.set("dir", dir);
+      a.setAttribute("href", url.pathname + url.search);
+    });
+  }
+  document.addEventListener("htmx:afterSwap", syncChips);
+  syncChips();
+})();
+</script>
 {% endblock %}

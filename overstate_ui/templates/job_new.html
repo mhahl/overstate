@@ -54,7 +54,7 @@
 {% set batch_mode = saved.batch.mode if saved and saved.batch else preset.get('batch_mode', 'off') %}
 {% set batch_size = saved.batch.size if saved and saved.batch else preset.get('batch_size', '25') %}
 {% set batch_stop = saved.batch.stop_after if saved and saved.batch else preset.get('stop_after', '1') %}
-<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ batch_mode }}' }" data-loading-form data-loading-text="Firing…">
+<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ batch_mode }}', via: '{{ preset.get('via', 'local') }}', mode: '{{ preset.get('mode', 'async') }}' }" data-loading-form data-loading-text="Firing…">
   <div class="card-body gap-0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid md:grid-cols-[minmax(0,1fr)_13rem] gap-x-4 pb-4">
@@ -94,14 +94,14 @@
     <div class="grid sm:grid-cols-3 gap-4 border-t border-base-300 py-4">
       <label class="fieldset">
         <span class="fieldset-legend">Mode</span>
-        <select id="job-mode" name="mode" class="select w-full">
+        <select id="job-mode" name="mode" class="select w-full" x-model="mode" :disabled="via === 'ssh'">
           <option value="async"{% if preset.get('mode', 'async') == 'async' %} selected{% endif %}>async (returns JID)</option>
           <option value="sync"{% if preset.get('mode') == 'sync' %} selected{% endif %}>sync (wait up to 60s)</option>
         </select>
       </label>
       <label class="fieldset">
         <span class="fieldset-legend">Transport</span>
-        <select id="job-via" name="via" class="select w-full">
+        <select id="job-via" name="via" class="select w-full" x-model="via" @change="if (via === 'ssh') mode = 'sync'">
           <option value="local"{% if preset.get('via', 'local') == 'local' %} selected{% endif %}>ZeroMQ (minions)</option>
           <option value="ssh"{% if preset.get('via') == 'ssh' %} selected{% endif %}>salt-ssh (roster, sync only)</option>
         </select>
@@ -122,11 +122,11 @@
       </label>
       <label class="fieldset">
         <span class="fieldset-legend">Wave size</span>
-        <input name="batch_size" value="{{ batch_size }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
+        <input name="batch_size" value="{{ batch_size }}" class="input w-full" type="number" min="1" :disabled="batch === 'off'">
       </label>
       <label class="fieldset">
         <span class="fieldset-legend">Stop after failures</span>
-        <input name="stop_after" value="{{ batch_stop }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
+        <input name="stop_after" value="{{ batch_stop }}" class="input w-full" type="number" min="1" :disabled="batch === 'off'">
       </label>
     </div>
     <p class="text-xs opacity-70 pb-4">Rolling batches run list and glob targets wave by wave. They stop at the failure limit.</p>
@@ -174,18 +174,33 @@
   var funInput = document.getElementById('job-fun');
   var funList = document.getElementById('fun-list');
   var funDoc = document.getElementById('fun-doc');
+  // Overlapping doc fetches resolve in order: only the latest generation
+  // paints, and error bodies never replace the rail.
+  var docSeq = 0;
+  var docController = null;
   function loadFunDoc(fun) {
     var minion = funDoc.getAttribute('data-doc-minion');
-    if (!fun || !minion) {
-      funDoc.innerHTML = '';
+    var seq = ++docSeq;
+    if (docController) docController.abort();
+    if (!minion) {
+      funDoc.innerHTML = '<p class="text-xs opacity-70">No accepted minion available for sys.doc.</p>';
+      return;
+    }
+    if (!fun) {
+      funDoc.innerHTML = '<p class="text-xs opacity-70">Pick a function to see its docs.</p>';
       return;
     }
     funDoc.innerHTML = '<p class="text-xs opacity-70">Loading docs…</p>';
+    docController = new AbortController();
     fetch(funDoc.getAttribute('data-doc-url') + '?fun=' + encodeURIComponent(fun) +
-          '&minion=' + encodeURIComponent(minion))
-      .then(function (r) { return r.text(); })
-      .then(function (html) { funDoc.innerHTML = html; })
-      .catch(function () {});
+          '&minion=' + encodeURIComponent(minion), { signal: docController.signal })
+      .then(function (r) { if (!r.ok) throw new Error('docs status ' + r.status); return r.text(); })
+      .then(function (html) { if (seq === docSeq) funDoc.innerHTML = html; })
+      .catch(function (err) {
+        if (seq !== docSeq) return;
+        if (err && err.name === 'AbortError') return;
+        funDoc.innerHTML = '<p class="text-xs opacity-70">Docs unavailable.</p>';
+      });
   }
   function funOptions() {
     return Array.from(funList.querySelectorAll('[role=option]'));
@@ -232,6 +247,8 @@
       funInput.setAttribute('aria-expanded', 'false');
     }, 120);
   });
+  // Enter submits the form unless the list is open with a highlighted
+  // option; arrows only move when the list is open. Escape still closes.
   funInput.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
       funList.classList.add('hidden');
@@ -239,17 +256,24 @@
       markActive(null);
       return;
     }
-    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp' && ev.key !== 'Enter') return;
+    if (ev.key === 'Enter') {
+      var open = !funList.classList.contains('hidden');
+      var chosen = funOptions().filter(function (o) {
+        return o.getAttribute('aria-selected') === 'true';
+      })[0];
+      if (!open || !chosen) return;
+      ev.preventDefault();
+      pickOption(chosen);
+      return;
+    }
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    if (funList.classList.contains('hidden')) return;
     var visible = visibleOptions();
     if (!visible.length) return;
     ev.preventDefault();
     var current = visible.indexOf(funOptions().filter(function (o) {
       return o.getAttribute('aria-selected') === 'true';
     })[0]);
-    if (ev.key === 'Enter') {
-      if (current !== -1) pickOption(visible[current]);
-      return;
-    }
     var next = ev.key === 'ArrowDown'
       ? (current + 1) % visible.length
       : (current - 1 + visible.length) % visible.length;

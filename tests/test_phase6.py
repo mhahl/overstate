@@ -200,7 +200,9 @@ def test_schedules_action_empty_job_rejected(client):
 def test_schedules_action_failed_return_flashes_error(client, monkeypatch):
     salt = client.app.extensions["salt_client"]
     monkeypatch.setattr(
-        salt, "local", lambda *a, **k: [{"web-01": {"result": False, "comment": "nope"}}]
+        salt,
+        "local",
+        lambda *a, **k: [{"web-01": {"result": False, "comment": "nope"}}],
     )
     rv = client.post("/schedules/web-01/delete", data={"job": "daily"})
     assert rv.status_code == 302

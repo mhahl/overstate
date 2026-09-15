@@ -256,3 +256,17 @@ def test_fetch_viewer_forbidden(checkout):
     c.post("/login", data={"username": "vie", "password": "pw"})
     assert c.post("/files/fetch").status_code == 403
     assert c.get("/files/fetch").status_code == 405
+
+
+def test_git_failure_reason_never_carries_remote_secrets():
+    from overstate_ui.git_sync import _failure
+
+    class Proc:
+        stderr = (
+            "https://deploy:s3cr3t-token@git.example.com/org/states.git: fetch failed\n"
+        )
+        stdout = ""
+        returncode = 1
+
+    assert _failure(Proc(), "git fetch failed") == "git fetch failed"
+    assert "s3cr3t-token" not in _failure(Proc(), "git fetch failed")

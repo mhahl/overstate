@@ -7,6 +7,7 @@ from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, init_db
 from overstate_ui.files import (
+    highlight_json,
     highlight_yaml,
     list_tree,
     read_text,
@@ -80,6 +81,14 @@ def test_highlight_yaml_keeps_content_verbatim():
     assert "codehltable" in out
     assert '<span class="c1"># comment</span>' in out
     assert "pkg.installed" in out
+
+
+def test_highlight_json_sorts_keys_and_highlights():
+    out = highlight_json({"roles": ["web"], "zone": "east"})
+    assert "codehltable" in out
+    assert "roles" in out and "zone" in out
+    # sorted keys: roles renders before zone
+    assert out.index("roles") < out.index("zone")
 
 
 def test_search_filters_listing(rooted):

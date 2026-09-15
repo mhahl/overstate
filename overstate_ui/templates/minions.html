@@ -22,7 +22,9 @@
   <span>salt-api unreachable. Snapshot cache only.</span>
 </div>
 {% endif %}
-<form method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+<form id="minions-filter" method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <label class="fieldset flex-1 min-w-48">
       <span class="fieldset-legend">Search</span>
@@ -41,8 +43,27 @@
   </div>
 </form>
 <form method="get" action="{{ url_for('jobs.new') }}" class="card bg-base-100 border border-base-300 shadow-sm">
+<input type="hidden" name="bulk_run" value="1">
 {% include "_minion_rows.html" %}
 </form>
+<noscript>
+<div class="card bg-base-100 border border-base-300 shadow-sm mt-4">
+  <div class="card-body">
+    <p class="font-medium text-sm">Remove a minion without JavaScript</p>
+    <ul class="flex flex-col gap-2 mt-2">
+      {% for r in rows %}
+      <li class="flex items-center gap-2">
+        <span class="font-mono text-xs">{{ r.id }}</span>
+        <form method="post" action="{{ url_for('minions.remove', mid=r.id) }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-xs btn-error btn-outline">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+</noscript>
 {% if current_user.role in ["operator", "admin"] %}
 <dialog id="remove-modal" class="modal" aria-labelledby="remove-modal-title">
   <div class="modal-box">
@@ -69,7 +90,7 @@
 <script>
 (function () {
   var btn = document.getElementById("live-toggle");
-  // Shared pause preference across minions/jobs (intentional, D4).
+  // Shared pause key: job and minion lists only.
   var key = "overstate-live";
   function paused() {
     try { return localStorage.getItem(key) === "off"; }
@@ -170,6 +191,15 @@
   // bulk-selection: preserve checked minion ids across HTMX table swaps.
   var kept = new Set();
   document.addEventListener("change", function (ev) {
+    if (ev.target && ev.target.id === "bulk-all") {
+      var on = ev.target.checked;
+      document.querySelectorAll('input[name="bulk"]').forEach(function (box) {
+        box.checked = on;
+        if (on) kept.add(box.value);
+        else kept.delete(box.value);
+      });
+      return;
+    }
     var box = ev.target.closest ? ev.target.closest('input[name="bulk"]') : null;
     if (!box) return;
     if (box.checked) kept.add(box.value);
@@ -179,6 +209,16 @@
     document.querySelectorAll('input[name="bulk"]').forEach(function (box) {
       box.checked = kept.has(box.value);
     });
+    // The filter form sits outside the swapped table, so a sort click
+    // would leave its sort behind; follow the address bar instead.
+    var params = new URLSearchParams(location.search);
+    var form = document.getElementById("minions-filter");
+    if (form) {
+      ["sort", "dir"].forEach(function (name) {
+        var value = params.get(name);
+        if (value !== null) form.elements[name].value = value;
+      });
+    }
   });
 })();
 </script>

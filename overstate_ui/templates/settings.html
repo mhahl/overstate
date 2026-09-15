@@ -25,7 +25,10 @@
           {% endfor %}
         </select>
         {% else %}
-        <input id="setting-{{ key }}" name="{{ key }}" value="{{ values[key] }}" type="{% if "secret" in key %}password{% else %}text{% endif %}" autocomplete="{% if "secret" in key %}new-password{% else %}off{% endif %}" class="input w-full font-mono"{% if not is_admin %} disabled{% endif %}>
+        <input id="setting-{{ key }}" name="{{ key }}" value="{% if "secret" not in key %}{{ values[key] }}{% endif %}" placeholder="{% if "secret" in key %}Unchanged{% endif %}" type="{% if "secret" in key %}password{% else %}text{% endif %}" autocomplete="{% if "secret" in key %}new-password{% else %}off{% endif %}" class="input w-full font-mono"{% if not is_admin %} disabled{% endif %}>
+        {% endif %}
+        {% if "secret" in key and is_admin %}
+        <label class="flex items-center gap-2 mt-1 text-xs opacity-70"><input type="checkbox" name="clear_{{ key }}" class="checkbox checkbox-xs"> Remove the stored secret (fall back to OIDC_CLIENT_SECRET)</label>
         {% endif %}
         {% if meta.help %}<p class="text-xs opacity-70">{{ meta.help }}</p>{% endif %}
       </div>

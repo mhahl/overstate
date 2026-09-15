@@ -110,7 +110,7 @@ def test_wait_for_ready_error_and_timeout():
 
     assert wait_for(StubJob("finished", {"count": 3})) == ("ready", {"count": 3})
     status, value = wait_for(StubJob("failed"))
-    assert status == "error" and "boom" in value
+    assert (status, value) == ("error", "worker failed")
     assert wait_for(StubJob("started"), wait=0) == ("pending", None)
 
 
@@ -176,12 +176,15 @@ def test_ping_failure_with_target_keeps_grant_guidance():
     assert ping["grant"] == "Grant execution functions to the eauth user"
 
 
-def test_isolated_app_teardown_uses_live_registry(app):
+def test_isolated_app_teardown_uses_live_registry(app, monkeypatch):
     """Fresh worker processes start with db._Session unset; teardown
     must use the registry rebound by create_app, not a stale import."""
     import overstate_ui.db as dbmod
+    from overstate_ui.config import Config
     from overstate_ui.tasks import isolated_app
 
+    # Non-testing boots refuse the placeholder SECRET_KEY.
+    monkeypatch.setattr(Config, "SECRET_KEY", "test-worker-key")
     saved = (dbmod._engine, dbmod._Session)
     dbmod._engine, dbmod._Session = None, None
     try:
@@ -272,7 +275,36 @@ def test_dashboard_without_worker_shows_snapshot(app, admin):
     assert "No capability data yet." in html
 
 
-def test_rotation_page_and_verify(monkeypatch, admin):
+class FakeRotationStore:
+    """Dict-backed stand-in for the Redis rotation cache."""
+
+    def __init__(self):
+        self.data = {}
+
+    def ping(self):
+        return True
+
+    def get(self, key):
+        value = self.data.get(key)
+        return value.encode() if isinstance(value, str) else value
+
+    def set(self, key, value, ex=None):
+        self.data[key] = value
+
+    def delete(self, key):
+        self.data.pop(key, None)
+
+
+@pytest.fixture()
+def rotation_store(monkeypatch):
+    import overstate_ui.users as users_mod
+
+    store = FakeRotationStore()
+    monkeypatch.setattr(users_mod, "_rotation_store", lambda: store)
+    return store
+
+
+def test_rotation_page_and_verify(monkeypatch, admin, rotation_store):
     html = admin.get("/users/rotation").data.decode()
     assert "Rotate salt-api password" in html
     assert "locks the app out" in html  # danger banner above the steps
@@ -308,7 +340,7 @@ def _rotation_password(client):
     ).group(1)
 
 
-def test_rotation_password_stable_until_consumed(monkeypatch, admin):
+def test_rotation_password_stable_until_consumed(monkeypatch, admin, rotation_store):
     assert _rotation_password(admin) == _rotation_password(admin)
 
     class LoginOk:
@@ -323,7 +355,7 @@ def test_rotation_password_stable_until_consumed(monkeypatch, admin):
     assert _rotation_password(admin) != first
 
 
-def test_rotation_regenerate_replaces_password(admin):
+def test_rotation_regenerate_replaces_password(admin, rotation_store):
     import re
 
     first = _rotation_password(admin)
@@ -337,10 +369,39 @@ def test_rotation_regenerate_replaces_password(admin):
     assert second and second != first
 
 
-def test_rotation_password_copy_button(admin):
+def test_rotation_password_copy_button(admin, rotation_store):
     html = admin.get("/users/rotation").data.decode()
     assert 'data-copy="rotation-password"' in html
     assert 'id="rotation-password"' in html
+
+
+def test_rotation_password_lives_on_server_not_in_cookie(admin, rotation_store):
+    password = _rotation_password(admin)
+    assert password
+    assert len(rotation_store.data) == 1  # the server cache holds it
+    with admin.session_transaction() as session:
+        assert "rotation_password" not in session
+
+
+def test_rotation_verify_pops_server_password(monkeypatch, admin, rotation_store):
+    _rotation_password(admin)
+    assert len(rotation_store.data) == 1
+
+    class LoginOk:
+        def login(self):
+            return None
+
+    monkeypatch.setattr("overstate_ui.tasks.build_client", lambda: LoginOk())
+    admin.post("/users/rotation/verify", data={"password": "new"})
+    assert rotation_store.data == {}
+
+
+def test_rotation_refuses_without_cache(admin):
+    html = admin.get("/users/rotation").data.decode()
+    assert "Rotation needs the cache." in html
+    assert 'id="rotation-password"' not in html
+    rv = admin.post("/users/rotation/regenerate", follow_redirects=True)
+    assert "Rotation needs the cache." in rv.data.decode()
 
 
 def test_rotation_forbidden_for_operator(app):

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Overstate{% endblock %}</title>
   <link href="{{ url_for('static', filename='app.css') }}" rel="stylesheet" type="text/css">
-  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
+  <script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='alpine.min.js') }}" defer></script>
 </head>
 <body class="bg-base-200 min-h-screen">
 <div class="drawer lg:drawer-open">
@@ -21,7 +21,7 @@
         <span class="font-bold">Overstate</span>
       </a>
       <div class="ml-auto flex items-center gap-2">
-        <button id="palette-btn" class="btn btn-ghost btn-sm gap-2 hidden sm:inline-flex" aria-label="Command palette">
+        <button id="palette-btn" class="btn btn-ghost btn-sm gap-2 inline-flex" aria-label="Command palette">
           <span class="icon-[lucide--search] size-4 opacity-70" aria-hidden="true"></span>
           <span class="opacity-70 font-normal">Jump to…</span>
           <span class="kbd kbd-xs">Ctrl K</span>
@@ -52,6 +52,9 @@
       </div>
     </header>
     <main class="p-4 lg:p-6 w-full max-w-7xl mx-auto grow">
+      <div id="htmx-error-note" class="hidden" role="alert">
+        <span>Refresh failed.</span>
+      </div>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, m in messages %}
@@ -164,10 +167,30 @@
   function spinMarkup(label) {
     return '<span class="loading loading-spinner loading-xs" aria-hidden="true"></span><span>' + label + '</span>';
   }
+  // A failed poll keeps the last good fragment: failed swaps never
+  // replace the region, the note says so instead. The note takes its
+  // alert styling only when shown, so pages without errors carry no
+  // alert classes in their markup.
+  var htmxErrorHidden = "hidden";
+  var htmxErrorShown = "mb-4 text-sm text-warning";
+  function showHtmxError(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    var note = document.getElementById("htmx-error-note");
+    if (note) note.className = htmxErrorShown;
+  }
+  document.addEventListener("htmx:responseError", showHtmxError);
+  document.addEventListener("htmx:swapError", showHtmxError);
+  document.addEventListener("htmx:afterSwap", function () {
+    var note = document.getElementById("htmx-error-note");
+    if (note) note.className = htmxErrorHidden;
+  });
   document.addEventListener("click", function (ev) {
     if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
     var link = ev.target.closest("a[data-loading-link]");
-    if (!link || link.dataset.loadingActive) return;
+    if (!link) return;
+    // The first click still navigates once; later clicks while the
+    // spinner is up are swallowed so a double-click cannot queue two.
+    if (link.dataset.loadingActive) { ev.preventDefault(); return; }
     link.dataset.loadingActive = "true";
     link.dataset.loadingHtml = link.innerHTML;
     link.setAttribute("aria-busy", "true");
@@ -199,9 +222,8 @@
   });
 })();
 </script>
-<div id="palette" class="fixed inset-0 z-50 hidden" role="dialog" aria-label="Command palette">
-  <div id="palette-backdrop" class="absolute inset-0 bg-black/50"></div>
-  <div class="card bg-base-100 border border-base-300 shadow-lg w-full max-w-lg mx-auto mt-24 relative">
+<dialog id="palette" class="modal" aria-label="Command palette" aria-modal="true">
+  <div class="modal-box w-full max-w-lg p-0">
     <div class="p-3 border-b border-base-300">
       <input id="palette-input" type="text" placeholder="Pages, presets, minions…" class="input w-full" autocomplete="off" aria-label="Palette search">
     </div>
@@ -238,7 +260,8 @@
       {% endfor %}
     </ul>
   </div>
-</div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
 <script>
 (function () {
   var overlay = document.getElementById("palette");
@@ -251,8 +274,18 @@
   var minionBase = {{ url_for('minions.index')|tojson }};
   var searchUrl = {{ url_for('minions.search')|tojson }};
   var timer = null;
+  var searchGen = 0;
+  // Recents are same-origin paths only: a stored absolute or script URL
+  // never becomes a link.
+  function safeHref(href) {
+    return typeof href === "string" && href.charAt(0) === "/" &&
+      href.charAt(1) !== "/" && href.indexOf("\\") === -1;
+  }
   var recents = [];
-  try { recents = JSON.parse(localStorage.getItem("overstate-recent") || "[]"); }
+  try {
+    recents = JSON.parse(localStorage.getItem("overstate-recent") || "[]")
+      .filter(function (r) { return r && safeHref(r.href); }).slice(0, 5);
+  }
   catch (e) { recents = []; }
 
   function staticEntries() {
@@ -275,6 +308,7 @@
   var activeIndex = 0;
 
   function recordRecent(label, hint, href) {
+    if (!safeHref(href)) return;
     recents = [{label: label, hint: hint, href: href}]
       .concat(recents.filter(function (r) { return r.href !== href; }))
       .slice(0, 5);
@@ -347,15 +381,19 @@
       li.parentElement.removeChild(li);
     });
   }
+  // Stale minion results never paint: each keystroke bumps searchGen and
+  // only the latest generation may append.
   function queueSearch() {
     clearTimeout(timer);
     var q = input.value.trim();
+    var gen = ++searchGen;
     clearMinions();
     if (q.length < 2) { applyFilter(); return; }
     timer = setTimeout(function () {
       fetch(searchUrl + "?q=" + encodeURIComponent(q))
         .then(function (r) { return r.json(); })
         .then(function (ids) {
+          if (gen !== searchGen) return;
           var frag = document.createDocumentFragment();
           ids.slice(0, 12).forEach(function (id) {
             var li = document.createElement("li");
@@ -377,22 +415,24 @@
           list.appendChild(frag);
           applyFilter();
         })
-        .catch(function () { applyFilter(); });
+        .catch(function () { if (gen !== searchGen) return; applyFilter(); });
     }, 200);
   }
 
   function openPalette() {
     renderRecents();
-    overlay.classList.remove("hidden");
+    if (!overlay.open) overlay.showModal();
     input.value = "";
     clearMinions();
     applyFilter();
     input.focus();
   }
-  function closePalette() { overlay.classList.add("hidden"); }
+  function closePalette() { if (overlay.open) overlay.close(); }
 
   if (btn) btn.addEventListener("click", openPalette);
-  document.getElementById("palette-backdrop").addEventListener("click", closePalette);
+  overlay.addEventListener("click", function (ev) {
+    if (ev.target === overlay) closePalette();
+  });
   input.addEventListener("input", queueSearch);
   input.addEventListener("keydown", function (ev) {
     var anchors = visibleAnchors();
@@ -411,8 +451,25 @@
   document.addEventListener("keydown", function (ev) {
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "k") {
       ev.preventDefault();
-      if (overlay.classList.contains("hidden")) openPalette();
-      else closePalette();
+      if (overlay.open) closePalette();
+      else openPalette();
+      return;
+    }
+    // Escape anywhere in the overlay and Tab trap for the modal dialog.
+    if (!overlay.open) return;
+    if (ev.key === "Escape") { closePalette(); return; }
+    if (ev.key !== "Tab") return;
+    var focusable = Array.prototype.filter.call(
+      overlay.querySelectorAll("input, a[href], button"),
+      function (el) { return el.offsetParent !== null; });
+    if (!focusable.length) return;
+    var first = focusable[0], last = focusable[focusable.length - 1];
+    if (ev.shiftKey && document.activeElement === first) {
+      ev.preventDefault();
+      last.focus();
+    } else if (!ev.shiftKey && document.activeElement === last) {
+      ev.preventDefault();
+      first.focus();
     }
   });
 })();

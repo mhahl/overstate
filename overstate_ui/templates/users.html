@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Users · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-3xl">
   <div class="mb-5 flex items-end justify-between gap-4">
@@ -8,11 +9,6 @@
     </div>
     <a class="btn btn-sm btn-error btn-outline" href="{{ url_for('users.rotation') }}">Rotate salt-api password</a>
   </div>
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      {% for m in messages %}<div class="alert alert-info mb-2" role="alert">{{ m }}</div>{% endfor %}
-    {% endif %}
-  {% endwith %}
   {% import "_macros.html" as m %}
   <form method="get" action="{{ url_for('users.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
     <input type="hidden" name="sort" value="{{ sort }}">

@@ -13,6 +13,7 @@ import httpx
 from flask import (
     Blueprint,
     Response,
+    abort,
     flash,
     jsonify,
     redirect,
@@ -26,8 +27,9 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
+from .files import highlight_json
 from .inventory import GRAIN_COLUMNS
-from .jobs_helpers import _split_state_id, _state_label
+from .jobs_helpers import FUN_RE, _split_state_id, _state_label
 from .minions_helpers import (
     HOST_RE,
     ONBOARD_DISTROS,
@@ -44,6 +46,7 @@ from .minions_helpers import (
     parse_beacon_list,
     presence_of,
     refresh_sync,
+    summarize_schedule,
 )
 from .models import Job, JobReturn, Minion
 from .salt_client import SaltApiError
@@ -58,6 +61,15 @@ BEACON_ACTIONS = {
 }
 SORT_COLUMNS = ("id", "key", "presence", "os")
 
+
+def _exact_mid(mid: str) -> str:
+    """A path minion id is one exact minion: glob characters would fan a
+    single-minion read out to the fleet, so they 404 instead."""
+    if not mid or any(c in mid for c in "*?[]"):
+        abort(404)
+    return mid
+
+
 __all__ = [
     "BEACON_ACTIONS",
     "DETAIL_TABS",
@@ -69,6 +81,7 @@ __all__ = [
     "PRESENCE_ORDER",
     "SORT_COLUMNS",
     "_beacon_refusal",
+    "_exact_mid",
     "bp",
     "build_onboard_script",
     "live_roster",
@@ -207,10 +220,19 @@ def search():
 @login_required
 def presence():
     """Lightweight presence map for in-place dot updates. Never re-renders
-    the table, so bulk checkbox selections survive polling."""
+    the table, so bulk checkbox selections survive polling. Served from
+    a short Redis cache shared by every gunicorn worker, so an open tab
+    costs one Salt round-trip per TTL, not one per worker per poll."""
+    from .tasks_queue import read_presence_cache, write_presence_cache
+
+    cached = read_presence_cache()
+    if isinstance(cached, dict):
+        return jsonify(cached)
     statuses, up, _ = live_roster(get_salt())
     rows = minion_rows(statuses, up, "", "")
-    return jsonify({r["id"]: presence_of(r) for r in rows})
+    payload = {r["id"]: presence_of(r) for r in rows}
+    write_presence_cache(payload)
+    return jsonify(payload)
 
 
 @bp.route("/export.csv")
@@ -286,12 +308,13 @@ def refresh():
 @roles_required("operator")
 def refresh_one(mid: str):
     """Re-pull grains for a single minion into the snapshot cache."""
+    mid = _exact_mid(mid)
     row = get_session().get(Minion, mid)
     if row is None:
         flash(f"Unknown minion '{mid}'.", "error")
         return redirect(url_for("minions.index"))
     try:
-        grains = get_salt().local(mid, "grains.items")[0].get(mid)
+        grains = get_salt().local(mid, "grains.items", tgt_type="list")[0].get(mid)
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
         return redirect(url_for("minions.index"))
@@ -314,6 +337,7 @@ def remove(mid: str):
     dialog's checkbox asks for it — and then only when the wheel call
     succeeds, so a failed key delete leaves the snapshot in place
     instead of half-finishing."""
+    mid = _exact_mid(mid)
     session = get_session()
     row = session.get(Minion, mid)
     if row is None:
@@ -345,6 +369,7 @@ def states_refresh(mid: str):
     Display-only: the live result is shown next to the stored return
     and never written into job history. Any failure degrades to the
     stored view plus an advisory note."""
+    mid = _exact_mid(mid)
     from .tasks import queue_or_none, show_highstate_now, show_highstate_task, wait_for
 
     live: dict | None = None
@@ -435,6 +460,7 @@ def onboard_script():
 @bp.route("/<mid>")
 @login_required
 def detail(mid: str):
+    mid = _exact_mid(mid)
     tab = request.args.get("tab", "overview")
     if tab not in DETAIL_TABS:
         tab = "overview"
@@ -444,7 +470,7 @@ def detail(mid: str):
     error = None
     try:
         if tab == "overview":
-            live = client.local(mid, "grains.items")[0].get(mid)
+            live = client.local(mid, "grains.items", tgt_type="list")[0].get(mid)
             if isinstance(live, dict):
                 data["grains"] = normalize_grains(live)
         elif tab == "states":
@@ -459,10 +485,21 @@ def detail(mid: str):
             # schedule arrives as {} so the empty state triggers,
             # not as the string "schedule: {}\n" (see schedules.index).
             data["schedule"] = client.local(
-                mid, "schedule.list", kwarg={"return_yaml": False}
+                mid,
+                "schedule.list",
+                tgt_type="list",
+                kwarg={"return_yaml": False},
             )[0].get(mid, {})
+            data["sched_enabled"], data["schedule_rows"] = summarize_schedule(
+                data["schedule"]
+            )
         elif tab == "pillar":
-            data["pillar"] = client.local(mid, "pillar.items")[0].get(mid)
+            data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[0].get(
+                mid
+            )
+            data["pillar_html"] = (
+                highlight_json(data["pillar"]) if data["pillar"] else None
+            )
         elif tab == "mine":
             # This minion's stored mine values for one function:
             # mine.get run on the minion answers {mid: value}.
@@ -471,10 +508,10 @@ def detail(mid: str):
             data["mine_fun"] = mine_fun
             data["mine_found"] = False
             data["mine_value"] = None
-            if mine_fun:
-                stored = client.local(mid, "mine.get", arg=[mid, mine_fun])[0].get(
-                    mid, {}
-                )
+            if mine_fun and FUN_RE.match(mine_fun):
+                stored = client.local(
+                    mid, "mine.get", arg=[mid, mine_fun], tgt_type="list"
+                )[0].get(mid, {})
                 value = stored.get(mid) if isinstance(stored, dict) else stored
                 if value is not None:
                     data["mine_found"] = True
@@ -484,9 +521,12 @@ def detail(mid: str):
             # schedules.index). A second pillar-excluded call
             # attributes the `pillar` source badge; when it fails
             # no badge is shown rather than a wrong one.
-            value = client.local(mid, "beacons.list", kwarg={"return_yaml": False})[
-                0
-            ].get(mid, {})
+            value = client.local(
+                mid,
+                "beacons.list",
+                tgt_type="list",
+                kwarg={"return_yaml": False},
+            )[0].get(mid, {})
             entries = parse_beacon_list(value)
             data["beacon_entries"] = entries
             data["beacon_pillar"] = set()
@@ -497,6 +537,7 @@ def detail(mid: str):
                     local_value = client.local(
                         mid,
                         "beacons.list",
+                        tgt_type="list",
                         kwarg={"return_yaml": False, "include_pillar": False},
                     )[0].get(mid, {})
                 except SaltApiError:
@@ -570,6 +611,7 @@ def detail(mid: str):
 @bp.post("/<mid>/beacons/<action>")
 @roles_required("operator")
 def beacon_act(mid: str, action: str):
+    mid = _exact_mid(mid)
     """Enable/disable one beacon (runtime state only; definitions live
     in pillar and are never edited here)."""
     if action not in BEACON_ACTIONS:
@@ -580,7 +622,9 @@ def beacon_act(mid: str, action: str):
         flash("Beacon name is required.", "error")
         return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
     try:
-        outcome = get_salt().local(mid, BEACON_ACTIONS[action], arg=[name])
+        outcome = get_salt().local(
+            mid, BEACON_ACTIONS[action], arg=[name], tgt_type="list"
+        )
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
         return redirect(url_for("minions.detail", mid=mid, tab="beacons"))

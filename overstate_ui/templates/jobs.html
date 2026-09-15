@@ -10,11 +10,28 @@
   <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
   <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">Run job</a>
 </div>
+<form id="jobs-filter" method="get" action="{{ url_for('jobs.index') }}" hx-get="{{ url_for('jobs.index') }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
+  <div class="card-body flex-row flex-wrap items-end gap-2">
+    <label class="fieldset flex-1 min-w-48">
+      <span class="fieldset-legend">Search</span>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search JID, function, target, user…" class="input input-sm">
+    </label>
+    <label class="fieldset min-w-48">
+      <span class="fieldset-legend">Jump to JID</span>
+      <input type="search" name="jump" value="" placeholder="Exact JID…" class="input input-sm font-mono">
+    </label>
+    <button class="btn btn-sm mb-1">Filter</button>
+    {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('jobs.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
+  </div>
+</form>
 {% include "_job_rows.html" %}
 <script>
 (function () {
   var btn = document.getElementById("live-toggle");
-  // Shared pause preference across minions/jobs (intentional, D4).
+  // Shared pause key: job and minion lists only.
   var key = "overstate-live";
   function paused() {
     try { return localStorage.getItem(key) === "off"; }
@@ -26,10 +43,26 @@
     paint();
   });
   paint();
+  // The filter form lives outside #jobs-region so polling never wipes
+  // in-progress text; a slow index never overlaps the next poll.
+  var inflight = false;
+  document.addEventListener("htmx:afterSwap", function () { inflight = false; });
+  document.addEventListener("htmx:responseError", function () { inflight = false; });
+  document.addEventListener("htmx:afterSwap", function () {
+    var params = new URLSearchParams(location.search);
+    var form = document.getElementById("jobs-filter");
+    if (!form) return;
+    ["tab", "sort", "dir"].forEach(function (name) {
+      var value = params.get(name);
+      if (value !== null) form.elements[name].value = value;
+    });
+  });
   setInterval(function () {
-    if (paused() || document.hidden || !window.htmx) return;
+    if (paused() || document.hidden || !window.htmx || inflight) return;
     var region = document.getElementById("jobs-region");
     if (!region || !region.getAttribute("data-poll-url")) return;
+    if (region.querySelector("input:focus, select:focus, textarea:focus")) return;
+    inflight = true;
     htmx.ajax("GET", region.getAttribute("data-poll-url"),
               {target: "#jobs-region", swap: "outerHTML"});
   }, 10000);

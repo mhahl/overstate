@@ -146,9 +146,28 @@ def get_setting(key: str) -> str:
 @bp.route("/")
 @login_required
 def index():
+    from flask_login import current_user
+
+    is_admin = current_user.role == "admin"
     values = {key: get_setting(key) for key in DEFS}
-    sections = [{**s, "fields": [(k, DEFS[k]) for k in s["keys"]]} for s in SECTIONS]
-    return render_template("settings.html", sections=sections, values=values)
+    # The stored secret is never echoed: the form posts it back only
+    # when the admin types a new one, and viewers see no OIDC values.
+    values["oidc_client_secret"] = ""
+    if not is_admin:
+        for key in OIDC_ENV_FALLBACK:
+            values[key] = ""
+        sections = [
+            {**s, "fields": [(k, DEFS[k]) for k in s["keys"]]}
+            for s in SECTIONS
+            if s["title"] != "Single sign-on (OIDC)"
+        ]
+    else:
+        sections = [
+            {**s, "fields": [(k, DEFS[k]) for k in s["keys"]]} for s in SECTIONS
+        ]
+    return render_template(
+        "settings.html", sections=sections, values=values, is_admin=is_admin
+    )
 
 
 @bp.post("/")
@@ -157,7 +176,17 @@ def save():
     session = get_session()
     for key, meta in DEFS.items():
         value = request.form.get(key, "").strip()
-        if not value:
+        if key == "oidc_client_secret":
+            if request.form.get("clear_oidc_client_secret") == "on":
+                # Explicit clear: drop the override so the env applies.
+                row = session.get(Setting, key)
+                if row is not None:
+                    session.delete(row)
+                continue
+            if not value:
+                # Empty means keep the stored secret, not wipe it.
+                continue
+        elif not value:
             if key in OIDC_ENV_FALLBACK:
                 # Clearing defers to the environment: drop any override.
                 row = session.get(Setting, key)

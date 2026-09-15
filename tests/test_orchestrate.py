@@ -26,6 +26,42 @@ def test_orchestrate_page_renders():
     assert 'name="mods"' in html and 'name="pillar"' in html
 
 
+def test_orchestrate_rejects_bad_saltenv():
+    c = make_client()
+    rv = c.post(
+        "/jobs/orchestrate/run",
+        data={"mods": "orch.ok", "saltenv": "base;cat /etc/passwd"},
+        follow_redirects=True,
+    )
+    assert "Saltenv" in rv.data.decode()
+    with c.application.app_context():
+        assert get_session().query(Job).count() == 0
+
+
+def test_orchestrate_without_confirm_shows_review():
+    c = make_client()
+    rv = c.post("/jobs/orchestrate/run", data={"mods": "orch.demo"})
+    assert rv.status_code == 200
+    html = rv.data.decode()
+    assert "Review" in html
+    assert "Type <code>orch.demo</code> to confirm" in html
+    assert "Fire without a match preview" in html
+    with c.application.app_context():
+        assert get_session().query(Job).count() == 0
+
+
+def test_orchestrate_confirmed_without_preview_checkbox_stays():
+    c = make_client()
+    rv = c.post(
+        "/jobs/orchestrate/run",
+        data={"mods": "orch.demo", "confirmed": "yes", "confirm_tgt": "orch.demo"},
+        follow_redirects=True,
+    )
+    assert "match preview" in rv.data.decode()
+    with c.application.app_context():
+        assert get_session().query(Job).count() == 0
+
+
 def test_orchestrate_rejects_bad_input():
     c = make_client()
     rv = c.post(
@@ -65,7 +101,14 @@ def test_orchestrate_runs_and_stores_returns(monkeypatch):
     c = make_client()
     rv = c.post(
         "/jobs/orchestrate/run",
-        data={"mods": "orch.demo", "saltenv": "base", "pillar": '{"role": "web"}'},
+        data={
+            "mods": "orch.demo",
+            "saltenv": "base",
+            "pillar": '{"role": "web"}',
+            "confirmed": "yes",
+            "confirm_tgt": "orch.demo",
+            "no_preview_ok": "on",
+        },
     )
     assert rv.status_code == 302
     jid = rv.headers["Location"].rsplit("/", 1)[1]
@@ -84,6 +127,43 @@ def test_orchestrate_runs_and_stores_returns(monkeypatch):
         assert rows == {"web-01": True, "web-02": False}
     html = c.get(f"/jobs/{jid}").data.decode()
     assert "state.orchestrate" in html
+
+
+def test_orchestrate_failure_completes_with_error(monkeypatch):
+    import overstate_ui.tasks as tasks_mod
+    from overstate_ui.models import AuditEvent
+    from overstate_ui.salt_client import SaltApiError
+
+    class BoomRunner:
+        def runner(self, fun, **kwargs):
+            raise SaltApiError("salt-api unreachable: denied")
+
+    monkeypatch.setattr(tasks_mod, "build_client", lambda: BoomRunner())
+    c = make_client()
+    rv = c.post(
+        "/jobs/orchestrate/run",
+        data={
+            "mods": "orch.demo",
+            "confirmed": "yes",
+            "confirm_tgt": "orch.demo",
+            "no_preview_ok": "on",
+        },
+    )
+    assert rv.status_code == 302
+    jid = rv.headers["Location"].rsplit("/", 1)[1]
+    assert jid.startswith("orch-")
+    html = c.get(f"/jobs/{jid}").data.decode()
+    assert "Orchestration failed" in html
+    assert "denied" in html
+    with c.application.app_context():
+        job = get_session().get(Job, jid)
+        assert job.complete is True
+        rows = get_session().query(JobReturn).filter_by(jid=jid).all()
+        assert len(rows) == 1
+        assert rows[0].minion_id == "master" and rows[0].success is False
+        assert "denied" in str(rows[0].payload)
+        actions = [e.action for e in get_session().query(AuditEvent).all()]
+        assert "orchestrate-failed:orch.demo" in actions
 
 
 def test_orch_success_scan():

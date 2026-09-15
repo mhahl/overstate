@@ -27,7 +27,9 @@ def init_with_retry(
                 from .auth import seed_admin
 
                 # ADMIN_PASSWORD sets the initial admin password (installer).
-                # Unset: seed_admin prints a random one to the container log.
+                # Unset in dev: seed_admin prints a random one to the log.
+                # Unset in prod (OVERSTATE_ENV=prod or TLS on): seed_admin
+                # refuses to boot rather than leaving a password in logs.
                 seed_admin(password=os.environ.get("ADMIN_PASSWORD") or None)
             return attempt
         except OperationalError:

@@ -39,6 +39,8 @@ class Config:
     OIDC_GROUPS_CLAIM = os.environ.get("OIDC_GROUPS_CLAIM", "groups")
     OIDC_ADMIN_GROUPS = os.environ.get("OIDC_ADMIN_GROUPS", "")
     OIDC_OPERATOR_GROUPS = os.environ.get("OIDC_OPERATOR_GROUPS", "")
+    OIDC_REDIRECT_URI = os.environ.get("OIDC_REDIRECT_URI", "")
+    PUBLIC_URL = os.environ.get("PUBLIC_URL", "")
     FILE_ROOTS = os.environ.get("FILE_ROOTS", "salt-srv/salt")
     SYNDIC_MASTERS = os.environ.get("SYNDIC_MASTERS", "")
 

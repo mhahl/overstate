@@ -215,12 +215,33 @@ def test_key_act_empty_id_rejected(client):
     assert "Select a minion first" in client.get(rv.headers["Location"]).data.decode()
 
 
-def test_key_act_honors_next(client):
+def test_key_act_ignores_next(client):
     rv = client.post("/keys/delete", data={"id": "new-01", "next": "/minions/"})
     assert rv.status_code == 302
-    assert rv.headers["Location"] == "/minions/"
+    assert rv.headers["Location"].startswith("/keys/")
     rv = client.post("/keys/delete", data={"id": "new-01", "next": "https://evil/"})
     assert rv.headers["Location"].startswith("/keys/")
+
+
+def test_key_act_rejects_glob_id(client, monkeypatch):
+    calls = []
+    salt = client.app.extensions["salt_client"]
+    orig_wheel = salt.wheel
+
+    def rec(fun, **kwargs):
+        calls.append((fun, kwargs))
+        return orig_wheel(fun, **kwargs)
+
+    monkeypatch.setattr(salt, "wheel", rec)
+    rv = client.post("/keys/accept", data={"id": "*", "tab": "pending"})
+    assert rv.status_code == 302
+    assert [fun for fun, _ in calls if fun == "key.accept"] == []
+    assert "wildcards" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_key_accept_button_asks_first(client):
+    html = client.get("/keys/?tab=pending").data.decode()
+    assert "data-confirm=\"Accept key for 'new-01'?\"" in html
 
 
 def test_minion_row_refresh_updates_snapshot(client):
@@ -473,11 +494,63 @@ def test_master_host_falls_back_to_api_host(monkeypatch):
         assert settings_mod.get_setting("master_host") == "salt-master"
 
 
+def test_minion_detail_rejects_glob(client):
+    assert client.get("/minions/%2A").status_code == 404
+    assert client.get("/minions/web-*").status_code == 404
+
+
 def test_minion_detail_tabs(client):
     for tab in ("overview", "states", "jobs", "schedule", "pillar", "beacons"):
         rv = client.get(f"/minions/web-01?tab={tab}")
         assert rv.status_code == 200, tab
     assert "osfinger" in client.get("/minions/web-01").data.decode()
+
+
+def test_schedule_renders_table_and_pillar_highlighted():
+    payloads = {
+        "schedule.list": {
+            "web-01": {
+                "enabled": True,
+                "nightly": {
+                    "function": "state.sls",
+                    "job_args": ["base"],
+                    "minutes": 5,
+                },
+            }
+        },
+        "pillar.items": {"web-01": {"zone": "east", "secret": "s3cr3t"}},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
+        body = json.loads(request.content or b"{}")
+        return httpx.Response(200, json={"return": [payloads.get(body.get("fun"), {})]})
+
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    app.extensions["salt_client"] = SaltClient(
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler)
+    )
+    with app.app_context():
+        create_all()
+        seed_admin(password="pw")
+    c = app.test_client()
+    c.post("/login", data={"username": "admin", "password": "pw"})
+
+    html = c.get("/minions/web-01?tab=schedule").data.decode()
+    assert "nightly" in html and "state.sls" in html
+    assert "every 5 minutes" in html
+    assert "scheduler enabled" in html
+    assert "Raw JSON (advanced)" in html
+
+    html = c.get("/minions/web-01?tab=pillar").data.decode()
+    assert "codehltable" in html  # highlighted, not a plain blob
+    assert "s3cr3t" in html
+    assert "Raw JSON (advanced)" in html
 
 
 def test_schedule_pillar_empty_states_link_docs_no_raw(client):
@@ -513,7 +586,7 @@ def test_minion_overview_dashboard(client):
 def test_minions_page_pause_labels_scope(client):
     html = client.get("/minions/").data.decode()
     assert "Pause live updates" in html
-    # D4 scope: the toggle pauses the job and minion lists only.
+    # The toggle pauses the job and minion lists only.
     assert "job and minion lists" in html
     assert "all pages" not in html
 

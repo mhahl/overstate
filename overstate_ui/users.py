@@ -1,6 +1,6 @@
 """Admin user management. Lists users, changes roles, deletes users."""
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from .auth import LEVELS, roles_required
@@ -57,22 +57,52 @@ def set_role(uid: int):
     return redirect(url_for("users.index"))
 
 
+ROTATION_TTL = 30 * 60
+
+
+def _rotation_store():
+    """Server-side home for the pending rotation password: Redis with a
+    30-minute TTL. None when the cache is unreachable, so the wizard
+    refuses rather than falling back to the login cookie."""
+    try:
+        from .tasks_queue import get_redis_client
+
+        client = get_redis_client()
+        client.ping()
+        return client
+    except Exception:  # noqa: BLE001 — Redis down means no wizard
+        return None
+
+
+def _rotation_key() -> str:
+    return f"rotation:{current_user.id}"
+
+
 @bp.route("/rotation")
 @roles_required("admin")
 def rotation():
     """Step 1: show the pending password plus the two-sided apply steps.
 
-    The password is minted once and kept in the login session until it is
+    The password is minted once and kept on the server until it is
     verified or regenerated: re-rendering the page must never silently
     swap the password the admin is mid-applying."""
     import secrets
 
     from flask import current_app
 
-    password = session.get("rotation_password")
+    store = _rotation_store()
+    if store is None:
+        flash("Rotation needs the cache.", "error")
+        return render_template(
+            "users_rotation.html",
+            password=None,
+            eauth_user=current_app.config["SALT_EAUTH_USER"],
+        )
+    raw = store.get(_rotation_key())
+    password = raw.decode() if isinstance(raw, bytes) else raw
     if not password:
         password = secrets.token_urlsafe(18)
-        session["rotation_password"] = password
+        store.set(_rotation_key(), password, ex=ROTATION_TTL)
     return render_template(
         "users_rotation.html",
         password=password,
@@ -86,7 +116,11 @@ def rotation_regenerate():
     """Mint a fresh pending password, discarding the unapplied one."""
     import secrets
 
-    session["rotation_password"] = secrets.token_urlsafe(18)
+    store = _rotation_store()
+    if store is None:
+        flash("Rotation needs the cache.", "error")
+        return redirect(url_for("users.rotation"))
+    store.set(_rotation_key(), secrets.token_urlsafe(18), ex=ROTATION_TTL)
     flash("Generated a new password; the previous one was discarded.", "info")
     return redirect(url_for("users.rotation"))
 
@@ -103,6 +137,10 @@ def rotation_verify():
     if not password:
         flash("Paste the new password to verify it.", "info")
         return redirect(url_for("users.rotation"))
+    store = _rotation_store()
+    if store is None:
+        flash("Rotation needs the cache.", "error")
+        return redirect(url_for("users.rotation"))
     candidate = build_client()
     candidate.password = password
     try:
@@ -110,7 +148,7 @@ def rotation_verify():
     except SaltApiError as exc:
         flash(f"verification failed: {exc}", "error")
     else:
-        session.pop("rotation_password", None)
+        store.delete(_rotation_key())
         log_event(current_user.username, "eauth-rotation-verified")
         flash(
             "New eauth password works. Update the app environment to match.", "warning"

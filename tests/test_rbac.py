@@ -111,6 +111,42 @@ def test_admin_users_page_set_role_and_self_guard(client):
         assert get_session().get(User, admin_id).role == "admin"
 
 
+def test_settings_hide_oidc_secret_from_everyone(client):
+    from overstate_ui.models import Setting
+
+    with client.app.app_context():
+        get_session().add(Setting(key="oidc_client_secret", value="s3cr3t-top"))
+        get_session().commit()
+    login_as(client, "vwr")
+    viewer_html = client.get("/settings/").data.decode()
+    assert "s3cr3t-top" not in viewer_html
+    assert "Single sign-on" not in viewer_html
+    login_as(client, "admin")
+    admin_html = client.get("/settings/").data.decode()
+    assert "s3cr3t-top" not in admin_html
+    assert 'placeholder="Unchanged"' in admin_html
+
+
+def test_settings_save_keeps_secret_when_empty(client):
+    from overstate_ui.models import Setting
+    from overstate_ui.settings import get_setting
+
+    login_as(client, "admin")
+    client.post("/settings/", data={"oidc_client_secret": "s3cr3t-top"})
+    with client.app.app_context():
+        assert get_session().get(Setting, "oidc_client_secret").value == "s3cr3t-top"
+    client.post("/settings/", data={"theme": "dark"})
+    with client.app.app_context():
+        assert get_setting("oidc_client_secret") == "s3cr3t-top"
+        assert get_setting("theme") == "dark"
+    client.post(
+        "/settings/",
+        data={"oidc_client_secret": "", "clear_oidc_client_secret": "on"},
+    )
+    with client.app.app_context():
+        assert get_session().get(Setting, "oidc_client_secret") is None
+
+
 def test_provision_oidc_user_defaults_to_viewer(client):
     with client.app.app_context():
         user = provision_oidc_user(

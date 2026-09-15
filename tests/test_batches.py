@@ -32,7 +32,7 @@ def admin(app):
 
 
 def test_invalid_batch_config_does_not_fire(admin, app, monkeypatch):
-    import overstate_ui.jobs_service as jobs_service
+    from overstate_ui import jobs_service
 
     fired = []
 
@@ -313,6 +313,42 @@ def test_batched_run_rejects_ungroupable_target(admin):
         follow_redirects=True,
     )
     assert "Batch mode supports list, glob, and group targets." in rv.data.decode()
+
+
+def test_silent_wave_counts_missing(monkeypatch, app, admin):
+    import overstate_ui.tasks as tasks_mod
+    from overstate_ui.tasks import run_wave_batch
+
+    stub = StubSalt()
+    monkeypatch.setattr(tasks_mod, "build_client", lambda: stub)
+    with app.app_context():
+        get_session().add(
+            Job(
+                jid="batch-g9",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                batch_group="g9",
+                batch_state={"status": "running"},
+            )
+        )
+        get_session().commit()
+        out = run_wave_batch(
+            "g9",
+            [["web-01", "web-02", "db-01"]],
+            "test.ping",
+            [],
+            1,
+            "admin",
+            wave_timeout=0,
+        )
+    assert out["status"] == "stopped"
+    assert out["failures"] >= 1
+    with app.app_context():
+        assert parent_row("g9").batch_state["missing"] == 3
+    html = admin.get("/jobs/batch-g9").data.decode()
+    assert "3 missing" in html
 
 
 def test_cancel_route_sets_flag(monkeypatch, admin):

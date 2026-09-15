@@ -9,6 +9,9 @@ ContainerName=overstate-app
 Image=localhost/overstate:latest
 Network=overstate.network
 EnvironmentFile=/etc/overstate/overstate.env
+# Behind Caddy the app trusts X-Forwarded-Host/Port/Proto for CSRF origin
+# checks and url_for; never set this where clients reach gunicorn directly.
+Environment=TRUST_PROXY=1
 Volume=/etc/overstate/tls:/srv/tls:ro,z
 # Writable: the operator-gated Files "Sync now" button runs
 # git fetch + git pull --ff-only on this checkout (FILE_ROOTS in

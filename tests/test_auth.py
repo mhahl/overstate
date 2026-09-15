@@ -44,6 +44,50 @@ def test_login_page_uses_local_wireframe_build(client):
     assert "cdn.jsdelivr.net" not in html
 
 
+def test_authenticated_pages_use_vendored_js_and_security_headers(client):
+    import os
+
+    assert os.path.isfile("overstate_ui/static/htmx.min.js")
+    assert os.path.isfile("overstate_ui/static/alpine.min.js")
+    client.post("/login", data={"username": "admin", "password": "test-password"})
+    rv = client.get("/events/")
+    html = rv.data.decode()
+    assert "cdn.jsdelivr.net" not in html
+    assert "/static/htmx.min.js" in html
+    assert "/static/alpine.min.js" in html
+    assert rv.headers["X-Content-Type-Options"] == "nosniff"
+    assert rv.headers["Referrer-Policy"] == "same-origin"
+    assert rv.headers["X-Frame-Options"] == "DENY"
+    csp = rv.headers["Content-Security-Policy"]
+    assert "default-src 'self'" in csp
+    assert "cdn.jsdelivr.net" not in csp
+
+
+def test_oidc_http_issuer_refuses():
+    app = _oidc_app(OIDC_ISSUER="http://idp.example.com")
+    client = app.test_client()
+    rv = client.get("/login/oidc")
+    assert rv.status_code == 302
+    assert "/login" in rv.headers["Location"]
+    rv = client.get("/login/oidc/callback", follow_redirects=True)
+    assert "SSO login failed." in rv.data.decode()
+    assert "http://idp.example.com" not in rv.data.decode()
+
+
+def test_oidc_failure_flash_hides_provider_detail(monkeypatch):
+    import overstate_ui.auth as authmod
+
+    def boom():
+        raise RuntimeError("provider exploded: secret-sauce")
+
+    monkeypatch.setattr(authmod, "_oauth_client", boom)
+    app = _oidc_app()
+    rv = app.test_client().get("/login/oidc/callback", follow_redirects=True)
+    html = rv.data.decode()
+    assert "SSO login failed." in html
+    assert "secret-sauce" not in html
+
+
 def test_events_note_is_live_region(client):
     client.post("/login", data={"username": "admin", "password": "test-password"})
     html = client.get("/events/").data.decode()
@@ -271,6 +315,11 @@ def test_oidc_client_secret_from_db_enables_sso():
         assert get_setting("oidc_client_secret") == "db-secret"
     assert "Log in with SSO" in c.get("/login").data.decode()
     c.post("/settings/", data={"oidc_client_secret": ""})
+    assert "Log in with SSO" in c.get("/login").data.decode()
+    c.post(
+        "/settings/",
+        data={"oidc_client_secret": "", "clear_oidc_client_secret": "on"},
+    )
     assert "Log in with SSO" not in c.get("/login").data.decode()
 
 
