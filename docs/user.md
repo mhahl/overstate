@@ -217,13 +217,28 @@ configuration. Each minion carries one of four verdicts:
 - **ok.** The last highstate applied cleanly.
 - **drifted.** The last run reported changes or failures.
 - **unknown.** No highstate result on record yet.
-- **unreachable.** The minion did not answer.
+- **unreachable.** The job targeted this minion but no return arrived
+  before the job aged out. Check presence and key state; an
+  untargeted minion keeps its prior verdict instead of going blank.
+
+Verdicts update themselves as job returns land; each one links to the
+job that produced it, with the check time and a short history trail.
+**Recompute** replays stored state-job returns into fresh verdicts
+without running anything new — a backfill, not the normal path.
 
 Watched states narrow the verdict to specific SLS files instead of the
 whole highstate. Add an SLS name to the watch list, remove it when you
-stop caring. **Recompute** replays stored state-job returns into fresh
-verdicts without running anything new. Sort by minion ID or by status
-to find the drifted ones fast.
+stop caring. When the list is non-empty, a minion is ok only if every
+watched file came back clean; returns that cannot be narrowed fall
+back to the whole-job verdict and carry a **partial** badge so you
+know. Filter by status, sort by minion ID or status, and open a minion
+to see its last stored run state by state.
+
+The minion detail States tab shows the last stored run first, so a
+down minion never hangs the page. **Refresh from minion** asks once
+for a live description and shows it next to the stored run without
+rewriting history; when the minion cannot answer, the stored data
+stays with a note saying so.
 
 ## Schedules
 
@@ -279,10 +294,20 @@ that a whole role shares identical secrets.
 ## Files
 
 The file browser shows the Salt file roots the app was pointed at:
-top files and SLS content, rendered as text. It reads only. No edit
-button exists and none is planned; edit formulas in git and sync the
-checkout on the server. If a file you pushed has not appeared, the
-server-side sync has not run yet. Ask your admin.
+top files and SLS content, rendered as text with line numbers. Search
+narrows the listing, directories group the rows, and long listings
+page. Files too large or not readable as text show an explainer card
+instead of a blank error. The browser never edits content: no edit
+button exists and none is planned.
+
+The top of the page shows the git checkout behind the listing:
+branch, revision, clean or uncommitted state, how far it sits from its
+upstream, and the last commits. If a file you pushed has not appeared,
+the checkout is behind — press **Sync now** (operators only) to pull
+the latest. Sync is fast-forward only: a diverged checkout or an
+uncommitted tree refuses with the git reason and changes nothing, and
+every attempt lands in the audit trail. If the page says the path is
+not a checkout, sync is unavailable there; ask your admin.
 
 ## Events
 

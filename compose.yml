@@ -23,7 +23,10 @@ services:
       TLS_CERT: /srv/tls/app.crt
       TLS_KEY: /srv/tls/app.key
     volumes:
-      - ./salt-srv:/srv/states:ro
+      # Writable so the operator-gated Files "Sync now" button can run
+      # git pull --ff-only on this checkout. The salt-master copy below
+      # stays read-only.
+      - ./salt-srv:/srv/states:rw
       - ./salt-config/tls:/srv/tls:ro
     depends_on:
       - postgres

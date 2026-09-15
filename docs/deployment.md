@@ -57,8 +57,14 @@ with the stock `pgjsonb` returner (details below). Without it the
 History tab stays empty and job detail shows only live data.
 
 `FILE_ROOTS` points the file browser at a checkout of your Salt
-states. Mount it read-only. Sync it with `scripts/sync-file-roots.sh`
-from cron or a sidecar; the app never writes there.
+states. The app's copy must be writable: the operator-gated **Sync
+now** button runs `git fetch` + `git pull --ff-only` on it (the same
+flags as `scripts/sync-file-roots.sh`, which stays available for cron
+or a sidecar if you prefer sync outside the app). The salt-master
+copy stays read-only. In compose the app mount is `:rw`; the
+production quadlet ships `:ro` — remount it writable (owned by the
+app user, e.g. `chown` the checkout to the container UID) only if you
+want in-app sync there, otherwise keep `:ro` and sync from cron.
 
 ## Set up the Salt master
 
