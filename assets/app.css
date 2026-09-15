@@ -80,3 +80,54 @@
 .codehl .err, .codehl .ne {
   color: var(--color-error);
 }
+
+/* File editor: the CodeMirror 6 bundle ships its own default surface,
+   which reads as a flat grey slab against the app themes. These rules
+   bind the editor to the daisyUI theme tokens instead, mirroring the
+   codehl hues above so view and edit agree. The `#editor-mount` prefix
+   outranks the bundle's injected classes. */
+#editor-mount .cm-editor {
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8125rem;
+  min-height: 24rem;
+}
+#editor-mount .cm-scroller {
+  line-height: 1.6;
+}
+#editor-mount .cm-editor.cm-focused {
+  outline: 2px solid color-mix(in oklab, var(--color-primary) 60%, transparent);
+  outline-offset: -1px;
+}
+#editor-mount .cm-gutters {
+  background-color: color-mix(in oklab, var(--color-base-content) 5%, var(--color-base-100));
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+  border-right: 1px solid var(--color-base-300);
+}
+#editor-mount .cm-activeLine {
+  background-color: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+}
+#editor-mount .cm-cursor {
+  border-left-color: var(--color-base-content);
+}
+#editor-mount .cm-selectionBackground {
+  background-color: color-mix(in oklab, var(--color-primary) 28%, transparent);
+}
+#editor-mount .tok-comment {
+  font-style: italic;
+  opacity: 0.62;
+}
+#editor-mount .tok-string {
+  color: color-mix(in oklab, #2da44e 68%, var(--color-base-content));
+}
+#editor-mount .tok-number {
+  color: color-mix(in oklab, #b7791f 72%, var(--color-base-content));
+}
+#editor-mount .tok-keyword, #editor-mount .tok-operator,
+#editor-mount .tok-propertyName {
+  color: color-mix(in oklab, #0969da 62%, var(--color-base-content));
+}
+#editor-mount .tok-punctuation {
+  opacity: 0.78;
+}

@@ -26,11 +26,15 @@ services:
       TLS_CERT: /srv/tls/app.crt
       TLS_KEY: /srv/tls/app.key
     volumes:
-      # Writable so the operator-gated Files "Sync now" button can run
-      # git pull --ff-only on this checkout. The salt-master copy below
-      # stays read-only.
+      # Writable so the Files page can sync (pull --ff-only), commit
+      # (edit saves), and push (admin) on this checkout. The
+      # salt-master copy below stays read-only.
       - ./salt-srv:/srv/states:rw
       - ./salt-config/tls:/srv/tls:ro
+      # Push over SSH in dev (optional): place a deploy key plus
+      # known_hosts in ./salt-config/ssh/ and uncomment the next line,
+      # then export the same GIT_SSH_COMMAND docs/deployment.md shows.
+      # - ./salt-config/ssh:/srv/ssh:ro
     depends_on:
       - postgres
       - redis

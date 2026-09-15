@@ -251,6 +251,8 @@ def test_edit_page_renders_editor_and_fallback(edit_checkout):
     assert 'id="editor-textarea"' in html  # no-JS fallback form field
     assert 'data-lang="yaml"' in html  # .sls gets YAML highlighting
     assert 'name="base_sha"' in html and 'name="base_hash"' in html
+    assert "card bg-base-100" in html  # editor sits in a panel, not bare
+    assert "lines<" in html or "lines</span>" in html  # panel header line count
 
 
 def test_edit_page_plain_text_lang(edit_checkout):
@@ -265,6 +267,19 @@ def test_editor_bundle_served_locally(rooted):
     assert rv.status_code == 200
     assert len(rv.data) > 100_000  # real bundle, not a stub
     assert b"editor-mount" in rv.data  # our entry code is in the bundle
+
+
+def test_built_css_binds_editor_to_theme():
+    import pathlib
+
+    css = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "overstate_ui"
+        / "static"
+        / "app.css"
+    ).read_text()
+    assert "#editor-mount .cm-editor" in css
+    assert "var(--color-base-content)" in css  # theme tokens, not fixed greys
 
 
 def test_edit_page_has_no_external_scripts(edit_checkout):

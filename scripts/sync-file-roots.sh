@@ -1,7 +1,8 @@
 #!/bin/sh
 # Sync the file-roots checkout that the Overstate file browser reads.
-# The app never writes here; this script (or a cron/sidecar running it) is
-# the only writer. Fails closed: non-ff updates are refused, never forced.
+# The app also writes here through the Files page (edit commits, admin
+# push); this script stays available for cron/sidecar sync. Fails
+# closed: non-ff updates are refused, never forced.
 set -eu
 TARGET="${1:-./salt-srv}"
 if [ ! -d "$TARGET/.git" ]; then

@@ -83,19 +83,58 @@ states. Follow the whole chain before changing any link of it:
    once; that runner is covered by the `@runner` grant the service
    account already holds, and a refresh failure only warns — the
    pull itself still stands. The app is the only in-app writer, and
-   v4 widens that writership: operator saves commit single files
-   locally (fixed `overstate` committer identity, operator as author),
-   and the admin-gated **Push** button sends those commits upstream.
-   Push needs a push-capable remote: give the checkout a deploy key
-   with write access to the states repo (read-only deploy keys and
-   credential-less checkouts get a fixed "push credentials missing"
-   refusal, never a stack trace). Without push access the UI still
-   edits, commits, and syncs; only Push refuses. Pick one sync actor
-   per site (button or cron, not both): two writers racing on the same
-   checkout trip git's lock and the loser just reports a refusal,
-   harmless but noisy. A diverged checkout recovers the same way as
-   before — resolve it in git outside the app, or let an operator
-   **Sync now** fast-forward it — Push never forces.
+   it now also writes through the Files page: operator saves commit
+   single files locally (fixed `overstate` committer identity,
+   operator as author), and the admin-gated **Push** button sends
+   those commits upstream. Pick one sync actor per site (button or
+   cron, not both): two writers racing on the same checkout trip
+   git's lock and the loser just reports a refusal, harmless but
+   noisy. A diverged checkout recovers the same way as before —
+   resolve it in git outside the app, or let an operator **Sync
+   now** fast-forward it — Push never forces.
+
+### Push credentials: SSH deploy key
+
+Push authenticates with a repo-scoped SSH deploy key that has write
+access — never a human's key, never a password, nothing in the app
+DB. The app image ships `openssh-client` for exactly this; https
+remotes keep working for fetch/sync either way.
+
+1. **Generate on the host** (as root; the container runs as root,
+   so root-owned files are right):
+   `ssh-keygen -t ed25519 -f /etc/overstate/ssh/states-deploy-key
+   -N "" -C overstate-states`. Register the `.pub` half as a
+   **write-access** deploy key on the states repo. A read-only key
+   fails at push time and the page says so.
+2. **Pin the git host.**
+   `ssh-keyscan <git-host> > /etc/overstate/ssh/known_hosts`,
+   verifying the fingerprint out of band on first use. Host
+   checking stays on (see step 4) — never skip this file to make
+   push work.
+3. **Lock it down.** `chmod 700 /etc/overstate/ssh` and `chmod 600`
+   on both files. The app unit mounts the directory read-only at
+   `/srv/ssh` (`deploy/quadlet/overstate-app.container`), so the
+   key is usable but never writable from inside the container.
+4. **Point git at it.** One line in `/etc/overstate/overstate.env`
+   (root-only, like the rest of that file):
+   `GIT_SSH_COMMAND=ssh -i /srv/ssh/states-deploy-key
+   -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
+   -o UserKnownHostsFile=/srv/ssh/known_hosts`.
+   `BatchMode` fails fast instead of hanging on a password prompt;
+   the request timeout still bounds the call. Then
+   `systemctl restart overstate-app` (Quadlet reloads the mount and
+   env on restart).
+5. **Check it.** Press **Push** with nothing new: "Already up to
+   date" means the key, host, and remote all agree. "Push
+   credentials missing or rejected" means step 1–4, in that order;
+   the raw SSH error stays in the server log, never on the page.
+
+Without push access the UI still edits, commits, and syncs — only
+Push refuses. Rotating means repeating steps 1–2 with a fresh key
+and restarting the app; no image rebuild. In dev compose the
+checkout has no remote by default; to trial push there, add an SSH
+remote to `./salt-srv`, uncomment the `ssh` volume hint in
+`compose.yml`, and export the same `GIT_SSH_COMMAND`.
 3. **Master mount — read-only.** The salt-master container mounts the
    same host directory (`/home/salt/data/srv`, `:ro`) and serves it
    as its file roots, so minions enforce exactly what the browser
@@ -327,9 +366,9 @@ Wrong time breaks key exchange in confusing ways; run NTP everywhere.
   inventory snapshots, job history, pillar snapshots, and the audit
   trail. Test restores; an untested backup is a rumor.
 - Keep the states checkout writable by the app alone: the app mount is
-  `:rw` so the operator-gated Files Sync button can `git pull --ff-only`
-  on it, while the salt-master mount stays `:ro`. The app never edits,
-  commits, or pushes. `scripts/sync-file-roots.sh` offers the same
+  `:rw` so the Files page can sync (`pull --ff-only`), commit (edit
+  saves), and push (admin) on it, while the salt-master mount stays `:ro`.
+  `scripts/sync-file-roots.sh` offers the same
   fast-forward-only sync for cron or a sidecar — pick one sync actor
   per site, not both.
 - Podman systems run the stack as systemd services through the

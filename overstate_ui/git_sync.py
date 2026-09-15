@@ -1,13 +1,15 @@
-"""Git status + sync for the file-roots checkout behind the Files page.
+"""Git status, sync, commit, and push for the file-roots checkout behind
+the Files page.
 
-The file browser never edits content; the only git mutation allowed
-here is ``fetch`` + ``pull --ff-only`` — the same flags as
-``scripts/sync-file-roots.sh``. Anything that is not a clean
-fast-forward (diverged branches, dirty tree, missing upstream, not a
-checkout at all) refuses with the git reason instead of forcing.
-Subprocesses use fixed argv, no shell, no user input, and a bounded
-timeout. Runs inline: the RQ worker has no file-roots mount, so
-queueing there would only fail elsewhere.
+Reads (status) stay free; writes are explicit and gated: ``fetch`` +
+``pull --ff-only`` (Sync, same flags as ``scripts/sync-file-roots.sh``),
+single-file commits (edit saves), and upstream ``push`` (admin). Anything
+that is not clean — diverged branches, dirty tree, missing upstream,
+missing push credentials, not a checkout at all — refuses with a fixed
+reason instead of forcing. Subprocesses use fixed argv, no shell, no
+user-supplied flags or refs, and a bounded timeout. Runs inline: the RQ
+worker has no file-roots mount, so queueing there would only fail
+elsewhere.
 """
 
 from __future__ import annotations

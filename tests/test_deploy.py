@@ -45,6 +45,13 @@ def test_quadlet_units_cover_all_services():
     assert "PublishPort" not in app  # Caddy is the only front door
 
 
+def test_app_image_and_unit_support_ssh_push():
+    containerfile = (REPO / "Containerfile").read_text()
+    assert "openssh-client" in containerfile  # push over SSH deploy keys
+    app = (REPO / "deploy" / "quadlet" / "overstate-app.container").read_text()
+    assert "/etc/overstate/ssh:/srv/ssh:ro" in app  # key dir, read-only
+
+
 def test_salt_master_publishes_minion_ports():
     lines = (
         (REPO / "deploy" / "quadlet" / "overstate-salt-master.container")

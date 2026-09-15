@@ -23,10 +23,21 @@ app log once: `podman logs overstate-app | grep 'seeded admin'`.
 ## Layout
 
 - Units: `/etc/containers/systemd/overstate-{app,worker,salt-master,postgres,redis,caddy}.container` + `overstate.network`
-- Config: `/etc/overstate/overstate.env` (0600), `/etc/overstate/salt-config`, `/etc/overstate/tls`, `/etc/overstate/Caddyfile`
+- Config: `/etc/overstate/overstate.env` (0600), `/etc/overstate/salt-config`, `/etc/overstate/tls`, `/etc/overstate/Caddyfile`, `/etc/overstate/ssh` (deploy key for push, see below)
 - State roots: `/var/lib/overstate/srv` (edit SLS/pillar here). Mounted writable into the app (in-app git sync) and read-only into the master (serves minions); see "File roots" in `docs/deployment.md` for the full chain.
 - Data: podman volumes `overstate-pgdata`, `overstate-saltdata` (master keys), `overstate-caddy-data` (ACME certs)
 - Web: `https://overstate.sigaint.au` via Caddy. salt-api: `https://overstate-api.sigaint.au` via Caddy, plus `127.0.0.1:8001` locally.
+
+## Push credentials (deploy key)
+
+In-app push is optional and off until you place a key: without one,
+editing, committing, and syncing all work and only **Push** refuses
+with "push credentials missing". To enable it:
+
+1. `sudo mkdir -p /etc/overstate/ssh && sudo chmod 700 /etc/overstate/ssh`
+2. `sudo ssh-keygen -t ed25519 -f /etc/overstate/ssh/states-deploy-key -N "" -C overstate-states`, then register the `.pub` half as a **write-access** deploy key on the states repo.
+3. `sudo ssh-keyscan <git-host> | sudo tee /etc/overstate/ssh/known_hosts` (verify the fingerprint out of band), then `sudo chmod 600` both files.
+4. Add the `GIT_SSH_COMMAND` line from "Push credentials" in `docs/deployment.md` to `/etc/overstate/overstate.env` and `sudo systemctl restart overstate-app`.
 
 ## Reverse proxy (Caddy)
 

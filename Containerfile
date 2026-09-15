@@ -8,10 +8,12 @@ RUN npm run build:css -- --minify
 
 FROM python:3.12-slim
 
-# git powers the Files page "Sync now" button (fetch + pull --ff-only
-# on the file-roots checkout). No openssh-client: remotes are https.
+# git powers the Files page: fetch + pull --ff-only ("Sync now"),
+# single-file commits (edit saves), and upstream push (admin Push
+# button). openssh-client is for push over SSH deploy keys; https
+# remotes keep working for fetch/sync without it.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends git openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

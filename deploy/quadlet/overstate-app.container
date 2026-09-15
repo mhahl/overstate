@@ -13,11 +13,14 @@ EnvironmentFile=/etc/overstate/overstate.env
 # checks and url_for; never set this where clients reach gunicorn directly.
 Environment=TRUST_PROXY=1
 Volume=/etc/overstate/tls:/srv/tls:ro,z
-# Writable: the operator-gated Files "Sync now" button runs
-# git fetch + git pull --ff-only on this checkout (FILE_ROOTS in
+# Writable: the Files page edits (operator commits), syncs
+# (pull --ff-only), and pushes (admin) on this checkout (FILE_ROOTS in
 # /etc/overstate/overstate.env points inside it). The salt-master
 # copy stays read-only; the app is the only writer.
 Volume=/var/lib/overstate/srv:/srv/states:rw,z
+# SSH deploy key for push (see "Push credentials" in docs/deployment.md):
+# private key + known_hosts, root-only on the host, read-only here.
+Volume=/etc/overstate/ssh:/srv/ssh:ro,z
 
 [Service]
 Restart=always
