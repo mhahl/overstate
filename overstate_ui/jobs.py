@@ -15,6 +15,7 @@ import httpx
 from flask import (
     Blueprint,
     Response,
+    abort,
     flash,
     redirect,
     render_template,
@@ -542,6 +543,47 @@ def detail(jid: str):
     )
 
 
+@bp.get("/<jid>/panel/<mid>")
+@login_required
+def panel(jid: str, mid: str):
+    """One minion's return panel fragment for live list updates.
+
+    Prefers the stored returner row; falls back to the live master
+    cache while the job runs. 404 when the minion has neither, so the
+    page simply skips minions with nothing to show yet.
+    """
+    session = get_session()
+    job = session.get(Job, jid)
+    if job is None:
+        abort(404)
+    row = None
+    if job.batch_group and jid == f"batch-{job.batch_group}":
+        wave_jids = [
+            row_jid
+            for (row_jid,) in session.query(Job.jid)
+            .filter(Job.batch_group == job.batch_group, Job.jid != jid)
+            .all()
+        ]
+        if wave_jids:
+            row = (
+                session.query(JobReturn)
+                .filter(JobReturn.jid.in_(wave_jids), JobReturn.minion_id == mid)
+                .order_by(JobReturn.jid.desc())
+                .first()
+            )
+    else:
+        sync_job(jid)
+        row = session.query(JobReturn).filter_by(jid=jid, minion_id=mid).first()
+    if row is None and not job.complete:
+        live = [r for r in live_returns_now(get_salt(), jid) if r.minion_id == mid]
+        row = live[0] if live else None
+    if row is None:
+        abort(404)
+    return render_template(
+        "_job_panel.html", r=row, job=job, view=describe_return(row.payload)
+    )
+
+
 @bp.post("/<jid>/kill")
 @roles_required("operator")
 def kill(jid: str):
@@ -637,11 +679,20 @@ def stream(jid: str):
             returns = (
                 get_session().query(JobReturn).filter(JobReturn.jid.in_(jids)).all()
             )
+            mids = {r.minion_id for r in returns}
+            is_parent = bool(
+                job and job.batch_group and jid == f"batch-{job.batch_group}"
+            )
+            if job is not None and not job.complete and not is_parent:
+                # Live-cache minions the returner hasn't recorded yet so
+                # the page can render their panels before the rows land.
+                mids |= {r.minion_id for r in live_returns_now(get_salt(), jid)}
             payload = {
                 "jid": jid,
                 "complete": bool(job and job.complete),
                 "returned": len(returns),
                 "failed": sum(1 for r in returns if not r.success),
+                "minions": sorted(mids),
             }
             yield f"data: {json.dumps(payload)}\n\n"
             if payload["complete"]:

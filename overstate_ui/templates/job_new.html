@@ -140,9 +140,9 @@
   </div>
 </form>
 </div>
-<aside aria-label="Module docs" class="min-w-0 lg:sticky lg:top-20 self-start">
-  <div class="card bg-base-100 border border-base-300 shadow-sm">
-    <div class="card-body max-h-[60vh] overflow-auto">
+<aside aria-label="Module docs" class="min-w-0 self-stretch lg:sticky lg:top-20">
+  <div class="card bg-base-100 border border-base-300 shadow-sm h-full flex flex-col">
+    <div class="card-body flex-1 min-h-0 overflow-auto">
       <h2 class="card-title text-base">Module docs</h2>
       <div id="fun-doc" data-doc-minion="{{ doc_minion or '' }}" data-doc-url="{{ url_for('jobs.fun_doc') }}">
         <p class="text-xs opacity-70">Pick a function to see its docs.</p>

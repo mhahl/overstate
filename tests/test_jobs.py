@@ -308,6 +308,61 @@ def test_detail_renders_human_state_rows(client):
     assert "Raw output" in html  # full JSON one click away
 
 
+def _seed_panel_job(client):
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20260910123000000012",
+                fun="test.ping",
+                tgt="web01",
+                tgt_type="list",
+                user="admin",
+                complete=True,
+            )
+        )
+        session.add(
+            JobReturn(
+                jid="20260910123000000012",
+                minion_id="web01",
+                success=True,
+                retcode=0,
+                payload=True,
+            )
+        )
+        session.commit()
+
+
+def test_stream_lists_returned_minions(client):
+    _seed_panel_job(client)
+    rv = client.get("/jobs/20260910123000000012/stream?interval=0.05")
+    text = rv.data.decode()
+    assert '"minions": ["web01"]' in text
+    assert "event: done" in text
+
+
+def test_panel_fragment_renders_one_minion(client):
+    _seed_panel_job(client)
+    rv = client.get("/jobs/20260910123000000012/panel/web01")
+    assert rv.status_code == 200
+    assert 'data-panel-mid="web01"' in rv.data.decode()
+    assert "Returned True" in rv.data.decode()
+
+
+def test_panel_fragment_404s(client):
+    _seed_panel_job(client)
+    assert client.get("/jobs/nope/panel/web01").status_code == 404
+    assert client.get("/jobs/20260910123000000012/panel/ghost").status_code == 404
+
+
+def test_detail_carries_live_panel_container(client):
+    _seed_panel_job(client)
+    html = client.get("/jobs/20260910123000000012").data.decode()
+    assert 'id="return-panels"' in html
+    assert "data-panel-url" in html
+    assert 'data-panel-mid="web01"' in html
+
+
 def test_describe_return_failure_surface():
     from overstate_ui.jobs_helpers import describe_return
 

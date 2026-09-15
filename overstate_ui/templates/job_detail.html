@@ -60,25 +60,13 @@
   </div>
 </div>
 {% endif %}
-<div class="space-y-2">
+<div class="space-y-2" id="return-panels" data-panel-url="{{ url_for('jobs.panel', jid=job.jid, mid='__MID__') }}">
 {% for r in returns %}
   {% set view = describe_return(r.payload) %}
-  <details class="collapse bg-base-100 border {{ 'border-error' if not r.success else 'border-base-300' }} shadow-sm" {% if not r.success %}open{% endif %}>
-    <summary class="collapse-title font-mono text-sm flex items-center gap-2">
-      {% if r.success %}<span class="status status-success"></span>{% else %}<span class="status status-error"></span>{% endif %}
-      <span class="mr-auto">{{ r.minion_id }} — {{ "ok" if r.success else ("failed, retcode " ~ r.retcode) }}</span>
-      {% if r.live|default(False) %}<span class="badge badge-xs badge-info">live</span>{% endif %}
-      {% if view.summary %}<span class="text-xs opacity-70">{{ view.summary.succeeded }} succeeded, {{ view.summary.failed }} failed{% if view.failed_names %} · <span class="font-mono text-error">Failed: {{ view.failed_names|join(", ") }}</span>{% endif %}</span>
-      {% elif view.text %}<span class="text-xs opacity-70">{{ view.text }}</span>{% endif %}
-      {% if not r.success and current_user.role in ["operator", "admin"] %}<a class="btn btn-xs" href="{{ url_for('jobs.new', tgt=r.minion_id, tgt_type='list', fun=job.fun) }}" onclick="event.stopPropagation()">Re-run</a>{% endif %}
-    </summary>
-    <div class="collapse-content">
-      {% include "_return_view.html" %}
-    </div>
-  </details>
+  {% include "_job_panel.html" %}
 {% endfor %}
 {% if not returns %}
-<div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
+<div class="card bg-base-100 border border-base-300 shadow-sm" id="no-returns"><div class="py-8 text-center">
   {% if job.complete %}
   <p class="font-medium">No returns recorded</p>
   <p class="text-sm opacity-70">No minion reported back for this job.</p>
@@ -93,10 +81,52 @@
 <script>
 (function () {
   var src = new EventSource("{{ url_for('jobs.stream', jid=job.jid) }}");
+  var panels = document.getElementById("return-panels");
+  var panelUrl = panels.getAttribute("data-panel-url");
+  var lastReturned = -1;
+  function fetchPanel(mid, onload) {
+    fetch(panelUrl.split("__MID__").join(encodeURIComponent(mid)))
+      .then(function (r) { if (!r.ok) throw new Error("panel"); return r.text(); })
+      .then(onload)
+      .catch(function () {});
+  }
+  function upgradePanels() {
+    (s.minions || []).forEach(function (mid) {
+      var existing = panels.querySelectorAll('[data-panel-mid="' + CSS.escape(mid) + '"]');
+      if (!existing.length) {
+        fetchPanel(mid, function (html) {
+          var empty = document.getElementById("no-returns");
+          if (empty) empty.remove();
+          panels.insertAdjacentHTML("beforeend", html);
+        });
+      } else if (s.returned > lastReturned) {
+        // A panel rendered from the live cache upgrades once its
+        // returner row lands; settled panels are never refetched,
+        // so open ones stay exactly as left.
+        var live = Array.from(existing).filter(function (el) {
+          return el.getAttribute("data-live") === "1";
+        });
+        if (live.length) {
+          fetchPanel(mid, function (html) {
+            live.forEach(function (el) {
+              var tmp = document.createElement("div");
+              tmp.innerHTML = html;
+              var fresh = tmp.firstElementChild;
+              if (el.open) fresh.open = true;
+              el.replaceWith(fresh.cloneNode(true));
+            });
+          });
+        }
+      }
+    });
+    lastReturned = s.returned;
+  }
+  var s = { minions: [], returned: 0 };
   src.onmessage = function (ev) {
-    var s = JSON.parse(ev.data);
+    s = JSON.parse(ev.data);
     document.getElementById("live-returned").textContent = s.returned;
     document.getElementById("live-failed").textContent = s.failed;
+    upgradePanels();
     if (s.complete) {
       document.getElementById("live-note").textContent = "Complete. Reloading…";
       src.close();
