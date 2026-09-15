@@ -131,6 +131,30 @@ def _first_line(text: object, limit: int = 200) -> str:
     return line if len(line) <= limit else line[:limit] + "…"
 
 
+def _format_duration(ms: object) -> str | None:
+    """Human duration: ``42.0 ms`` stays ms, seconds and minutes scale up."""
+    if isinstance(ms, bool) or not isinstance(ms, (int, float)):
+        return None
+    if ms >= 60000:
+        return f"{ms / 60000:.1f} min"
+    if ms >= 1000:
+        return f"{ms / 1000:.1f} s"
+    return f"{ms} ms"
+
+
+def _state_label(key: str, result: dict, module: str, name: str) -> str:
+    """Short human name for a failed state: its ID and target name."""
+    sid = result.get("__id__") or ""
+    target = result.get("name") or name
+    if sid and target and sid != target:
+        return f"{sid}: {target}"
+    if target:
+        return f"{module}: {target}" if module and module != target else target
+    if sid:
+        return sid
+    return f"{module}: {name}" if name else (module or key)
+
+
 def describe_return(payload) -> dict:
     """Normalized view of one minion's return payload for human
     rendering. ``kind`` is ``state`` (per-state rows), ``summary``
@@ -146,21 +170,47 @@ def describe_return(payload) -> dict:
                 if not isinstance(result, dict) or "result" not in result:
                     continue
                 module, name = _split_state_id(key)
+                changes = result.get("changes") or None
+                failed = result.get("result") is False
+                changed = result.get("result") is True and bool(changes)
                 states.append(
                     {
                         "module": module,
                         "name": name,
+                        "label": _state_label(key, result, module, name),
+                        "sls": result.get("__sls__") or "",
                         "result": result.get("result"),
+                        "failed": failed,
+                        "changed": changed,
                         "comment": _first_line(result.get("comment")),
+                        "comment_full": str(result.get("comment") or "").strip()
+                        or None,
                         "duration": result.get("duration"),
-                        "changes": result.get("changes") or None,
+                        "duration_text": _format_duration(result.get("duration")),
+                        "run_num": result.get("__run_num__"),
+                        "changes": changes,
                     }
                 )
-            states.sort(key=lambda s: s["result"] is not False)
+            # Failures first, then states that changed anything, then
+            # execution order — the eye lands on what broke.
+            states.sort(
+                key=lambda s: (
+                    s["result"] is not False,
+                    not s["changed"],
+                    s["run_num"]
+                    if isinstance(s["run_num"], (int, float))
+                    else float("inf"),
+                )
+            )
+            failed_names = [s["label"] for s in states if s["failed"]]
+            if len(failed_names) > 4:
+                failed_names = failed_names[:3] + [f"+{len(failed_names) - 3} more"]
             return {
                 "kind": "state",
                 "summary": summary,
                 "states": states,
+                "changed": sum(1 for s in states if s["changed"]),
+                "failed_names": failed_names,
                 "text": None,
             }
         if summary is not None:

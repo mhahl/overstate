@@ -11,7 +11,7 @@
         {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>
         {% elif cstatus == "unreachable" %}<span class="badge badge-sm badge-error badge-outline" role="status" aria-label="Conformity: unreachable">unreachable</span>
         {% else %}<span class="badge badge-sm badge-neutral" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>{% endif %}
-        {% if (m.conformity or {}).get("partial") %}<span class="badge badge-sm badge-ghost" title="Verdict fell back to the whole job: watched states could not be isolated in this return">partial</span>{% endif %}
+        {% if (m.conformity or {}).get("partial") %}<span class="badge badge-sm badge-warning" title="Verdict fell back to the whole job: watched states could not be isolated in this return">partial</span>{% endif %}
       </td>
       {% set checked = (m.conformity or {}).get("checked_at", "") %}
       <td class="font-mono text-xs whitespace-nowrap">{% if checked %}{{ checked[:16].replace("T", " ") }}{% else %}–{% endif %}</td>

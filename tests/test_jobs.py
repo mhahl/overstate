@@ -308,6 +308,108 @@ def test_detail_renders_human_state_rows(client):
     assert "Raw output" in html  # full JSON one click away
 
 
+def test_describe_return_failure_surface():
+    from overstate_ui.jobs_helpers import describe_return
+
+    view = describe_return(
+        {
+            "pkg_|-schedule_croniter_package_|-python3-croniter_|-installed": {
+                "__id__": "schedule_croniter_package",
+                "__sls__": "baseline.schedule",
+                "__run_num__": 3,
+                "result": False,
+                "comment": "An error was encountered\nPackage 'python3-croniter' not found.",
+                "duration": 25907.581,
+                "changes": {},
+            },
+            "file_|-motd_banner_|-/etc/motd_|-managed": {
+                "__id__": "motd_banner",
+                "__sls__": "baseline.banner",
+                "__run_num__": 1,
+                "result": True,
+                "comment": "File is in the correct state",
+                "duration": 96.63,
+                "changes": {},
+            },
+            "file_|-resolved_runtime_dir_|-/run/systemd/resolve_|-directory": {
+                "__id__": "resolved_runtime_dir",
+                "__sls__": "baseline.systemd-resolved",
+                "__run_num__": 7,
+                "result": True,
+                "comment": "Directory updated",
+                "duration": 8.81,
+                "changes": {"/run/systemd/resolve": {"user": "root"}},
+            },
+        }
+    )
+    assert view["kind"] == "state"
+    assert view["summary"] == {"succeeded": 2, "failed": 1}  # shape frozen
+    assert view["changed"] == 1
+    assert view["failed_names"] == ["schedule_croniter_package: python3-croniter"]
+    states = view["states"]
+    assert [s["label"] for s in states] == [
+        "schedule_croniter_package: python3-croniter",  # failed first
+        "resolved_runtime_dir: /run/systemd/resolve",  # changed next
+        "motd_banner: /etc/motd",  # quiet ok last
+    ]
+    failed = states[0]
+    assert failed["sls"] == "baseline.schedule"
+    assert failed["comment"] == "An error was encountered"  # first line kept
+    assert "not found" in failed["comment_full"]  # full reason kept
+    assert failed["duration_text"] == "25.9 s"  # scaled, not raw ms
+    assert states[2]["duration_text"] == "96.63 ms"
+
+
+def test_describe_return_failed_names_capped():
+    from overstate_ui.jobs_helpers import describe_return
+
+    payload = {
+        f"mod_|-id{i}_|-n{i}_|-fun": {"result": False, "comment": "bad"}
+        for i in range(6)
+    }
+    view = describe_return(payload)
+    assert view["failed_names"] == ["id0: n0", "id1: n1", "id2: n2", "+3 more"]
+
+
+def test_detail_shows_failed_names_and_full_reason(client):
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20260910123000000011",
+                fun="state.highstate",
+                tgt="web01",
+                tgt_type="list",
+                user="admin",
+                complete=True,
+            )
+        )
+        session.add(
+            JobReturn(
+                jid="20260910123000000011",
+                minion_id="web01",
+                success=False,
+                retcode=1,
+                payload={
+                    "pkg_|-croniter_|-python3-croniter_|-installed": {
+                        "__id__": "croniter",
+                        "__sls__": "baseline.schedule",
+                        "result": False,
+                        "comment": "An error was encountered\nPackage not found.",
+                        "duration": 5.0,
+                        "changes": {},
+                    },
+                },
+            )
+        )
+        session.commit()
+    html = client.get("/jobs/20260910123000000011").data.decode()
+    assert "Failed: croniter: python3-croniter" in html  # scan-level names
+    assert "Package not found." in html  # full reason, no raw open needed
+    assert "baseline.schedule" in html  # sls badge
+    assert "Raw output" in html
+
+
 def test_new_prefills_fun_and_args(client):
     html = client.get(
         "/jobs/new?tgt=x&tgt_type=glob&fun=test.ping&args=a"
