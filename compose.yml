@@ -22,6 +22,7 @@ services:
       OIDC_ADMIN_GROUPS: ${OIDC_ADMIN_GROUPS:-}
       OIDC_OPERATOR_GROUPS: ${OIDC_OPERATOR_GROUPS:-}
       FILE_ROOTS: /srv/states/salt
+      REACTOR_ROOTS: /srv/states/reactor
       TLS_CERT: /srv/tls/app.crt
       TLS_KEY: /srv/tls/app.key
     volumes:

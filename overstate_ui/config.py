@@ -42,6 +42,7 @@ class Config:
     OIDC_REDIRECT_URI = os.environ.get("OIDC_REDIRECT_URI", "")
     PUBLIC_URL = os.environ.get("PUBLIC_URL", "")
     FILE_ROOTS = os.environ.get("FILE_ROOTS", "salt-srv/salt")
+    REACTOR_ROOTS = os.environ.get("REACTOR_ROOTS", "salt-srv/reactor")
     SYNDIC_MASTERS = os.environ.get("SYNDIC_MASTERS", "")
 
 

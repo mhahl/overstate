@@ -802,6 +802,9 @@ def test_job_sse_response_is_not_buffered(client):
     assert rv.mimetype == "text/event-stream"
     assert rv.headers["Cache-Control"] == "no-cache"
     assert rv.headers["X-Accel-Buffering"] == "no"
+    # Consume the body: an unexhausted stream generator is closed by the
+    # GC at an arbitrary later point and breaks other tests' teardown.
+    assert "event: done" in rv.data.decode()
 
 
 def test_events_sse_response_is_not_buffered(monkeypatch):
@@ -821,6 +824,9 @@ def test_events_sse_response_is_not_buffered(monkeypatch):
     assert rv.mimetype == "text/event-stream"
     assert rv.headers["Cache-Control"] == "no-cache"
     assert rv.headers["X-Accel-Buffering"] == "no"
+    # Consume the body: an unexhausted stream generator is closed by the
+    # GC at an arbitrary later point and breaks other tests' teardown.
+    assert "event: done" in rv.data.decode()
 
 
 def test_events_stream_settles_done_vs_error():

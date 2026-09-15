@@ -118,6 +118,9 @@
           <li><a href="{{ url_for('files.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('files') }}">
             <span class="icon-[lucide--file-text] size-4.5" aria-hidden="true"></span>
             Files</a></li>
+          <li><a href="{{ url_for('reactor.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('reactor') }}">
+            <span class="icon-[lucide--workflow] size-4.5" aria-hidden="true"></span>
+            Reactor</a></li>
           <li><a href="{{ url_for('schedules.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('schedules') }}">
             <span class="icon-[lucide--clock] size-4.5" aria-hidden="true"></span>
             Schedules</a></li>
@@ -239,6 +242,7 @@
         ("Run job", "page", url_for('jobs.new')),
         ("States", "page", url_for('states.index')),
         ("Files", "page", url_for('files.index')),
+        ("Reactor", "page", url_for('reactor.index')),
         ("Schedules", "page", url_for('schedules.index')),
         ("Events", "page", url_for('events.index')),
         ("Pillar", "page", url_for('pillar.index')),

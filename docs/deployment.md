@@ -108,6 +108,18 @@ page reports "not a git checkout"). Anything else — diverged branches,
 uncommitted trees, missing upstream — makes Sync refuse with the git
 reason and change nothing, and every attempt is audited.
 
+### Reactor: master-config state plus a git hand-off
+
+`REACTOR_ROOTS` points the Reactor page at the directory holding
+your reactor SLS files (`/srv/states/reactor` in dev compose; the
+bodies are read-only in the UI). The event → SLS mapping itself is
+master-config state, managed through salt-api's `reactor` runner —
+the `@runner` grant the service account already holds covers it, no
+eauth change needed. Unlike file-roots, mapping writes land in the
+master config, not in git: the page says so, every add/delete is
+audited, and **Export for git** renders the live mapping as a
+`reactor:` YAML block for committing by hand.
+
 ## Set up the Salt master
 
 Install Salt on openSUSE or Fedora from the distribution packages.

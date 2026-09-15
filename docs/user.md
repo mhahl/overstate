@@ -24,8 +24,9 @@ tab-restore logs you out by accident.
 Three roles exist. Each higher role includes everything below it.
 
 - **Viewer.** You see everything: minions, jobs, states, pillar,
-  schedules, events. You change nothing.
-- **Operator.** You run jobs, accept keys, manage schedules, toggle
+  schedules, events, reactor. You change nothing.
+- **Operator.** You run jobs, accept keys, manage schedules and
+  reactors, toggle
   beacons, capture pillar snapshots, and edit watched states. You
   cannot touch users, settings, or roles.
 - **Admin.** You do all of that plus users and settings.
@@ -322,3 +323,14 @@ last 50 events per stream for 60 seconds, so open the stream before
 you run the job you want to watch. Payloads stay on the server; the
 browser receives tags plus small summaries. Raw bus content never
 reaches the page.
+
+## Reactor
+
+The Reactor page lists the master's event → SLS mapping exactly as
+`reactor.list` reports it, with each SLS viewable read-only. Reactor
+rows link to the matching Events family so you can watch them fire.
+Operators can add and delete mappings (delete asks once on its own
+page); every change is audit-logged. The mapping is master-config
+state, not git content — but **Export for git** renders the live
+mapping as a `reactor:` YAML block you can commit by hand. The app
+never writes your repo.
