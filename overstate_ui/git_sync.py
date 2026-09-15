@@ -12,6 +12,7 @@ queueing there would only fail elsewhere.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import threading
 from pathlib import Path
@@ -22,6 +23,17 @@ GIT_TIMEOUT = 30
 LOG_LINES = 10
 
 _sync_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _single_flight():
+    """One git write at a time; yields False when one is already running."""
+    acquired = _sync_lock.acquire(blocking=False)
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            _sync_lock.release()
 
 
 def _root() -> Path:
@@ -98,9 +110,9 @@ def _failure(proc: subprocess.CompletedProcess[str] | None, fallback: str) -> st
 
 def git_sync_now() -> dict:
     """Fetch + pull --ff-only. One at a time; refusals explain, never force."""
-    if not _sync_lock.acquire(blocking=False):
-        return {"ok": False, "reason": "a sync is already running"}
-    try:
+    with _single_flight() as free:
+        if not free:
+            return {"ok": False, "reason": "a sync is already running"}
         if not _is_checkout():
             return {"ok": False, "reason": "not a git checkout"}
         fetch = _run("fetch", "--prune")
@@ -119,5 +131,20 @@ def git_sync_now() -> dict:
             "new": new_sha,
             "changed": old_sha != new_sha,
         }
-    finally:
-        _sync_lock.release()
+
+
+def git_fetch_now() -> dict:
+    """Fetch remote state without touching the working tree.
+
+    Powers the "check for updates" button: refreshes behind/ahead
+    counts so the status card answers against the live remote.
+    """
+    with _single_flight() as free:
+        if not free:
+            return {"ok": False, "reason": "a sync is already running"}
+        if not _is_checkout():
+            return {"ok": False, "reason": "not a git checkout"}
+        fetch = _run("fetch", "--prune")
+        if fetch is None or fetch.returncode != 0:
+            return {"ok": False, "reason": _failure(fetch, "git fetch failed")}
+        return {"ok": True}

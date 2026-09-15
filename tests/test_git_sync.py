@@ -1,7 +1,9 @@
 """Git status + ff-only sync: honest states, refusals that never force."""
 
+import json
 import subprocess
 
+import httpx
 import pytest
 
 from overstate_ui import auth as authmod
@@ -10,6 +12,7 @@ from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.models import AuditEvent, User
+from overstate_ui.salt_client import SaltClient
 
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "t",
@@ -31,7 +34,7 @@ def commit_file(repo, name, text):
 
 @pytest.fixture()
 def checkout(tmp_path):
-    """A git checkout with an upstream missing one commit (behind by one)."""
+    """A git checkout one commit ahead of its upstream (unpushed work)."""
     remote = tmp_path / "remote.git"
     git("init", "--bare", "-q", str(remote), cwd=tmp_path)
     work = tmp_path / "work"
@@ -164,3 +167,92 @@ def test_sync_route_viewer_forbidden_and_get_disallowed(checkout):
     c.post("/login", data={"username": "vie", "password": "pw"})
     assert c.post("/files/sync").status_code == 403
     assert c.get("/files/sync").status_code == 405
+
+
+def _behind_checkout(tmp_path):
+    """A checkout one commit behind its remote (something to pull)."""
+    remote = tmp_path / "remote.git"
+    git("init", "--bare", "-q", str(remote), cwd=tmp_path)
+    seed = tmp_path / "seed"
+    git("clone", "-q", str(remote), str(seed), cwd=tmp_path)
+    git("config", "user.email", "t@t", cwd=seed)
+    git("config", "user.name", "t", cwd=seed)
+    git("checkout", "-qb", "main", cwd=seed)
+    commit_file(seed, "a.sls", "a:\n  test.nop: []\n")
+    git("push", "-qu", "origin", "main", cwd=seed)
+    mine = tmp_path / "mine"
+    git("clone", "-q", str(remote), str(mine), cwd=tmp_path)
+    git("checkout", "-q", "main", cwd=mine)
+    commit_file(seed, "b.sls", "b:\n  test.nop: []\n")
+    git("push", "-q", "origin", "main", cwd=seed)
+    return mine
+
+
+def _salt_stub(fileserver_ok=True):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
+        body = json.loads(request.content or b"{}")
+        if body.get("client") == "runner" and body.get("fun") == "fileserver.update":
+            if fileserver_ok:
+                return httpx.Response(200, json={"return": [True]})
+            return httpx.Response(500, json={})
+        return httpx.Response(200, json={"return": [{}]})
+
+    return SaltClient(
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler)
+    )
+
+
+def _audit_actions(c):
+    with c.app.app_context():
+        return [row.action for row in get_session().query(AuditEvent).all()]
+
+
+def test_sync_changed_pull_refreshes_fileserver(tmp_path):
+    c = app_for(_behind_checkout(tmp_path))
+    c.app.extensions["salt_client"] = _salt_stub(fileserver_ok=True)
+    rv = c.post("/files/sync", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"master fileserver refreshed" in rv.data
+    actions = _audit_actions(c)
+    assert any(a.startswith("git-sync:") for a in actions)
+    assert "fileserver-update" in actions
+
+
+def test_sync_changed_pull_refresh_failure_warns_not_fails(tmp_path):
+    c = app_for(_behind_checkout(tmp_path))
+    c.app.extensions["salt_client"] = _salt_stub(fileserver_ok=False)
+    rv = c.post("/files/sync", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"Synced" in rv.data  # the pull landed
+    assert b"master refresh failed" in rv.data  # refresh advisory only
+    actions = _audit_actions(c)
+    assert any(a.startswith("fileserver-update-failed:") for a in actions)
+
+
+def test_fetch_reports_behind_without_pulling(tmp_path):
+    mine = _behind_checkout(tmp_path)
+    c = app_for(mine)
+    rv = c.post("/files/fetch", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"1 commit(s) behind" in rv.data
+    assert not (mine / "b.sls").is_file()  # fetch touches no files
+    assert "git-fetch" in _audit_actions(c)
+
+
+def test_fetch_up_to_date(checkout):
+    c = app_for(checkout)
+    rv = c.post("/files/fetch", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"up to date with the remote" in rv.data
+
+
+def test_fetch_viewer_forbidden(checkout):
+    c = app_for(checkout)
+    c.post("/logout")
+    c.post("/login", data={"username": "vie", "password": "pw"})
+    assert c.post("/files/fetch").status_code == 403
+    assert c.get("/files/fetch").status_code == 405

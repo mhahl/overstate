@@ -4,6 +4,7 @@ checkout; the app only reads. There is intentionally no write path here."""
 import subprocess
 from pathlib import Path
 
+import httpx
 from flask import (
     Blueprint,
     abort,
@@ -21,7 +22,9 @@ from pygments.lexers import YamlLexer
 
 from .audit import log_event
 from .auth import roles_required
-from .git_sync import git_status, git_sync_now
+from .dashboard import get_salt
+from .git_sync import git_fetch_now, git_status, git_sync_now
+from .salt_client import SaltApiError
 
 bp = Blueprint("files", __name__, url_prefix="/files")
 
@@ -178,20 +181,74 @@ def index():
     )
 
 
+def _refresh_fileserver() -> str | None:
+    """Tell the master to re-read file roots after a changed pull.
+
+    Returns None when the master confirms, otherwise the reason. A
+    refresh failure never fails the sync itself — the pull already
+    landed, applies just lag until the master updates on its own.
+    """
+    try:
+        get_salt().runner("fileserver.update", http_timeout=30.0)
+    except (SaltApiError, httpx.HTTPError, KeyError) as exc:
+        return f"salt-api error: {exc}"
+    return None
+
+
 @bp.post("/sync")
 @roles_required("operator")
 def sync():
-    """Pull --ff-only on the file-roots checkout. Refusals explain."""
+    """Pull --ff-only; on a changed pull, refresh the master fileserver."""
     result = git_sync_now()
     if result["ok"]:
+        log_event(current_user.username, f"git-sync:{result['new']}")
         if result["changed"]:
-            flash(f"Synced {result['old']} → {result['new']}.", "success")
+            err = _refresh_fileserver()
+            if err is None:
+                flash(
+                    f"Synced {result['old']} → {result['new']}; "
+                    "master fileserver refreshed.",
+                    "success",
+                )
+                log_event(current_user.username, "fileserver-update")
+            else:
+                flash(
+                    f"Synced {result['old']} → {result['new']}, but the "
+                    f"master refresh failed ({err}) — applies may lag "
+                    "until the master updates.",
+                    "warning",
+                )
+                log_event(current_user.username, f"fileserver-update-failed:{err}")
         else:
             flash(f"Already up to date at {result['new']}.", "info")
-        log_event(current_user.username, f"git-sync:{result['new']}")
     else:
         flash(f"Sync refused: {result['reason']}. Nothing changed.", "error")
         log_event(current_user.username, f"git-sync-refused:{result['reason']}")
+    return redirect(url_for("files.index"))
+
+
+@bp.post("/fetch")
+@roles_required("operator")
+def fetch():
+    """Check the remote for updates without touching the working tree.
+
+    Refreshes behind/ahead counts so the status card answers against
+    the live remote. Files never change here; only Sync pulls.
+    """
+    result = git_fetch_now()
+    if result["ok"]:
+        behind = git_status().get("behind")
+        if behind:
+            flash(
+                f"Fetched: {behind} commit(s) behind — Sync to pull.",
+                "info",
+            )
+        else:
+            flash("Fetched: up to date with the remote.", "info")
+        log_event(current_user.username, "git-fetch")
+    else:
+        flash(f"Check failed: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"git-fetch-refused:{result['reason']}")
     return redirect(url_for("files.index"))
 
 

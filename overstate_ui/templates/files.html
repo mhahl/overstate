@@ -17,10 +17,16 @@
         {% if git.clean %}<span class="badge badge-sm badge-success">clean</span>{% else %}<span class="badge badge-sm badge-warning">{{ git.dirty_count }} uncommitted</span>{% endif %}
         {% if git.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ git.upstream }}{% if git.ahead is not none %} · {{ git.ahead }} ahead, {{ git.behind }} behind{% endif %}</span>{% else %}<span class="opacity-70 text-xs">no upstream</span>{% endif %}
         {% if current_user.role in ["operator", "admin"] %}
-        <form method="post" action="{{ url_for('files.sync') }}" class="ms-auto">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-sm btn-outline">Sync now</button>
-        </form>
+        <span class="ms-auto flex gap-1">
+          <form method="post" action="{{ url_for('files.fetch') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-ghost" title="Fetch the remote without changing files">Check for updates</button>
+          </form>
+          <form method="post" action="{{ url_for('files.sync') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline">Sync now</button>
+          </form>
+        </span>
         {% endif %}
       </div>
       {% if git.log %}

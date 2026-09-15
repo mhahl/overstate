@@ -71,18 +71,25 @@ states. Follow the whole chain before changing any link of it:
    reads the listing from here, and the operator-gated **Sync now**
    button runs `git fetch` + `git pull --ff-only` on it — the same
    flags as `scripts/sync-file-roots.sh`, which stays available for
-   cron or a sidecar if you prefer sync outside the app. The app is
-   the only in-app writer: it never edits, commits, or pushes. Pick
-   one sync actor per site (button or cron, not both): two writers
-   racing on the same checkout trip git's lock and the loser just
-   reports a refusal, harmless but noisy.
+   cron or a sidecar if you prefer sync outside the app. When a pull
+   actually moves the checkout, the button also fires
+   `fileserver.update` on the master so new states are served at
+   once; that runner is covered by the `@runner` grant the service
+   account already holds, and a refresh failure only warns — the
+   pull itself still stands. The app is the only in-app writer: it
+   never edits, commits, or pushes. Pick one sync actor per site
+   (button or cron, not both): two writers racing on the same
+   checkout trip git's lock and the loser just reports a refusal,
+   harmless but noisy.
 3. **Master mount — read-only.** The salt-master container mounts the
    same host directory (`/home/salt/data/srv`, `:ro`) and serves it
    as its file roots, so minions enforce exactly what the browser
    shows. The master never needs write access; keep it that way.
-4. **After a sync.** The browser shows the new git SHA immediately,
-   but the master serves from its fileserver cache, so `state.apply`
-   can lag one refresh behind. This is expected, not a failed sync.
+4. **After a sync.** The button refreshes the master fileserver when
+   the pull moved anything, so browser SHA and served states agree.
+   If that refresh fails you get a warning naming the reason and the
+   master catches up on its own update interval instead — a lagging
+   refresh is never reported as a failed sync.
 
 Sync activates only when the directory is a git checkout with an
 upstream: the install seed is plain files, so turn it into a checkout

@@ -145,6 +145,7 @@ def test_viewer_sees_no_action_buttons_states_and_schedules():
     _login(client, "vwr")
     states = client.get("/states/").data.decode()
     assert "Unwatch" not in states
+    assert "Stop watching" not in states
     assert "Recompute" not in states
     assert "e.g. baseline" not in states
     schedules = client.get("/schedules/").data.decode()
@@ -160,7 +161,7 @@ def test_operator_sees_action_buttons():
     client = app.test_client()
     _login(client, "op")
     states = client.get("/states/").data.decode()
-    assert "Unwatch" in states
+    assert "Stop watching" in states  # unwatch × chip, confirm included
     assert "Recompute" in states
     schedules = client.get("/schedules/").data.decode()
     assert "Add schedule" in schedules

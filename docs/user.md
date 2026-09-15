@@ -303,11 +303,15 @@ button exists and none is planned.
 The top of the page shows the git checkout behind the listing:
 branch, revision, clean or uncommitted state, how far it sits from its
 upstream, and the last commits. If a file you pushed has not appeared,
-the checkout is behind — press **Sync now** (operators only) to pull
-the latest. Sync is fast-forward only: a diverged checkout or an
-uncommitted tree refuses with the git reason and changes nothing, and
-every attempt lands in the audit trail. If the page says the path is
-not a checkout, sync is unavailable there; ask your admin.
+the checkout is behind — press **Check for updates** (operators only)
+to refresh the behind count without touching files, then **Sync now**
+to pull the latest. A changed pull also refreshes the master
+fileserver so applies see the new states at once; if that refresh
+fails you get a warning, never a failed sync. Sync is fast-forward
+only: a diverged checkout or an uncommitted tree refuses with the git
+reason and changes nothing, and every attempt lands in the audit
+trail. If the page says the path is not a checkout, sync is
+unavailable there; ask your admin.
 
 ## Events
 
