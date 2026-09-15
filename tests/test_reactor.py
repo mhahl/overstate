@@ -26,7 +26,7 @@ NOT_RUNNING_BODY = """Exception occurred in runner reactor.list: Traceback (most
 salt.exceptions.CommandExecutionError: Reactor system is not running."""
 
 
-def _transport(calls, fail=False, fail_body=None):
+def _transport(calls, fail=False, fail_body=None, ok_body=None):
     import json
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -40,6 +40,8 @@ def _transport(calls, fail=False, fail_body=None):
                 if fail_body is not None:
                     return httpx.Response(500, text=fail_body)
                 return httpx.Response(500, json={"error": "down"})
+            if ok_body is not None:
+                return httpx.Response(200, text=ok_body)
             fun = body.get("fun")
             calls.append((fun, body))
             if fun == "reactor.list":
@@ -50,7 +52,7 @@ def _transport(calls, fail=False, fail_body=None):
     return httpx.MockTransport(handler)
 
 
-def _app(tmp_path, calls=None, fail=False, fail_body=None):
+def _app(tmp_path, calls=None, fail=False, fail_body=None, ok_body=None):
     calls = calls if calls is not None else []
     (tmp_path / "greet.sls").write_text("greet-new-minion:\n  test.nop: []\n")
     init_db("sqlite://")
@@ -58,7 +60,10 @@ def _app(tmp_path, calls=None, fail=False, fail_body=None):
     app.config["WTF_CSRF_ENABLED"] = False
     app.config["REACTOR_ROOTS"] = str(tmp_path)
     app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=_transport(calls, fail, fail_body)
+        "https://salt:8000",
+        "u",
+        "p",
+        transport=_transport(calls, fail, fail_body, ok_body),
     )
     with app.app_context():
         create_all()
@@ -206,3 +211,17 @@ def test_not_running_master_shows_empty_state(tmp_path):
     assert "Traceback" not in html
     export = client.get("/reactor/export").data.decode()
     assert "no mapping to export" in export
+
+
+def test_traceback_in_200_payload_shows_empty_state(tmp_path):
+    import json
+
+    ok_body = json.dumps({"return": [NOT_RUNNING_BODY]})
+    app = _app(tmp_path, ok_body=ok_body)
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/reactor/").data.decode()
+    assert "Reactor is not running on the master" in html
+    assert "Reactor disabled" in html
+    assert "Traceback" not in html
+    assert "Exception occurred in runner" not in html

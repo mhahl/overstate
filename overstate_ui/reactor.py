@@ -109,6 +109,20 @@ def _unwrap(value):
     return value
 
 
+RUNNER_FAILURE_MARKERS = (
+    "Exception occurred in runner",
+    "Traceback (most recent call last)",
+)
+
+
+def _extract_failure(value) -> str | None:
+    """Runner tracebacks embedded in a 200 payload: last line only."""
+    if isinstance(value, str) and any(m in value for m in RUNNER_FAILURE_MARKERS):
+        lines = [ln.strip() for ln in value.splitlines() if ln.strip()]
+        return lines[-1][:200] if lines else "unknown runner error"
+    return None
+
+
 def nearest_tag(event: str) -> str:
     """Event-family deep link for a reactor pattern (events viewer)."""
     for choice in TAG_CHOICES:
@@ -147,7 +161,11 @@ def index():
     try:
         value = get_salt().runner("reactor.list", http_timeout=30.0)
         value = _unwrap(value)
-        entries, raw = parse_reactor_list(value)
+        failure = _extract_failure(value)
+        if failure is not None:
+            error = f"salt-api error: {failure}"
+        else:
+            entries, raw = parse_reactor_list(value)
     except SaltApiError as exc:
         error = f"salt-api error: {exc}"
     # A master without reactor configured answers with "Reactor system
@@ -297,7 +315,11 @@ def export():
     try:
         value = get_salt().runner("reactor.list", http_timeout=30.0)
         value = _unwrap(value)
-        entries, _ = parse_reactor_list(value)
+        failure = _extract_failure(value)
+        if failure is not None:
+            error = f"salt-api error: {failure}"
+        else:
+            entries, _ = parse_reactor_list(value)
     except SaltApiError as exc:
         error = f"salt-api error: {exc}"
     disabled = error is not None and NOT_RUNNING in error
