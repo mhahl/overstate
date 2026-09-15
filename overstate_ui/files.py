@@ -4,12 +4,28 @@ checkout; the app only reads. There is intentionally no write path here."""
 import subprocess
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, render_template, request
-from flask_login import login_required
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+from flask_login import current_user, login_required
+
+from .audit import log_event
+from .auth import roles_required
+from .git_sync import git_status, git_sync_now
 
 bp = Blueprint("files", __name__, url_prefix="/files")
 
 MAX_BYTES = 256 * 1024
+LIST_LIMIT = 5000
+PAGE_SIZES = (25, 50, 100)
+DEFAULT_PAGE_SIZE = 50
 
 
 def roots() -> Path:
@@ -28,18 +44,47 @@ def safe_join(rel: str) -> Path | None:
     return target
 
 
-def list_tree() -> list[dict]:
+def list_tree(limit: int | None = None) -> list[dict]:
+    """Flat file listing under roots, sorted by path.
+
+    ``limit`` bounds the walk itself: collection stops after
+    ``limit`` entries so a huge checkout cannot balloon one request.
+    ``None`` walks everything (kept for small-tree callers/tests).
+    """
     base = roots()
     entries = []
     if not base.is_dir():
         return entries
-    for path in sorted(base.rglob("*")):
+    for path in base.rglob("*"):
         if path.is_dir():
             continue
-        entries.append(
-            {"rel": str(path.relative_to(base)), "size": path.stat().st_size}
-        )
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        entries.append({"rel": str(path.relative_to(base)), "size": size})
+        if limit is not None and len(entries) >= limit:
+            break
+    entries.sort(key=lambda e: e["rel"])
     return entries
+
+
+def group_rows(entries: list[dict]) -> list[dict]:
+    """Interleave directory header rows for one page of entries.
+
+    Headers carry ``{"group": name}``; file rows pass through. The
+    top level (files at the root) groups under ``/``.
+    """
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for entry in entries:
+        rel = entry["rel"]
+        top = rel.split("/", 1)[0] if "/" in rel else "/"
+        if top not in seen:
+            seen.add(top)
+            rows.append({"group": top})
+        rows.append(entry)
+    return rows
 
 
 def read_text(target: Path) -> str | None:
@@ -80,7 +125,57 @@ def sync_revision() -> str | None:
 @bp.route("/")
 @login_required
 def index():
-    return render_template("files.html", entries=list_tree(), revision=sync_revision())
+    q = request.args.get("q", "").strip().lower()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    try:
+        per_page = int(request.args.get("per_page", DEFAULT_PAGE_SIZE))
+    except ValueError:
+        per_page = DEFAULT_PAGE_SIZE
+    if per_page not in PAGE_SIZES:
+        per_page = DEFAULT_PAGE_SIZE
+    entries = list_tree(limit=LIST_LIMIT + 1)
+    truncated = len(entries) > LIST_LIMIT
+    entries = entries[:LIST_LIMIT]
+    if q:
+        entries = [e for e in entries if q in e["rel"].lower()]
+    total = len(entries)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    rows = group_rows(entries[(page - 1) * per_page : page * per_page])
+    has_top = (roots() / "top.sls").is_file()
+    return render_template(
+        "files.html",
+        rows=rows,
+        revision=sync_revision(),
+        q=request.args.get("q", ""),
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        total=total,
+        truncated=truncated,
+        has_top=has_top,
+        git=git_status(),
+    )
+
+
+@bp.post("/sync")
+@roles_required("operator")
+def sync():
+    """Pull --ff-only on the file-roots checkout. Refusals explain."""
+    result = git_sync_now()
+    if result["ok"]:
+        if result["changed"]:
+            flash(f"Synced {result['old']} → {result['new']}.", "success")
+        else:
+            flash(f"Already up to date at {result['new']}.", "info")
+        log_event(current_user.username, f"git-sync:{result['new']}")
+    else:
+        flash(f"Sync refused: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"git-sync-refused:{result['reason']}")
+    return redirect(url_for("files.index"))
 
 
 @bp.route("/view")
@@ -91,8 +186,30 @@ def view():
     if not target or not target.is_file():
         abort(404)
     content = read_text(target)
-    if content is None:
+    if content is not None:
+        return render_template(
+            "file_view.html",
+            rel=rel,
+            content=content,
+            lines=content.splitlines(),
+            reason=None,
+            size=None,
+            revision=sync_revision(),
+        )
+    # The file exists but cannot be shown as text: explain instead of
+    # a bare 404 so operators know whether it is big or binary.
+    try:
+        size = target.stat().st_size
+    except OSError:
         abort(404)
+    reason = "too large to display" if size > MAX_BYTES else "not readable text"
     return render_template(
-        "file_view.html", rel=rel, content=content, revision=sync_revision()
+        "file_view.html",
+        rel=rel,
+        content=None,
+        lines=[],
+        reason=reason,
+        size=size,
+        max_bytes=MAX_BYTES,
+        revision=sync_revision(),
     )

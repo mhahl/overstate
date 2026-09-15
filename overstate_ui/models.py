@@ -153,6 +153,23 @@ class WatchedState(Base):
     sls: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
 
+class StateConformityHistory(Base):
+    """Per-minion verdict trail. Newest rows answer "since when";
+    retention is capped per minion at write time."""
+
+    __tablename__ = "state_conformity_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    minion_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    jid: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    checked_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_state_conformity_history_minion", "minion_id"),)
+
+
 class SaltJid(Base):
     """Stock pgjsonb returner transport table. Written by the master."""
 

@@ -160,6 +160,51 @@
   <p class="text-sm opacity-70">{% if tab == "schedule" %}Recurring jobs live on the minion. <a class="link" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>{% else %}The master renders pillar per minion. <a class="link" href="https://docs.saltproject.io/en/3006/topics/pillar/index.html" target="_blank" rel="noopener">Salt pillar documentation</a>{% endif %}</p>
 </div>
 </div>
+{% elif tab == "states" %}
+{% macro state_chip_rows(rows) %}
+<div class="overflow-x-auto rounded-box border border-base-300">
+<table class="table table-sm table-zebra"><thead><tr><th>State</th><th>SLS</th><th>Result</th><th>Comment</th></tr></thead><tbody>
+{% for s in rows %}
+<tr><td class="font-mono text-xs break-all">{{ s.id }}</td>
+<td class="font-mono text-xs">{{ s.sls or "–" }}</td>
+<td>{% if s.verdict == "ok" %}<span class="badge badge-sm badge-success">ok</span>{% elif s.verdict == "changed" %}<span class="badge badge-sm badge-warning">changed</span>{% elif s.verdict == "failed" %}<span class="badge badge-sm badge-error">failed</span>{% else %}<span class="badge badge-sm badge-neutral">unknown</span>{% endif %}</td>
+<td class="text-xs break-all">{{ s.comment or "–" }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% endmacro %}
+<div class="p-4 flex flex-col gap-4">
+<div class="flex flex-wrap items-center gap-2">
+  <p class="font-semibold me-auto">States</p>
+  {% if current_user.role in ["operator", "admin"] %}
+  <form method="post" action="{{ url_for('minions.states_refresh', mid=mid) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-sm btn-outline">Refresh from minion</button>
+  </form>
+  {% endif %}
+</div>
+<p class="text-xs opacity-70">Stored run first — the minion is only asked when you press Refresh, and a refresh never rewrites history.</p>
+{% if data.live_note %}<div class="alert alert-warning text-sm" role="status">{{ data.live_note }}</div>{% endif %}
+{% if data.live %}
+<p class="font-medium text-sm">Live description <span class="badge badge-sm badge-info">not stored</span></p>
+{{ state_chip_rows(data.live) }}
+<details class="collapse collapse-arrow border border-base-300"><summary class="collapse-title text-sm font-medium">Raw live data</summary><div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.live_raw | tojson(indent=1) }}</code></pre></div></details>
+{% endif %}
+{% if data.stored %}
+<p class="font-medium text-sm">Last stored run · <span class="font-mono">{{ data.stored.fun }}</span> in <a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=data.stored.jid) }}">{{ data.stored.jid }}</a> {% if data.stored.success %}<span class="badge badge-sm badge-success">ok</span>{% else %}<span class="badge badge-sm badge-error">failed</span>{% endif %}</p>
+{% if data.stored.states %}
+{{ state_chip_rows(data.stored.states) }}
+<details class="collapse collapse-arrow border border-base-300"><summary class="collapse-title text-sm font-medium">Raw stored return</summary><div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.stored.raw | tojson(indent=1) }}</code></pre></div></details>
+{% else %}
+<p class="text-sm opacity-70">Stored return has no per-state data.</p>
+{% endif %}
+{% else %}
+<div class="py-8 text-center">
+  <p class="font-medium">No stored state run for {{ mid }}</p>
+  <p class="text-sm opacity-70">Run a highstate or state.apply, then come back — or press Refresh for a one-shot live description.</p>
+</div>
+{% endif %}
+</div>
 {% elif tab == "beacons" %}
 <div class="p-4 flex flex-col gap-4">
 {% if data.beacon_entries %}

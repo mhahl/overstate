@@ -50,6 +50,11 @@
         </form>
         {% endif %}
       </div>
+      <div class="flex flex-wrap gap-1 my-2" role="group" aria-label="Filter by status">
+        {% for opt in ["", "ok", "drifted", "unreachable", "unknown"] %}
+        <a href="{{ url_for('states.index', status=opt, sort=sort, direction=direction) }}" class="btn btn-xs {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}">{{ opt or "all" }}</a>
+        {% endfor %}
+      </div>
       {% include "_conformity_rows.html" %}
     </div>
   </section>

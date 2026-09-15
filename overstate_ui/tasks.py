@@ -65,6 +65,8 @@ from .tasks_salt import (
     probe_capabilities,
     refresh_inventory_task,
     refresh_now,
+    show_highstate_now,
+    show_highstate_task,
     show_sls_now,
     show_sls_task,
 )
@@ -110,6 +112,8 @@ __all__ = [
     "run_orchestrate_task",
     "run_wave_batch",
     "run_wave_batch_task",
+    "show_highstate_now",
+    "show_highstate_task",
     "show_sls_now",
     "show_sls_task",
     "split_roster",

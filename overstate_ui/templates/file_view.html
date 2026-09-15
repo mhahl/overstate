@@ -7,6 +7,24 @@
     <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
   </div>
   <p class="text-sm opacity-70 mb-4">Read-only{% if revision %}, synced from git at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
-  <pre class="mockup-code overflow-x-auto border border-base-300 p-4"><code>{{ content }}</code></pre>
+  {% if content is none %}
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body py-8 text-center">
+      <p class="font-medium">Cannot display {{ rel }}</p>
+      <p class="text-sm opacity-70">This file is {{ reason }} ({{ size }} bytes{% if max_bytes and reason.startswith("too large") %}; display limit is {{ max_bytes }} bytes{% endif %}). It exists in the checkout — open it in git instead. No content was changed.</p>
+      <p class="mt-3"><a class="btn btn-sm btn-outline" href="{{ url_for('files.index') }}">Back to files</a></p>
+    </div>
+  </div>
+  {% else %}
+  <div class="overflow-x-auto rounded-box border border-base-300">
+  <table class="table table-xs" aria-label="File contents with line numbers">
+    <tbody>
+    {% for line in lines %}
+    <tr class="hover"><td class="text-right opacity-50 select-none w-12 tabular-nums">{{ loop.index }}</td><td class="font-mono whitespace-pre break-all">{{ line or " " }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

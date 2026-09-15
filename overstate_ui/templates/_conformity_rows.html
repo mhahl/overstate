@@ -2,15 +2,20 @@
 <div id="conformity-table">
       {% if minions %}
       <div class="overflow-x-auto">
-      <table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {}, '#conformity-table', false) }}<th>Source JID</th></tr></thead><tbody>
+      <table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {"status": status_filter}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {"status": status_filter}, '#conformity-table', false) }}<th>Checked</th><th>History</th><th>Source JID</th></tr></thead><tbody>
       {% for m in minions %}
       {% set cstatus = (m.conformity or {}).get("status", "unknown") %}
       <tr><td class="font-mono text-xs">{{ m.id }}</td>
       <td>
         {% if cstatus == "ok" %}<span class="badge badge-sm badge-success" role="status" aria-label="Conformity: ok">ok</span>
         {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>
+        {% elif cstatus == "unreachable" %}<span class="badge badge-sm badge-error badge-outline" role="status" aria-label="Conformity: unreachable">unreachable</span>
         {% else %}<span class="badge badge-sm badge-neutral" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>{% endif %}
+        {% if (m.conformity or {}).get("partial") %}<span class="badge badge-sm badge-ghost" title="Verdict fell back to the whole job: watched states could not be isolated in this return">partial</span>{% endif %}
       </td>
+      {% set checked = (m.conformity or {}).get("checked_at", "") %}
+      <td class="font-mono text-xs whitespace-nowrap">{% if checked %}{{ checked[:16].replace("T", " ") }}{% else %}–{% endif %}</td>
+      <td><span class="inline-flex items-center gap-1">{% for h in history.get(m.id, []) %}<span class="badge badge-xs {% if h.status == 'ok' %}badge-success{% elif h.status in ['drifted', 'failed'] %}badge-error{% elif h.status == 'unreachable' %}badge-error badge-outline{% else %}badge-neutral{% endif %}" title="{{ h.jid }}"></span>{% else %}–{% endfor %}</span></td>
       {% set src_jid = (m.conformity or {}).get("jid") %}
       <td class="font-mono text-xs">{% if src_jid and cstatus != "unknown" %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}–{% endif %}</td></tr>
       {% endfor %}

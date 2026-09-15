@@ -38,6 +38,51 @@ def test_view_renders_content(rooted):
     rv = rooted.get("/files/view", query_string={"path": "web.sls"})
     assert rv.status_code == 200
     assert b"pkg.installed" in rv.data
+    assert b">1<" in rv.data  # line numbers
+
+
+def test_search_filters_listing(rooted):
+    rv = rooted.get("/files/", query_string={"q": "db"})
+    assert rv.status_code == 200
+    assert b"sub/db.sls" in rv.data
+    assert b"web.sls" not in rv.data
+    rv = rooted.get("/files/", query_string={"q": "nothing-here"})
+    assert b"No files match" in rv.data
+
+
+def test_group_headers_and_top_hint(rooted, tmp_path):
+    (tmp_path / "top.sls").write_text("base:\n  '*': []\n")
+    rv = rooted.get("/files/")
+    assert rv.status_code == 200
+    assert b"sub/" in rv.data  # directory header row
+    assert b"top.sls" in rv.data  # entry-point hint
+
+
+def test_pagination_splits_many_files(rooted, tmp_path):
+    for i in range(30):
+        (tmp_path / f"bulk-{i:02d}.sls").write_text("x:\n  test.nop: []\n")
+    first = rooted.get(
+        "/files/", query_string={"per_page": "25", "page": "1"}
+    ).data.decode()
+    second = rooted.get(
+        "/files/", query_string={"per_page": "25", "page": "2"}
+    ).data.decode()
+    assert "Page 1 of" in first and "Page 2 of" in second
+    assert "bulk-29.sls" in second and "bulk-29.sls" not in first
+
+
+def test_oversize_file_explains_instead_of_blank_404(rooted, tmp_path):
+    (tmp_path / "huge.sls").write_bytes(b"x" * (257 * 1024))
+    rv = rooted.get("/files/view", query_string={"path": "huge.sls"})
+    assert rv.status_code == 200
+    assert b"too large to display" in rv.data
+
+
+def test_binary_file_explains_instead_of_blank_404(rooted, tmp_path):
+    (tmp_path / "blob.sls").write_bytes(b"\xff\xfe\x00binary\x01\x02")
+    rv = rooted.get("/files/view", query_string={"path": "blob.sls"})
+    assert rv.status_code == 200
+    assert b"not readable text" in rv.data
 
 
 def test_traversal_rejected(rooted):

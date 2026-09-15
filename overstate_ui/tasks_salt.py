@@ -204,6 +204,24 @@ def show_sls_task(minion: str, sls_list: list[str], via: str = "local") -> dict:
         return show_sls_now(build_client(), minion, sls_list, via)
 
 
+def show_highstate_now(client, minion: str, via: str = "local") -> dict:
+    """One-shot live highstate description for a single minion.
+
+    Display-only: the caller shows it next to the stored return and
+    never writes it into job history. Raises SaltApiError on failure;
+    the view degrades to stored data plus an advisory note.
+    """
+    payload = client.local(minion, "state.show_highstate", via=via)[0].get(minion)
+    return payload if isinstance(payload, dict) else {}
+
+
+def show_highstate_task(minion: str, via: str = "local") -> dict:
+    from .tasks import build_client
+
+    with isolated_app():
+        return show_highstate_now(build_client(), minion, via)
+
+
 def mine_get_now(
     client, reader: str, tgt: str, fun: str, tgt_type: str = "glob"
 ) -> dict:

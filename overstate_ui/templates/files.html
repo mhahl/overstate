@@ -5,25 +5,76 @@
   <div class="mb-5">
     <h1 class="text-2xl font-bold tracking-tight">State files</h1>
     <p class="text-sm opacity-70 mt-0.5">Read-only. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
+    {% if has_top %}<p class="text-sm mt-1"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% endif %}
   </div>
-  <div class="card bg-base-100 border border-base-300 shadow-sm">
-  {% if not entries %}
-  <div class="py-8 text-center">
-    <p class="font-medium">No files found</p>
-    <p class="text-sm opacity-70">Nothing under the configured roots.</p>
-  </div>
+  <section class="card bg-base-100 border border-base-300 shadow-sm mb-3" aria-label="Git checkout status">
+    <div class="card-body py-3">
+      {% if git.ok %}
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="font-semibold">Git</span>
+        <span class="font-mono">{{ git.branch }}</span>
+        <span class="font-mono">{{ git.sha }}</span>
+        {% if git.clean %}<span class="badge badge-sm badge-success">clean</span>{% else %}<span class="badge badge-sm badge-warning">{{ git.dirty_count }} uncommitted</span>{% endif %}
+        {% if git.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ git.upstream }}{% if git.ahead is not none %} · {{ git.ahead }} ahead, {{ git.behind }} behind{% endif %}</span>{% else %}<span class="opacity-70 text-xs">no upstream</span>{% endif %}
+        {% if current_user.role in ["operator", "admin"] %}
+        <form method="post" action="{{ url_for('files.sync') }}" class="ms-auto">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline">Sync now</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if git.log %}
+      <details class="mt-2"><summary class="text-xs link">Last {{ git.log|length }} commits</summary>
+      <ul class="font-mono text-xs mt-1">{% for line in git.log %}<li>{{ line }}</li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+      {% else %}
+      <p class="text-sm opacity-70">Git: {{ git.reason }}. Sync is unavailable here.</p>
+      {% endif %}
+    </div>
+  </section>
+  <form method="get" action="{{ url_for('files.index') }}" class="flex gap-2 mb-3">
+    <input name="q" value="{{ q }}" placeholder="Search files…" class="input input-sm flex-1" aria-label="Search files">
+    <button class="btn btn-sm btn-primary">Search</button>
+    {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index') }}">Clear</a>{% endif %}
+  </form>
+  {% if truncated %}
+  <div class="alert alert-warning text-sm mb-3" role="status">Listing capped at {{ total }} of many files — narrow with search.</div>
   {% endif %}
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+  {% if not rows %}
+  <div class="py-8 text-center">
+    <p class="font-medium">{% if q %}No files match "{{ q }}"{% else %}No files found{% endif %}</p>
+    <p class="text-sm opacity-70">{% if q %}Try a shorter search.{% else %}Nothing under the configured roots.{% endif %}</p>
+  </div>
+  {% else %}
   <ul>
-    {% for e in entries %}
+    {% for r in rows %}
+    {% if r.group is defined %}
+    <li class="px-4 py-1.5 bg-base-200 font-mono text-xs opacity-70">{{ r.group }}/</li>
+    {% else %}
     <li class="border-b border-base-200 last:border-0">
-      <a href="{{ url_for('files.view', path=e.rel) }}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-base-200">
+      <a href="{{ url_for('files.view', path=r.rel) }}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-base-200">
         <span class="icon-[lucide--file-text] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
-        <span class="font-mono text-sm mr-auto break-all">{{ e.rel }}</span>
-        <span class="badge badge-sm badge-ghost">{{ e.size }} B</span>
+        <span class="font-mono text-sm mr-auto break-all">{{ r.rel }}</span>
+        <span class="badge badge-sm badge-ghost">{{ r.size }} B</span>
       </a>
     </li>
+    {% endif %}
     {% endfor %}
   </ul>
+  {% endif %}
   </div>
+  {% if pages > 1 %}
+  <div class="flex items-center gap-2 mt-3 text-sm">
+    <span class="opacity-70">Page {{ page }} of {{ pages }} · {{ total }} files</span>
+    <span class="ms-auto flex gap-1">
+      {% if page > 1 %}<a class="btn btn-xs btn-outline" href="{{ url_for('files.index', q=q, page=page - 1, per_page=per_page) }}">‹ Prev</a>{% endif %}
+      {% if page < pages %}<a class="btn btn-xs btn-outline" href="{{ url_for('files.index', q=q, page=page + 1, per_page=per_page) }}">Next ›</a>{% endif %}
+    </span>
+  </div>
+  {% elif total %}
+  <p class="text-sm opacity-70 mt-3">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching "{{ q }}"{% endif %}.</p>
+  {% endif %}
 </div>
 {% endblock %}

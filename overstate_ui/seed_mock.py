@@ -26,6 +26,7 @@ from .models import (
     Minion,
     SavedJob,
     Setting,
+    StateConformityHistory,
     WatchedState,
 )
 
@@ -159,7 +160,16 @@ def seed(session: Session, force: bool = False) -> dict[str, int]:
         raise RuntimeError(
             f"tables already hold {existing} minion/job rows; pass --force to replace"
         )
-    for model in (JobReturn, Job, Minion, AuditEvent, SavedJob, WatchedState, Setting):
+    for model in (
+        JobReturn,
+        Job,
+        Minion,
+        AuditEvent,
+        SavedJob,
+        WatchedState,
+        StateConformityHistory,
+        Setting,
+    ):
         session.query(model).delete()
     jobs, returns = mock_jobs()
     session.add_all(mock_minions())

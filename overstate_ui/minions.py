@@ -9,6 +9,7 @@ import csv
 import datetime as dt
 import io
 
+import httpx
 from flask import (
     Blueprint,
     Response,
@@ -78,6 +79,58 @@ __all__ = [
     "presence_of",
     "refresh_sync",
 ]
+
+
+def _summarize_state_run(payload: dict) -> list[dict]:
+    """Per-state chips from a highstate-style return payload."""
+    rows = []
+    if not isinstance(payload, dict):
+        return rows
+    for sid in sorted(payload):
+        st = payload[sid]
+        if not isinstance(st, dict):
+            rows.append({"id": sid, "sls": "", "verdict": "unknown", "comment": ""})
+            continue
+        result = st.get("result")
+        changes = st.get("changes")
+        if result is False:
+            verdict = "failed"
+        elif result is True:
+            verdict = "changed" if changes else "ok"
+        else:
+            verdict = "changed" if changes else "unknown"
+        rows.append(
+            {
+                "id": sid,
+                "sls": st.get("__sls__", "") or "",
+                "verdict": verdict,
+                "comment": str(st.get("comment", ""))[:200],
+            }
+        )
+    return rows
+
+
+def _states_stored(mid: str) -> dict | None:
+    """Newest persisted state-style return for a minion, if any."""
+    session = get_session()
+    ret = (
+        session.query(JobReturn)
+        .join(Job, Job.jid == JobReturn.jid)
+        .filter(JobReturn.minion_id == mid, Job.fun.like("state.%"))
+        .order_by(JobReturn.jid.desc())
+        .first()
+    )
+    if ret is None:
+        return None
+    job = session.get(Job, ret.jid)
+    payload = ret.payload if isinstance(ret.payload, dict) else {}
+    return {
+        "jid": ret.jid,
+        "fun": job.fun if job else "",
+        "success": ret.success,
+        "states": _summarize_state_run(payload),
+        "raw": payload,
+    }
 
 
 @bp.route("/")
@@ -277,6 +330,64 @@ def remove(mid: str):
     return redirect(url_for("minions.index"))
 
 
+@bp.post("/<mid>/states/refresh")
+@roles_required("operator")
+def states_refresh(mid: str):
+    """One-shot live highstate description for a minion.
+
+    Display-only: the live result is shown next to the stored return
+    and never written into job history. Any failure degrades to the
+    stored view plus an advisory note."""
+    from .tasks import queue_or_none, show_highstate_now, show_highstate_task, wait_for
+
+    live: dict | None = None
+    note: str | None = None
+    try:
+        queued = queue_or_none(show_highstate_task, mid)
+        if queued is None:
+            live = show_highstate_now(get_salt(), mid)
+        else:
+            status, value = wait_for(queued, wait=10.0)
+            if status == "ready" and isinstance(value, dict) and value:
+                live = value
+            elif status == "pending":
+                note = "Refresh still running — showing stored data."
+            else:
+                note = f"Refresh failed in the background: {value}"
+    except (SaltApiError, httpx.HTTPError) as exc:
+        note = f"Live refresh unavailable: salt-api error: {exc}"
+    if live:
+        log_event(current_user.username, f"states-refresh:{mid}")
+        flash(f"{mid}: live description loaded ({len(live)} states).", "success")
+    else:
+        note = note or "Live refresh returned nothing — showing stored data."
+        flash(note, "warning")
+    row = get_session().get(Minion, mid)
+    grains = normalize_grains(row.grains if row else {})
+    return render_template(
+        "minion_detail.html",
+        mid=mid,
+        tab="states",
+        tabs=DETAIL_TABS,
+        data={
+            "grains": grains,
+            "stored": _states_stored(mid),
+            "live": _summarize_state_run(live) if live else None,
+            "live_raw": live,
+            "live_note": note,
+        },
+        error=None,
+        snapshot=bool(row),
+        sort="jid",
+        direction="desc",
+        key_status=row.key_status if row else None,
+        last_seen=row.last_seen if row else None,
+        conformity=(row.conformity or {}) if row else {},
+        recent=[],
+        os_icon=os_icon_slug(grains),
+    )
+
+
 @bp.route("/onboard")
 @login_required
 def onboard():
@@ -330,7 +441,12 @@ def detail(mid: str):
             if isinstance(live, dict):
                 data["grains"] = normalize_grains(live)
         elif tab == "states":
-            data["highstate"] = client.local(mid, "state.show_highstate")[0].get(mid)
+            # Stored first: the last persisted state-style return. Live
+            # data arrives only via the explicit Refresh action below,
+            # so a down minion never hangs this page.
+            data["stored"] = _states_stored(mid)
+            data["live"] = None
+            data["live_note"] = None
         elif tab == "schedule":
             # return_yaml=False keeps this a real mapping: an empty
             # schedule arrives as {} so the empty state triggers,

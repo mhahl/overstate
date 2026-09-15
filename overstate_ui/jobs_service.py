@@ -42,6 +42,9 @@ def sync_job(jid: str) -> Job | None:
             and (now - aware(job.started_at)).total_seconds() > COMPLETE_AFTER_SECONDS
         ):
             job.complete = True
+            from .states import apply_sync_verdicts
+
+            apply_sync_verdicts(job, [])
             session.commit()
         return job
     if job is None:
@@ -83,6 +86,9 @@ def sync_job(jid: str) -> Job | None:
         ).total_seconds() > COMPLETE_AFTER_SECONDS
     else:
         job.complete = (now - youngest).total_seconds() > COMPLETE_AFTER_SECONDS
+    from .states import apply_sync_verdicts
+
+    apply_sync_verdicts(job, rows)
     session.commit()
     return job
 
