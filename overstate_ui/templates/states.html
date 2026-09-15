@@ -1,62 +1,53 @@
 {% extends "base.html" %}
 {% block title %}States · Overstate{% endblock %}
 {% block content %}
-<div class="mb-5">
-  <h1 class="text-2xl font-bold tracking-tight">States &amp; conformity</h1>
-  <p class="text-sm opacity-70 mt-0.5">Watch state files and track fleet drift.</p>
+<div class="flex flex-wrap items-center gap-2 mb-4">
+  <div class="mr-auto">
+    <h1 class="text-2xl font-bold tracking-tight">States &amp; conformity</h1>
+    <p class="text-sm opacity-70 mt-0.5">Watch state files and track fleet drift.</p>
+  </div>
+  <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a>
+  {% if current_user.role in ["operator", "admin"] %}
+  <form method="post" action="{{ url_for('states.recompute') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-sm btn-ghost">Recompute</button>
+  </form>
+  {% endif %}
 </div>
-<div class="grid lg:grid-cols-2 gap-4">
-  <section class="card bg-base-100 border border-base-300 shadow-sm">
-    <div class="card-body">
-      <h2 class="card-title text-base">Watched states</h2>
-      {% if watched %}
-      <ul>
-        {% for w in watched %}
-        <li class="flex items-center gap-2 py-2 border-b border-base-200 last:border-0">
-          <span class="font-mono text-sm mr-auto">{{ w.sls }}</span>
-          {% if current_user.role in ["operator", "admin"] %}
-          <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" data-confirm="Stop watching '{{ w.sls }}'?">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-ghost">Unwatch</button>
-          </form>
-          {% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <div class="py-4 text-center">
-        <p class="font-medium">No watched states</p>
-        <p class="text-sm opacity-70">Watch an SLS to track it here.</p>
-      </div>
-      {% endif %}
-      {% if current_user.role in ["operator", "admin"] %}
-      <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-2 mt-2">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input name="sls" placeholder="e.g. baseline" class="input input-sm flex-1" required>
-        <button class="btn btn-sm btn-primary">Watch</button>
-      </form>
-      {% endif %}
-      <a class="btn btn-sm btn-outline mt-3 self-start" href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a>
-    </div>
-  </section>
-  <section class="card bg-base-100 border border-base-300 shadow-sm">
-    <div class="card-body">
-      <div class="flex items-center gap-2">
-        <h2 class="card-title text-base mr-auto">Conformity</h2>
-        {% if current_user.role in ["operator", "admin"] %}
-        <form method="post" action="{{ url_for('states.recompute') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-xs btn-ghost">Recompute</button>
-        </form>
-        {% endif %}
-      </div>
-      <div class="flex flex-wrap gap-1 my-2" role="group" aria-label="Filter by status">
+<div class="flex flex-wrap items-center gap-2 mb-4 text-sm">
+  <span class="opacity-70">Watching:</span>
+  {% for w in watched %}
+  <span class="badge badge-outline gap-1 font-mono">
+    {{ w.sls }}
+    {% if current_user.role in ["operator", "admin"] %}
+    <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" class="inline-flex" data-confirm="Stop watching '{{ w.sls }}'?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="opacity-60 hover:opacity-100 font-sans" aria-label="Stop watching {{ w.sls }}">×</button>
+    </form>
+    {% endif %}
+  </span>
+  {% else %}
+  <span class="opacity-60">Nothing watched — verdicts cover the whole run.</span>
+  {% endfor %}
+  {% if current_user.role in ["operator", "admin"] %}
+  <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-1 ml-1">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input name="sls" placeholder="Watch an SLS…" class="input input-xs w-36" required aria-label="State name to watch">
+    <button class="btn btn-xs btn-primary">Watch</button>
+  </form>
+  {% endif %}
+</div>
+<section class="card bg-base-100 border border-base-300 shadow-sm" aria-label="Conformity">
+  <div class="card-body">
+    <div class="flex flex-wrap items-center gap-2">
+      <h2 class="card-title text-base mr-auto">Conformity</h2>
+      <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by status">
         {% for opt in ["", "ok", "drifted", "unreachable", "unknown"] %}
         <a href="{{ url_for('states.index', status=opt, sort=sort, direction=direction) }}" class="btn btn-xs {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}">{{ opt or "all" }}</a>
         {% endfor %}
       </div>
-      {% include "_conformity_rows.html" %}
     </div>
-  </section>
-</div>
+    {% include "_conformity_rows.html" %}
+  </div>
+</section>
 {% endblock %}
