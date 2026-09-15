@@ -148,9 +148,15 @@ external_auth:
 ```
 
 Every function the UI offers must appear here or the call fails with
-a permission error on the detail page. Package and service management
+a permission error on the detail page. Salt answers a denied function
+with HTTP 401 even when the login itself works, so "401 on one
+function, everything else fine" always means the grant list, not the
+password. Package and service management
 (`pkg.install`, `pkg.remove`, `service.restart`, `ps.kill_pid`) are
 separate grants; add them only if your operators run those presets.
+Custom execution modules need their own lines too (e.g.
+`trivy_scan.*`); after editing, restart the master, as `external_auth`
+is read at startup.
 Salt-ssh needs the `ssh` client in `netapi_enable_clients` plus SSH
 access from the master to the targets.
 

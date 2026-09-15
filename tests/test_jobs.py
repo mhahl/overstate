@@ -489,6 +489,15 @@ def test_library_collapsed_by_default(client):
     assert "checked" in html
 
 
+def test_docs_slot_lives_in_rail_after_form(client):
+    html = client.get("/jobs/new").data.decode()
+    assert "<aside" in html
+    assert 'id="fun-doc"' in html
+    assert html.index('id="fun-doc"') > html.index("</form>")
+    assert 'id="job-fun"' in html
+    assert "Loading docs" in html  # fetch loading line in script
+
+
 def test_run_job_links_show_loading_state(client):
     # jobs/new waits on the Salt API; every entry point must give
     # instant feedback instead of looking dead.

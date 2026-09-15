@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Run job · Overstate{% endblock %}
 {% block content %}
-<div class="mb-5">
+<div class="mb-4">
   <h1 class="text-2xl font-bold tracking-tight">Run job</h1>
   <p class="text-sm opacity-70 mt-0.5">Find an operation, adjust the target, fire.</p>
 </div>
@@ -20,6 +20,8 @@
   <span>Bulk selection ignored while a preset or saved job is active. <a class="link" href="{{ url_for('jobs.new') }}">Start over</a> to use the bulk target.</span>
 </div>
 {% endif %}
+<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] items-start">
+<div class="min-w-0">
 <div class="collapse collapse-arrow bg-base-100 border border-base-300 shadow-sm mb-4">
   <input id="op-library-toggle" type="checkbox" aria-label="Toggle operation library"{% if request.args.get('preset') %} checked{% endif %}>
   <div class="collapse-title font-bold text-lg tracking-tight">Operation library</div>
@@ -29,15 +31,15 @@
       <input id="op-search" type="search" placeholder="Search operations…" autocomplete="off" class="input input-sm w-full" oninput="filterOperations()">
     </label>
   {% for group, ops in op_groups %}
-  <div data-op-group class="mb-3">
-    <h3 class="text-sm font-semibold mb-1.5">{{ group }}</h3>
-    <div class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+  <div data-op-group class="mb-2">
+    <h3 class="text-sm font-semibold mb-1">{{ group }}</h3>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
       {% for op in ops %}
       <a href="{{ url_for('jobs.new', preset=op.preset) }}"
          data-op-card data-text="{{ (op.fun ~ ' ' ~ op.about ~ ' ' ~ op.args)|lower }}"
          {% if request.args.get('preset') == op.preset %}aria-current="true"{% endif %}
          class="card bg-base-100 border border-base-300 shadow-sm text-left transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary{% if request.args.get('preset') == op.preset %} border-primary bg-primary/5{% endif %}">
-        <div class="card-body p-3 gap-0.5">
+        <div class="card-body p-2.5 gap-0">
           <p class="font-mono font-semibold text-sm">{{ op.fun }}{% if op.args %} <span class="font-normal opacity-60">{{ op.args }}</span>{% endif %}</p>
           <p class="text-xs opacity-70">{{ op.about }}</p>
         </div>
@@ -55,7 +57,7 @@
 <form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ batch_mode }}' }" data-loading-form data-loading-text="Firing…">
   <div class="card-body gap-0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="grid md:grid-cols-[minmax(0,1fr)_13rem] gap-x-4 pb-5">
+    <div class="grid md:grid-cols-[minmax(0,1fr)_13rem] gap-x-4 pb-4">
       <label class="fieldset min-w-0">
         <span class="fieldset-legend">Target</span>
         <input id="job-tgt" name="tgt" value="{{ saved.tgt if saved else preset.get('tgt', '*') }}" class="input w-full" required>
@@ -68,9 +70,9 @@
           {% endfor %}
         </select>
       </label>
-      <p class="md:col-span-2 text-xs opacity-70">Examples: glob <span class="font-mono">web-*</span>, list <span class="font-mono">web-01,web-02</span>, grain <span class="font-mono">os:Debian</span>, compound <span class="font-mono">G@os:Debian and web-*</span>. Target a saved minion group with type “group” (<a class="link" href="{{ url_for('groups.index') }}">manage groups</a>).</p>
+      <p class="md:col-span-2 text-xs opacity-70">glob <span class="font-mono">web-*</span> · list <span class="font-mono">web-01,web-02</span> · grain <span class="font-mono">os:Debian</span> · compound <span class="font-mono">G@os:Debian and web-*</span> · group (<a class="link" href="{{ url_for('groups.index') }}">manage groups</a>)</p>
     </div>
-    <div class="border-t border-base-300 py-5 fieldset relative">
+    <div class="border-t border-base-300 py-4 fieldset relative">
       <span class="fieldset-legend">Function</span>
       <input id="job-fun" name="fun" value="{{ saved.fun if saved else preset.get('fun', '') }}" class="input font-mono w-full" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="fun-list" aria-autocomplete="list" required>
       <ul id="fun-list" role="listbox" aria-label="Known functions" class="hidden absolute z-10 top-full mt-1 w-full menu bg-base-100 border border-base-300 rounded-lg shadow-md max-h-56 overflow-auto p-1">
@@ -84,13 +86,12 @@
         {% endfor %}
       </ul>
       <span class="fieldset-label">Pick a known function or type any other.</span>
-      <div id="fun-doc" data-doc-minion="{{ doc_minion or '' }}" data-doc-url="{{ url_for('jobs.fun_doc') }}"></div>
     </div>
-    <label class="fieldset pb-5">
+    <label class="fieldset pb-4">
       <span class="fieldset-legend">Args (space-separated)</span>
       <input name="args" value="{{ (saved.args|join(' ')) if saved else preset.get('args', '') }}" class="input font-mono w-full">
     </label>
-    <div class="grid sm:grid-cols-3 gap-4 border-t border-base-300 py-5">
+    <div class="grid sm:grid-cols-3 gap-4 border-t border-base-300 py-4">
       <label class="fieldset">
         <span class="fieldset-legend">Mode</span>
         <select id="job-mode" name="mode" class="select w-full">
@@ -110,7 +111,7 @@
         <input name="save_as" placeholder="Saved job name" value="{{ preset.get('save_as', '') }}" class="input w-full">
       </label>
     </div>
-    <div class="grid sm:grid-cols-[1fr_7rem_8rem] gap-4 border-t border-base-300 py-5">
+    <div class="grid sm:grid-cols-[1fr_7rem_8rem] gap-4 border-t border-base-300 py-4">
       <label class="fieldset">
         <span class="fieldset-legend">Batch mode</span>
         <select name="batch_mode" class="select w-full" x-model="batch">
@@ -128,8 +129,8 @@
         <input name="stop_after" value="{{ batch_stop }}" class="input w-full" inputmode="numeric" :disabled="batch === 'off'">
       </label>
     </div>
-    <p class="text-xs opacity-70 pb-5">Rolling batches run list and glob targets wave by wave from the pinned roster. They stop at the failure limit.</p>
-    <div class="card-actions justify-end border-t border-base-300 pt-5">
+    <p class="text-xs opacity-70 pb-4">Rolling batches run list and glob targets wave by wave. They stop at the failure limit.</p>
+    <div class="card-actions justify-end border-t border-base-300 pt-4">
       {% if current_user.role in ["operator", "admin"] %}
       <button class="btn btn-primary px-8">Fire</button>
       {% else %}
@@ -138,6 +139,18 @@
     </div>
   </div>
 </form>
+</div>
+<aside aria-label="Module docs" class="min-w-0 lg:sticky lg:top-20 self-start">
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body max-h-[60vh] overflow-auto">
+      <h2 class="card-title text-base">Module docs</h2>
+      <div id="fun-doc" data-doc-minion="{{ doc_minion or '' }}" data-doc-url="{{ url_for('jobs.fun_doc') }}">
+        <p class="text-xs opacity-70">Pick a function to see its docs.</p>
+      </div>
+    </div>
+  </div>
+</aside>
+</div>
 <script>
 (function () {
   var opSearch = document.getElementById('op-search');
@@ -167,6 +180,7 @@
       funDoc.innerHTML = '';
       return;
     }
+    funDoc.innerHTML = '<p class="text-xs opacity-70">Loading docs…</p>';
     fetch(funDoc.getAttribute('data-doc-url') + '?fun=' + encodeURIComponent(fun) +
           '&minion=' + encodeURIComponent(minion))
       .then(function (r) { return r.text(); })
