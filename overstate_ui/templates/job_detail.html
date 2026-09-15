@@ -80,18 +80,21 @@
 {% if not job.complete %}
 <script>
 (function () {
-  var src = new EventSource("{{ url_for('jobs.stream', jid=job.jid) }}");
   var panels = document.getElementById("return-panels");
   var panelUrl = panels.getAttribute("data-panel-url");
+  var note = document.getElementById("live-note");
   var lastReturned = -1;
+  var completeSeen = false;
+  var missing = {};
   function fetchPanel(mid, onload) {
     fetch(panelUrl.split("__MID__").join(encodeURIComponent(mid)))
       .then(function (r) { if (!r.ok) throw new Error("panel"); return r.text(); })
       .then(onload)
-      .catch(function () {});
+      .catch(function () { missing[mid] = true; });
   }
-  function upgradePanels() {
+  function upgradePanels(s) {
     (s.minions || []).forEach(function (mid) {
+      if (missing[mid]) return;
       var existing = panels.querySelectorAll('[data-panel-mid="' + CSS.escape(mid) + '"]');
       if (!existing.length) {
         fetchPanel(mid, function (html) {
@@ -121,23 +124,36 @@
     });
     lastReturned = s.returned;
   }
-  var s = { minions: [], returned: 0 };
-  src.onmessage = function (ev) {
-    s = JSON.parse(ev.data);
-    document.getElementById("live-returned").textContent = s.returned;
-    document.getElementById("live-failed").textContent = s.failed;
-    upgradePanels();
-    if (s.complete) {
-      document.getElementById("live-note").textContent = "Complete. Reloading…";
+  function connect() {
+    var src = new EventSource("{{ url_for('jobs.stream', jid=job.jid) }}");
+    src.onmessage = function (ev) {
+      var s = JSON.parse(ev.data);
+      document.getElementById("live-returned").textContent = s.returned;
+      document.getElementById("live-failed").textContent = s.failed;
+      if (s.returned !== lastReturned) missing = {};
+      upgradePanels(s);
+      if (s.complete) {
+        completeSeen = true;
+        note.textContent = "Complete. Reloading…";
+        src.close();
+        setTimeout(function () { location.reload(); }, 1500);
+      }
+    };
+    src.addEventListener("done", function () {
+      // The server caps each connection; jobs outliving it reconnect
+      // instead of freezing on a stale "Live…" note.
       src.close();
-      setTimeout(function () { location.reload(); }, 1500);
-    }
-  };
-  src.addEventListener("done", function () { src.close(); });
-  src.onerror = function () {
-    document.getElementById("live-note").textContent = "Connection lost. Reload to retry.";
-    src.close();
-  };
+      if (!completeSeen) {
+        note.textContent = "Reconnecting…";
+        setTimeout(connect, 2000);
+      }
+    });
+    src.onerror = function () {
+      note.textContent = "Connection lost. Reload to retry.";
+      src.close();
+    };
+  }
+  connect();
 })();
 </script>
 {% endif %}

@@ -284,9 +284,7 @@ def test_minion_row_remove_deletes_snapshot_keeps_history(client):
     assert rv.headers["Location"] == "/minions/"
     with client.app.app_context():
         assert get_session().get(Minion, "web-01") is None
-        assert (
-            get_session().query(JobReturn).filter_by(minion_id="web-01").count() == 1
-        )
+        assert get_session().query(JobReturn).filter_by(minion_id="web-01").count() == 1
     assert "removed" in client.get("/minions/").data.decode().lower()
 
 
@@ -515,7 +513,9 @@ def test_minion_overview_dashboard(client):
 def test_minions_page_pause_labels_scope(client):
     html = client.get("/minions/").data.decode()
     assert "Pause live updates" in html
-    assert "all pages" in html
+    # D4 scope: the toggle pauses the job and minion lists only.
+    assert "job and minion lists" in html
+    assert "all pages" not in html
 
 
 def test_os_icon_slug():

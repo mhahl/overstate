@@ -363,6 +363,31 @@ def test_detail_carries_live_panel_container(client):
     assert 'data-panel-mid="web01"' in html
 
 
+def test_running_detail_reconnects_stream(client):
+    import datetime as dt
+
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20260910123000000013",
+                fun="test.ping",
+                tgt="web01",
+                tgt_type="list",
+                user="admin",
+                started_at=dt.datetime.now(dt.UTC),
+                complete=False,
+            )
+        )
+        session.commit()
+    html = client.get("/jobs/20260910123000000013").data.decode()
+    assert "EventSource" in html
+    # Server caps each connection: the page must reconnect instead of
+    # freezing on a stale "Live…" note for jobs outliving ~60s.
+    assert "Reconnecting" in html
+    assert "setTimeout(connect" in html
+
+
 def test_describe_return_failure_surface():
     from overstate_ui.jobs_helpers import describe_return
 
@@ -485,7 +510,10 @@ def test_jobs_history_search_filters_rows(client):
 def test_jobs_page_pause_labels_scope(client):
     html = client.get("/jobs/").data.decode()
     assert "Pause live updates" in html
-    assert "all pages" in html
+    # D4 scope: the toggle pauses the job and minion lists only —
+    # dashboard, events, and job-detail streams run their own course.
+    assert "job and minion lists" in html
+    assert "all pages" not in html
 
 
 def test_stream_completes_for_old_job(client):
