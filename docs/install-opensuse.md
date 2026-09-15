@@ -24,7 +24,7 @@ app log once: `podman logs overstate-app | grep 'seeded admin'`.
 
 - Units: `/etc/containers/systemd/overstate-{app,worker,salt-master,postgres,redis,caddy}.container` + `overstate.network`
 - Config: `/etc/overstate/overstate.env` (0600), `/etc/overstate/salt-config`, `/etc/overstate/tls`, `/etc/overstate/Caddyfile`
-- State roots: `/var/lib/overstate/srv` (edit SLS/pillar here)
+- State roots: `/var/lib/overstate/srv` (edit SLS/pillar here). Mounted writable into the app (in-app git sync) and read-only into the master (serves minions); see "File roots" in `docs/deployment.md` for the full chain.
 - Data: podman volumes `overstate-pgdata`, `overstate-saltdata` (master keys), `overstate-caddy-data` (ACME certs)
 - Web: `https://overstate.sigaint.au` via Caddy. salt-api: `https://overstate-api.sigaint.au` via Caddy, plus `127.0.0.1:8001` locally.
 

@@ -37,6 +37,13 @@ def test_login_page_shows_logo(client):
     assert rv.data.lstrip().startswith(b"<?xml")
 
 
+def test_login_page_uses_local_wireframe_build(client):
+    html = client.get("/login").data.decode()
+    assert 'data-theme="wireframe"' in html
+    assert "/static/app.css" in html
+    assert "cdn.jsdelivr.net" not in html
+
+
 def test_events_note_is_live_region(client):
     client.post("/login", data={"username": "admin", "password": "test-password"})
     html = client.get("/events/").data.decode()

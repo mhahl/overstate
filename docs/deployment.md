@@ -56,15 +56,40 @@ Job history needs the returner. Point the master at the app Postgres
 with the stock `pgjsonb` returner (details below). Without it the
 History tab stays empty and job detail shows only live data.
 
+### File roots: one checkout, one writer, two readers
+
 `FILE_ROOTS` points the file browser at a checkout of your Salt
-states. The app's copy must be writable: the operator-gated **Sync
-now** button runs `git fetch` + `git pull --ff-only` on it (the same
-flags as `scripts/sync-file-roots.sh`, which stays available for cron
-or a sidecar if you prefer sync outside the app). The salt-master
-copy stays read-only. In compose the app mount is `:rw`; the
-production quadlet ships `:ro` — remount it writable (owned by the
-app user, e.g. `chown` the checkout to the container UID) only if you
-want in-app sync there, otherwise keep `:ro` and sync from cron.
+states. Follow the whole chain before changing any link of it:
+
+1. **Host directory.** Production keeps the checkout at
+   `/var/lib/overstate/srv` (`scripts/install.sh` creates it and
+   seeds demo files on first install; dev uses `./salt-srv`).
+2. **App mount — writable.** The app container mounts that directory
+   at `/srv/states` with `:rw` (`compose.yml` for dev,
+   `deploy/quadlet/overstate-app.container` for production), and
+   `FILE_ROOTS=/srv/states/salt` points inside it. The Files page
+   reads the listing from here, and the operator-gated **Sync now**
+   button runs `git fetch` + `git pull --ff-only` on it — the same
+   flags as `scripts/sync-file-roots.sh`, which stays available for
+   cron or a sidecar if you prefer sync outside the app. The app is
+   the only in-app writer: it never edits, commits, or pushes. Pick
+   one sync actor per site (button or cron, not both): two writers
+   racing on the same checkout trip git's lock and the loser just
+   reports a refusal, harmless but noisy.
+3. **Master mount — read-only.** The salt-master container mounts the
+   same host directory (`/home/salt/data/srv`, `:ro`) and serves it
+   as its file roots, so minions enforce exactly what the browser
+   shows. The master never needs write access; keep it that way.
+4. **After a sync.** The browser shows the new git SHA immediately,
+   but the master serves from its fileserver cache, so `state.apply`
+   can lag one refresh behind. This is expected, not a failed sync.
+
+Sync activates only when the directory is a git checkout with an
+upstream: the install seed is plain files, so turn it into a checkout
+(clone your states repo there) to light up the button. Anything else
+— diverged branches, uncommitted trees, missing upstream — makes Sync
+refuse with the git reason and change nothing, and every attempt is
+audited.
 
 ## Set up the Salt master
 

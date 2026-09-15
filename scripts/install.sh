@@ -98,6 +98,12 @@ fi
 if [ ! -f "$VAR/srv/top.sls" ] && [ -f "$REPO/salt-srv/salt/top.sls" ]; then
   cp -r "$REPO/salt-srv/salt/." "$VAR/srv/"
 fi
+# $VAR/srv is the states checkout both containers share: the app mounts
+# it writable (its Files "Sync now" button is the only in-app writer:
+# git fetch + git pull --ff-only) and the master mounts it read-only
+# to serve file_roots to minions. The seed above is plain files, so
+# Sync stays unavailable until an admin turns this directory into a
+# git checkout with an upstream (e.g. clone the states repo here).
 if [ ! -f "$ETC/Caddyfile" ]; then
   cp "$REPO/deploy/Caddyfile" "$ETC/Caddyfile"
   chmod 644 "$ETC/Caddyfile"

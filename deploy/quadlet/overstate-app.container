@@ -10,7 +10,11 @@ Image=localhost/overstate:latest
 Network=overstate.network
 EnvironmentFile=/etc/overstate/overstate.env
 Volume=/etc/overstate/tls:/srv/tls:ro,z
-Volume=/var/lib/overstate/srv:/srv/states:ro,z
+# Writable: the operator-gated Files "Sync now" button runs
+# git fetch + git pull --ff-only on this checkout (FILE_ROOTS in
+# /etc/overstate/overstate.env points inside it). The salt-master
+# copy stays read-only; the app is the only writer.
+Volume=/var/lib/overstate/srv:/srv/states:rw,z
 
 [Service]
 Restart=always
