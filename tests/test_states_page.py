@@ -28,6 +28,14 @@ STORED = {
         "comment": "failed to apply",
         "changes": {},
     },
+    "cmd_|-trivy_binary_|-tar -xzf x_|-run": {
+        "__id__": "trivy_binary",
+        "result": True,
+        "__sls__": "baseline.trivy",
+        "comment": "already fetched",
+        "name": "tar -xzf x",
+        "changes": {},
+    },
 }
 
 LIVE = {
@@ -127,6 +135,7 @@ def test_minion_states_tab_renders_stored_without_live_call():
     body = html.data.decode()
     assert html.status_code == 200
     assert "nginx" in body and "broken" in body
+    assert "trivy_binary: tar -xzf x" in body  # human label, not the raw tag
     assert "Refresh from minion" in body
     assert "J1" in body
 

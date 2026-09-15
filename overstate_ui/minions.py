@@ -27,6 +27,7 @@ from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
 from .inventory import GRAIN_COLUMNS
+from .jobs_helpers import _split_state_id, _state_label
 from .minions_helpers import (
     HOST_RE,
     ONBOARD_DISTROS,
@@ -82,7 +83,12 @@ __all__ = [
 
 
 def _summarize_state_run(payload: dict) -> list[dict]:
-    """Per-state chips from a highstate-style return payload."""
+    """Per-state chips from a highstate-style return payload.
+
+    The State column shows the human label (``id: name``) instead of
+    the raw ``module_|-id_|-name_|-fun`` tag — same helper as the job
+    detail page, so both surfaces name states identically.
+    """
     rows = []
     if not isinstance(payload, dict):
         return rows
@@ -91,6 +97,7 @@ def _summarize_state_run(payload: dict) -> list[dict]:
         if not isinstance(st, dict):
             rows.append({"id": sid, "sls": "", "verdict": "unknown", "comment": ""})
             continue
+        module, name = _split_state_id(sid)
         result = st.get("result")
         changes = st.get("changes")
         if result is False:
@@ -101,7 +108,7 @@ def _summarize_state_run(payload: dict) -> list[dict]:
             verdict = "changed" if changes else "unknown"
         rows.append(
             {
-                "id": sid,
+                "id": _state_label(sid, st, module, name),
                 "sls": st.get("__sls__", "") or "",
                 "verdict": verdict,
                 "comment": str(st.get("comment", ""))[:200],
