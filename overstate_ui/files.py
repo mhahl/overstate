@@ -15,6 +15,9 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from pygments import highlight
+from pygments.formatters import HtmlFormatter
+from pygments.lexers import YamlLexer
 
 from .audit import log_event
 from .auth import roles_required
@@ -26,6 +29,20 @@ MAX_BYTES = 256 * 1024
 LIST_LIMIT = 5000
 PAGE_SIZES = (25, 50, 100)
 DEFAULT_PAGE_SIZE = 50
+YAML_SUFFIXES = (".sls", ".yaml", ".yml")
+
+
+def highlight_yaml(content: str) -> str:
+    """Syntax-highlight YAML/SLS source as an HTML fragment.
+
+    The fragment carries its own line numbers (Pygments ``table``
+    line numbers) and is theme-aware via the ``codehl`` stylesheet.
+    Content is shown verbatim — never reformatted, so comments and
+    ordering survive.
+    """
+    return highlight(
+        content, YamlLexer(), HtmlFormatter(linenos="table", cssclass="codehl")
+    )
 
 
 def roots() -> Path:
@@ -187,11 +204,15 @@ def view():
         abort(404)
     content = read_text(target)
     if content is not None:
+        highlighted = (
+            highlight_yaml(content) if target.suffix.lower() in YAML_SUFFIXES else None
+        )
         return render_template(
             "file_view.html",
             rel=rel,
             content=content,
             lines=content.splitlines(),
+            highlighted=highlighted,
             reason=None,
             size=None,
             revision=sync_revision(),

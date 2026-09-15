@@ -19,3 +19,64 @@
 @source inline("icon-[simple-icons--windows]");
 @source inline("icon-[simple-icons--apple]");
 @source inline("icon-[simple-icons--linux]");
+
+/* Code view: Pygments `codehl` fragment (files/view for YAML/SLS).
+   Server-rendered token spans are invisible to the class scanner, so
+   they are styled here with plain CSS. Hues are mixed with
+   --color-base-content to stay readable in every theme. */
+.codehltable {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--color-base-content);
+}
+.codehltable td {
+  padding: 0.625rem 0.875rem;
+  vertical-align: top;
+}
+.codehltable td.linenos {
+  width: 3rem;
+  min-width: 3rem;
+  text-align: right;
+  white-space: nowrap;
+  user-select: none;
+  border-right: 1px solid var(--color-base-300);
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+.codehltable td.code {
+  width: 100%;
+}
+.codehl pre {
+  margin: 0;
+  font: inherit;
+}
+.codehl .c, .codehl .c1, .codehl .cm, .codehl .cp, .codehl .cs {
+  font-style: italic;
+  opacity: 0.62;
+}
+.codehl .nt {
+  font-weight: 600;
+}
+.codehl .p, .codehl .p-Indicator, .codehl .pi {
+  opacity: 0.78;
+}
+.codehl .s, .codehl .s1, .codehl .s2, .codehl .sa, .codehl .sb,
+.codehl .sc, .codehl .sd, .codehl .se, .codehl .sh, .codehl .si,
+.codehl .sx, .codehl .sr, .codehl .ss {
+  color: color-mix(in oklab, #2da44e 68%, var(--color-base-content));
+}
+.codehl .m, .codehl .mf, .codehl .mh, .codehl .mi, .codehl .mo,
+.codehl .il {
+  color: color-mix(in oklab, #b7791f 72%, var(--color-base-content));
+}
+.codehl .k, .codehl .kc, .codehl .kd, .codehl .kn, .codehl .kp,
+.codehl .kr, .codehl .kt, .codehl .nv, .codehl .vc, .codehl .vg,
+.codehl .vi, .codehl .vm {
+  color: color-mix(in oklab, #0969da 62%, var(--color-base-content));
+}
+.codehl .err, .codehl .ne {
+  color: var(--color-error);
+}

@@ -385,3 +385,18 @@ def test_library_collapsed_by_default(client):
     html = client.get("/jobs/new?preset=ping").data.decode()
     assert 'id="op-library-toggle"' in html
     assert "checked" in html
+
+
+def test_run_job_links_show_loading_state(client):
+    # jobs/new waits on the Salt API; every entry point must give
+    # instant feedback instead of looking dead.
+    html = client.get("/jobs/").data.decode()
+    assert html.count("data-loading-link") >= 2  # navbar + page button
+    assert "loading loading-spinner" in html  # base loading script
+    assert "Loading…" in html
+
+
+def test_run_form_shows_firing_state(client):
+    html = client.get("/jobs/new").data.decode()
+    assert "data-loading-form" in html
+    assert "Firing…" in html

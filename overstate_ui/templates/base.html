@@ -26,7 +26,7 @@
           <span class="opacity-70 font-normal">Jump to…</span>
           <span class="kbd kbd-xs">Ctrl K</span>
         </button>
-        <a class="btn btn-primary btn-sm" href="{{ url_for('jobs.new') }}">
+        <a class="btn btn-primary btn-sm" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">
           <span class="icon-[lucide--plus] size-4" aria-hidden="true"></span>
           Run job
         </a>
@@ -156,6 +156,49 @@
     </aside>
   </div>
 </div>
+<script>
+// Instant feedback for links and forms that answer slowly (Run job
+// waits on the Salt API): swap to a spinner on first click/submit so
+// it never looks like nothing happened.
+(function () {
+  function spinMarkup(label) {
+    return '<span class="loading loading-spinner loading-xs" aria-hidden="true"></span><span>' + label + '</span>';
+  }
+  document.addEventListener("click", function (ev) {
+    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    var link = ev.target.closest("a[data-loading-link]");
+    if (!link || link.dataset.loadingActive) return;
+    link.dataset.loadingActive = "true";
+    link.dataset.loadingHtml = link.innerHTML;
+    link.setAttribute("aria-busy", "true");
+    link.setAttribute("aria-disabled", "true");
+    link.innerHTML = spinMarkup(link.getAttribute("data-loading-text") || "Loading…");
+  });
+  // Back/forward cache can redisplay the page with the spinner stuck.
+  window.addEventListener("pageshow", function () {
+    Array.from(document.querySelectorAll("a[data-loading-link]")).forEach(function (link) {
+      if (!link.dataset.loadingActive) return;
+      delete link.dataset.loadingActive;
+      link.removeAttribute("aria-busy");
+      link.removeAttribute("aria-disabled");
+      if (link.dataset.loadingHtml) link.innerHTML = link.dataset.loadingHtml;
+    });
+  });
+  document.addEventListener("submit", function (ev) {
+    var form = ev.target;
+    if (!form || !form.hasAttribute || !form.hasAttribute("data-loading-form") || form.dataset.loadingActive) return;
+    form.dataset.loadingActive = "true";
+    var label = form.getAttribute("data-loading-text") || "Working…";
+    Array.from(form.querySelectorAll("button[type='submit'], button:not([type]), input[type='submit']")).forEach(function (btn) {
+      btn.disabled = true;
+      if (!btn.dataset.loadingActive && (btn.classList.contains("btn-primary") || btn.type === "submit")) {
+        btn.dataset.loadingActive = "true";
+        btn.innerHTML = spinMarkup(label);
+      }
+    });
+  });
+})();
+</script>
 <div id="palette" class="fixed inset-0 z-50 hidden" role="dialog" aria-label="Command palette">
   <div id="palette-backdrop" class="absolute inset-0 bg-black/50"></div>
   <div class="card bg-base-100 border border-base-300 shadow-lg w-full max-w-lg mx-auto mt-24 relative">

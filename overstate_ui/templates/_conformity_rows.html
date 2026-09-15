@@ -5,7 +5,7 @@
       <table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {"status": status_filter}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {"status": status_filter}, '#conformity-table', false) }}<th>Checked</th><th>History</th><th>Source JID</th></tr></thead><tbody>
       {% for m in minions %}
       {% set cstatus = (m.conformity or {}).get("status", "unknown") %}
-      <tr><td class="font-mono text-xs">{{ m.id }}</td>
+      <tr><td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=m.id) }}">{{ m.id }}</a></td>
       <td>
         {% if cstatus == "ok" %}<span class="badge badge-sm badge-success" role="status" aria-label="Conformity: ok">ok</span>
         {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>

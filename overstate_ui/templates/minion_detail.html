@@ -102,7 +102,7 @@
           <p class="text-sm text-base-content/60">Nothing has run against this minion yet.</p>
           {% endif %}
           {% if current_user.role in ["operator", "admin"] %}
-          <p><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}">Run job on this minion</a></p>
+          <p><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}" data-loading-link data-loading-text="Loading…">Run job on this minion</a></p>
           {% endif %}
         </div>
       </section>

@@ -6,7 +6,13 @@ from overstate_ui import create_app
 from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, init_db
-from overstate_ui.files import list_tree, read_text, safe_join, sync_revision
+from overstate_ui.files import (
+    highlight_yaml,
+    list_tree,
+    read_text,
+    safe_join,
+    sync_revision,
+)
 
 
 @pytest.fixture()
@@ -39,6 +45,41 @@ def test_view_renders_content(rooted):
     assert rv.status_code == 200
     assert b"pkg.installed" in rv.data
     assert b">1<" in rv.data  # line numbers
+
+
+def test_view_highlights_yaml(rooted):
+    rv = rooted.get("/files/view", query_string={"path": "web.sls"})
+    assert rv.status_code == 200
+    html = rv.data.decode()
+    assert "codehltable" in html  # highlighted block with line numbers
+    assert '<span class="nt">nginx</span>' in html  # key token highlighted
+    assert "pkg.installed" in html
+
+
+def test_view_escapes_yaml_markup(rooted, tmp_path):
+    (tmp_path / "evil.sls").write_text("key: '<script>alert(1)</script>'\n")
+    rv = rooted.get("/files/view", query_string={"path": "evil.sls"})
+    assert rv.status_code == 200
+    html = rv.data.decode()
+    assert "&lt;script&gt;" in html
+    assert "<script>alert(1)" not in html
+
+
+def test_view_plain_text_has_no_highlight(rooted, tmp_path):
+    (tmp_path / "notes.txt").write_text("just some text\nsecond line\n")
+    rv = rooted.get("/files/view", query_string={"path": "notes.txt"})
+    assert rv.status_code == 200
+    html = rv.data.decode()
+    assert "codehl" not in html
+    assert "just some text" in html
+    assert ">1<" in html  # plain line-number table kept
+
+
+def test_highlight_yaml_keeps_content_verbatim():
+    out = highlight_yaml("# comment\nnginx:\n  pkg.installed: []\n")
+    assert "codehltable" in out
+    assert '<span class="c1"># comment</span>' in out
+    assert "pkg.installed" in out
 
 
 def test_search_filters_listing(rooted):

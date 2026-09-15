@@ -16,7 +16,10 @@
     </div>
   </div>
   {% else %}
-  <div class="overflow-x-auto rounded-box border border-base-300">
+  <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+  {% if highlighted %}
+  {{ highlighted|safe }}
+  {% else %}
   <table class="table table-xs" aria-label="File contents with line numbers">
     <tbody>
     {% for line in lines %}
@@ -24,6 +27,7 @@
     {% endfor %}
     </tbody>
   </table>
+  {% endif %}
   </div>
   {% endif %}
 </div>

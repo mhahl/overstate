@@ -52,7 +52,7 @@
 {% set batch_mode = saved.batch.mode if saved and saved.batch else preset.get('batch_mode', 'off') %}
 {% set batch_size = saved.batch.size if saved and saved.batch else preset.get('batch_size', '25') %}
 {% set batch_stop = saved.batch.stop_after if saved and saved.batch else preset.get('stop_after', '1') %}
-<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ batch_mode }}' }">
+<form method="post" action="{{ url_for('jobs.run') }}" class="card bg-base-100 border border-base-300 shadow-sm" x-data="{ batch: '{{ batch_mode }}' }" data-loading-form data-loading-text="Firing…">
   <div class="card-body gap-0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid md:grid-cols-[minmax(0,1fr)_13rem] gap-x-4 pb-5">

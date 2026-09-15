@@ -8,7 +8,7 @@
   </div>
   <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on all pages" aria-label="Pause live updates on all pages">Pause live updates</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
-  <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}">Run job</a>
+  <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">Run job</a>
 </div>
 {% include "_job_rows.html" %}
 <script>

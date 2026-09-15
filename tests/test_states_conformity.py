@@ -462,3 +462,21 @@ def test_unknown_verdict_never_links_a_job():
     assert "Last checked in" not in detail
     states = client.get("/states/").data.decode()
     assert ">–<" in states
+
+
+def test_conformity_minion_links_to_detail():
+    app = _app()
+    with app.app_context():
+        get_session().add(
+            Minion(
+                id="web-01",
+                grains={},
+                conformity={"status": "ok", "jid": "old"},
+                key_status="accepted",
+            )
+        )
+        get_session().commit()
+    client = app.test_client()
+    client.post("/login", data={"username": "admin", "password": "pw"})
+    states = client.get("/states/").data.decode()
+    assert 'href="/minions/web-01"' in states
