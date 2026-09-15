@@ -9,18 +9,22 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build:css": "tailwindcss -i ./assets/app.css -o ./overstate_ui/static/app.css"
+    "build:css": "tailwindcss -i ./assets/app.css -o ./overstate_ui/static/app.css",
+    "build:editor": "esbuild ./assets/editor.js --bundle --minify --format=iife --outfile=./overstate_ui/static/editor.bundle.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@codemirror/lang-yaml": "^6.1.3",
     "@iconify-json/lucide": "^1.2.131",
     "@iconify-json/simple-icons": "^1.2.95",
     "@iconify/tailwind4": "^1.2.3",
     "@tailwindcss/cli": "^4.3.3",
+    "codemirror": "^6.0.2",
     "daisyui": "^5.7.36",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3"
   }
 }

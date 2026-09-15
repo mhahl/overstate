@@ -24,7 +24,12 @@ overstate_ui/        Flask package. One module per blueprint.
   states.py          Conformity, watched SLS list, recompute.
   schedules.py       Per-minion schedule CRUD through salt-api.
   pillar.py          Live pillar, snapshots, diff.
-  files.py           Read-only file-roots browser.
+  files.py           File-roots browser: operator edit/save (one commit
+                     per save) plus admin push; listing/view stay
+                     viewer-visible.
+  git_sync.py        Checkout status, ff-only sync, single-file commit,
+                     upstream push. Fixed git argv, no shell, bounded
+                     timeouts, one-at-a-time lock, fixed failure words.
   events.py          Filtered event-bus viewer and stream.
   users.py           Admin-only role management.
   seed_mock.py       Mock-data seeder for UI work without Salt.
@@ -177,6 +182,13 @@ on caret ranges with `package-lock.json` + `npm ci`. Weekly
 `.github/dependabot.yml` covers pip, npm, and docker (docker only
 advisories: files are named `Containerfile*`, which Dependabot does
 not auto-detect).
+
+The file editor (`assets/editor.js`, CodeMirror 6 + YAML) is bundled
+once with `npm run build:editor` into the committed
+`overstate_ui/static/editor.bundle.js`, which the edit page loads like
+htmx/alpine — no CDN. Rebuild and commit the bundle after any editor
+dependency bump; the save form posts the plain textarea, so the app
+works with the bundle stale or missing.
 
 ## UI work without Salt
 

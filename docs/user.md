@@ -298,8 +298,19 @@ The file browser shows the Salt file roots the app was pointed at:
 top files and SLS content, rendered as text with line numbers. Search
 narrows the listing, directories group the rows, and long listings
 page. Files too large or not readable as text show an explainer card
-instead of a blank error. The browser never edits content: no edit
-button exists and none is planned.
+instead of a blank error, and those files cannot be edited here.
+
+Operators and admins see an **Edit** button on text files. It opens a
+code editor (line numbers, YAML highlighting for SLS files) over a
+plain textarea, so saving works even with scripts off. **Save** writes
+that file and records exactly one local commit for it, authored by
+you; saving unchanged content commits nothing. If the file moved
+underneath you — another edit or a sync landed first — the save
+refuses, names the current revision, and writes nothing: reload the
+edit page and re-apply your change. Content that does not parse as
+YAML still saves with a warning; Salt decides validity when it
+applies, not the browser. Viewers never see the button and the server
+rejects forged saves.
 
 The top of the page shows the git checkout behind the listing:
 branch, revision, clean or uncommitted state, how far it sits from its
@@ -313,6 +324,13 @@ only: a diverged checkout or an uncommitted tree refuses with the git
 reason and changes nothing, and every attempt lands in the audit
 trail. If the page says the path is not a checkout, sync is
 unavailable there; ask your admin.
+
+Local commits pile up as "ahead" on the status card. Admins get a
+**Push** button that sends them upstream: it refuses — never forces —
+on diverged branches (sync first), dirty trees, missing upstreams, or
+missing push credentials, and every push or refusal is audited. Saving
+never applies anything to minions; the master serves the new states
+after its fileserver refresh, same as after a sync.
 
 ## Events
 

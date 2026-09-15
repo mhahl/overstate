@@ -211,6 +211,113 @@ def _audit_actions(c):
         return [row.action for row in get_session().query(AuditEvent).all()]
 
 
+def _login(c, username):
+    c.post("/logout")
+    c.post("/login", data={"username": username, "password": "pw"})
+
+
+def _add_operator(c):
+    with c.app.app_context():
+        get_session().add(
+            User(
+                username="op",
+                password_hash=authmod._ph.hash("pw"),
+                role="operator",
+            )
+        )
+        get_session().commit()
+
+
+def _remote_file(remote, ref_path):
+    out = subprocess.run(
+        ["git", "--git-dir", str(remote), "show", ref_path],
+        capture_output=True,
+        text=True,
+        check=False,  # nonzero exit means "absent upstream", not an error
+    )
+    return out.stdout if out.returncode == 0 else None
+
+
+def test_push_sends_ahead_commit_upstream(checkout):
+    c = app_for(checkout)
+    remote = checkout.parent / "remote.git"
+    assert _remote_file(remote, "main:b.sls") is None  # unpushed work
+    rv = c.post("/files/push", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"Pushed" in rv.data
+    assert _remote_file(remote, "main:b.sls") is not None  # now upstream
+    assert any(a.startswith("git-push:") for a in _audit_actions(c))
+
+
+def test_push_second_time_is_up_to_date(checkout):
+    c = app_for(checkout)
+    c.post("/files/push")
+    rv = c.post("/files/push", follow_redirects=True)
+    assert b"Already up to date" in rv.data
+
+
+def test_push_diverged_refuses_and_leaks_nothing(tmp_path):
+    mine = _behind_checkout(tmp_path)
+    git("config", "user.email", "t@t", cwd=mine)
+    git("config", "user.name", "t", cwd=mine)
+    commit_file(mine, "local.sls", "local:\n  test.nop: []\n")  # diverge
+    c = app_for(mine)
+    rv = c.post("/files/push", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"Push refused" in rv.data
+    assert b"diverged" in rv.data
+    assert str(tmp_path).encode() not in rv.data  # no local paths leak
+    assert _remote_file(mine.parent / "remote.git", "main:local.sls") is None
+    assert any(a.startswith("git-push-refused:") for a in _audit_actions(c))
+
+
+def test_push_dirty_tree_refuses(checkout):
+    (checkout / "a.sls").write_text("dirty\n")
+    c = app_for(checkout)
+    rv = c.post("/files/push", follow_redirects=True)
+    assert b"dirty tree" in rv.data
+    assert _remote_file(checkout.parent / "remote.git", "main:b.sls") is None
+
+
+def test_push_no_upstream_refuses(tmp_path):
+    repo = tmp_path / "solo"
+    repo.mkdir()
+    git("init", "-qb", "main", cwd=repo)
+    git("config", "user.email", "t@t", cwd=repo)
+    git("config", "user.name", "t", cwd=repo)
+    commit_file(repo, "a.sls", "a:\n  test.nop: []\n")
+    c = app_for(repo)
+    rv = c.post("/files/push", follow_redirects=True)
+    assert b"no upstream" in rv.data
+
+
+def test_push_not_a_checkout_refuses(tmp_path):
+    c = app_for(tmp_path)
+    rv = c.post("/files/push", follow_redirects=True)
+    assert b"not a git checkout" in rv.data
+
+
+def test_push_operator_and_viewer_forbidden_and_get_disallowed(checkout):
+    c = app_for(checkout)
+    _add_operator(c)
+    _login(c, "op")
+    assert c.post("/files/push").status_code == 403
+    _login(c, "vie")
+    assert c.post("/files/push").status_code == 403
+    _login(c, "admin")
+    assert c.get("/files/push").status_code == 405
+
+
+def test_push_button_admin_only(checkout):
+    c = app_for(checkout)
+    assert b"Push" in c.get("/files/").data  # admin sees it
+    _add_operator(c)
+    _login(c, "op")
+    assert b"Push" not in c.get("/files/").data  # operator does not
+    _login(c, "vie")
+    assert b"Push" not in c.get("/files/").data  # viewer does not
+
+
 def test_sync_changed_pull_refreshes_fileserver(tmp_path):
     c = app_for(_behind_checkout(tmp_path))
     c.app.extensions["salt_client"] = _salt_stub(fileserver_ok=True)

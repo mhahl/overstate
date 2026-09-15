@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ rel }} · Overstate{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('files.view', path=rel) }}">‹ Back</a>
+    <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
+  </div>
+  <p class="text-sm opacity-70 mb-4">Saving commits this file locally{% if revision %} (checkout at <code class="font-mono">{{ revision }}</code>){% endif %}; an admin pushes it upstream separately.</p>
+  <form method="post" action="{{ url_for('files.save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="path" value="{{ rel }}">
+    <input type="hidden" name="base_sha" value="{{ base_sha }}">
+    <input type="hidden" name="base_hash" value="{{ base_hash }}">
+    <div id="editor-mount" data-lang="{{ lang }}" class="rounded-box border border-base-300 overflow-hidden mb-3"></div>
+    <textarea id="editor-textarea" name="content" rows="25" spellcheck="false"
+      class="textarea textarea-bordered font-mono text-sm w-full" aria-label="File contents">{{ content }}</textarea>
+    <div class="flex gap-2 mt-3">
+      <button class="btn btn-sm btn-primary" type="submit">Save</button>
+      <a class="btn btn-sm btn-ghost" href="{{ url_for('files.view', path=rel) }}">Cancel</a>
+    </div>
+  </form>
+  <script src="{{ url_for('static', filename='editor.bundle.js') }}"></script>
+</div>
+{% endblock %}

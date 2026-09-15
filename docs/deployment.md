@@ -82,11 +82,20 @@ states. Follow the whole chain before changing any link of it:
    `fileserver.update` on the master so new states are served at
    once; that runner is covered by the `@runner` grant the service
    account already holds, and a refresh failure only warns — the
-   pull itself still stands. The app is the only in-app writer: it
-   never edits, commits, or pushes. Pick one sync actor per site
-   (button or cron, not both): two writers racing on the same
+   pull itself still stands. The app is the only in-app writer, and
+   v4 widens that writership: operator saves commit single files
+   locally (fixed `overstate` committer identity, operator as author),
+   and the admin-gated **Push** button sends those commits upstream.
+   Push needs a push-capable remote: give the checkout a deploy key
+   with write access to the states repo (read-only deploy keys and
+   credential-less checkouts get a fixed "push credentials missing"
+   refusal, never a stack trace). Without push access the UI still
+   edits, commits, and syncs; only Push refuses. Pick one sync actor
+   per site (button or cron, not both): two writers racing on the same
    checkout trip git's lock and the loser just reports a refusal,
-   harmless but noisy.
+   harmless but noisy. A diverged checkout recovers the same way as
+   before — resolve it in git outside the app, or let an operator
+   **Sync now** fast-forward it — Push never forces.
 3. **Master mount — read-only.** The salt-master container mounts the
    same host directory (`/home/salt/data/srv`, `:ro`) and serves it
    as its file roots, so minions enforce exactly what the browser

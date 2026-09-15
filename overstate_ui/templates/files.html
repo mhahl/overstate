@@ -4,7 +4,7 @@
 <div class="w-full">
   <div class="mb-5">
     <h1 class="text-2xl font-bold tracking-tight">State files</h1>
-    <p class="text-sm opacity-70 mt-0.5">Read-only. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
+    <p class="text-sm opacity-70 mt-0.5">Browse and edit state files. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
     {% if has_top %}<p class="text-sm mt-1"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% endif %}
   </div>
   <section class="card bg-base-100 border border-base-300 shadow-sm mb-3" aria-label="Git checkout status">
@@ -26,6 +26,12 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-outline">Sync now</button>
           </form>
+          {% if current_user.role == "admin" %}
+          <form method="post" action="{{ url_for('files.push') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-primary" title="Push committed changes upstream">Push</button>
+          </form>
+          {% endif %}
         </span>
         {% endif %}
       </div>

@@ -6,7 +6,12 @@
     <a class="btn btn-sm btn-ghost" href="{{ url_for('files.index') }}">‹ Files</a>
     <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
   </div>
-  <p class="text-sm opacity-70 mb-4">Read-only{% if revision %}, synced from git at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <p class="text-sm opacity-70 mr-auto">Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
+    {% if content is not none and current_user.role in ["operator", "admin"] %}
+    <a class="btn btn-sm btn-outline" href="{{ url_for('files.edit', path=rel) }}">Edit</a>
+    {% endif %}
+  </div>
   {% if content is none %}
   <div class="card bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body py-8 text-center">

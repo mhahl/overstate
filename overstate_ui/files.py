@@ -1,11 +1,15 @@
-"""Read-only file-roots browser. States live in git; deployment syncs the
-checkout; the app only reads. There is intentionally no write path here."""
+"""File-roots browser. States live in git; operators edit text files through
+the edit page (one local commit per save, admin push is separate); the
+read-only listing and view pages stay viewer-visible."""
 
+import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
 import httpx
+import yaml
 from flask import (
     Blueprint,
     abort,
@@ -24,7 +28,15 @@ from pygments.lexers import JsonLexer, YamlLexer
 from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
-from .git_sync import git_fetch_now, git_status, git_sync_now
+from .git_sync import (
+    git_commit_file,
+    git_fetch_now,
+    git_head,
+    git_push_now,
+    git_status,
+    git_sync_now,
+    is_checkout,
+)
 from .salt_client import SaltApiError
 
 bp = Blueprint("files", __name__, url_prefix="/files")
@@ -134,6 +146,24 @@ def read_text(target: Path) -> str | None:
         return data.decode("utf-8")
     except UnicodeDecodeError:
         return None
+
+
+def yaml_advisory(target: Path, data: bytes) -> str | None:
+    """Advisory-only YAML parse check for SLS files. Never blocks a save.
+
+    Returns a warning message when the content does not parse, else None.
+    Salt stays the arbiter of validity at apply time.
+    """
+    if target.suffix.lower() not in YAML_SUFFIXES:
+        return None
+    try:
+        yaml.safe_load(data.decode("utf-8"))
+    except Exception:  # noqa: BLE001 — any parse failure is advisory
+        return (
+            "Warning: that YAML does not parse — saved anyway. "
+            "Salt is truth at apply time."
+        )
+    return None
 
 
 def sync_revision() -> str | None:
@@ -265,6 +295,154 @@ def fetch():
     else:
         flash(f"Check failed: {result['reason']}. Nothing changed.", "error")
         log_event(current_user.username, f"git-fetch-refused:{result['reason']}")
+    return redirect(url_for("files.index"))
+
+
+@bp.route("/edit")
+@roles_required("operator")
+def edit():
+    """Edit form for one text file: CodeMirror bundle over a textarea.
+
+    The textarea is the real form field, so saving works when the bundle
+    is missing or JS is off. ``base_sha``/``base_hash`` record what the
+    form was read at; the save route checks them (stale bases refuse).
+    """
+    rel = request.args.get("path", "")
+    target = safe_join(rel)
+    if not target or not target.is_file():
+        abort(404)
+    content = read_text(target)
+    if content is None:
+        flash("That file cannot be edited here (too large or not text).", "error")
+        return redirect(url_for("files.view", path=rel))
+    try:
+        raw = target.read_bytes()
+    except OSError:
+        abort(404)
+    lang = "yaml" if target.suffix.lower() in YAML_SUFFIXES else "text"
+    return render_template(
+        "file_edit.html",
+        rel=rel,
+        content=content,
+        lang=lang,
+        base_sha=git_head() or "nogit",
+        base_hash=hashlib.sha256(raw).hexdigest(),
+        revision=sync_revision(),
+    )
+
+
+@bp.post("/save")
+@roles_required("operator")
+def save():
+    """Write one text file and commit it locally (that file only).
+
+    Identical content commits nothing; binary/oversize results and
+    non-checkouts refuse with the file untouched. A successful commit
+    triggers the same advisory fileserver refresh as a sync.
+    """
+    rel = request.form.get("path", "")
+    target = safe_join(rel)
+    if not target or not target.is_file():
+        abort(404)
+    try:
+        current = target.read_bytes()
+    except OSError:
+        abort(404)
+    try:
+        current.decode("utf-8")
+        current_editable = len(current) <= MAX_BYTES
+    except UnicodeDecodeError:
+        current_editable = False
+    if not current_editable:
+        flash("That file is no longer editable text. Nothing changed.", "error")
+        log_event(current_user.username, f"file-save-refused:{rel}:uneditable")
+        return redirect(url_for("files.view", path=rel))
+    data = request.form.get("content", "").encode("utf-8")
+    if len(data) > MAX_BYTES:
+        flash(
+            f"Too large to save ({len(data)} bytes; limit is {MAX_BYTES}). "
+            "Nothing changed.",
+            "error",
+        )
+        log_event(current_user.username, f"file-save-refused:{rel}:oversize")
+        return redirect(url_for("files.view", path=rel))
+    if data == current:
+        flash("No changes — nothing committed.", "info")
+        return redirect(url_for("files.view", path=rel))
+    if not is_checkout():
+        flash("Not a git checkout: files are read-only here. Nothing changed.", "error")
+        log_event(current_user.username, f"file-save-refused:{rel}:not-a-checkout")
+        return redirect(url_for("files.view", path=rel))
+    head = git_head()
+    base_ok = (head is not None and request.form.get("base_sha") == head) or (
+        head is None and request.form.get("base_sha") == "nogit"
+    )
+    if (
+        not base_ok
+        or request.form.get("base_hash") != hashlib.sha256(current).hexdigest()
+    ):
+        short = head[:7] if head else "unknown"
+        flash(
+            f"That file changed underneath you (now at {short}). Reload the "
+            "edit page and re-apply your change. Nothing was written.",
+            "error",
+        )
+        log_event(current_user.username, f"file-save-refused:{rel}:stale")
+        return redirect(url_for("files.edit", path=rel))
+    try:
+        tmp = target.with_name(target.name + ".overstate-tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, target)
+    except OSError:
+        flash("Could not write the file. Nothing changed.", "error")
+        log_event(current_user.username, f"file-save-refused:{rel}:write-failed")
+        return redirect(url_for("files.view", path=rel))
+    rel_posix = target.relative_to(roots()).as_posix()
+    result = git_commit_file(
+        rel_posix,
+        f"overstate({current_user.username}): {rel_posix}",
+        current_user.username,
+    )
+    if not result["ok"]:
+        flash(
+            f"Saved on disk but not committed ({result['reason']}). "
+            "Resolve it in git; the file itself is updated.",
+            "error",
+        )
+        log_event(
+            current_user.username, f"file-save-uncommitted:{rel}:{result['reason']}"
+        )
+        return redirect(url_for("files.view", path=rel))
+    err = _refresh_fileserver()
+    if err is None:
+        flash(f"Saved {rel} — committed as {result['new']}.", "success")
+    else:
+        flash(
+            f"Saved {rel} — committed as {result['new']}, but the master "
+            f"refresh failed ({err}); applies may lag until the master updates.",
+            "warning",
+        )
+    advisory = yaml_advisory(target, data)
+    if advisory is not None:
+        flash(advisory, "warning")
+    log_event(current_user.username, f"file-save:{rel}:{result['new']}")
+    return redirect(url_for("files.view", path=rel))
+
+
+@bp.post("/push")
+@roles_required("admin")
+def push():
+    """Push local commits upstream. Admin-only; refusals change nothing."""
+    result = git_push_now()
+    if result["ok"]:
+        if result["sent"]:
+            flash(f"Pushed {result['new']} upstream.", "success")
+        else:
+            flash(f"Already up to date at {result['new']}.", "info")
+        log_event(current_user.username, f"git-push:{result['new']}")
+    else:
+        flash(f"Push refused: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"git-push-refused:{result['reason']}")
     return redirect(url_for("files.index"))
 
 

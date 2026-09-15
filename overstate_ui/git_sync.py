@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import subprocess
 import threading
 from pathlib import Path
@@ -61,6 +62,65 @@ def _run(*args: str) -> subprocess.CompletedProcess[str] | None:
 def _is_checkout() -> bool:
     proc = _run("rev-parse", "--git-dir")
     return proc is not None and proc.returncode == 0
+
+
+def is_checkout() -> bool:
+    """Public checkout probe for routes that write (edit/save refuse outside)."""
+    return _is_checkout()
+
+
+def git_head() -> str | None:
+    """Full HEAD SHA of the checkout, or None when it cannot be read."""
+    proc = _run("rev-parse", "HEAD")
+    if proc is None or proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def _oneline(value: str, limit: int = 128) -> str:
+    """Collapse free text to one safe line for git metadata.
+
+    Usernames reach commit subjects/authors; newlines or angle brackets
+    must never survive into argv-adjacent metadata.
+    """
+    return re.sub(r"[\s<>]+", " ", value or "").strip()[:limit]
+
+
+def git_commit_file(rel: str, subject: str, author: str) -> dict:
+    """Commit the working-tree changes to exactly one file.
+
+    ``rel`` is a ``safe_join``-validated path relative to the checkout,
+    passed as a single argv item (never a shell). Identity is fixed
+    per-invocation so commits never depend on repo config; the operator
+    is recorded as author. Refusals explain, never force.
+    """
+    with _single_flight() as free:
+        if not free:
+            return {"ok": False, "reason": "a sync is already running"}
+        if not _is_checkout():
+            return {"ok": False, "reason": "not a git checkout"}
+        add = _run("add", "--", rel)
+        if add is None or add.returncode != 0:
+            return {"ok": False, "reason": _failure(add, "git add failed")}
+        who = _oneline(author, 64) or "overstate"
+        proc = _run(
+            "-c",
+            "user.name=overstate",
+            "-c",
+            "user.email=overstate@localhost",
+            "commit",
+            "--author",
+            f"{who} <overstate@localhost>",
+            "-m",
+            _oneline(subject, 160),
+            "--",
+            rel,
+        )
+        if proc is None or proc.returncode != 0:
+            return {"ok": False, "reason": _failure(proc, "git commit failed")}
+        new = _run("rev-parse", "--short", "HEAD")
+        new_sha = new.stdout.strip() if new and new.returncode == 0 else None
+        return {"ok": True, "new": new_sha}
 
 
 def git_status() -> dict:
@@ -152,6 +212,76 @@ def git_sync_now() -> dict:
             "new": new_sha,
             "changed": old_sha != new_sha,
         }
+
+
+def _tracked_dirty() -> bool | None:
+    """True when tracked files have uncommitted changes.
+
+    None when git itself fails. Untracked files never count: they are
+    not pushed, so they must not block a push.
+    """
+    proc = _run("diff", "--quiet")
+    if proc is None:
+        return None
+    return proc.returncode != 0
+
+
+def _push_failure(proc: subprocess.CompletedProcess[str] | None) -> str:
+    """Fixed failure words for push: remote output can carry URLs and
+    paths, so it is logged server-side and never shown."""
+    raw = ""
+    if proc is not None:
+        raw = ((proc.stderr or proc.stdout) or "").strip()
+    if raw:
+        logger.warning("git push failed: %s", raw.splitlines()[0][:200])
+    lowered = raw.lower()
+    if "not a git repository" in lowered:
+        return "not a git checkout"
+    if "no upstream" in lowered or "no tracking information" in lowered:
+        return "no upstream configured"
+    if (
+        "permission denied" in lowered
+        or "authentication failed" in lowered
+        or "could not read username" in lowered
+        or "invalid username" in lowered
+    ):
+        return "push credentials missing or rejected"
+    if "fetch first" in lowered or "non-fast-forward" in lowered:
+        return "branches have diverged — sync first"
+    return "git push refused"
+
+
+def git_push_now() -> dict:
+    """Push local commits upstream. One at a time; refusals explain, never force.
+
+    Dirty tracked trees refuse (push should send exactly the reviewed
+    commits); untracked files are ignored. A push that sends nothing
+    reports ``sent`` False so the route can say "up to date".
+    """
+    with _single_flight() as free:
+        if not free:
+            return {"ok": False, "reason": "a sync is already running"}
+        if not _is_checkout():
+            return {"ok": False, "reason": "not a git checkout"}
+        dirty = _tracked_dirty()
+        if dirty is None:
+            return {"ok": False, "reason": "git status failed"}
+        if dirty:
+            return {
+                "ok": False,
+                "reason": "dirty tree — commit or revert local changes first",
+            }
+        upstream = _run("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+        if upstream is None or upstream.returncode != 0 or not upstream.stdout.strip():
+            return {"ok": False, "reason": "no upstream configured"}
+        push = _run("push")
+        if push is None or push.returncode != 0:
+            return {"ok": False, "reason": _push_failure(push)}
+        new = _run("rev-parse", "--short", "HEAD")
+        new_sha = new.stdout.strip() if new and new.returncode == 0 else None
+        combined = ((push.stderr or "") + (push.stdout or "")).lower()
+        sent = "up-to-date" not in combined and "up to date" not in combined
+        return {"ok": True, "new": new_sha, "sent": sent}
 
 
 def git_fetch_now() -> dict:

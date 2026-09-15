@@ -16,3 +16,4 @@ argon2-cffi==25.1.0
 Authlib==1.8.0
 gunicorn==26.2.0
 Pygments==2.21.0
+PyYAML==6.0.3

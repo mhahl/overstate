@@ -21,6 +21,7 @@ and `package-lock.json`.
 | argon2-cffi | 25.1.0 | MIT |
 | Authlib | 1.8.0 | BSD-3-Clause |
 | gunicorn | 26.2.0 | MIT |
+| PyYAML | 6.0.3 | MIT |
 
 Dev-only (not shipped in the image): pytest (MIT), pytest-cov (MIT).
 
@@ -34,6 +35,9 @@ Dev-only (not shipped in the image): pytest (MIT), pytest-cov (MIT).
 | @iconify/tailwind4 | 1.2.3 | MIT |
 | @iconify-json/lucide | 1.2.132 | ISC |
 | @iconify-json/simple-icons | 1.2.96 | CC0-1.0 |
+| codemirror | 6.0.2 | MIT |
+| @codemirror/lang-yaml | 6.1.3 | MIT |
+| esbuild | 0.28.2 | MIT |
 
 ## Compatibility verdict: no conflicts
 

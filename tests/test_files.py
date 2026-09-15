@@ -1,11 +1,15 @@
-"""v2 unit 2 tests: read-only file browser, traversal rejection, no writes."""
+"""File browser tests: read-only listing/view, traversal rejection, and the
+v4 edit/save/commit path (CodeMirror bundle with textarea fallback)."""
+
+import re
+import subprocess
 
 import pytest
 
 from overstate_ui import create_app
-from overstate_ui.auth import seed_admin
+from overstate_ui.auth import _ph, seed_admin
 from overstate_ui.config import TestConfig
-from overstate_ui.db import create_all, init_db
+from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.files import (
     highlight_json,
     highlight_yaml,
@@ -14,6 +18,7 @@ from overstate_ui.files import (
     safe_join,
     sync_revision,
 )
+from overstate_ui.models import AuditEvent, User
 
 
 @pytest.fixture()
@@ -169,3 +174,325 @@ def test_safe_join_stays_inside(rooted, tmp_path):
         assert list_tree() != []
         assert read_text(safe_join("web.sls")).startswith("nginx")
         assert sync_revision() is None  # tmp dir is not a git checkout
+
+
+def _git(path, *args):
+    subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
+
+
+def _commits(path):
+    out = subprocess.run(
+        ["git", "rev-list", "--count", "HEAD"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return int(out.stdout.strip())
+
+
+def _committed_files(path):
+    out = subprocess.run(
+        ["git", "show", "--pretty=format:", "--name-only", "HEAD"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return sorted(line for line in out.stdout.splitlines() if line.strip())
+
+
+@pytest.fixture()
+def edit_checkout(tmp_path):
+    """A git checkout (no upstream) with admin/operator/viewer users."""
+    (tmp_path / "web.sls").write_text("nginx:\n  pkg.installed: []\n")
+    (tmp_path / "notes.txt").write_text("just some text\n")
+    _git(tmp_path, "init", "-qb", "main")
+    _git(tmp_path, "config", "user.email", "t@t")
+    _git(tmp_path, "config", "user.name", "t")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "seed")
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    app.config["FILE_ROOTS"] = str(tmp_path)
+    with app.app_context():
+        create_all()
+        seed_admin(password="pw")
+        session = get_session()
+        session.add(User(username="op", role="operator", password_hash=_ph.hash("pw")))
+        session.add(User(username="vie", role="viewer", password_hash=_ph.hash("pw")))
+        session.commit()
+    c = app.test_client()
+    c.post("/login", data={"username": "admin", "password": "pw"})
+    c.app = app
+    return c
+
+
+def _login_as(c, username):
+    c.post("/logout")
+    c.post("/login", data={"username": username, "password": "pw"})
+
+
+def _base_fields(c, path):
+    """Read the edit form's concurrency fields as the browser would."""
+    html = c.get("/files/edit", query_string={"path": path}).data.decode()
+    return {
+        name: re.search(rf'name="{name}" value="([^"]*)"', html).group(1)
+        for name in ("base_sha", "base_hash")
+    }
+
+
+def test_edit_page_renders_editor_and_fallback(edit_checkout):
+    rv = edit_checkout.get("/files/edit", query_string={"path": "web.sls"})
+    assert rv.status_code == 200
+    html = rv.data.decode()
+    assert "editor.bundle.js" in html  # vendored CodeMirror bundle
+    assert 'id="editor-textarea"' in html  # no-JS fallback form field
+    assert 'data-lang="yaml"' in html  # .sls gets YAML highlighting
+    assert 'name="base_sha"' in html and 'name="base_hash"' in html
+
+
+def test_edit_page_plain_text_lang(edit_checkout):
+    html = edit_checkout.get(
+        "/files/edit", query_string={"path": "notes.txt"}
+    ).data.decode()
+    assert 'data-lang="text"' in html
+
+
+def test_editor_bundle_served_locally(rooted):
+    rv = rooted.get("/static/editor.bundle.js")
+    assert rv.status_code == 200
+    assert len(rv.data) > 100_000  # real bundle, not a stub
+    assert b"editor-mount" in rv.data  # our entry code is in the bundle
+
+
+def test_edit_page_has_no_external_scripts(edit_checkout):
+    rv = edit_checkout.get("/files/edit", query_string={"path": "web.sls"})
+    assert rv.status_code == 200
+    assert b'src="http' not in rv.data  # vendored only, CSP-safe
+
+
+def test_edit_viewer_forbidden_and_anonymous_redirected(edit_checkout):
+    _login_as(edit_checkout, "vie")
+    assert (
+        edit_checkout.get("/files/edit", query_string={"path": "web.sls"}).status_code
+        == 403
+    )
+    assert (
+        edit_checkout.post(
+            "/files/save", data={"path": "web.sls", "content": "x"}
+        ).status_code
+        == 403
+    )
+    edit_checkout.post("/logout")
+    assert (
+        edit_checkout.get("/files/edit", query_string={"path": "web.sls"}).status_code
+        == 302
+    )
+
+
+def test_edit_traversal_and_missing_404(edit_checkout):
+    for bad in ("../secret", "/etc/passwd", "nope.sls"):
+        assert (
+            edit_checkout.get("/files/edit", query_string={"path": bad}).status_code
+            == 404
+        ), bad
+
+
+def test_edit_uneditable_file_redirects_to_view(edit_checkout, tmp_path):
+    (tmp_path / "blob.sls").write_bytes(b"\xff\xfe\x00binary\x01\x02")
+    rv = edit_checkout.get("/files/edit", query_string={"path": "blob.sls"})
+    assert rv.status_code == 302  # back to the explainer card, nothing to edit
+
+
+def test_save_round_trip_commits_single_file(edit_checkout, tmp_path):
+    before = _commits(tmp_path)
+    fields = _base_fields(edit_checkout, "web.sls")
+    rv = edit_checkout.post(
+        "/files/save",
+        data={
+            "path": "web.sls",
+            "content": "nginx:\n  pkg.installed: []\n# edited\n",
+            **fields,
+        },
+    )
+    assert rv.status_code == 302
+    assert (tmp_path / "web.sls").read_text().endswith("# edited\n")
+    assert _commits(tmp_path) == before + 1  # exactly one local commit
+    assert _committed_files(tmp_path) == ["web.sls"]  # touching only that file
+    shown = edit_checkout.get(rv.headers["Location"]).data.decode()
+    assert "committed as" in shown  # save flash names the commit, not a sync
+    with edit_checkout.app.app_context():
+        actions = [row.action for row in get_session().query(AuditEvent).all()]
+    assert any(a.startswith("file-save:web.sls:") for a in actions)
+
+
+def test_save_identical_content_commits_nothing(edit_checkout, tmp_path):
+    before = _commits(tmp_path)
+    fields = _base_fields(edit_checkout, "web.sls")
+    rv = edit_checkout.post(
+        "/files/save",
+        data={
+            "path": "web.sls",
+            "content": "nginx:\n  pkg.installed: []\n",
+            **fields,
+        },
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+    assert b"No changes" in rv.data
+    assert _commits(tmp_path) == before
+
+
+def test_save_traversal_and_missing_404(edit_checkout):
+    fields = {"base_sha": "x", "base_hash": "y"}
+    for bad in ("../secret", "/etc/passwd", "nope.sls"):
+        assert (
+            edit_checkout.post(
+                "/files/save", data={"path": bad, "content": "x", **fields}
+            ).status_code
+            == 404
+        ), bad
+
+
+def test_save_binary_and_oversize_refused(edit_checkout, tmp_path):
+    (tmp_path / "blob.sls").write_bytes(b"\xff\xfe\x00binary\x01\x02")
+    (tmp_path / "huge.sls").write_bytes(b"x" * (257 * 1024))
+    before = _commits(tmp_path)
+    fields = {"base_sha": "x", "base_hash": "y"}
+    for name, body in (
+        ("blob.sls", "replacement"),
+        ("huge.sls", "x" * (257 * 1024)),
+    ):
+        rv = edit_checkout.post(
+            "/files/save", data={"path": name, "content": body, **fields}
+        )
+        assert rv.status_code == 302
+    assert _commits(tmp_path) == before  # nothing committed
+    assert (tmp_path / "blob.sls").read_bytes().startswith(b"\xff\xfe")
+
+
+def test_save_outside_checkout_refused(rooted, tmp_path):
+    before = (tmp_path / "web.sls").read_text()
+    rv = rooted.post(
+        "/files/save",
+        data={
+            "path": "web.sls",
+            "content": "changed\n",
+            "base_sha": "x",
+            "base_hash": "y",
+        },
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+    assert b"Not a git checkout" in rv.data
+    assert (tmp_path / "web.sls").read_text() == before  # untouched
+
+
+def test_save_stale_base_refuses_without_writing(edit_checkout, tmp_path):
+    fields = _base_fields(edit_checkout, "web.sls")
+    # Someone else (or a sync) lands first: new content, new HEAD.
+    (tmp_path / "web.sls").write_text("nginx:\n  pkg.installed: []\n# elsewhere\n")
+    _git(tmp_path, "add", "web.sls")
+    _git(tmp_path, "commit", "-qm", "elsewhere")
+    before = _commits(tmp_path)
+    rv = edit_checkout.post(
+        "/files/save",
+        data={
+            "path": "web.sls",
+            "content": "nginx:\n  pkg.installed: []\n# mine\n",
+            **fields,
+        },
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+    assert b"changed underneath you" in rv.data
+    assert (tmp_path / "web.sls").read_text().endswith("# elsewhere\n")
+    assert _commits(tmp_path) == before  # nothing committed
+
+
+def test_save_invalid_yaml_warns_but_saves(edit_checkout, tmp_path):
+    fields = _base_fields(edit_checkout, "web.sls")
+    rv = edit_checkout.post(
+        "/files/save",
+        data={"path": "web.sls", "content": "key: [unclosed\n", **fields},
+        follow_redirects=True,
+    )
+    assert b"committed as" in rv.data
+    assert b"does not parse" in rv.data
+    assert (tmp_path / "web.sls").read_text() == "key: [unclosed\n"
+
+
+def test_save_valid_yaml_has_no_warning(edit_checkout):
+    fields = _base_fields(edit_checkout, "web.sls")
+    rv = edit_checkout.post(
+        "/files/save",
+        data={
+            "path": "web.sls",
+            "content": "nginx:\n  pkg.installed: []\n# ok\n",
+            **fields,
+        },
+        follow_redirects=True,
+    )
+    assert b"committed as" in rv.data
+    assert b"does not parse" not in rv.data
+
+
+def test_commit_metadata_collapses_to_one_line():
+    from overstate_ui.git_sync import _oneline
+
+    assert _oneline("op\ninjected", 64) == "op injected"
+    assert _oneline("a<b>c", 64) == "a b c"
+    assert len(_oneline("x" * 200, 64)) == 64
+    assert _oneline("", 64) == ""
+
+
+def test_git_writes_serialize_on_busy_lock(edit_checkout):
+    from overstate_ui import git_sync
+
+    git_sync._sync_lock.acquire()
+    try:
+        with edit_checkout.app.app_context():
+            assert git_sync.git_commit_file("web.sls", "s", "t") == {
+                "ok": False,
+                "reason": "a sync is already running",
+            }
+            assert git_sync.git_push_now()["reason"] == "a sync is already running"
+    finally:
+        git_sync._sync_lock.release()
+
+
+def test_stale_and_uncommitted_saves_leave_audit_rows(
+    edit_checkout, tmp_path, monkeypatch
+):
+    fields = _base_fields(edit_checkout, "web.sls")
+    (tmp_path / "web.sls").write_text("nginx:\n  pkg.installed: []\n# elsewhere\n")
+    edit_checkout.post(
+        "/files/save",
+        data={"path": "web.sls", "content": "mine\n", **fields},
+    )
+    import overstate_ui.files as filesmod
+
+    monkeypatch.setattr(
+        filesmod, "git_commit_file", lambda *a: {"ok": False, "reason": "boom"}
+    )
+    fields = _base_fields(edit_checkout, "web.sls")
+    edit_checkout.post(
+        "/files/save",
+        data={"path": "web.sls", "content": "written anyway\n", **fields},
+    )
+    assert (tmp_path / "web.sls").read_text() == "written anyway\n"
+    with edit_checkout.app.app_context():
+        actions = [row.action for row in get_session().query(AuditEvent).all()]
+    assert "file-save-refused:web.sls:stale" in actions
+    assert any(a.startswith("file-save-uncommitted:web.sls:") for a in actions)
+
+
+def test_third_party_licenses_list_the_editor():
+    import pathlib
+
+    text = (
+        pathlib.Path(__file__).resolve().parent.parent / "THIRD-PARTY-LICENSES.md"
+    ).read_text()
+    assert "codemirror" in text.lower()
