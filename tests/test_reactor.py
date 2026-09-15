@@ -205,7 +205,8 @@ def test_not_running_master_shows_empty_state(tmp_path):
     client = app.test_client()
     _login(client, "op")
     html = client.get("/reactor/").data.decode()
-    assert "Reactor is not running on the master" in html
+    assert "Reactor not configured" in html
+    assert "Salt reactor docs" in html
     assert "Reactor disabled" in html
     assert "Add reactor" not in html
     assert "Traceback" not in html
@@ -221,7 +222,7 @@ def test_traceback_in_200_payload_shows_empty_state(tmp_path):
     client = app.test_client()
     _login(client, "op")
     html = client.get("/reactor/").data.decode()
-    assert "Reactor is not running on the master" in html
+    assert "Reactor not configured" in html
     assert "Reactor disabled" in html
     assert "Traceback" not in html
     assert "Exception occurred in runner" not in html
