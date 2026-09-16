@@ -1,0 +1,128 @@
+# Overstate app (gunicorn). Image resolves through the kustomization
+# `images:` transformer — fill REGISTRY/newTag before applying; the
+# committed placeholder cannot resolve, so an unconfigured apply fails
+# closed instead of pulling a wrong image.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: overstate-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: overstate-app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: overstate-app
+    spec:
+      serviceAccountName: overstate-app
+      initContainers:
+        # Seed the shared volume on first boot only; never overwrite.
+        - name: seed-states
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              if [ ! -d /srv/states/salt ]; then
+                mkdir -p /srv/states/salt && cp /seed/* /srv/states/salt/
+              fi
+              # Reactor roots: always present, first boot or reschedule.
+              mkdir -p /srv/states/reactor
+          volumeMounts:
+            - name: srv
+              mountPath: /srv/states
+            - name: seed
+              mountPath: /seed
+      containers:
+        - name: app
+          image: overstate-app
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            # CNPG stores the app-owner password in overstate-db-app;
+            # $(...) expansion composes the URL at container start.
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-db-app
+                  key: password
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://overstate:$(DB_PASSWORD)@overstate-db-rw:5432/overstate"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-secrets
+                  key: REDIS_PASSWORD
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
+            - name: SALT_API_URL
+              value: https://salt-master-api:8000
+            # TODO: pin the salt-api CA instead of skipping verification
+            # (image mints a self-signed cert at boot; in-cluster only).
+            - name: SALT_API_VERIFY_CA
+              value: "false"
+            - name: SALT_EAUTH_USER
+              value: overstate
+            - name: SALT_EAUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-secrets
+                  key: SALT_API_USER_PASS
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-secrets
+                  key: SECRET_KEY
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-secrets
+                  key: ADMIN_PASSWORD
+                  optional: true
+            - name: FILE_ROOTS
+              value: /srv/states/salt
+            - name: REACTOR_ROOTS
+              value: /srv/states/reactor
+            - name: TRUST_PROXY
+              value: "1"
+          volumeMounts:
+            - name: srv
+              mountPath: /srv/states
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 500m
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: srv
+          persistentVolumeClaim:
+            claimName: srv-data
+        - name: seed
+          configMap:
+            name: salt-seed
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: overstate-app
+spec:
+  selector:
+    app.kubernetes.io/name: overstate-app
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

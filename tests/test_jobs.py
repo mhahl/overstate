@@ -64,9 +64,10 @@ def test_run_async_creates_job_and_audit(client):
         },
     )
     assert rv.status_code == 302
-    assert "/jobs/99999" in rv.headers["Location"]
+    jid = rv.headers["Location"].rsplit("/", 1)[1]
+    assert len(jid) == 20 and jid.isdigit()  # app-side shared JID (D12)
     with client.app.app_context():
-        job = get_session().get(Job, "99999")
+        job = get_session().get(Job, jid)
         assert job is not None and job.fun == "test.ping"
         assert job.complete is False
         audit = (
@@ -75,7 +76,7 @@ def test_run_async_creates_job_and_audit(client):
             .filter(AuditEvent.action == "run:test.ping")
             .one()
         )
-        assert audit.jid == "99999"
+        assert audit.jid == jid
         saved = get_session().query(SavedJob).filter_by(name="ping all").one()
         assert saved.fun == "test.ping"
 
@@ -657,7 +658,8 @@ def test_duplicate_save_as_still_runs(client):
         },
     )
     assert rv.status_code == 302
-    assert "/jobs/99999" in rv.headers["Location"]
+    jid = rv.headers["Location"].rsplit("/", 1)[1]
+    assert len(jid) == 20 and jid.isdigit()  # app-side shared JID (D12)
     html = client.get(rv.headers["Location"]).data.decode()
     assert "Saved job name already exists; the job still ran." in html
 

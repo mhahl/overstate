@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Master config · Overstate{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <h1 class="text-xl font-bold tracking-tight">Master config</h1>
+    <span class="badge badge-sm badge-ghost">ConfigMap</span>
+  </div>
+  {% if rows is none %}
+  <div class="alert alert-warning mb-4">
+    <span>The live config is unreachable from here. Edit it by hand instead:</span>
+    <code class="font-mono">{{ manual }}</code>
+  </div>
+  {% else %}
+  <p class="text-sm opacity-70 mb-4">Owned salt-master configuration. Saving snapshots the whole ConfigMap first{% if snapshots is not none %} ({{ snapshots }} snapshot{{ "s" if snapshots != 1 else "" }} kept){% endif %}; restart the masters afterwards to apply changes.{% if revision %} Live at revision <code class="font-mono">{{ revision }}</code>.{% endif %}</p>
+  <div class="flex gap-2 mb-4">
+    <form method="post" action="{{ url_for('masterconfig.restart') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-warning" type="submit">Restart masters</button>
+    </form>
+    <form method="post" action="{{ url_for('masterconfig.revert') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-ghost" type="submit">Revert to last snapshot</button>
+    </form>
+  </div>
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+    <ul class="menu w-full p-2">
+      {% for row in rows %}
+      <li class="flex flex-row items-center gap-2">
+        <a class="flex-1 font-mono text-sm break-all" href="{{ url_for('masterconfig.view', key=row.key) }}">{{ row.key }}</a>
+        {% if row.auth %}<span class="badge badge-sm badge-warning">auth</span>{% endif %}
+        {% if row.yaml %}<span class="badge badge-sm badge-ghost">yaml</span>{% endif %}
+        <span class="text-xs opacity-60 tabular-nums">{{ row.size }} B</span>
+      </li>
+      {% else %}
+      <li class="px-4 py-3 text-sm opacity-70">No data keys.</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

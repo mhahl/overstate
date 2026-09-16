@@ -323,6 +323,54 @@ def test_oidc_client_secret_from_db_enables_sso():
     assert "Log in with SSO" not in c.get("/login").data.decode()
 
 
+def test_seed_admin_tolerates_lost_seeding_race(monkeypatch):
+    """Two replicas booting at once both see an empty users table; the
+    loser must back off, not crash the boot (production IntegrityError)."""
+    from types import SimpleNamespace
+
+    from overstate_ui.auth import _ph
+    from overstate_ui.auth import seed_admin as _seed
+    from overstate_ui.db import get_session
+    from overstate_ui.models import User
+
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    with app.app_context():
+        create_all()
+        assert _seed(password="pw") is True  # race winner
+        session = get_session()
+        # Loser holds a stale empty-table read: force the existence check
+        # to miss while the row is really there.
+        monkeypatch.setattr(
+            session, "query", lambda *a, **k: SimpleNamespace(count=lambda: 0)
+        )
+        assert _seed(password="other") is False  # loses the insert, no raise
+        monkeypatch.undo()  # session usable again after the rollback
+        rows = get_session().query(User).all()
+        assert [row.username for row in rows] == ["admin"]
+        assert _ph.verify(rows[0].password_hash, "pw")  # winner's password kept
+
+
+def test_engine_enables_pool_pre_ping(monkeypatch):
+    """Failovers kill idle pooled connections; the engine must detect
+    dead checkouts instead of serving them (production login 500s)."""
+    import sqlalchemy
+
+    import overstate_ui.db as dbmod
+
+    seen = {}
+    real_create_engine = sqlalchemy.create_engine
+
+    def spy(url, **kwargs):
+        seen.update(kwargs)
+        return real_create_engine(url, **kwargs)
+
+    monkeypatch.setattr(dbmod, "create_engine", spy)
+    init_db("sqlite://")
+    dbmod._Session.remove()
+    assert seen.get("pool_pre_ping") is True
+
+
 def test_settings_page_groups_every_setting_into_panels():
     from overstate_ui.auth import seed_admin as _seed
     from overstate_ui.settings import DEFS, SECTIONS

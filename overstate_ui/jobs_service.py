@@ -15,6 +15,7 @@ from flask_login import current_user
 from .audit import log_event
 from .dashboard import get_salt
 from .db import get_session
+from .fleet import pod_clients
 from .jobs_helpers import COMPLETE_AFTER_SECONDS, SYNTHETIC_JID_PREFIXES
 from .models import Job, JobReturn, SaltReturn, SavedJob
 from .salt_client import SaltApiError
@@ -294,6 +295,11 @@ def _split_sync_result(result) -> tuple[str | None, dict]:
     return jid, mapping
 
 
+def _new_jid() -> str:
+    """Salt-format job id, shared across the pair for one user action."""
+    return dt.datetime.now(dt.UTC).strftime("%Y%m%d%H%M%S%f")
+
+
 def launch(
     tgt: str,
     tgt_type: str,
@@ -302,7 +308,14 @@ def launch(
     asynchronous: bool,
     via: str = "local",
 ) -> str:
-    """Fire a job via salt-api; record the Job row. Returns the jid."""
+    """Fire a job via salt-api; record the Job row. Returns the jid.
+
+    Local publishes fan out to every master pod under one shared jid:
+    publish buses are per-master, so a single-pod publish would miss
+    minions attached to the other pod. Unreachable pods degrade to a
+    warning (never a silent partial) and converge on the next action.
+    salt-ssh stays single-pod: the roster executes from one master.
+    """
     client = get_salt()
     if tgt_type == "group":
         targets, stale = resolve_group_target(tgt)
@@ -347,9 +360,26 @@ def launch(
         session.commit()
         log_event(current_user.username, f"run-ssh:{fun}", jid=jid)
         return jid
+    clients = pod_clients(client)
     if asynchronous:
-        result = client.local(tgt, fun, arg=args, tgt_type=tgt_type, asynchronous=True)
-        jid = result[0]["jid"] if isinstance(result, list) else result["jid"]
+        jid = _new_jid()
+        missed: list[str] = []
+        last_error: SaltApiError | None = None
+        for name, cli in clients:
+            try:
+                cli.local(
+                    tgt,
+                    fun,
+                    arg=args,
+                    tgt_type=tgt_type,
+                    asynchronous=True,
+                    jid=jid,
+                )
+            except SaltApiError as exc:
+                missed.append(name)
+                last_error = exc
+        if len(missed) == len(clients):
+            raise last_error or SaltApiError("no master reachable")
         session = get_session()
         session.add(
             Job(
@@ -362,17 +392,31 @@ def launch(
         )
         session.commit()
         log_event(current_user.username, f"run:{fun}", jid=jid)
+        _warn_missed(missed, fun, jid)
         return jid
-    result = client.local(
-        tgt,
-        fun,
-        arg=args,
-        tgt_type=tgt_type,
-        timeout=SYNC_SALT_TIMEOUT,
-        http_timeout=SYNC_SALT_TIMEOUT + 5,
-    )
-    real_jid, mapping = _split_sync_result(result)
-    jid = real_jid or f"sync-{int(time.time())}"
+    jid = _new_jid()
+    mapping: dict = {}
+    missed = []
+    last_error = None
+    for name, cli in clients:
+        try:
+            result = cli.local(
+                tgt,
+                fun,
+                arg=args,
+                tgt_type=tgt_type,
+                timeout=SYNC_SALT_TIMEOUT,
+                http_timeout=SYNC_SALT_TIMEOUT + 5,
+                jid=jid,
+            )
+        except SaltApiError as exc:
+            missed.append(name)
+            last_error = exc
+            continue
+        _, one = _split_sync_result(result)
+        mapping.update(one)
+    if not mapping and len(missed) == len(clients):
+        raise last_error or SaltApiError("no master reachable")
     session = get_session()
     job = Job(jid=jid, fun=fun, tgt=tgt, tgt_type=tgt_type, user=current_user.username)
     session.add(job)
@@ -390,7 +434,19 @@ def launch(
         job.complete = True
     session.commit()
     log_event(current_user.username, f"run:{fun}", jid=jid)
+    _warn_missed(missed, fun, jid)
     return jid
+
+
+def _warn_missed(missed: list[str], fun: str, jid: str) -> None:
+    """Name unreachable pods loudly: partial results are never silent."""
+    for name in missed:
+        flash(
+            f"{name} unreachable: published on the other master only, "
+            "results may be partial.",
+            "warning",
+        )
+        log_event(current_user.username, f"run-partial:{fun}:{name}", jid=jid)
 
 
 def resolve_batch_roster(tgt: str, tgt_type: str) -> list[str] | None:

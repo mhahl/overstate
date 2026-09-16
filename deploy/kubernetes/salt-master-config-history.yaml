@@ -1,0 +1,13 @@
+# History of the owned salt-master configuration.
+#
+# The app snapshots the whole `salt-master-config` data map here before
+# every save (bounded to the last 20 revisions); revert re-patches a
+# snapshot. Deployed empty and app-managed afterwards — never edit by hand
+# except to recover from a bad app write (then prefer the UI revert).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: salt-master-config-history
+  annotations:
+    overstate.sigaint.au/managed-by: overstate-app
+data: {}

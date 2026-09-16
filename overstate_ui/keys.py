@@ -1,4 +1,10 @@
-"""Key management. Tabs per status; every action is a wheel call + audit row."""
+"""Key management. Tabs per status; every action fans out to both masters.
+
+A minion must be accepted on the pod it lands on, so accept/reject/delete
+run on every reachable master pod (idempotent wheel calls). The roster
+merges all pods with per-pod state chips; an unreachable pod degrades to
+a warning, never a silent split.
+"""
 
 import re
 
@@ -16,7 +22,8 @@ from flask_login import current_user, login_required
 from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
-from .salt_client import SaltApiError
+from .fleet import pod_clients
+from .salt_client import SaltApiError, SaltClient
 
 bp = Blueprint("keys", __name__, url_prefix="/keys")
 
@@ -69,17 +76,58 @@ def get_key_data(client) -> dict:
     return out
 
 
+def merged_key_data(
+    clients: list[tuple[str, SaltClient]],
+) -> tuple[dict, list[str]]:
+    """(union roster, unreachable pod names).
+
+    Each row carries per-pod states; a minion appears under a tab when ANY
+    pod reports it there. Unreachable pods contribute nothing (their
+    absence is flashed by the caller).
+    """
+    states: dict[str, dict] = {}
+    order: list[str] = []
+    failed: list[str] = []
+    for name, client in clients:
+        try:
+            listed = client.wheel("key.list_all")[0]["data"]["return"]
+            fingers = _fingerprints(client)
+        except (SaltApiError, KeyError, IndexError, TypeError):
+            failed.append(name)
+            continue
+        for tab, field in TABS:
+            for mid in listed.get(field, []) or []:
+                entry = states.setdefault(
+                    mid, {"id": mid, "fingerprint": "—", "states": {}}
+                )
+                if mid not in order:
+                    order.append(mid)
+                entry["states"][name] = tab
+                if entry["fingerprint"] == "—":
+                    entry["fingerprint"] = fingers.get(mid, "—")
+    out: dict = {}
+    for tab, _ in TABS:
+        out[tab] = [
+            states[mid]
+            for mid in sorted(order)
+            if tab in states[mid]["states"].values()
+        ]
+    return out, failed
+
+
 @bp.route("/")
 @login_required
 def index():
     tab = request.args.get("tab", "pending")
     if tab not in dict(TABS):
         tab = "pending"
-    try:
-        data = get_key_data(get_salt())
-    except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
+    clients = pod_clients(get_salt())
+    data, failed = merged_key_data(clients)
+    if len(failed) == len(clients):
+        flash("salt-api error: no master reachable.", "error")
         data = {t: [] for t, _ in TABS}
+    for name in failed:
+        flash(f"{name} unreachable: key states may be partial.", "warning")
     counts = {t: len(data[t]) for t, _ in TABS}
     masters = [
         m.strip()
@@ -132,20 +180,31 @@ def act(action: str):
     if any(c in mid for c in "*?[]"):
         flash("Key ids with wildcards are never accepted.", "error")
         return redirect(url_for("keys.index", **keep))
-    try:
-        current_ids = {
-            row["id"] for rows in get_key_data(get_salt()).values() for row in rows
-        }
-    except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
-        return redirect(url_for("keys.index", **keep))
+    clients = pod_clients(get_salt())
+    roster, _ = merged_key_data(clients)
+    current_ids = {row["id"] for rows in roster.values() for row in rows}
     if mid not in current_ids:
+        # An empty union means no master answered: say so plainly.
         flash("Unknown key: it is not on the current list.", "error")
         return redirect(url_for("keys.index", **keep))
-    try:
-        get_salt().wheel(ACTIONS[action], match=mid)
-    except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
+    failed = []
+    for name, cli in clients:
+        try:
+            cli.wheel(ACTIONS[action], match=mid)
+        except SaltApiError:
+            failed.append(name)
+    if len(failed) == len(clients):
+        flash("salt-api error: no master reachable. Nothing changed.", "error")
+    elif failed:
+        flash(
+            f"{mid}: {action}ed on the reachable masters; "
+            f"{', '.join(failed)} unreachable — retry to converge.",
+            "warning",
+        )
+        log_event(
+            current_user.username,
+            f"{action}-key-partial:{mid}:{','.join(failed)}"[:64],
+        )
     else:
         log_event(current_user.username, f"{action}-key")
         flash(f"{mid}: {action}ed.", "success")

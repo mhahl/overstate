@@ -15,6 +15,7 @@ from . import (
     groups,
     jobs,
     keys,
+    masterconfig,
     mine,
     minions,
     pillar,
@@ -74,6 +75,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.register_blueprint(auth.bp)
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(keys.bp)
+    app.register_blueprint(masterconfig.bp)
     app.register_blueprint(minions.bp)
     app.register_blueprint(mine.bp)
     app.register_blueprint(groups.bp)

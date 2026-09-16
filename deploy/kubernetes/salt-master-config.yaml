@@ -1,0 +1,66 @@
+# Salt master configuration, owned by Overstate.
+#
+# This ConfigMap IS the master's config surface: edit it (by hand here,
+# later through the app's Master Config page) and restart the
+# salt-master StatefulSet to apply. Mounted at /home/salt/data/config,
+# which the master image reads as config drop-ins.
+#
+# The eauth user itself is created by the image from SALT_API_USER /
+# SALT_API_USER_PASS env (see salt-master.yaml); the password never
+# lives in this file.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: salt-master-config
+data:
+  # Main overrides. Image defaults cover file roots and pillar; keep
+  # this file minimal — every key here beats an image default.
+  master.conf: |
+    # Managed by Overstate. Add master overrides below this line.
+  # salt-api auth for the `overstate` eauth user. Mirrors
+  # salt-config/api.conf from the repo (grants the app needs, nothing
+  # more). TLS for salt-api is the image's own self-signed cert (see
+  # the NOTE below, kept from the repo file).
+  api.conf: |
+    external_auth:
+      pam:
+        overstate:
+          - test.ping
+          - pkg.install
+          - pkg.remove
+          - service.restart
+          - service.status
+          - ps.kill_pid
+          - mine.update
+          - mine.*
+          - state.apply
+          - state.highstate
+          - saltutil.kill_job
+          - state.show_highstate
+          - state.show_sls
+          - schedule.list
+          - schedule.add
+          - schedule.enable_job
+          - schedule.disable_job
+          - schedule.delete
+          - beacons.list
+          - beacons.enable_beacon
+          - beacons.disable_beacon
+          - saltutil.sync_all
+          - saltutil.refresh_pillar
+          - grains.items
+          - pillar.items
+          - sys.*
+          - "@wheel"
+          - "@runner"
+          - "@jobs"
+    netapi_enable_clients:
+      - local
+      - local_async
+      - ssh
+      - runner
+      - wheel
+    # NOTE: the master image appends its own rest_cherrypy block (with a
+    # fresh self-signed cert) to the main config file at every boot, and
+    # the main file beats this include for nested keys — so ssl_crt /
+    # ssl_key here would be ignored.

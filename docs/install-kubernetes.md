@@ -1,0 +1,140 @@
+# Install Overstate on Kubernetes
+
+Design rationale, assumptions, and risks: `architecture-kubernetes.md`.
+This page is the how-to.
+
+Production target: a cluster with Traefik (443 ingress plus the
+4505/4506 TCP entrypoints, managed in a separate repo), a default
+StorageClass (Longhorn here), and free DNS for `overstate.sigaint.au`.
+Everything Overstate manages lives in the `overstate` namespace —
+never touch anything outside it.
+
+## 1. Create the secret
+
+Secrets are never committed. Create `overstate-secrets` before the
+first apply:
+
+```sh
+kubectl -n overstate create secret generic overstate-secrets \
+  --from-literal=SECRET_KEY="$(openssl rand -hex 32)" \
+  --from-literal=ADMIN_PASSWORD="$(openssl rand -hex 16)" \
+  --from-literal=REDIS_PASSWORD="$(openssl rand -hex 16)" \
+  --from-literal=SALT_API_USER_PASS="$(openssl rand -hex 24)"
+```
+
+`ADMIN_PASSWORD` seeds the first admin login (change it in Users
+afterwards). The other three have no recoverable default — losing
+the Secret means regenerating and restarting every workload.
+
+## 2. Apply
+
+```sh
+kubectl apply -k deploy/kubernetes
+```
+
+The kustomization pins the app/worker image tag (`images:`) — bump
+`newTag` per release and re-apply. The app Deployment resolves its
+database password from the CNPG-generated `overstate-db-app` secret;
+salt-api credentials come from `overstate-secrets`.
+
+Verify:
+
+```sh
+kubectl -n overstate get pods
+kubectl -n overstate exec statefulset/salt-master -- salt-key --list-all
+```
+
+## 3. Restore runbook
+
+Config damage (bad master ConfigMap edit) is recovered from the UI:
+Master config → **Revert to last snapshot** re-patches the previous
+whole ConfigMap and restarts the masters. The last 20 revisions live
+in the `salt-master-config-history` ConfigMap.
+
+If the UI itself is locked out (bad `api.conf`):
+
+```sh
+# Read the last good snapshot:
+kubectl -n overstate get configmap salt-master-config-history -o jsonpath='{.data.history\.json}'
+# Re-apply its .data by hand:
+kubectl -n overstate edit configmap salt-master-config
+# Then roll the masters one at a time:
+kubectl -n overstate rollout restart statefulset/salt-master
+kubectl -n overstate rollout status statefulset/salt-master
+```
+
+Database damage is CNPG's domain (`overstate-db` cluster backups);
+accepted minion keys live on the masters' per-pod `keys` PVCs and
+survive reschedules.
+
+## 4. Shared master keypair (failover pair)
+
+Both master pods present one identity from the owner-held
+`salt-master-keys` Secret (never committed). To bootstrap from the
+live single master — same bytes, no rotation, minions unaffected:
+
+```sh
+kubectl -n overstate cp salt-master-0:/home/salt/data/keys/master.pem /tmp/mk.pem
+kubectl -n overstate cp salt-master-0:/home/salt/data/keys/master.pub /tmp/mk.pub
+chmod 600 /tmp/mk.pem
+kubectl -n overstate create secret generic salt-master-keys \
+  --from-file=master.pem=/tmp/mk.pem --from-file=master.pub=/tmp/mk.pub
+shred -u /tmp/mk.pem /tmp/mk.pub 2>/dev/null || rm -P /tmp/mk.pem /tmp/mk.pub
+```
+
+Rotation (rare — it changes master identity fleet-wide): generate a
+fresh pair (`salt-key --gen-keys master` on any machine with salt),
+replace the Secret, roll the pods one at a time, and confirm every
+minion trusts the new key before the last old pod leaves. A botched
+rotation needs the re-acceptance procedure, not just revert.
+
+## 5. Shared job cache (failover pair)
+
+Job results live in a dedicated `salt` database so either master
+answers consistently. One-shot provisioning as the CNPG superuser
+(password in the `overstate-db-superuser` Secret):
+
+```sql
+CREATE ROLE salt LOGIN PASSWORD '<generated>';
+CREATE DATABASE salt OWNER salt;
+-- then, connected to the salt database (exact DDL from the
+-- postgres_local_cache returner module itself):
+CREATE TABLE jids (
+  jid varchar(20) PRIMARY KEY,
+  started TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  tgt_type text NOT NULL, cmd text NOT NULL, tgt text NOT NULL,
+  kwargs text NOT NULL, ret text NOT NULL, username text NOT NULL,
+  arg text NOT NULL, fun text NOT NULL);
+CREATE TABLE salt_returns (
+  added TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  fun text NOT NULL, jid varchar(20) NOT NULL, return text NOT NULL,
+  id text NOT NULL, success boolean);
+CREATE INDEX ON salt_returns (added);
+CREATE INDEX ON salt_returns (id);
+CREATE INDEX ON salt_returns (jid);
+CREATE INDEX ON salt_returns (fun);
+ALTER TABLE jids OWNER TO salt;
+ALTER TABLE salt_returns OWNER TO salt;
+```
+
+The masters read the whole returner block — password included — from
+the owner-held `salt-master-db` Secret, overlaid as one more config
+drop-in (`returner.conf`):
+
+```sh
+cat > /tmp/returner.conf <<'EOF'
+master_job_cache: postgres_local_cache
+master_job_cache.postgres.host: overstate-db-rw
+master_job_cache.postgres.user: salt
+master_job_cache.postgres.passwd: '<generated>'
+master_job_cache.postgres.db: salt
+master_job_cache.postgres.port: 5432
+EOF
+chmod 600 /tmp/returner.conf
+kubectl -n overstate create secret generic salt-master-db \
+  --from-file=returner.conf=/tmp/returner.conf
+shred -u /tmp/returner.conf 2>/dev/null || rm -P /tmp/returner.conf
+```
+
+Rotate the same way (replace Secret, roll both pods one at a time).
+The owned ConfigMap never holds passwords — enforced by test.

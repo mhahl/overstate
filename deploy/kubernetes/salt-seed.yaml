@@ -1,0 +1,19 @@
+# Seed states for a fresh shared volume. The srv-data PVC starts empty;
+# the app's seed initContainer copies these in only when `salt/` is
+# absent, so a real repo checked out later is never overwritten.
+# Mirrors salt-srv/salt/ from the repo.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: salt-seed
+data:
+  top.sls: |
+    base:
+      '*':
+        - demo
+  demo.sls: |
+    # Acceptance fixture: a trivial state so dry-run/apply highstate has
+    # something real to report. Dev only.
+    /tmp/overstate-demo.txt:
+      file.managed:
+        - contents: managed by overstate acceptance

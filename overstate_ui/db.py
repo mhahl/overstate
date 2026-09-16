@@ -12,7 +12,10 @@ _Session = None
 
 def init_db(database_uri: str):
     global _engine, _Session
-    _engine = create_engine(database_uri)
+    # pre_ping: failovers (CNPG switchovers, restarts) kill idle pooled
+    # connections server-side; without this every post-failover request
+    # burns a 500 until each worker cycles its dead connection.
+    _engine = create_engine(database_uri, pool_pre_ping=True)
     _Session = scoped_session(sessionmaker(bind=_engine))
     return _engine
 

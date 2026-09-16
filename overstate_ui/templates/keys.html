@@ -35,12 +35,13 @@
 {% if rows %}
 <div class="overflow-x-auto">
 <table class="table table-zebra">
-  <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q}) }}<th>Fingerprint</th><th class="w-48 text-right">Action</th></tr></thead>
+  <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q}) }}<th>Fingerprint</th><th>Pods</th><th class="w-48 text-right">Action</th></tr></thead>
   <tbody>
   {% for row in rows %}
   <tr>
     <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=row.id) }}">{{ row.id }}</a></td>
     <td class="font-mono text-xs break-all">{{ row.fingerprint }}</td>
+    <td class="text-xs whitespace-nowrap">{% for pod, state in (row.states or {}).items() %}<span class="badge badge-sm {{ 'badge-success' if state == 'accepted' else 'badge-warning' if state == 'pending' else 'badge-ghost' }} mr-1">{{ pod }}: {{ state }}</span>{% endfor %}</td>
     <td class="text-right">
       {% if current_user.role in ["operator", "admin"] %}<span class="join join-horizontal">
       {% if tab == "pending" %}

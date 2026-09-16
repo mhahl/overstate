@@ -226,3 +226,146 @@ def test_traceback_in_200_payload_shows_empty_state(tmp_path):
     assert "Reactor disabled" in html
     assert "Traceback" not in html
     assert "Exception occurred in runner" not in html
+
+
+# -- Unit 5: reactor SLS bodies under the admin gate ------------------------
+
+import hashlib
+
+from overstate_ui.models import AuditEvent
+
+
+def _hash(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def test_edit_page_admin_only(tmp_path):
+    app = _app(tmp_path)
+    admin = app.test_client()
+    _login(admin, "admin")
+    rv = admin.get("/reactor/edit", query_string={"sls": "greet.sls"})
+    assert rv.status_code == 200
+    assert b"greet-new-minion" in rv.data
+    for user in ("op", "vwr"):
+        other = app.test_client()
+        _login(other, user)
+        assert (
+            other.get("/reactor/edit", query_string={"sls": "greet.sls"}).status_code
+            == 403
+        )
+        assert (
+            other.post(
+                "/reactor/save",
+                data={"sls": "greet.sls", "content": "x: 1\n", "base_hash": "z"},
+            ).status_code
+            == 403
+        )
+
+
+def test_view_shows_edit_button_to_admins_only(tmp_path):
+    app = _app(tmp_path)
+    admin = app.test_client()
+    _login(admin, "admin")
+    assert (
+        b"/reactor/edit"
+        in admin.get("/reactor/view", query_string={"sls": "greet.sls"}).data
+    )
+    op = app.test_client()
+    _login(op, "op")
+    assert (
+        b"/reactor/edit"
+        not in op.get("/reactor/view", query_string={"sls": "greet.sls"}).data
+    )
+
+
+def test_save_writes_and_audits(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "admin")
+    body = "greet-new-minion:\n  test.nop: []\n  grains.present: [os]\n"
+    rv = client.post(
+        "/reactor/save",
+        data={
+            "sls": "greet.sls",
+            "content": body,
+            "base_hash": _hash("greet-new-minion:\n  test.nop: []\n"),
+        },
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+    assert (tmp_path / "greet.sls").read_text() == body
+    with app.app_context():
+        actions = [row.action for row in get_session().query(AuditEvent).all()]
+    assert "reactor-save:greet.sls" in actions
+
+
+def test_save_stale_refuses(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "admin")
+    stale = _hash("greet-new-minion:\n  test.nop: []\n")
+    (tmp_path / "greet.sls").write_text("raced:\n  test.nop: []\n")
+    rv = client.post(
+        "/reactor/save",
+        data={"sls": "greet.sls", "content": "mine: 1\n", "base_hash": stale},
+        follow_redirects=True,
+    )
+    assert b"changed underneath you" in rv.data
+    assert (tmp_path / "greet.sls").read_text() == "raced:\n  test.nop: []\n"
+    with app.app_context():
+        actions = [row.action for row in get_session().query(AuditEvent).all()]
+    assert "reactor-save-refused:greet.sls:stale" in actions
+
+
+def test_save_invalid_yaml_blocked(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "admin")
+    rv = client.post(
+        "/reactor/save",
+        data={
+            "sls": "greet.sls",
+            "content": "broken: [unclosed\n",
+            "base_hash": _hash("greet-new-minion:\n  test.nop: []\n"),
+        },
+        follow_redirects=True,
+    )
+    assert b"Invalid YAML" in rv.data
+    assert (tmp_path / "greet.sls").read_text() == (
+        "greet-new-minion:\n  test.nop: []\n"
+    )
+    with app.app_context():
+        actions = [row.action for row in get_session().query(AuditEvent).all()]
+    assert "reactor-save-refused:greet.sls:invalid" in actions
+
+
+def test_save_traversal_404s(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "admin")
+    assert (
+        client.post(
+            "/reactor/save",
+            data={"sls": "../salt/evil.sls", "content": "x", "base_hash": "z"},
+        ).status_code
+        == 404
+    )
+    assert not (tmp_path.parent / "evil.sls").exists()
+
+
+def test_missing_roots_degrade_to_404(tmp_path):
+    app = _app(tmp_path)
+    app.config["REACTOR_ROOTS"] = str(tmp_path / "noroot")
+    client = app.test_client()
+    _login(client, "admin")
+    assert (
+        client.get("/reactor/view", query_string={"sls": "greet.sls"}).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            "/reactor/save",
+            data={"sls": "greet.sls", "content": "x", "base_hash": "z"},
+        ).status_code
+        == 404
+    )

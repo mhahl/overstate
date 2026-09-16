@@ -98,7 +98,8 @@ def test_sync_launch_persists_returns(client, monkeypatch):
     )
     assert rv.status_code == 302
     jid = rv.headers["Location"].rsplit("/", 1)[1]
-    assert jid.startswith("sync-")
+    assert len(jid) == 20 and jid.isdigit()  # app-side shared JID (D12)
+    assert stub.calls[0][2]["jid"] == jid
     assert stub.calls[0][2]["http_timeout"] >= 60
     with client.app.app_context():
         rows = get_session().query(JobReturn).filter_by(jid=jid).all()
@@ -136,7 +137,7 @@ def test_ssh_launch_persists_returns(client, monkeypatch):
     assert "No returns recorded" not in html
 
 
-def test_sync_launch_keeps_real_jid(client, monkeypatch):
+def test_sync_launch_uses_app_jid(client, monkeypatch):
     from overstate_ui import jobs_service
 
     stub = _StubSalt([{"jid": "202609150000000001", "web-01": True}])
@@ -152,11 +153,15 @@ def test_sync_launch_keeps_real_jid(client, monkeypatch):
         },
     )
     assert rv.status_code == 302
-    assert rv.headers["Location"].endswith("/jobs/202609150000000001")
+    jid = rv.headers["Location"].rsplit("/", 1)[1]
+    # Server-echoed JIDs no longer win (D12): one app-side shared JID.
+    assert jid != "202609150000000001"
+    assert len(jid) == 20 and jid.isdigit()
+    assert stub.calls[0][2]["jid"] == jid
     with client.app.app_context():
         session = get_session()
-        assert session.get(Job, "202609150000000001").complete is True
-        rows = session.query(JobReturn).filter_by(jid="202609150000000001").all()
+        assert session.get(Job, jid).complete is True
+        rows = session.query(JobReturn).filter_by(jid=jid).all()
         assert [r.minion_id for r in rows] == ["web-01"]
 
 

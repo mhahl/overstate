@@ -145,6 +145,9 @@
           <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('users') }}">
             <span class="icon-[lucide--users] size-4.5" aria-hidden="true"></span>
             Users</a></li>
+          <li><a href="{{ url_for('masterconfig.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('masterconfig') }}">
+            <span class="icon-[lucide--sliders-horizontal] size-4.5" aria-hidden="true"></span>
+            Master config</a></li>
           {% endif %}
         </ul>
       </nav>
@@ -258,6 +261,7 @@
       ] %}
       {% if current_user.is_authenticated and current_user.role == 'admin' %}
       {% set _ = palette_entries.append(("Users", "page", url_for('users.index'))) %}
+      {% set _ = palette_entries.append(("Master config", "page", url_for('masterconfig.index'))) %}
       {% endif %}
       {% for label, hint, href in palette_entries %}
       <li data-palette-entry data-label="{{ label|lower }}" data-href="{{ href }}"><a href="{{ href }}"><span class="mr-auto">{{ label }}</span><span class="badge badge-sm badge-ghost">{{ hint }}</span></a></li>

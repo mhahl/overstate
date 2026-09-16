@@ -1,14 +1,18 @@
 """Master reactor mapping: list, inspect SLS, add/delete, export for git.
 
 The mapping (event tag -> SLS) is master-config state, read and changed
-through salt-api's ``reactor`` runner. SLS bodies are read-only: the UI
-manages the mapping, never file contents. The export renders the live
+through salt-api's ``reactor`` runner. SLS bodies are admin-editable:
+reactor code runs with master privileges and fires on events fleet-wide,
+so operators keep the read-only view. The export renders the live
 mapping as a master-config YAML block for committing to git by hand.
 """
 
+import hashlib
+import os
 import re
 from pathlib import Path
 
+import yaml
 from flask import (
     Blueprint,
     Response,
@@ -304,6 +308,107 @@ def delete():
     log_event(current_user.username, f"reactor-delete:{event}")
     flash(f"{event}: reactor deleted.", "success")
     return redirect(url_for("reactor.index"))
+
+
+@bp.route("/edit")
+@roles_required("admin")
+def edit():
+    """Edit form for one reactor SLS body (admin-only).
+
+    Reactor code runs with master privileges and fires on events, so
+    bodies stay out of operators' hands. ``base_hash`` records what the
+    form was read at; the save route checks it (stale bases refuse).
+    """
+    rel = request.args.get("sls", "")
+    target = _safe_join(rel) if rel and sls_to_rel(rel) == rel else None
+    if not target or not target.is_file():
+        abort(404)
+    try:
+        raw = target.read_bytes()
+    except OSError:
+        abort(404)
+    if len(raw) > MAX_BYTES:
+        flash("That SLS is too large to edit here. Nothing changed.", "error")
+        return redirect(url_for("reactor.view", sls=rel))
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        flash("That SLS is not editable text. Nothing changed.", "error")
+        return redirect(url_for("reactor.view", sls=rel))
+    return render_template(
+        "reactor_edit.html",
+        rel=rel,
+        content=content,
+        base_hash=hashlib.sha256(raw).hexdigest(),
+    )
+
+
+@bp.post("/save")
+@roles_required("admin")
+def save():
+    """Write one reactor SLS body (admin-only, edit-existing-only).
+
+    Blocking YAML gate (bodies auto-fire on events), stale-hash refusal,
+    identical-content no-op. New files arrive via git, not this form.
+    """
+    rel = request.form.get("sls", "")
+    target = _safe_join(rel) if rel and sls_to_rel(rel) == rel else None
+    if not target or not target.is_file():
+        abort(404)
+    try:
+        current = target.read_bytes()
+    except OSError:
+        abort(404)
+    try:
+        current.decode("utf-8")
+        editable = len(current) <= MAX_BYTES
+    except UnicodeDecodeError:
+        editable = False
+    if not editable:
+        flash("That SLS is no longer editable text. Nothing changed.", "error")
+        log_event(current_user.username, f"reactor-save-refused:{rel}:uneditable")
+        return redirect(url_for("reactor.view", sls=rel))
+    data = request.form.get("content", "").encode("utf-8")
+    if len(data) > MAX_BYTES:
+        flash(
+            f"Too large to save ({len(data)} bytes; limit is {MAX_BYTES}). "
+            "Nothing changed.",
+            "error",
+        )
+        log_event(current_user.username, f"reactor-save-refused:{rel}:oversize")
+        return redirect(url_for("reactor.view", sls=rel))
+    if data == current:
+        flash("No changes — nothing saved.", "info")
+        return redirect(url_for("reactor.view", sls=rel))
+    if request.form.get("base_hash") != hashlib.sha256(current).hexdigest():
+        flash(
+            "That SLS changed underneath you. Reload the edit page and "
+            "re-apply your change. Nothing was written.",
+            "error",
+        )
+        log_event(current_user.username, f"reactor-save-refused:{rel}:stale")
+        return redirect(url_for("reactor.edit", sls=rel))
+    try:
+        parsed = yaml.safe_load(data)
+    except yaml.YAMLError as exc:
+        flash(f"Invalid YAML: {str(exc)[:300]}. Nothing was written.", "error")
+        log_event(current_user.username, f"reactor-save-refused:{rel}:invalid")
+        return redirect(url_for("reactor.edit", sls=rel))
+    if parsed is not None and not isinstance(parsed, dict):
+        flash("Reactor SLS must be a top-level mapping. Nothing written.", "error")
+        log_event(current_user.username, f"reactor-save-refused:{rel}:invalid")
+        return redirect(url_for("reactor.edit", sls=rel))
+    try:
+        tmp = target.with_name(target.name + ".overstate-tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, target)
+    except OSError:
+        flash("Could not write the SLS. Nothing changed.", "error")
+        log_event(current_user.username, f"reactor-save-refused:{rel}:write-failed")
+        return redirect(url_for("reactor.view", sls=rel))
+    flash(f"Saved {rel}. It fires on matching events from now on.", "success")
+    log_event(current_user.username, f"reactor-save:{rel}")
+    return redirect(url_for("reactor.view", sls=rel))
 
 
 @bp.route("/export")

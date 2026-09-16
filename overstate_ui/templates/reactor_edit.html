@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ rel }} · Reactor · Overstate{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.view', sls=rel) }}">‹ Back</a>
+    <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
+  </div>
+  <div class="alert alert-warning mb-4 text-sm">
+    <span><strong>Admin-only:</strong> this code runs with master privileges and fires on matching events fleet-wide. Invalid YAML is blocked; a raced save refuses.</span>
+  </div>
+  <form method="post" action="{{ url_for('reactor.save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="sls" value="{{ rel }}">
+    <input type="hidden" name="base_hash" value="{{ base_hash }}">
+    <div class="card bg-base-100 border border-base-300 shadow-sm mb-3">
+      <div class="card-body p-3 sm:p-4">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="font-mono text-xs break-all opacity-70 mr-auto">{{ rel }}</span>
+          <span class="badge badge-sm badge-ghost">yaml</span>
+          <span class="text-xs opacity-60 tabular-nums">{{ content.splitlines()|length }} lines</span>
+        </div>
+        <div id="editor-mount" data-lang="yaml" class="border border-base-300 rounded-lg overflow-hidden"></div>
+        <textarea id="editor-textarea" name="content" rows="25" spellcheck="false"
+          class="textarea textarea-bordered font-mono text-sm w-full mt-2" aria-label="SLS contents">{{ content }}</textarea>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button class="btn btn-sm btn-primary" type="submit">Save</button>
+      <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.view', sls=rel) }}">Cancel</a>
+    </div>
+  </form>
+  <script src="{{ url_for('static', filename='editor.bundle.js') }}"></script>
+</div>
+{% endblock %}

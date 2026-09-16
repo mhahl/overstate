@@ -1,0 +1,23 @@
+# Postgres via CloudNative-PG (operator runs cluster-wide in cnpg-system;
+# this Cluster resource is namespace-scoped). Three instances for a
+# production primary + standbys. The operator creates the `overstate`
+# database/owner and stores its password in the `overstate-db-app`
+# Secret, which the app Deployment composes into DATABASE_URL.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: overstate-db
+spec:
+  # Single instance: HA not required right now. Scale back to 3 when it
+  # is (note: storage size can never be decreased, only instances).
+  instances: 1
+  storage:
+    storageClass: longhorn
+    size: 20Gi
+  bootstrap:
+    initdb:
+      database: overstate
+      owner: overstate
+  postgresql:
+    parameters:
+      shared_buffers: 256MB

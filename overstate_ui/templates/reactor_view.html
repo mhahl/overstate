@@ -6,7 +6,10 @@
     <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.index') }}">‹ Reactor</a>
     <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
   </div>
-  <p class="text-sm opacity-70 mb-4">Read-only. Reactor SLS bodies are never edited from the UI.</p>
+  <p class="text-sm opacity-70 mb-4">Reactor SLS bodies are admin-edited: this code runs with master privileges and fires on matching events.</p>
+  {% if content is not none and current_user.is_authenticated and current_user.role == 'admin' %}
+  <div class="mb-4"><a class="btn btn-sm btn-primary" href="{{ url_for('reactor.edit', sls=rel) }}">Edit</a></div>
+  {% endif %}
   {% if content is none %}
   <div class="card bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body py-8 text-center">

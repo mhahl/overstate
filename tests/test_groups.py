@@ -146,9 +146,13 @@ def test_group_target_fires_list_job(app, admin, monkeypatch):
     with app.app_context():
         get_session().add(MinionGroup(name="web", members=["web-01", "ghost-99"]))
         get_session().commit()
-    monkeypatch.setattr(
-        app.extensions["salt_client"], "local", lambda *a, **k: [{"jid": "j9"}]
-    )
+    seen = []
+
+    def fake_local(*a, **k):
+        seen.append(k)
+        return [{"jid": "j9"}]
+
+    monkeypatch.setattr(app.extensions["salt_client"], "local", fake_local)
     rv = admin.post(
         "/jobs/run",
         data={
@@ -160,10 +164,13 @@ def test_group_target_fires_list_job(app, admin, monkeypatch):
         },
     )
     assert rv.status_code == 302
+    jid = rv.headers["Location"].rsplit("/", 1)[1]
+    assert len(jid) == 20 and jid.isdigit()  # app-side shared JID (D12)
+    assert seen and seen[0].get("jid") == jid
     with app.app_context():
         from overstate_ui.models import Job
 
-        job = get_session().get(Job, "j9")
+        job = get_session().get(Job, jid)
         assert job is not None and job.tgt_type == "list"
         assert job.tgt == "web-01"  # stale ghost-99 resolved out
 

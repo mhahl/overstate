@@ -1,0 +1,164 @@
+# Salt master + salt-api (project image: stock :lts plus the postgres
+# driver for the shared job cache). Active-active pair: both pods present
+# the same keypair (owner-held `salt-master-keys` Secret, never committed)
+# and share one ConfigMap; accepted minion keys stay per-pod on PVCs.
+# Rolling restarts go one pod at a time, so one master always serves.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: salt-master
+spec:
+  serviceName: salt-master
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: salt-master
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: salt-master
+    spec:
+      # fsGroup 1000 (salt): the Secret-mounted keypair is root-owned, so
+      # the group bit is what lets the daemon read it. Must stay in sync
+      # with the image's salt uid/gid.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: salt-master
+          # TODO: pin to a digest for reproducibility (same TODO as
+          # Containerfile.salt-master in the repo).
+          image: quay.io/sigaint/overstate:salt-master-lts-pg1
+          env:
+            - name: SALT_API_ENABLED
+              value: "True"
+            - name: SALT_API_USER
+              value: overstate
+            - name: SALT_API_USER_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-secrets
+                  key: SALT_API_USER_PASS
+            - name: SALT_MINION_ENABLED
+              value: "False"
+          ports:
+            - name: publish
+              containerPort: 4505
+            - name: request
+              containerPort: 4506
+            - name: api
+              containerPort: 8000
+          volumeMounts:
+            # Owned configuration (ConfigMap salt-master-config).
+            - name: config
+              mountPath: /home/salt/data/config
+              readOnly: true
+            # Shared file roots, served read-only (app holds the writer).
+            - name: srv
+              mountPath: /home/salt/data/srv
+              readOnly: true
+            # Accepted minion keys (per-pod PVC): must survive reschedules
+            # or minions go pending on the rescheduled pod.
+            - name: keys
+              mountPath: /home/salt/data/keys
+            # Shared master identity: the same keypair on both pods, from
+            # the owner-held `salt-master-keys` Secret (see
+            # docs/install-kubernetes.md). subPath file mounts leave the
+            # rest of the keys dir (accepted minions) on the PVC.
+            - name: master-keypair
+              mountPath: /home/salt/data/keys/master.pem
+              subPath: master.pem
+              readOnly: true
+            - name: master-keypair
+              mountPath: /home/salt/data/keys/master.pub
+              subPath: master.pub
+              readOnly: true
+            # (The returner drop-in arrives via the projected `config`
+            # volume below — never a subPath file mount into this
+            # read-only directory: these nodes reject that with ENOTDIR.)
+          readinessProbe:
+            tcpSocket:
+              port: api
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: 1Gi
+              cpu: 500m
+            limits:
+              memory: 2Gi
+      volumes:
+        # One directory from two sources: the owned ConfigMap plus the
+        # owner-held returner Secret. Projected (not subPath overlays):
+        # file mounts into a read-only ConfigMap mount fail on these
+        # nodes. The UI keeps editing the ConfigMap object itself.
+        - name: config
+          projected:
+            defaultMode: 0440
+            sources:
+              - configMap:
+                  name: salt-master-config
+              - secret:
+                  name: salt-master-db
+        - name: master-keypair
+          secret:
+            secretName: salt-master-keys
+            defaultMode: 0440
+        - name: srv
+          persistentVolumeClaim:
+            claimName: srv-data
+  volumeClaimTemplates:
+    - metadata:
+        name: keys
+      spec:
+        storageClassName: longhorn
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Headless service: StatefulSet identity.
+apiVersion: v1
+kind: Service
+metadata:
+  name: salt-master
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: salt-master
+  ports:
+    - name: publish
+      port: 4505
+    - name: request
+      port: 4506
+    - name: api
+      port: 8000
+---
+# salt-api for the app (in-cluster HTTPS; the image mints its own cert —
+# see SALT_API_VERIFY_CA=false on the app with a follow-up to pin it).
+apiVersion: v1
+kind: Service
+metadata:
+  name: salt-master-api
+spec:
+  selector:
+    app.kubernetes.io/name: salt-master
+  ports:
+    - name: api
+      port: 8000
+      targetPort: api
+---
+# ZeroMQ publish/request for minions. Traefik routes (salt-mq-routes.yaml)
+# target this service once the 4505/4506 entrypoints exist.
+apiVersion: v1
+kind: Service
+metadata:
+  name: salt-master-mq
+spec:
+  selector:
+    app.kubernetes.io/name: salt-master
+  ports:
+    - name: publish
+      port: 4505
+      targetPort: publish
+    - name: request
+      port: 4506
+      targetPort: request

@@ -1,0 +1,63 @@
+# RQ background worker (same image as the app). Falls back to sync
+# execution when unreachable, so one replica is enough.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: overstate-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: overstate-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: overstate-worker
+    spec:
+      serviceAccountName: overstate-app
+      containers:
+        - name: worker
+          image: overstate-app
+          imagePullPolicy: Always
+          command: ["python", "-m", "overstate_ui.worker"]
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-db-app
+                  key: password
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://overstate:$(DB_PASSWORD)@overstate-db-rw:5432/overstate"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-secrets
+                  key: REDIS_PASSWORD
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
+            - name: SALT_API_URL
+              value: https://salt-master-api:8000
+            - name: SALT_API_VERIFY_CA
+              value: "false"
+            - name: SALT_EAUTH_USER
+              value: overstate
+            - name: SALT_EAUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-secrets
+                  key: SALT_API_USER_PASS
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: overstate-secrets
+                  key: SECRET_KEY
+            - name: FILE_ROOTS
+              value: /srv/states/salt
+            - name: REACTOR_ROOTS
+              value: /srv/states/reactor
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 250m
+            limits:
+              memory: 512Mi

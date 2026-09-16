@@ -202,9 +202,10 @@ def test_destructive_with_confirmed_launches(client):
         },
     )
     assert rv.status_code == 302
-    assert "/jobs/42424" in rv.headers["Location"]
+    jid = rv.headers["Location"].rsplit("/", 1)[1]
+    assert len(jid) == 20 and jid.isdigit()  # app-side shared JID (D12)
     with client.app.app_context():
-        job = get_session().get(Job, "42424")
+        job = get_session().get(Job, jid)
         assert job is not None and job.fun == "service.restart"
 
 

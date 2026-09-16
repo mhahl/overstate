@@ -132,6 +132,7 @@ class SaltClient:
         asynchronous: bool = False,
         via: str = "local",
         kwarg: dict | None = None,
+        jid: str | None = None,
         http_timeout: float | None = None,
     ) -> Any:
         """Run a function via the ``local`` zeromq path or ``ssh`` roster path.
@@ -139,9 +140,12 @@ class SaltClient:
         salt-ssh runs synchronously with its own (longer) timeout: roster
         targets fan out over SSH, so expect minutes not seconds on fleets.
         ``kwarg`` forwards keyword arguments (e.g. ``schedule.add`` options)
-        as the salt-api ``kwarg`` payload. ``timeout`` is the Salt job
-        timeout sent to the master; ``http_timeout`` caps only this HTTP
-        round trip and is never forwarded.
+        as the salt-api ``kwarg`` payload. ``jid`` pins the job id so the
+        failover pair can publish the same job on both masters and merge
+        returns under one id (salt-api honors a client-supplied jid).
+        ``timeout`` is the Salt job timeout sent to the master;
+        ``http_timeout`` caps only this HTTP round trip and is never
+        forwarded.
         """
         if via == "ssh":
             payload: dict = {
@@ -170,6 +174,8 @@ class SaltClient:
                 "tgt_type": tgt_type,
                 "timeout": timeout,
             }
+        if jid is not None and via != "ssh":
+            payload["jid"] = jid
         if kwarg:
             payload["kwarg"] = kwarg
         return self._post(payload, http_timeout=http_timeout)

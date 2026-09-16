@@ -1,5 +1,6 @@
-# Dev-only Salt master: stock image plus the postgres driver the pgjsonb
-# returner needs. Never use outside local dev.
+# Salt master: stock image plus the postgres driver the pgjsonb /
+# postgres_local_cache returners need (multi-master shared job cache).
+# Used in local dev and production alike.
 # TODO: pin :lts to a digest (docker manifest inspect) for reproducibility.
 FROM ghcr.io/cdalvaro/docker-salt-master:lts
 

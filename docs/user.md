@@ -345,10 +345,43 @@ reaches the page.
 ## Reactor
 
 The Reactor page lists the master's event → SLS mapping exactly as
-`reactor.list` reports it, with each SLS viewable read-only. Reactor
-rows link to the matching Events family so you can watch them fire.
-Operators can add and delete mappings (delete asks once on its own
-page); every change is audit-logged. The mapping is master-config
-state, not git content — but **Export for git** renders the live
-mapping as a `reactor:` YAML block you can commit by hand. The app
-never writes your repo.
+`reactor.list` reports it. Reactor rows link to the matching Events
+family so you can watch them fire. Operators can add and delete
+mappings (delete asks once on its own page); every change is
+audit-logged. The mapping is master-config state, not git content —
+but **Export for git** renders the live mapping as a `reactor:` YAML
+block you can commit by hand. The app never writes your repo.
+
+SLS bodies are admin-edited from the SLS view. This code runs with
+master privileges and fires on matching events fleet-wide, so saving
+blocks on invalid YAML, a raced save refuses with nothing written, and
+every save is audit-logged. New SLS files still arrive via git, not
+the browser.
+
+## Master config
+
+Admins only — operators and viewers see no link and get 403 on forged
+requests. The page lists the data keys of the owned master ConfigMap
+(`master.conf`, `api.conf`). Opening a key shows the live content;
+**Edit** opens the code editor with a plain-textarea fallback.
+
+Saving snapshots the whole ConfigMap into the history ConfigMap first
+(the last 20 revisions are kept), then writes. Invalid YAML is
+blocked with the parse error shown — never advisory, because a broken
+master config stops the masters. A save that raced another writer (or
+a hand `kubectl edit`) refuses with the current revision and writes
+nothing: reload and re-apply. Every save and every refusal is
+audit-logged.
+
+Nothing applies until the masters restart, and saving never restarts
+them by itself. **Restart masters** rolls the StatefulSet one pod at a
+time, waits for the rollout and salt-api to come back healthy, and
+reports the outcome — an unhealthy restart names itself and points at
+the revert below, never as success. **Revert to last snapshot**
+re-patches the previous whole ConfigMap (snapshotting current first,
+so revert is undoable) and restarts.
+
+`api.conf` carries a lockout banner: a bad edit can lock this UI out
+of salt-api. Recovery is revert plus restart; keep `kubectl` access
+before touching it. Outside the cluster the page degrades to showing
+the equivalent `kubectl` commands instead of editing.

@@ -1,0 +1,48 @@
+# Overstate on Kubernetes (production).
+#
+# Everything here is namespace-scoped to `overstate`: no ClusterRoles,
+# no StorageClasses, no edits outside the namespace. Apply with:
+#
+#   kubectl apply -k deploy/kubernetes
+#
+# Secrets are NOT committed: create `overstate-secrets` before the first
+# apply (see docs/install-kubernetes.md):
+#
+#   kubectl -n overstate create secret generic overstate-secrets \
+#     --from-literal=SECRET_KEY="$(openssl rand -hex 32)" \
+#     --from-literal=ADMIN_PASSWORD="$(openssl rand -hex 16)" \
+#     --from-literal=REDIS_PASSWORD="$(openssl rand -hex 16)" \
+#     --from-literal=SALT_API_USER_PASS="$(openssl rand -hex 24)"
+#
+# The app/worker image is set via the `images:` transformer below.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: overstate
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: overstate
+      app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - salt-master-config.yaml
+  - salt-master-config-history.yaml
+  - salt-seed.yaml
+  - volumes.yaml
+  - redis.yaml
+  - postgres.yaml
+  - salt-master.yaml
+  - app.yaml
+  - worker.yaml
+  - ingress.yaml
+  - salt-mq-routes.yaml
+
+images:
+  # App/worker image (Quay). Bump newTag per release; the Deployment
+  # base name `overstate-app` must keep matching `name:` here.
+  - name: overstate-app
+    newName: quay.io/sigaint/overstate
+    newTag: pair1

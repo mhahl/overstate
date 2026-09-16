@@ -28,6 +28,7 @@ from flask_login import (
     logout_user,
 )
 from flask_wtf import FlaskForm
+from sqlalchemy.exc import IntegrityError
 from wtforms import PasswordField, StringField
 from wtforms.validators import DataRequired
 
@@ -260,7 +261,14 @@ def seed_admin(username: str = "admin", password: str | None = None) -> bool:
 
     password = password or secrets.token_urlsafe(16)
     session.add(User(username=username, password_hash=_ph.hash(password), role="admin"))
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # Lost a seeding race with another instance (two replicas booting
+        # at once both saw an empty table): the other insert won, so roll
+        # back and report nothing-to-do instead of crashing the boot.
+        session.rollback()
+        return False
     print(f"seeded admin '{username}' with password: {password}")
     return True
 

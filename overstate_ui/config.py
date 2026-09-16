@@ -44,6 +44,12 @@ class Config:
     FILE_ROOTS = os.environ.get("FILE_ROOTS", "salt-srv/salt")
     REACTOR_ROOTS = os.environ.get("REACTOR_ROOTS", "salt-srv/reactor")
     SYNDIC_MASTERS = os.environ.get("SYNDIC_MASTERS", "")
+    MASTER_CONFIGMAP = os.environ.get("MASTER_CONFIGMAP", "salt-master-config")
+    MASTER_CONFIG_HISTORY = os.environ.get(
+        "MASTER_CONFIG_HISTORY", "salt-master-config-history"
+    )
+    MASTER_STATEFULSET = os.environ.get("MASTER_STATEFULSET", "salt-master")
+    MASTER_HEADLESS_SERVICE = os.environ.get("MASTER_HEADLESS_SERVICE", "salt-master")
 
 
 class TestConfig(Config):

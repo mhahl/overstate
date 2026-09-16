@@ -1,0 +1,27 @@
+# Persistent volumes. All Longhorn, all inside the `overstate` namespace
+# (claims are namespaced; the StorageClass itself is pre-existing).
+#
+# srv-data is shared: the app mounts it writable (git checkout for the
+# file browser), the master mounts it read-only and serves it. Longhorn
+# serves ReadWriteMany, which shared mounts need.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: srv-data
+spec:
+  storageClassName: longhorn
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+spec:
+  storageClassName: longhorn
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
