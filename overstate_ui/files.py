@@ -29,13 +29,23 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .git_sync import (
+    clear_token,
+    clone_repo,
     git_commit_file,
     git_fetch_now,
     git_head,
+    git_origin,
     git_push_now,
     git_status,
     git_sync_now,
+    has_token,
     is_checkout,
+    reclone_repo,
+    reset_hard,
+    reset_preview,
+    save_token,
+    set_remote_origin,
+    validate_repo_url,
 )
 from .salt_client import SaltApiError
 
@@ -444,6 +454,156 @@ def push():
         flash(f"Push refused: {result['reason']}. Nothing changed.", "error")
         log_event(current_user.username, f"git-push-refused:{result['reason']}")
     return redirect(url_for("files.index"))
+
+
+def _repo_context(preview=None, pending=None):
+    checkout = is_checkout()
+    return {
+        "checkout": checkout,
+        "status": git_status() if checkout else None,
+        "origin": git_origin() if checkout else None,
+        "token_configured": has_token(),
+        "preview": preview,
+        "pending": pending,
+    }
+
+
+def _note_refreshed(verb, sha):
+    """Fileserver refresh after a tree-changing repo op, sync-style."""
+    err = _refresh_fileserver()
+    if err is None:
+        flash(f"{verb} at {sha}; master fileserver refreshed.", "success")
+        log_event(current_user.username, "fileserver-update")
+    else:
+        flash(
+            f"{verb} at {sha}, but the master refresh failed ({err}) — "
+            "applies may lag until the master updates.",
+            "warning",
+        )
+        log_event(current_user.username, f"fileserver-update-failed:{err}")
+
+
+@bp.get("/repo")
+@roles_required("admin")
+def repo():
+    """Repo tab: bootstrap, repoint, and repair the file-roots checkout."""
+    return render_template("repo.html", **_repo_context())
+
+
+@bp.post("/repo/clone")
+@roles_required("admin")
+def repo_clone():
+    """Clone the canonical repo into an empty file roots. Admin-only."""
+    url = request.form.get("url", "")
+    branch = request.form.get("branch", "")
+    token = request.form.get("token", "") or None
+    result = clone_repo(url, branch, token)
+    if result["ok"]:
+        log_event(current_user.username, "git-clone")
+        _note_refreshed("Cloned", git_head())
+    else:
+        flash(f"Clone refused: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"git-clone-refused:{result['reason']}")
+    return redirect(url_for("files.repo"))
+
+
+@bp.post("/repo/set-remote")
+@roles_required("admin")
+def repo_set_remote():
+    """Repoint origin at a moved canonical repo. Admin-only."""
+    result = set_remote_origin(request.form.get("url", ""))
+    if result["ok"]:
+        log_event(current_user.username, "git-set-remote")
+        flash("Origin repointed.", "success")
+    else:
+        flash(f"Repoint refused: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"git-set-remote-refused:{result['reason']}")
+    return redirect(url_for("files.repo"))
+
+
+@bp.post("/repo/reset")
+@roles_required("admin")
+def repo_reset():
+    """Two-step reset to the tracked upstream: preview, then confirm."""
+    if request.form.get("confirm") != "1":
+        preview = reset_preview()
+        if not preview["ok"]:
+            flash(
+                f"Reset refused: {preview['reason']}. Nothing changed.",
+                "error",
+            )
+            return redirect(url_for("files.repo"))
+        return render_template("repo.html", **_repo_context(preview=preview))
+    clean = request.form.get("clean") == "1"
+    result = reset_hard(clean_untracked=clean)
+    if result["ok"]:
+        log_event(current_user.username, "git-reset")
+        _note_refreshed("Reset", result["new"])
+    else:
+        flash(f"Reset refused: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"git-reset-refused:{result['reason']}")
+    return redirect(url_for("files.repo"))
+
+
+@bp.post("/repo/reclone")
+@roles_required("admin")
+def repo_reclone():
+    """Two-step full re-clone: preview the destruction, then confirm."""
+    url = request.form.get("url", "") or (git_origin() or "")
+    branch = request.form.get("branch", "")
+    token = request.form.get("token", "") or None
+    if request.form.get("confirm") != "1":
+        if not validate_repo_url(url)["ok"]:
+            flash("Re-clone refused: enter a remote URL first.", "error")
+            return redirect(url_for("files.repo"))
+        return render_template(
+            "repo.html",
+            **_repo_context(pending={"url": url, "branch": branch}),
+        )
+    result = reclone_repo(url, branch, token)
+    if result["ok"]:
+        log_event(current_user.username, "git-reclone")
+        _note_refreshed("Re-cloned", git_head())
+    else:
+        flash(f"Re-clone refused: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"git-reclone-refused:{result['reason']}")
+    return redirect(url_for("files.repo"))
+
+
+@bp.post("/repo/token-save")
+@roles_required("admin")
+def repo_token_save():
+    """Store an https token for the current origin's host (0600)."""
+    origin = git_origin()
+    if not origin or not origin.startswith("https://"):
+        flash(
+            "Save refused: clone or set an https remote first — "
+            "tokens are stored per host.",
+            "error",
+        )
+        return redirect(url_for("files.repo"))
+    host = origin.split("/", 3)[2]
+    result = save_token(request.form.get("token", ""), host)
+    if result["ok"]:
+        log_event(current_user.username, "git-token-saved")
+        flash(f"Token stored for {host}.", "success")
+    else:
+        flash(f"Save refused: {result['reason']}. Nothing changed.", "error")
+    return redirect(url_for("files.repo"))
+
+
+@bp.post("/repo/token-clear")
+@roles_required("admin")
+def repo_token_clear():
+    """Forget the stored token. Future remote calls prompt nothing —
+    they fail with missing credentials instead."""
+    result = clear_token()
+    if result["ok"]:
+        log_event(current_user.username, "git-token-cleared")
+        flash("Stored token cleared.", "info")
+    else:
+        flash(f"Clear refused: {result['reason']}.", "error")
+    return redirect(url_for("files.repo"))
 
 
 @bp.route("/view")

@@ -341,6 +341,20 @@ missing push credentials, and every push or refusal is audited. Saving
 never applies anything to minions; the master serves the new states
 after its fileserver refresh, same as after a sync.
 
+Admins also get a **Repo** tab for bootstrap and repair. **Clone**
+checks out the canonical repo when file roots hold no checkout yet
+(the fresh-deploy case): repo URL, branch (blank means the remote
+default), and an https token that is stored `0600` beside the
+checkout — one slot, never shown back. **Repoint origin** moves to a
+new canonical URL and refuses on dirty trees and unpushed commits.
+**Reset to upstream** abandons tracked changes after a preview naming
+every doomed file (untracked files survive unless ticked separately),
+and **Re-clone** destroys a corrupt checkout and clones fresh — both
+refuse on unpushed commits, and every run or refusal is audited.
+Credentials for https remotes live in that one `0600` file outside
+the checkout (the browser can read anything *inside* it); SSH remotes
+use deploy keys instead.
+
 ## Events
 
 The event viewer tails the Salt event bus through salt-api. Pick one

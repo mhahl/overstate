@@ -31,6 +31,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-primary" title="Push committed changes upstream">Push</button>
           </form>
+          <a class="btn btn-sm btn-ghost" title="Clone, repoint, and repair the checkout" href="{{ url_for('files.repo') }}">Repo</a>
           {% endif %}
         </span>
         {% endif %}

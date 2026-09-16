@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Repo · Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">Repo</h1>
+  <p class="text-sm opacity-70 mt-0.5">Bootstrap, repoint, and repair the file-roots checkout. Admin only.</p>
+</div>
+
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card-body">
+<h2 class="font-semibold">Status</h2>
+{% if checkout and status and status.ok %}
+<div class="text-sm flex flex-wrap gap-2 items-center">
+  <span class="font-mono">{{ status.branch }}</span>
+  <span class="font-mono">{{ status.sha }}</span>
+  {% if status.clean %}<span class="badge badge-sm badge-success">clean</span>{% else %}<span class="badge badge-sm badge-warning">{{ status.dirty_count }} uncommitted</span>{% endif %}
+  {% if status.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ status.upstream }}{% if status.ahead is not none %} · {{ status.ahead }} ahead, {{ status.behind }} behind{% endif %}</span>{% endif %}
+</div>
+<p class="text-sm mt-2">Origin: <span class="font-mono text-xs break-all">{{ origin or "none" }}</span></p>
+<p class="text-sm">Push credentials: {% if token_configured %}<span class="badge badge-sm badge-success">stored</span>{% else %}<span class="badge badge-sm badge-ghost">none</span>{% endif %}</p>
+{% else %}
+<p class="text-sm">No git checkout here yet — clone the canonical repo below to bootstrap file roots.</p>
+{% endif %}
+</div>
+</div>
+
+{% if not checkout %}
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card-body">
+<h2 class="font-semibold">Clone</h2>
+<form method="post" action="{{ url_for('files.repo_clone') }}" class="flex flex-col gap-2 max-w-xl">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="fieldset"><span class="fieldset-legend">Repo URL (https or SSH)</span>
+  <input type="text" name="url" class="input input-sm" placeholder="https://git.example.com/salt/states.git"></label>
+  <label class="fieldset"><span class="fieldset-legend">Branch (blank = remote default)</span>
+  <input type="text" name="branch" class="input input-sm"></label>
+  <label class="fieldset"><span class="fieldset-legend">Token, https only (stored 0600 beside the checkout, one slot)</span>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <div><button class="btn btn-sm btn-primary" data-confirm="Clone this repo into file roots?">Clone</button></div>
+</form>
+</div>
+</div>
+{% else %}
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card-body">
+<h2 class="font-semibold">Repoint origin</h2>
+<p class="text-sm opacity-70 mb-2">Refuses on dirty trees and unpushed commits — repointing under either orphans work onto the wrong remote.</p>
+<form method="post" action="{{ url_for('files.repo_set_remote') }}" class="flex flex-wrap items-end gap-2 max-w-xl">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="fieldset flex-1"><span class="fieldset-legend">New origin URL</span>
+  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm"></label>
+  <button class="btn btn-sm mb-1" data-confirm="Repoint origin at this URL?">Repoint</button>
+</form>
+</div>
+</div>
+
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card-body">
+<h2 class="font-semibold">Reset to upstream</h2>
+<p class="text-sm opacity-70 mb-2">Abandons tracked working-tree changes. Refuses on unpushed commits. Untracked files survive unless you tick the box.</p>
+{% if preview %}
+<div class="alert alert-warning mb-2" role="note"><span>This will abandon: {% if preview.dirty %}{{ preview.dirty|join(", ") }}{% else %}nothing tracked{% endif %}{% if preview.behind %} · {{ preview.behind }} commit(s) behind {{ preview.upstream }}{% endif %}</span></div>
+<form method="post" action="{{ url_for('files.repo_reset') }}" class="flex flex-wrap items-center gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="confirm" value="1">
+  <label class="label text-sm cursor-pointer gap-1"><input type="checkbox" name="clean" value="1" class="checkbox checkbox-sm"> also delete untracked files{% if preview.untracked %} ({{ preview.untracked|join(", ") }}){% endif %}</label>
+  <button class="btn btn-sm btn-error" data-confirm="Abandon these changes for good?">Confirm reset</button>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
+</form>
+{% else %}
+<form method="post" action="{{ url_for('files.repo_reset') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-sm btn-outline">Preview reset…</button>
+</form>
+{% endif %}
+</div>
+</div>
+
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card-body">
+<h2 class="font-semibold">Re-clone from scratch</h2>
+<p class="text-sm opacity-70 mb-2">Destroys the checkout and clones fresh — for corrupt <code class="font-mono">.git</code>, never for convenience. Refuses on unpushed commits.</p>
+{% if pending %}
+<div class="alert alert-warning mb-2" role="note"><span>This will destroy the checkout and clone <span class="font-mono">{{ pending.url }}</span>{% if pending.branch %} (branch <span class="font-mono">{{ pending.branch }}</span>){% endif %}. Unpushed work blocks this step.</span></div>
+<form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-wrap items-center gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="confirm" value="1">
+  <input type="hidden" name="url" value="{{ pending.url }}">
+  <input type="hidden" name="branch" value="{{ pending.branch }}">
+  <label class="fieldset"><span class="fieldset-legend">Token (re-enter — never echoed back)</span>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <button class="btn btn-sm btn-error" data-confirm="Destroy the checkout and re-clone?">Confirm re-clone</button>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
+</form>
+{% else %}
+<form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-col gap-2 max-w-xl">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="fieldset"><span class="fieldset-legend">Repo URL</span>
+  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm"></label>
+  <label class="fieldset"><span class="fieldset-legend">Branch (blank = remote default)</span>
+  <input type="text" name="branch" value="{{ status.branch if status and status.branch != 'detached' else '' }}" class="input input-sm"></label>
+  <label class="fieldset"><span class="fieldset-legend">Token, only if changing it (stored, never shown)</span>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <div><button class="btn btn-sm btn-outline">Preview re-clone…</button></div>
+</form>
+{% endif %}
+</div>
+</div>
+
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card-body">
+<h2 class="font-semibold">Push credentials</h2>
+<p class="text-sm opacity-70 mb-2">One slot, stored 0600 beside the checkout (never inside it). {% if token_configured %}Configured.{% else %}Empty.{% endif %}</p>
+<div class="flex flex-wrap gap-2">
+<form method="post" action="{{ url_for('files.repo_token_save') }}" class="flex flex-wrap items-end gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="fieldset"><span class="fieldset-legend">Token for the current origin host</span>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <button class="btn btn-sm mb-1">Save token</button>
+</form>
+<form method="post" action="{{ url_for('files.repo_token_clear') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-sm btn-ghost" data-confirm="Forget the stored token?">Clear</button>
+</form>
+</div>
+</div>
+</div>
+{% endif %}
+{% endblock %}
