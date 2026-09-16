@@ -15,7 +15,7 @@
   {% else %}
   <p class="text-sm opacity-70 mb-4">Owned salt-master configuration. Saving snapshots the whole ConfigMap first{% if snapshots is not none %} ({{ snapshots }} snapshot{{ "s" if snapshots != 1 else "" }} kept){% endif %}; restart the masters afterwards to apply changes.{% if revision %} Live at revision <code class="font-mono">{{ revision }}</code>.{% endif %}</p>
   <div class="flex gap-2 mb-4">
-    <form method="post" action="{{ url_for('masterconfig.restart') }}">
+    <form method="post" action="{{ url_for('masterconfig.restart') }}" data-confirm="Restart the salt masters? Connected minions reconnect, but in-flight jobs may be interrupted.">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-sm btn-warning" type="submit">Restart masters</button>
     </form>

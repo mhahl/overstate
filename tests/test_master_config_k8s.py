@@ -291,6 +291,12 @@ def test_admin_lists_keys(mui):
     assert b"master.conf" in rv.data and b"api.conf" in rv.data
 
 
+def test_restart_button_confirms(mui):
+    html = mui["login"]("admin").get("/settings/master/").data.decode()
+    idx = html.index("/settings/master/restart")
+    assert 'data-confirm="Restart the salt masters?' in html[idx : idx + 300]
+
+
 def test_legacy_prefix_forwards(mui):
     client = mui["login"]("admin")
     rv = client.get("/master-config/view", query_string={"key": "api.conf"})
