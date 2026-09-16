@@ -36,7 +36,10 @@ spec:
         - name: salt-master
           # TODO: pin to a digest for reproducibility (same TODO as
           # Containerfile.salt-master in the repo).
-          image: quay.io/sigaint/overstate:salt-master-lts-pg1
+          # Own repo (not the app repo): quay.io/sigaint/overstate
+          # holds app images only; master images live in
+          # quay.io/sigaint/overstate-salt-master.
+          image: quay.io/sigaint/overstate-salt-master:lts-pg1
           env:
             - name: SALT_API_ENABLED
               value: "True"

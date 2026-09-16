@@ -51,7 +51,7 @@ Non-goals:
               fan-out             queues)
                            │
               ┌────────────▼──────────────────────────────────────┐
-              │ salt-master StatefulSet ×2 (custom lts-pg1 image) │
+              │ salt-master StatefulSet ×2 overstate-salt-master │
               │  pod-0 and pod-1: same keypair, shared ConfigMap, │
               │  per-pod accepted-keys PVC, PG job-cache returner │
               └────────────┬──────────────────────────────────────┘

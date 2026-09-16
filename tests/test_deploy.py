@@ -142,8 +142,7 @@ def test_master_pair_replicas_and_image():
     assert sts["spec"]["replicas"] == 2
     containers = sts["spec"]["template"]["spec"]["containers"]
     (master,) = [c for c in containers if c["name"] == "salt-master"]
-    assert master["image"].startswith("quay.io/sigaint/overstate:")
-    assert "salt-master" in master["image"]
+    assert master["image"].startswith("quay.io/sigaint/overstate-salt-master:")
     assert "ghcr.io" not in master["image"]
 
 
