@@ -37,6 +37,10 @@ The kustomization pins the app/worker image tag (`images:`) — bump
 database password from the CNPG-generated `overstate-db-app` secret;
 salt-api credentials come from `overstate-secrets`.
 
+File roots live on the shared `srv-data` volume: the app mounts it
+writable (single writer — the git checkout for the file browser), the
+masters read-only and serve states from it.
+
 Verify:
 
 ```sh

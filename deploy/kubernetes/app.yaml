@@ -17,6 +17,17 @@ spec:
         app.kubernetes.io/name: overstate-app
     spec:
       serviceAccountName: overstate-app
+      # Spread the two replicas across nodes when possible. Preferred,
+      # not required: a missing second node must never block a rollout.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: overstate-app
+                topologyKey: kubernetes.io/hostname
       initContainers:
         # Seed the shared volume on first boot only; never overwrite.
         - name: seed-states
@@ -126,3 +137,14 @@ spec:
     - name: http
       port: 8000
       targetPort: http
+---
+# Drains keep one app replica serving while the other moves.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: overstate-app
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: overstate-app

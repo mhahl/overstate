@@ -51,27 +51,25 @@ same paths production uses. Coverage config lives in
 
 ## Install it for real
 
-Target is openSUSE Leap 16 with Podman, running the stack as
-systemd Quadlets:
+Target is Kubernetes: everything lives in the `overstate` namespace
+and applies with one command:
 
 ```sh
-sudo ./scripts/install.sh --admin-password 'pick-one'
+kubectl apply -k deploy/kubernetes
 ```
 
-Units live in `deploy/quadlet/`, the Caddyfile in `deploy/`.
-`sudo ./scripts/update.sh` rebuilds from the checkout.
-`sudo ./scripts/uninstall.sh` removes the units and keeps data.
-Read `docs/deployment.md` before you touch a master, and
-`docs/install-opensuse.md` for the full install walkthrough.
+Read `docs/install-kubernetes.md` for the setup walkthrough
+(secrets first, then apply, then verify) and
+`docs/architecture-kubernetes.md` for the design, assumptions, and
+risks behind the manifests.
 
 ## Layout
 
 - `overstate_ui/` holds the app: routes per area, Salt client,
   background tasks, templates.
 - `tests/` holds the pytest suite, one file per area.
-- `deploy/quadlet/` holds the production units, `deploy/Caddyfile`
-  the proxy config.
-- `scripts/` holds install, update, uninstall, and dev helpers.
+- `deploy/kubernetes/` holds the production manifests (Kustomize).
+- `scripts/` holds dev helpers (`dev-up.sh`, `seed-mock.sh`, …).
 - `docs/` holds operator, deployment, and developer guides.
 
 ## License

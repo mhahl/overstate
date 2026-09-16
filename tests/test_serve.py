@@ -165,8 +165,3 @@ def test_oidc_redirect_pinned_to_configured_uri(monkeypatch):
     )
     app.test_client().get("/login/oidc", headers={"X-Forwarded-Host": "evil.example"})
     assert seen["uri"] == "https://app.example.com/login/oidc/callback"
-
-
-def test_quadlet_app_trusts_proxy_behind_caddy():
-    text = (REPO / "deploy" / "quadlet" / "overstate-app.container").read_text()
-    assert "TRUST_PROXY=1" in text

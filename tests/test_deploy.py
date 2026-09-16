@@ -1,4 +1,4 @@
-"""Deploy artifact tests: Caddyfile and Quadlet units stay consistent."""
+"""Deploy artifact tests: the Kubernetes manifests stay consistent."""
 
 import pathlib
 import re
@@ -14,198 +14,33 @@ def _load(name):
         return list(yaml.safe_load_all(fh))
 
 
-def test_caddyfile_proxies_both_names_with_verified_tls():
-    text = (REPO / "deploy" / "Caddyfile").read_text()
-    assert "{$APP_DOMAIN:overstate.sigaint.au}" in text
-    assert "{$API_DOMAIN:overstate-api.sigaint.au}" in text
-    assert "reverse_proxy https://overstate-app:8000" in text
-    assert "reverse_proxy https://overstate-salt-master:8000" in text
-    assert "tls_trust_pool file /etc/caddy/ca.crt" in text
-    assert "tls_insecure_skip_verify" not in text
-    assert "admin off" in text
-
-
-def test_quadlet_units_live_with_deploy_code():
-    assert not (REPO / "quadlet").exists()
-    units = REPO / "deploy" / "quadlet"
-    assert units.is_dir()
-    for script in ("install.sh", "update.sh"):
-        text = (REPO / "scripts" / script).read_text()
-        assert "deploy/quadlet" in text
-        assert "$REPO/quadlet" not in text and '"quadlet"' not in text
-
-
-def test_quadlet_units_cover_all_services():
-    names = {p.name for p in (REPO / "deploy" / "quadlet").glob("*")}
-    assert names == {
-        "overstate.network",
-        "overstate-app.container",
-        "overstate-worker.container",
-        "overstate-salt-master.container",
-        "overstate-postgres.container",
-        "overstate-redis.container",
-        "overstate-caddy.container",
-    }
-    caddy = (REPO / "deploy" / "quadlet" / "overstate-caddy.container").read_text()
-    assert "PublishPort=80:80" in caddy
-    assert "PublishPort=443:443" in caddy
-    assert "/etc/overstate/Caddyfile:/etc/caddy/Caddyfile:ro" in caddy
-    app = (REPO / "deploy" / "quadlet" / "overstate-app.container").read_text()
-    assert "PublishPort" not in app  # Caddy is the only front door
-
-
-def test_app_image_and_unit_support_ssh_push():
-    containerfile = (REPO / "Containerfile").read_text()
-    assert "openssh-client" in containerfile  # push over SSH deploy keys
-    app = (REPO / "deploy" / "quadlet" / "overstate-app.container").read_text()
-    assert "/etc/overstate/ssh:/srv/ssh:ro" in app  # key dir, read-only
-
-
-def test_salt_master_publishes_minion_ports():
-    lines = (
-        (REPO / "deploy" / "quadlet" / "overstate-salt-master.container")
-        .read_text()
-        .splitlines()
-    )
-    published = [line for line in lines if line.startswith("PublishPort=")]
-    assert "PublishPort=4505:4505" in published
-    assert "PublishPort=4506:4506" in published
-    # salt-api stays localhost-only behind Caddy; only the minion ports
-    # are reachable from the network.
-    assert [line for line in published if ":8000" in line] == [
-        "PublishPort=127.0.0.1:8001:8000"
-    ]
-
-
-def test_prod_scripts_strip_dev_auto_accept():
-    # install.sh copies salt-config/ wholesale, which includes the dev-only
-    # auto_accept file; both scripts must remove it from the deployed copy
-    # so a real master never auto-accepts minion keys.
-    for script in ("install.sh", "update.sh"):
-        text = (REPO / "scripts" / script).read_text()
-        assert 'rm -f "$ETC/salt-config/dev.conf"' in text
-
-
-def test_auto_accept_lives_only_in_dev_only_file():
-    confs = sorted((REPO / "salt-config").glob("*.conf"))
-    assert len(confs) >= 2
-    hits = [path.name for path in confs if "auto_accept" in path.read_text()]
-    assert hits == ["dev.conf"]
-
-
-def test_quadlet_names_cover_every_dialed_host():
-    import re
-
-    units = REPO / "deploy" / "quadlet"
-    names = set()
-    for unit in units.glob("*.container"):
-        found = re.findall(r"^ContainerName=(.+)$", unit.read_text(), re.MULTILINE)
-        assert len(found) == 1, unit.name
-        names.add(found[0].strip())
-    assert len(names) == len(list(units.glob("*.container")))
-    dialed = {"postgres", "redis", "salt-master", "overstate-app"}
-    assert dialed <= names, dialed - names
-
-
-def test_every_mount_carries_selinux_relabel():
-    import re
-
-    for unit in (REPO / "deploy" / "quadlet").glob("*.container"):
-        for line in unit.read_text().splitlines():
-            if line.startswith("Volume="):
-                assert re.search(r"[:,][zZ](,|$)", line), f"{unit.name}: {line}"
-
-
-def test_api_tls_install_wired_into_flows():
-    helper = REPO / "scripts" / "install-api-tls.sh"
-    assert helper.is_file()
-    text = helper.read_text()
-    assert "supervisorctl restart salt-api" in text
-    assert "localhost.crt" in text
-    unit = REPO / "deploy" / "systemd" / "overstate-salt-api-tls.service"
-    assert unit.is_file()
-    unit_text = unit.read_text()
-    assert "WantedBy=overstate-salt-master.service" in unit_text
-    assert "BindsTo=overstate-salt-master.service" in unit_text
-    assert "overstate-install-api-tls.sh" in unit_text
-    install = (REPO / "scripts" / "install.sh").read_text()
-    assert "deploy/systemd/overstate-salt-api-tls.service" in install
-    assert "overstate-salt-api-tls.service" in install
-    update = (REPO / "scripts" / "update.sh").read_text()
-    assert "overstate-salt-api-tls.service" in update
-    uninstall = (REPO / "scripts" / "uninstall.sh").read_text()
-    assert "overstate-salt-api-tls" in uninstall
-
-
-def test_install_tolerates_generator_wiring():
-    install = (REPO / "scripts" / "install.sh").read_text()
-    assert "enable_unit()" in install
-    assert "is-enabled" in install
-    assert "systemctl enable --now overstate-" not in install
-
-
-def test_install_syncs_returner_password():
-    install = (REPO / "scripts" / "install.sh").read_text()
-    assert "returner.pgjsonb.pass" in install
-    assert "POSTGRES_PASSWORD" in install
-    assert "restart overstate-salt-master" in install
-
-
-def test_api_key_readable_by_salt_user():
-    install = (REPO / "scripts" / "install.sh").read_text()
-    assert 'chmod 644 "$ETC/tls/api.key"' in install
-
-
-def test_app_cert_covers_internal_dial_name():
-    install = (REPO / "scripts" / "install.sh").read_text()
-    assert "DNS:overstate-app" in install
-
-
-def test_install_targets_leap_16():
-    install = (REPO / "scripts" / "install.sh").read_text()
-    assert "opensuse-leap" in install
-    assert "openSUSE Leap 16" in install
-    assert "Tumbleweed" not in install or "non-Leap-16" in install
-    guide = (REPO / "docs" / "install-opensuse.md").read_text()
-    assert guide.startswith("# Install on openSUSE Leap 16")
-
-
-def test_caddy_skips_gzip_for_event_streams():
-    text = (REPO / "deploy" / "Caddyfile").read_text()
-    assert "text/event-stream" in text
-    assert "encode @notsse gzip" in text
-    assert "not header Accept text/event-stream" in text
-
-
-def test_install_wires_domains_and_caddy():
-    install = (REPO / "scripts" / "install.sh").read_text()
-    assert "APP_DOMAIN=overstate.sigaint.au" in install
-    assert "API_DOMAIN=overstate-api.sigaint.au" in install
-    assert "overstate-caddy.service" in install
-    assert "deploy/Caddyfile" in install
-    update = (REPO / "scripts" / "update.sh").read_text()
-    assert "overstate-caddy.service" in update
-    uninstall = (REPO / "scripts" / "uninstall.sh").read_text()
-    assert "overstate-caddy" in uninstall
-
-
-def test_redis_requires_a_password():
-    compose = (REPO / "compose.yml").read_text()
-    assert "--requirepass" in compose
-    assert "REDIS_PASSWORD" in compose
-    assert "redis://redis:6379/0" not in compose
-    redis_unit = (REPO / "deploy" / "quadlet" / "overstate-redis.container").read_text()
-    assert "--requirepass" in redis_unit
-    install = (REPO / "scripts" / "install.sh").read_text()
-    assert "REDIS_PASSWORD" in install
-    assert "REDIS_URL=redis://:" in install
-    example = (REPO / ".env.example").read_text()
-    assert "REDIS_PASSWORD" in example
-
-
 def test_kustomization_wires_history_configmap():
     text = (K8S / "kustomization.yaml").read_text()
     assert "salt-master-config-history.yaml" in text
+
+
+def _cronjob():
+    (cj,) = [d for d in _load("reconcile-cronjob.yaml") if d.get("kind") == "CronJob"]
+    return cj
+
+
+def test_reconcile_cronjob_wired_and_bounded():
+    assert "reconcile-cronjob.yaml" in (K8S / "kustomization.yaml").read_text()
+    cj = _cronjob()
+    assert cj["spec"]["schedule"] == "7 * * * *"
+    assert cj["spec"]["concurrencyPolicy"] == "Forbid"
+    pod = cj["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    (container,) = pod["containers"]
+    # Same codebase as the app; the kustomize images transformer
+    # rewrites the placeholder at build time.
+    assert container["image"] == "overstate-app"
+    assert container["command"] == ["python", "-m", "overstate_ui.reconcile_cli"]
+    env = {e["name"]: e for e in container["env"]}
+    assert env["SALT_API_URL"]["value"].startswith("https://")
+    assert env["SALT_EAUTH_PASSWORD"]["valueFrom"]["secretKeyRef"]["name"] == (
+        "overstate-secrets"
+    )
+    assert "ADMIN_PASSWORD" not in env  # least privilege: no UI login seed
 
 
 def test_history_configmap_deploys_empty_and_managed():
@@ -249,6 +84,57 @@ def test_rbac_has_no_cluster_scoped_kinds():
 def _salt_master_sts():
     (sts,) = [d for d in _load("salt-master.yaml") if d.get("kind") == "StatefulSet"]
     return sts
+
+
+def test_master_pair_never_shares_a_node():
+    sts = _salt_master_sts()
+    required = sts["spec"]["template"]["spec"]["affinity"]["podAntiAffinity"][
+        "requiredDuringSchedulingIgnoredDuringExecution"
+    ]
+    assert {
+        "labelSelector": {"matchLabels": {"app.kubernetes.io/name": "salt-master"}},
+        "topologyKey": "kubernetes.io/hostname",
+    } in required
+
+
+def test_master_pair_keeps_one_pod_on_drain():
+    (pdb,) = [
+        d for d in _load("salt-master.yaml") if d.get("kind") == ("PodDisruptionBudget")
+    ]
+    assert pdb["spec"]["minAvailable"] == 1
+    assert pdb["spec"]["selector"]["matchLabels"] == {
+        "app.kubernetes.io/name": "salt-master"
+    }
+
+
+def _app_deployment():
+    (dep,) = [d for d in _load("app.yaml") if d.get("kind") == "Deployment"]
+    return dep
+
+
+def test_app_replicas_prefer_separate_nodes():
+    dep = _app_deployment()
+    assert dep["spec"]["replicas"] == 2
+    preferred = dep["spec"]["template"]["spec"]["affinity"]["podAntiAffinity"][
+        "preferredDuringSchedulingIgnoredDuringExecution"
+    ]
+    assert {
+        "weight": 100,
+        "podAffinityTerm": {
+            "labelSelector": {
+                "matchLabels": {"app.kubernetes.io/name": "overstate-app"}
+            },
+            "topologyKey": "kubernetes.io/hostname",
+        },
+    } in preferred
+
+
+def test_app_keeps_one_replica_on_drain():
+    (pdb,) = [d for d in _load("app.yaml") if d.get("kind") == "PodDisruptionBudget"]
+    assert pdb["spec"]["minAvailable"] == 1
+    assert pdb["spec"]["selector"]["matchLabels"] == {
+        "app.kubernetes.io/name": "overstate-app"
+    }
 
 
 def test_master_pair_replicas_and_image():

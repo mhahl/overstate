@@ -1,0 +1,50 @@
+# Hourly key reconcile (same completion rule as the Keys-page button:
+# accept keys one pod already trusts, everywhere they are pending with
+# the same fingerprint). Same image as the app; read-only against the
+# cluster (salt-api only), so no extra RBAC. Trigger by hand with:
+# kubectl -n overstate create job --from=cronjob/key-reconcile manual-1
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: key-reconcile
+spec:
+  schedule: "7 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: reconcile
+              image: overstate-app
+              imagePullPolicy: Always
+              command: ["python", "-m", "overstate_ui.reconcile_cli"]
+              env:
+                - name: SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: overstate-secrets
+                      key: SECRET_KEY
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: overstate-db-app
+                      key: password
+                - name: DATABASE_URL
+                  value: "postgresql+psycopg://overstate:$(DB_PASSWORD)@overstate-db-rw:5432/overstate"
+                - name: SALT_API_URL
+                  value: https://salt-master-api:8000
+                - name: SALT_API_VERIFY_CA
+                  value: "false"
+                - name: SALT_EAUTH_USER
+                  value: overstate
+                - name: SALT_EAUTH_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: overstate-secrets
+                      key: SALT_API_USER_PASS

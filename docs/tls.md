@@ -31,17 +31,12 @@ our certs over the image's paths and restarts salt-api; `dev-up.sh` and
 `SALT_API_VERIFY_CA` overrides it: a path uses that CA bundle, the literal
 `false` disables verification (local dev only, against self-signed masters).
 
-## Production checklist
+## Production checklist (Kubernetes)
 
-- The Quadlet master regenerates a self-signed salt-api cert at every
-  boot, exactly like dev, so no declarative config can stick. A
-  oneshot unit (`deploy/systemd/overstate-salt-api-tls.service`,
-  wanted by the master) reinstalls the CA-signed pair after every
-  master start, including reboots; `install.sh` and `update.sh`
-  gate on it. After a manual master restart outside those flows,
-  run `/usr/local/sbin/overstate-install-api-tls.sh` by hand.
-  Verify with `curl --cacert /etc/overstate/tls/ca.crt
-  https://127.0.0.1:8001/login` (expect 401).
-- Never set `SALT_API_VERIFY_CA=false` outside local dev.
-- The app serves 8000/TLS when `TLS_CERT`/`TLS_KEY` are mounted, otherwise
-  plain HTTP with a warning.
+- Browser traffic terminates at Traefik; the UI Certificate
+  (`deploy/kubernetes/ingress.yaml`) is cert-manager-issued.
+- Master pods mint their own self-signed salt-api cert at boot and the
+  app currently reaches them with `SALT_API_VERIFY_CA=false`
+  (in-cluster only). Pinning the CA is an open TODO in the manifests
+  (see `docs/architecture-kubernetes.md` §8.5).
+- Never set `SALT_API_VERIFY_CA=false` outside the cluster.

@@ -76,6 +76,7 @@ Component inventory (all in `deploy/kubernetes/`):
 | `srv-data` | PVC 10Gi RWX Longhorn | Shared volume | App writes (git checkout), masters mount read-only file roots |
 | `salt-master-config` | ConfigMap (owned) | — | Whole master config, UI-editable, versioned |
 | `salt-master-config-history` | ConfigMap | — | Last 20 config snapshots |
+| `key-reconcile` | CronJob, hourly | One Job at a time (`Forbid`) | Completes same-fingerprint key trust across pods; read-only on the cluster |
 | `salt-master-db` | Secret (owner-held) | — | `returner.conf` drop-in (PG password) |
 | `salt-master-keys` | Secret (owner-held) | — | Shared master keypair (fleet identity) |
 | `overstate-secrets` | Secret (owner-held) | — | Django, admin, Redis, salt-api passwords |
@@ -177,11 +178,12 @@ exactly the master StatefulSet.
    that reaches only one pod (other down) is accepted as done on one
    pod; no distributed transaction, no retry queue. Divergence is
    reconciled by re-running the action, not by automation.
-3. **Key state converges because all writes go through the UI.**
-   Accept-on-both only replicates what the UI does. Anything that
-   mutates a pod's PKI dir out-of-band (manual `salt-key` on one pod,
-   a pod down during an accept) diverges silently until noticed via
-   the per-pod chips.
+3. **Key state converges within the hour, not instantly.**
+   Accept-on-both replicates what the UI does; the hourly reconcile
+   (plus the one-click button) completes same-fingerprint trust after
+   scale-ups and outages. Anything rejected/denied, globally pending,
+   or fingerprint-mismatched still needs a human, surfaced via the
+   per-pod chips and the Keys-page banner.
 4. **Pre-pair keys live on pod-0 only.** Keys accepted before the
    second pod existed are unknown to pod-1 until re-accepted; minions
    that land on pod-1 show as pending there.
@@ -198,18 +200,21 @@ exactly the master StatefulSet.
 
 **High:**
 
-- **8.1 No placement or disruption protection.** No `podAntiAffinity`,
-  no `topologySpreadConstraints`, no PodDisruptionBudgets anywhere
-  in-repo. Both master pods (and app replicas) may schedule onto one
-  node, turning a node failure into a full outage of the "HA" pair.
-  Longhorn RWO volumes additionally pin rescheduled pods to the old
-  node's data until replicated. Fix: anti-affinity + PDBs before
-  calling the pair highly available.
-- **8.2 Accepted-keys divergence has no reconciler.** Pre-pair keys
-  (assumption 4), actions during a pod outage (assumption 2), and any
-  manual `salt-key` on a pod leave the two PKI dirs permanently
-  diverged; the UI shows it (per-pod chips) but nothing heals it.
-  A periodic compare-and-alert (or a reconcile job) is missing.
+- **8.1 Placement protection is partial.** The master pair carries
+  required hostname anti-affinity plus a `minAvailable: 1` PDB, and
+  the app preferred anti-affinity plus its own PDB — so a node loss or
+  drain no longer takes the whole pair. What remains: no
+  `topologySpreadConstraints`, no PDBs on the singletons (worker,
+  Redis, single-instance Postgres), and Longhorn RWO volumes still pin
+  rescheduled pods to the old node's data until replicated.
+- **8.2 Accepted-keys divergence converges within the hour.**
+  Pre-pair keys (assumption 4), actions during a pod outage
+  (assumption 2), and manual `salt-key` drift are completed by the
+  hourly `key-reconcile` CronJob plus the one-click **Review &
+  reconcile** on the Keys page. Both apply one rule only: accept on a
+  pod what another pod already trusts with the identical fingerprint.
+  Residual gap: quarantine by single-pod delete (instead of reject)
+  gets re-completed on next minion contact — documented in `user.md`.
 - **8.3 Postgres is instances: 1.** The shared job cache — the one
   component both masters depend on for consistent history — is a
   single instance. CNPG will recover it, but during the outage returns
@@ -314,5 +319,4 @@ the simple topology.
 - Pod-kill failover drill (minion reconnect, publish during outage,
   merged history) — owner-scheduled.
 - Second-minion join against the pair (validates accept-on-both on a
-  fresh key, and assumption 4 cleanup for pre-pair keys).
-- Anti-affinity + PDBs (§8.1) before the pair is declared HA.
+  fresh key, and the reconcile path for pre-pair keys).

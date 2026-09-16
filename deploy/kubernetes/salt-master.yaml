@@ -23,6 +23,15 @@ spec:
       # with the image's salt uid/gid.
       securityContext:
         fsGroup: 1000
+      # The pair is only a pair on different nodes: never schedule both
+      # masters onto one hostname, or one node loss kills the failover.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: salt-master
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: salt-master
           # TODO: pin to a digest for reproducibility (same TODO as
@@ -162,3 +171,15 @@ spec:
     - name: request
       port: 4506
       targetPort: request
+---
+# Voluntary disruptions (node drains, upgrades) must always leave one
+# master up: minions ride out the drain on the survivor.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: salt-master
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: salt-master

@@ -125,9 +125,9 @@ def test_index_sync_failure_logged(monkeypatch, caplog):
 
 
 def test_deployment_docs_match_writable_app_mount():
-    text = (REPO / "docs" / "deployment.md").read_text()
-    assert "Never mount the states checkout writable by the app" not in text
-    assert "salt-master mount stays `:ro`" in text
+    text = (REPO / "docs" / "install-kubernetes.md").read_text()
+    assert "srv-data" in text
+    assert "masters read-only" in text
 
 
 def test_seed_admin_refuses_prod_without_password(monkeypatch):

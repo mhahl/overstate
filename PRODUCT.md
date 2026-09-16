@@ -56,8 +56,8 @@ synthetic JID).
   worker but slower.
 - Stack is Flask + Jinja + HTMX + Alpine + daisyUI (wireframe theme),
   Postgres, Redis; no new framework.
-- Production target is openSUSE Leap 16 with Podman Quadlets
-  (units in deploy/quadlet); dev runs on compose. Licensed Apache-2.0.
+- Production target is Kubernetes (manifests in deploy/kubernetes);
+  dev runs on compose. Licensed Apache-2.0.
 
 ## Brand Commitments
 
@@ -67,8 +67,8 @@ No logo, custom font, or marketing voice to preserve.
 ## Evidence on Hand
 
 - `docs/user.md`: operator guide and role model.
-- `docs/deployment.md`: dev stack, master setup, hardening.
-- `docs/install-opensuse.md`: production install walkthrough.
+- `docs/install-kubernetes.md`: production install walkthrough.
+- `docs/architecture-kubernetes.md`: design, assumptions, risks.
 - `docs/developer.md`: conventions, tests, lint, coverage, deps.
 - Full pytest suite (266 tests) covering job flows, batches,
   auth/RBAC, inventory, and deploy artifacts.
