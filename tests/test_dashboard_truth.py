@@ -69,6 +69,7 @@ def _fake_queue(monkeypatch):
         "fleet_presence_task": "p1",
         "fleet_versions_task": "v1",
         "capabilities_task": "c1",
+        "master_status_task": "m1",
     }
 
     def fake(func, *args, **kwargs):
@@ -84,7 +85,7 @@ def test_shell_polls_without_touching_salt(monkeypatch):
     html = _dashboard_client().get("/").data.decode()
     assert "Refreshing live data" in html
     assert (
-        'hx-get="/dashboard/panels?keys=k1&amp;presence=p1&amp;versions=v1&amp;caps=c1&amp;seen='
+        'hx-get="/dashboard/panels?keys=k1&amp;presence=p1&amp;versions=v1&amp;caps=c1&amp;masters=m1&amp;seen='
         in html
     )  # shell seeds the fingerprint so an unchanged first poll is a 204
     assert "&amp;started=" in html  # poll clock for the stale-probe cutoff
@@ -96,6 +97,7 @@ def test_shell_polls_without_touching_salt(monkeypatch):
     assert "Database history only" not in html
     assert "3006.5" in html  # snapshot versions paint immediately
     assert ">2<" in html  # DB in-flight count, not live
+    assert "Salt masters" in html and "Probing masters" in html
 
 
 def test_shell_shows_worker_warning_without_redis():
@@ -132,13 +134,42 @@ def test_panels_resolve_to_live_and_stop_polling(monkeypatch):
                     "ping_target": "web-01",
                     "error": None,
                 },
+                "m1": {
+                    "available": True,
+                    "sts": "salt-master",
+                    "complete": True,
+                    "replicas": 2,
+                    "ready_replicas": 2,
+                    "updated_replicas": 2,
+                    "ready_pods": 2,
+                    "pods": [
+                        {
+                            "name": "salt-master-0",
+                            "phase": "Running",
+                            "ready": True,
+                            "image": "quay.io/sigaint/overstate-salt-master:lts-pg1",
+                            "image_short": "overstate-salt-master:lts-pg1",
+                            "restarts": 0,
+                        },
+                        {
+                            "name": "salt-master-1",
+                            "phase": "Running",
+                            "ready": True,
+                            "image": "quay.io/sigaint/overstate-salt-master:lts-pg1",
+                            "image_short": "overstate-salt-master:lts-pg1",
+                            "restarts": 3,
+                        },
+                    ],
+                    "images_differ": False,
+                    "config_revision": "4242",
+                },
             }[jid],
         )
 
     monkeypatch.setattr(dashboard_mod, "describe_job", fake_describe)
     html = (
         _dashboard_client()
-        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1")
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&masters=m1")
         .data.decode()
     )
     assert "3006.9" in html and "Live from master" in html
@@ -146,6 +177,11 @@ def test_panels_resolve_to_live_and_stop_polling(monkeypatch):
     assert ">3<" in html  # live pending keys, not snapshot zero
     assert "2 / 0" in html  # live up/down, not snapshot dashes
     assert "Keys" in html  # capability rows rendered from the result
+    assert "salt-master-0" in html and "salt-master-1" in html
+    assert "Rollout complete" in html and "2/2 updated" in html
+    assert "overstate-salt-master:lts-pg1" in html
+    assert "3× restarted" in html and "4242" in html
+    assert "Master Settings" in html  # admin sees the settings link
     assert "hx-get" not in html  # polling stopped
     assert "opacity-60 invisible" in html  # spinner slot reserved, buttons unmoved
 
@@ -170,17 +206,19 @@ def test_panels_hydrate_fast_panels_while_fanout_waits(monkeypatch):
         "p1": ("waiting", None),
         "v1": ("waiting", None),
         "c1": ("gone", None),
+        "m1": ("waiting", None),
     }
     monkeypatch.setattr(dashboard_mod, "describe_job", states.get)
     html = (
         _dashboard_client()
-        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1")
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&masters=m1")
         .data.decode()
     )
     assert ">2<" in html and ">3<" in html  # keys live despite dead minion
     assert ">–<" in html  # up/down stay snapshot dashes while presence waits
     assert "3006.5" in html  # versions still snapshot meanwhile
     assert "Probing capabilities" in html  # caps job gone, presence still waiting
+    assert "Probing masters" in html  # masters still waiting too
     assert "Refreshing live data" in html and "hx-get" in html  # keeps polling
 
 
@@ -197,10 +235,11 @@ def test_panels_skip_unchanged_renders_while_waiting(monkeypatch):
         "p1": ("waiting", None),
         "v1": ("waiting", None),
         "c1": ("waiting", None),
+        "m1": ("waiting", None),
     }
     monkeypatch.setattr(dashboard_mod, "describe_job", states.get)
     client = _dashboard_client()
-    base = "/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1"
+    base = "/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&masters=m1"
     html = client.get(base).data.decode()
     assert "Refreshing live data" in html
     assert "invisible" not in html  # spinner slot visible while probing
@@ -232,11 +271,12 @@ def test_panels_fall_back_to_snapshot_when_gone(monkeypatch):
     monkeypatch.setattr(dashboard_mod, "describe_job", lambda jid: ("gone", None))
     html = (
         _dashboard_client()
-        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1")
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&masters=m1")
         .data.decode()
     )
     assert "3006.5" in html
     assert "No capability data yet." in html
+    assert "Master status unavailable" in html
     assert "hx-get" not in html
     assert "opacity-60 invisible" in html  # slot reserved, buttons unmoved
     # Polling settled with nothing live: reachability resolved False,
@@ -332,3 +372,100 @@ def test_non_jid_active_payload_falls_back():
     out = fleet_keys_now(OddClient())
     assert out["active_live"] is False
     assert out["active_jids"] == []
+
+
+def _masters_payload(**over):
+    payload = {
+        "available": True,
+        "sts": "salt-master",
+        "complete": True,
+        "replicas": 2,
+        "ready_replicas": 2,
+        "updated_replicas": 2,
+        "ready_pods": 2,
+        "pods": [
+            {
+                "name": "salt-master-0",
+                "phase": "Running",
+                "ready": True,
+                "image": "quay.io/sigaint/overstate-salt-master:lts-pg1",
+                "image_short": "overstate-salt-master:lts-pg1",
+                "restarts": 0,
+            },
+            {
+                "name": "salt-master-1",
+                "phase": "Running",
+                "ready": True,
+                "image": "quay.io/sigaint/overstate-salt-master:lts-pg1",
+                "image_short": "overstate-salt-master:lts-pg1",
+                "restarts": 0,
+            },
+        ],
+        "images_differ": False,
+        "config_revision": "4242",
+    }
+    payload.update(over)
+    return payload
+
+
+def test_panels_masters_unavailable_off_cluster(monkeypatch):
+    """The probe reported no cluster connection: the panel says so
+    immediately instead of spinning, while other panels keep polling."""
+    import overstate_ui.dashboard as dashboard_mod
+
+    def fake_describe(jid):
+        if jid == "m1":
+            return ("ready", {"available": False})
+        return ("waiting", None)
+
+    monkeypatch.setattr(dashboard_mod, "describe_job", fake_describe)
+    html = (
+        _dashboard_client()
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&masters=m1")
+        .data.decode()
+    )
+    assert "Master status unavailable" in html
+    assert "Probing masters" not in html
+    assert "hx-get" in html  # other panels still outstanding
+
+
+def test_panels_masters_progressing_rollout(monkeypatch):
+    """A mid-rollout master pair paints per-pod state and the image
+    drift warning instead of a bare ready count."""
+    import overstate_ui.dashboard as dashboard_mod
+
+    pods = _masters_payload()["pods"]
+    pods[1] = {
+        "name": "salt-master-1",
+        "phase": "Pending",
+        "ready": False,
+        "image": "quay.io/sigaint/overstate-salt-master:lts-pg2",
+        "image_short": "overstate-salt-master:lts-pg2",
+        "restarts": 0,
+    }
+    payload = _masters_payload(
+        complete=False,
+        ready_replicas=1,
+        updated_replicas=1,
+        ready_pods=1,
+        pods=pods,
+        images_differ=True,
+        config_revision=None,
+    )
+
+    def fake_describe(jid):
+        if jid == "m1":
+            return ("ready", payload)
+        return ("gone", None)
+
+    monkeypatch.setattr(dashboard_mod, "describe_job", fake_describe)
+    html = (
+        _dashboard_client()
+        .get("/dashboard/panels?keys=k1&presence=p1&versions=v1&caps=c1&masters=m1")
+        .data.decode()
+    )
+    assert "rollout progressing" in html
+    assert "1/2 updated" in html
+    assert "pending" in html  # unready pod shows its phase
+    assert "different images" in html
+    assert "unknown" in html  # no config revision yet

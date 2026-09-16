@@ -1,8 +1,9 @@
 """Minimal in-cluster Kubernetes client (stdlib only).
 
 Talks to the API server over HTTPS with the pod's ServiceAccount token —
-the documented in-pod access pattern — for exactly four operations:
-ConfigMap read/replace, StatefulSet restart-patch, and rollout reads.
+the documented in-pod access pattern — for ConfigMap read/replace,
+StatefulSet restart-patch and rollout reads, and pod listing for the
+masters status panel.
 No third-party dependency; the `transport` hook exists so tests can fake
 the API server without touching the network.
 
@@ -218,6 +219,37 @@ class K8sClient:
             "readyReplicas": status.get("readyReplicas", 0),
             "updatedReplicas": status.get("updatedReplicas", 0),
         }
+
+    def list_pods(self, label_selector: str) -> list[dict]:
+        """Per-pod rows for status panels: name, phase, readiness,
+        container image, and restart count. JSON-serializable."""
+        obj = self._call(
+            "GET",
+            f"/api/v1/namespaces/{self.config.namespace}/pods"
+            f"?labelSelector={label_selector}",
+        )
+        rows = []
+        for pod in obj.get("items") or []:
+            meta, status = pod.get("metadata") or {}, pod.get("status") or {}
+            containers = status.get("containerStatuses") or []
+            images = sorted({c.get("image", "") for c in containers} - {""})
+            ready_conds = [
+                c.get("status") == "True"
+                for c in status.get("conditions") or []
+                if c.get("type") == "Ready"
+            ]
+            rows.append(
+                {
+                    "name": meta.get("name", ""),
+                    "phase": status.get("phase", ""),
+                    "ready": bool(containers)
+                    and all(c.get("ready") for c in containers)
+                    and (not ready_conds or all(ready_conds)),
+                    "images": images,
+                    "restarts": sum(c.get("restartCount", 0) for c in containers),
+                }
+            )
+        return rows
 
     def pods_ready(self, label_selector: str) -> tuple[int, int]:
         """(ready, total) pods matching a selector in this namespace."""

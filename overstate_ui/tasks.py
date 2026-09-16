@@ -10,7 +10,8 @@ out.
 
 Split from a single 512-line module: queue plumbing lives in
 :mod:`overstate_ui.tasks_queue`, per-domain Salt wrappers in
-:mod:`overstate_ui.tasks_salt`, batch/orchestrate executors in
+:mod:`overstate_ui.tasks_salt`, Kubernetes status probes in
+:mod:`overstate_ui.tasks_k8s`, batch/orchestrate executors in
 :mod:`overstate_ui.tasks_batch`. Everything is re-exported here so
 existing ``overstate_ui.tasks.*`` import paths keep working.
 """
@@ -28,6 +29,11 @@ from .tasks_batch import (
     run_wave_batch,
     run_wave_batch_task,
     split_roster,
+)
+from .tasks_k8s import (
+    MASTER_LABEL,
+    master_status_now,
+    master_status_task,
 )
 from .tasks_queue import (
     CAPABILITY_CACHE_KEY,
@@ -79,6 +85,7 @@ __all__ = [
     "FANOUT_HTTP_TIMEOUT",
     "FUN_DOC_LINES",
     "JOB_TIMEOUT",
+    "MASTER_LABEL",
     "PING_SALT_TIMEOUT",
     "QUEUE_NAME",
     "RESULT_TTL",
@@ -100,6 +107,8 @@ __all__ = [
     "get_redis_client",
     "isolated_app",
     "list_functions_now",
+    "master_status_now",
+    "master_status_task",
     "mine_get_now",
     "mine_get_task",
     "normalize_versions",

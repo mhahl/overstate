@@ -153,6 +153,41 @@ already says so. Only claim "unreachable" once polling settled. #}
   <section class="card bg-base-100 shadow-sm rounded-box">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
+        <h2 class="card-title text-base">Salt masters</h2>
+        {% if masters and masters.available %}
+        <span class="badge badge-sm ms-auto {{ 'badge-success' if masters.complete else 'badge-warning' }}">{{ "ready" if masters.complete else "rollout progressing" }}</span>
+        {% elif masters or not probing %}
+        <span class="badge badge-sm ms-auto badge-neutral">unavailable</span>
+        {% else %}
+        <span class="badge badge-sm ms-auto badge-neutral">checking</span>
+        {% endif %}
+      </div>
+      {% if masters and masters.available %}
+      <p class="text-sm opacity-70 mt-1">Rollout {{ "complete" if masters.complete else "progressing" }} · {{ masters.updated_replicas }}/{{ masters.replicas }} updated, {{ masters.ready_replicas }}/{{ masters.replicas }} ready</p>
+      <ul class="flex flex-col gap-2 mt-2">
+        {% for pod in masters.pods %}
+        <li class="flex items-center gap-2 text-sm">
+          <span class="badge badge-sm {{ 'badge-success' if pod.ready else 'badge-warning' }}">{{ "ready" if pod.ready else (pod.phase|lower or "not ready") }}</span>
+          <span class="font-mono text-xs">{{ pod.name }}</span>
+          {% if pod.restarts %}<span class="text-xs opacity-60 tabular-nums" title="Container restarts">{{ pod.restarts }}× restarted</span>{% endif %}
+          <span class="ms-auto font-mono text-xs opacity-70 truncate" title="{{ pod.image }}">{{ pod.image_short }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if masters.images_differ %}
+      <p class="text-xs text-warning mt-2">Pods run different images — let the rollout finish, then check the StatefulSet.</p>
+      {% endif %}
+      <p class="text-xs opacity-70 mt-2">Config rev <span class="font-mono">{{ masters.config_revision or "unknown" }}</span>{% if current_user.role == "admin" %} · <a class="link" href="{{ url_for('masterconfig.index') }}">Master Settings</a>{% endif %}</p>
+      {% elif masters or not probing %}
+      <p class="text-sm opacity-70 mt-1">Master status unavailable — no cluster connection from here.</p>
+      {% else %}
+      <p class="text-sm opacity-70 mt-1">Probing masters…</p>
+      {% endif %}
+    </div>
+  </section>
+  <section class="card bg-base-100 shadow-sm rounded-box">
+    <div class="card-body p-4">
+      <div class="flex items-center gap-2">
         <h2 class="card-title text-base">Salt versions</h2>
         <span class="badge badge-sm ms-auto {{ 'badge-success' if stats.versions_live else 'badge-neutral' }}">{{ "live" if stats.versions_live else "snapshot" }}</span>
       </div>

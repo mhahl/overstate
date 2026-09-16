@@ -128,6 +128,7 @@ def index():
         fleet_keys_task,
         fleet_presence_task,
         fleet_versions_task,
+        master_status_task,
         queue_or_none,
         read_capability_cache,
     )
@@ -135,6 +136,7 @@ def index():
     keys_job = queue_or_none(fleet_keys_task)
     presence_job = queue_or_none(fleet_presence_task)
     versions_job = queue_or_none(fleet_versions_task)
+    masters_job = queue_or_none(master_status_task)
     target = ping_target()
     caps_job = queue_or_none(capabilities_task, target) if target is not None else None
     panels = {
@@ -142,6 +144,7 @@ def index():
         "presence": presence_job.id if presence_job is not None else None,
         "versions": versions_job.id if versions_job is not None else None,
         "caps": caps_job.id if caps_job is not None else None,
+        "masters": masters_job.id if masters_job is not None else None,
     }
     client = get_salt()
     stats = collect_stats(client)
@@ -154,6 +157,7 @@ def index():
         stats=stats,
         health=health,
         checks=checks,
+        masters=None,
         panels=panels,
         poll_qs=_poll_qs(panels, _fingerprint({}, cached, stats), int(time.time())),
         probing=any(panels.values()),
@@ -173,7 +177,7 @@ def panels():
     client = get_salt()
     jids = {
         key: request.args.get(key) or None
-        for key in ("keys", "presence", "versions", "caps")
+        for key in ("keys", "presence", "versions", "caps", "masters")
     }
     live: dict[str, Any] = {}
     probing = False
@@ -192,6 +196,7 @@ def panels():
     caps = live.get("caps")
     if caps is None:
         caps = read_capability_cache()
+    masters = live.get("masters")
     fingerprint = _fingerprint(live, caps, stats)
     if probing and _poll_expired(request.args.get("started")):
         # Worker died mid-probe: keep whatever resolved, fall back the
@@ -210,6 +215,7 @@ def panels():
         stats=stats,
         health=health,
         checks=checks,
+        masters=masters,
         probing=probing,
         worker_down=False,
         poll_qs=(
@@ -222,12 +228,14 @@ def panels():
 
 def _fingerprint(live: dict[str, Any], caps: dict | None, stats: dict) -> str:
     """What the client already shows: ready panel keys, whether caps
-    rendered (job result or cache), and the DB counts that paint while
-    probing — so a re-poll only re-renders on a visible change."""
+    rendered (job result or cache), whether the masters probe resolved,
+    and the DB counts that paint while probing — so a re-poll only
+    re-renders on a visible change."""
     shown = set(live)
     if caps is not None:
         shown.add("caps")
     parts = sorted(shown)
+    parts.append(f"masters-{bool(live.get('masters'))}")
     parts.append(f"in-flight-{stats['in_flight']}")
     parts.append(f"failures-{len(stats['last_failures'])}")
     return ",".join(parts)

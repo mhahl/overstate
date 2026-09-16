@@ -157,6 +157,54 @@ def test_pods_ready_counts():
     assert client.pods_ready("app.kubernetes.io/name=salt-master") == (1, 2)
 
 
+def test_list_pods_shapes_rows():
+    def pod(name, cond, image, restarts, phase="Running"):
+        return {
+            "metadata": {"name": name},
+            "status": {
+                "phase": phase,
+                "conditions": [{"type": "Ready", "status": cond}],
+                "containerStatuses": [
+                    {"ready": cond == "True", "image": image, "restartCount": restarts}
+                ],
+            },
+        }
+
+    payload = {
+        "items": [
+            pod(
+                "salt-master-0",
+                "True",
+                "quay.io/sigaint/overstate-salt-master:lts-pg1",
+                1,
+            ),
+            pod(
+                "salt-master-1",
+                "False",
+                "quay.io/sigaint/overstate-salt-master:lts-pg1",
+                0,
+            ),
+        ]
+    }
+    client = _client([], lambda m, u, b: (200, payload))
+    assert client.list_pods("app.kubernetes.io/name=salt-master") == [
+        {
+            "name": "salt-master-0",
+            "phase": "Running",
+            "ready": True,
+            "images": ["quay.io/sigaint/overstate-salt-master:lts-pg1"],
+            "restarts": 1,
+        },
+        {
+            "name": "salt-master-1",
+            "phase": "Running",
+            "ready": False,
+            "images": ["quay.io/sigaint/overstate-salt-master:lts-pg1"],
+            "restarts": 0,
+        },
+    ]
+
+
 # -- Unit 3: Master Config browser/editor ---------------------------------
 
 import overstate_ui.masterconfig as masterconfig_mod

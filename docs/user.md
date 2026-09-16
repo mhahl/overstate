@@ -49,6 +49,10 @@ The dashboard answers one question: is the fleet healthy right now.
   service account may call wheel and runner endpoints. If this panel
   shows unreachable, every other number on the page is suspect. Tell
   your admin.
+- **Salt masters.** The two master pods: rollout state (complete or
+  progressing with updated/ready counts), each pod's readiness, image,
+  and restart count, plus the live config revision. A different image
+  across pods means a rollout is mid-flight — or stuck.
 
 ## Minions
 
