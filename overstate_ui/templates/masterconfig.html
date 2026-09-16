@@ -13,16 +13,24 @@
     <code class="font-mono">{{ manual }}</code>
   </div>
   {% else %}
-  <p class="text-sm opacity-70 mb-4">Owned salt-master configuration. Saving snapshots the whole ConfigMap first{% if snapshots is not none %} ({{ snapshots }} snapshot{{ "s" if snapshots != 1 else "" }} kept){% endif %}; restart the masters afterwards to apply changes.{% if revision %} Live at revision <code class="font-mono">{{ revision }}</code>.{% endif %}</p>
-  <div class="flex gap-2 mb-4">
+  <p class="text-sm opacity-70 mb-4">Saving backs up the whole ConfigMap first{% if snapshots %} ({{ snapshots }} kept){% endif %}. Restart the masters to apply your changes.{% if revision %} Live revision <code class="font-mono">{{ revision }}</code>.{% endif %}</p>
+  <div class="flex flex-wrap items-center gap-2 mb-4 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm" role="toolbar" aria-label="Master actions">
     <form method="post" action="{{ url_for('masterconfig.restart') }}" data-confirm="Restart the salt masters? Connected minions reconnect, but in-flight jobs may be interrupted.">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-sm btn-warning" type="submit">Restart masters</button>
+      <button class="btn btn-sm btn-warning" type="submit">
+        <span class="icon-[lucide--rotate-cw] size-4 shrink-0" aria-hidden="true"></span>
+        Restart masters
+      </button>
     </form>
+    <div class="divider divider-horizontal m-0" aria-hidden="true"></div>
     <form method="post" action="{{ url_for('masterconfig.revert') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-sm btn-ghost" type="submit">Revert to last snapshot</button>
+      <button class="btn btn-sm btn-ghost" type="submit">
+        <span class="icon-[lucide--history] size-4 shrink-0" aria-hidden="true"></span>
+        Revert to last snapshot
+      </button>
     </form>
+    <span class="ms-auto text-xs opacity-60">Rolls one pod at a time</span>
   </div>
   <div class="card bg-base-100 border border-base-300 shadow-sm">
     <ul class="menu w-full p-2">
