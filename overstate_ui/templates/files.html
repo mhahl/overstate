@@ -2,10 +2,15 @@
 {% block title %}Files · Overstate{% endblock %}
 {% block content %}
 <div class="w-full">
-  <div class="mb-5">
+  <div class="mb-5 flex flex-wrap items-start justify-between gap-2">
+    <div>
     <h1 class="text-2xl font-bold tracking-tight">State files</h1>
     <p class="text-sm opacity-70 mt-0.5">Browse and edit state files. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
     {% if has_top %}<p class="text-sm mt-1"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% endif %}
+    </div>
+    {% if current_user.role == "admin" %}
+    <a class="btn btn-sm btn-outline mt-1" title="Clone, repoint, and repair the file-roots checkout" href="{{ url_for('files.repo') }}">Repo settings</a>
+    {% endif %}
   </div>
   <section class="card bg-base-100 border border-base-300 shadow-sm mb-3" aria-label="Git checkout status">
     <div class="card-body py-3">
@@ -17,7 +22,7 @@
         {% if git.clean %}<span class="badge badge-sm badge-success">clean</span>{% else %}<span class="badge badge-sm badge-warning">{{ git.dirty_count }} uncommitted</span>{% endif %}
         {% if git.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ git.upstream }}{% if git.ahead is not none %} · {{ git.ahead }} ahead, {{ git.behind }} behind{% endif %}</span>{% else %}<span class="opacity-70 text-xs">no upstream</span>{% endif %}
         {% if current_user.role in ["operator", "admin"] %}
-        <span class="ms-auto flex gap-1">
+        <span class="ms-auto flex gap-1 max-sm:w-full max-sm:mt-1">
           <form method="post" action="{{ url_for('files.fetch') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-ghost" title="Fetch the remote without changing files">Check for updates</button>
@@ -31,7 +36,6 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-primary" title="Push committed changes upstream">Push</button>
           </form>
-          <a class="btn btn-sm btn-ghost" title="Clone, repoint, and repair the checkout" href="{{ url_for('files.repo') }}">Repo</a>
           {% endif %}
         </span>
         {% endif %}

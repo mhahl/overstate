@@ -48,7 +48,7 @@
 <tr><td class="font-mono text-xs">{{ r.event }}</td>
 <td class="font-mono text-xs">{% for ref in r.refs %}{% set rel = r.rels[loop.index0] %}{% if rel %}<a class="link" href="{{ url_for('reactor.view', sls=rel) }}">{{ ref }}</a>{% else %}{{ ref }}{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
 <td><a class="link text-xs" href="{{ url_for('events.index', tag=r.tag) }}">events</a></td>
-{% if current_user.role in ["operator", "admin"] %}<td class="text-right"><a class="btn btn-sm btn-error btn-outline" href="{{ url_for('reactor.delete_confirm', event=r.event) }}">Delete</a></td>{% endif %}</tr>
+{% if current_user.role in ["operator", "admin"] %}<td class="text-right"><form method="post" action="{{ url_for('reactor.delete') }}" class="inline" data-confirm="Delete reactor '{{ r.event }}'? {{ r.refs|length }} SLS file(s) stay on disk."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="event" value="{{ r.event }}"><button class="btn btn-sm btn-error btn-outline">Delete</button></form></td>{% endif %}</tr>
 {% endfor %}
 </tbody></table>
 </div>

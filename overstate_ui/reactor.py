@@ -275,24 +275,6 @@ def add():
     return redirect(url_for("reactor.index"))
 
 
-@bp.route("/delete")
-@login_required
-def delete_confirm():
-    event = request.args.get("event", "")
-    if not event:
-        flash("Pick a reactor first: an empty selection never fires.", "error")
-        return redirect(url_for("reactor.index"))
-    refs: list[str] = []
-    try:
-        value = get_salt().runner("reactor.list", http_timeout=30.0)
-        value = _unwrap(value)
-        entries, _ = parse_reactor_list(value)
-        refs = entries.get(event, [])
-    except SaltApiError:
-        refs = []
-    return render_template("reactor_confirm.html", event=event, refs=refs)
-
-
 @bp.post("/delete")
 @roles_required("operator")
 def delete():

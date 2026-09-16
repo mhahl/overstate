@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Repo · Overstate{% endblock %}
 {% block content %}
-<div class="mb-5">
+<div class="mb-5 flex flex-wrap items-start justify-between gap-2">
+  <div>
   <h1 class="text-2xl font-bold tracking-tight">Repo</h1>
   <p class="text-sm opacity-70 mt-0.5">Bootstrap, repoint, and repair the file-roots checkout. Admin only.</p>
+  </div>
+  <a class="btn btn-sm btn-ghost mt-1" href="{{ url_for('files.index') }}">← State files</a>
 </div>
 
 <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">

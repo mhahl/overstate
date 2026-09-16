@@ -294,6 +294,7 @@ def test_repo_view_offers_clone_when_empty(web_client):
     rv = client.get("/files/repo")
     assert rv.status_code == 200
     assert b"Clone" in rv.data
+    assert b'href="/files/"' in rv.data
 
 
 def test_repo_clone_refuses_non_allowlisted_url(web_client):

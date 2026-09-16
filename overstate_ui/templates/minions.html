@@ -117,7 +117,7 @@
             : (state === "dead" ? "status-warning" : "status-error");
           dot.classList.remove("status-success", "status-warning", "status-error");
           dot.classList.add(cls);
-          label.textContent = state === "dead" ? "accepted-but-dead" : state;
+          label.textContent = state === "dead" ? "accepted, dead" : state;
         });
       })
       .catch(function () {});

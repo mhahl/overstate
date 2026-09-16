@@ -511,3 +511,10 @@ def test_third_party_licenses_list_the_editor():
         pathlib.Path(__file__).resolve().parent.parent / "THIRD-PARTY-LICENSES.md"
     ).read_text()
     assert "codemirror" in text.lower()
+
+
+def test_index_links_repo_settings_for_admin(rooted):
+    rv = rooted.get("/files/")
+    assert rv.status_code == 200
+    assert b"Repo settings" in rv.data
+    assert b'href="/files/repo"' in rv.data

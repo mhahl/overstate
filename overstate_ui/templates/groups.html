@@ -38,13 +38,9 @@
           {% if current_user.role in ["operator", "admin"] %}
           <td class="text-right whitespace-nowrap">
             <button type="button" class="btn btn-xs" onclick='openGroupModal({{ g.id }}, {{ g.name|tojson }}, {{ g.members|tojson }})'>Edit</button>
-            <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline">
+            <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline" data-confirm="Delete group '{{ g.name }}' ({{ g.members|length }} members)? This cannot be undone.">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="button" class="btn btn-xs btn-error btn-outline" onclick="this.classList.add('hidden');this.nextElementSibling.classList.remove('hidden')">Delete</button>
-              <span class="hidden">Delete “{{ g.name }}” ({{ g.members|length }} members)?
-                <button type="submit" class="btn btn-xs btn-error">Confirm</button>
-                <button type="button" class="btn btn-xs btn-ghost" onclick="var s=this.parentElement;s.classList.add('hidden');s.previousElementSibling.classList.remove('hidden')">Keep</button>
-              </span>
+              <button class="btn btn-xs btn-error btn-outline">Delete</button>
             </form>
           </td>
           {% endif %}

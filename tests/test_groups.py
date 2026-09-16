@@ -281,8 +281,7 @@ def test_group_row_links_prefilled_job_form(admin):
 def test_delete_requires_confirm(admin):
     admin.post("/groups", data={"name": "doomed", "members": ["web-01", "web-02"]})
     html = admin.get("/groups/").data.decode()
-    assert "Delete \u201cdoomed\u201d (2 members)?" in html
-    assert ">Confirm</button>" in html
+    assert "data-confirm=\"Delete group 'doomed' (2 members)?" in html
 
 
 def test_viewer_sees_readonly_hint(app):

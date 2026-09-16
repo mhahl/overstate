@@ -267,7 +267,7 @@ def export_csv():
             [
                 r["id"],
                 r["key_status"],
-                "up" if r["up"] else ("accepted-but-dead" if r["dead"] else "down"),
+                "up" if r["up"] else ("accepted, dead" if r["dead"] else "down"),
                 g.get("osfinger", ""),
                 g.get("osrelease", ""),
                 g.get("fqdn", ""),

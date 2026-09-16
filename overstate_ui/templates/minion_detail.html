@@ -43,8 +43,11 @@
             <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--badge-check] size-4" aria-hidden="true"></span></span>
             <p class="font-medium text-sm">Conformity</p>
           </div>
-          <p class="text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-success" title="Last highstate-style run matched the watched states">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-warning" title="Last run reported changes. Open Recent activity, then re-run state.apply to converge">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-error" title="Last run could not reach this minion. Check presence and key state">unreachable</span>{% else %}<span class="badge badge-neutral" title="No highstate-style job has reported for this minion yet">unknown</span>{% endif %}</p>
-          <p class="text-xs text-base-content/60">{% if conformity.get("jid") and conformity.get("status") != "unknown" %}Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% else %}No highstate-style job recorded{% endif %}</p>
+          <p class="text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-success">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-warning">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-error">unreachable</span>{% else %}<span class="badge badge-neutral">unknown</span>{% endif %}</p>
+          {% if conformity.get("status") == "drifted" %}<p class="text-xs">Last run reported changes — open Recent activity below, then re-run state.apply to converge.</p>
+          {% elif conformity.get("status") == "unreachable" %}<p class="text-xs">Last run could not reach this minion — check presence and key state above.</p>
+          {% elif (not conformity.get("status") or conformity.get("status") == "unknown") and not conformity.get("jid") %}<p class="text-xs">No highstate-style job has reported for this minion yet — run one to establish conformity.</p>{% endif %}
+          <p class="text-xs text-base-content/60">{% if conformity.get("jid") and conformity.get("status") != "unknown" %}Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% elif conformity.get("status") and (conformity.get("status") != "unknown" or conformity.get("jid")) %}No highstate-style job recorded{% endif %}</p>
         </div>
       </div>
       <div class="bg-base-200 rounded-box">
@@ -291,7 +294,7 @@
 {% if tab == "overview" %}
 <section aria-label="All grain facts" class="card bg-base-100 shadow-sm mt-4">
   <div class="collapse collapse-arrow">
-    <input type="checkbox" checked aria-label="Toggle all grain facts">
+    <input type="checkbox" aria-label="Toggle all grain facts">
     <div class="collapse-title font-semibold">All grain facts ({{ data.grains|length }})</div>
     <div class="collapse-content">
       {% if data.grains %}

@@ -15,7 +15,7 @@
 <tr><td class="font-medium">{{ s.name }}</td><td class="font-mono text-xs">{{ s.fun }}</td><td class="font-mono text-xs">{{ s.tgt_type }}: {{ s.tgt }}</td>
 <td class="text-right"><span class="join join-horizontal">
 <a class="btn btn-sm btn-primary join-item" href="{{ url_for('jobs.new', saved=s.id) }}">Run</a>
-{% if current_user.role in ["operator", "admin"] %}<form method="post" action="{{ url_for('jobs.delete_saved', saved_id=s.id) }}" data-confirm="Delete saved job '{{ s.name }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-ghost join-item">Delete</button></form>{% endif %}
+{% if current_user.role in ["operator", "admin"] %}<form method="post" action="{{ url_for('jobs.delete_saved', saved_id=s.id) }}" data-confirm="Delete saved job '{{ s.name }}'? Past runs are unaffected."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-ghost join-item">Delete</button></form>{% endif %}
 </span></td></tr>
 {% endfor %}
 </tbody></table>

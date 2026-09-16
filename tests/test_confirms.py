@@ -90,7 +90,7 @@ def test_confirm_dialog_renders_once_on_every_page(client):
 
 def test_keys_destructive_forms_carry_confirm(client):
     html = client.get("/keys/?tab=accepted").data.decode()
-    assert "data-confirm=\"Delete key for 'web-01'?\"" in html
+    assert "data-confirm=\"Delete key for 'web-01'? A running minion" in html
     pending = client.get("/keys/?tab=pending").data.decode()
     assert "data-confirm=\"Reject key for 'new-01'?\"" in pending
 
@@ -99,14 +99,14 @@ def test_job_and_saved_delete_forms_carry_confirm(client):
     html = client.get("/jobs/j1").data.decode()
     assert 'data-confirm="Kill job j1?' in html
     saved = client.get("/jobs/?tab=saved").data.decode()
-    assert "data-confirm=\"Delete saved job 'ping'?\"" in saved
+    assert "data-confirm=\"Delete saved job 'ping'? Past runs" in saved
 
 
 def test_users_and_states_forms_carry_confirm(client):
     html = client.get("/users/").data.decode()
     assert "data-confirm=\"Delete user 'op'?\"" in html
     states = client.get("/states/").data.decode()
-    assert "data-confirm=\"Stop watching 'baseline'?\"" in states
+    assert "data-confirm=\"Stop watching 'baseline'? Conformity" in states
 
 
 def test_highstate_with_typed_target_launches(client):

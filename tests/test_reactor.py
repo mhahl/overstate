@@ -149,16 +149,14 @@ def test_add_rejects_bad_event(tmp_path):
     assert not [c for c in calls if c[0] == "reactor.add"]
 
 
-def test_delete_confirm_and_post(tmp_path):
+def test_delete_flows_through_shared_dialog(tmp_path):
     calls = []
     app = _app(tmp_path, calls)
     client = app.test_client()
     _login(client, "op")
-    html = client.get(
-        "/reactor/delete", query_string={"event": "salt/auth"}
-    ).data.decode()
-    assert "salt/auth" in html
-    assert "Delete salt/auth" in html
+    html = client.get("/reactor/").data.decode()
+    assert "SLS file(s) stay on disk" in html
+    assert client.get("/reactor/delete").status_code == 405
     rv = client.post(
         "/reactor/delete", data={"event": "salt/auth"}, follow_redirects=True
     )

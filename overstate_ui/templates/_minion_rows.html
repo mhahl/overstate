@@ -14,10 +14,10 @@
         {% elif r.key_status in ["rejected", "denied"] %}<span class="badge badge-sm badge-error">{{ r.key_status }}</span>
         {% else %}<span class="badge badge-sm badge-neutral">{{ r.key_status }}</span>{% endif %}
       </td>
-      <td><span class="inline-flex items-center gap-1.5 text-sm presence" data-mid="{{ r.id }}">
-        {% if r.up %}<span class="status status-success"></span><span>up</span>
-        {% elif r.dead %}<span class="status status-warning"></span><span>accepted-but-dead</span>
-        {% else %}<span class="status status-error"></span><span>down</span>{% endif %}
+      <td><span class="inline-flex items-center gap-1.5 text-sm presence" data-mid="{{ r.id }}" {% if r.dead %}title="Key accepted but the minion is not responding — open its detail page to diagnose"{% endif %}>
+        {% if r.up %}<span class="status status-success" aria-hidden="true"></span><span>up</span>
+        {% elif r.dead %}<span class="status status-warning" aria-hidden="true"></span><span>accepted, dead</span>
+        {% else %}<span class="status status-error" aria-hidden="true"></span><span>down</span>{% endif %}
       </span></td>
       <td class="text-sm">{{ r.grains.get("osfinger", "–") }} {{ r.grains.get("osrelease", "") }}</td>
       <td class="font-mono text-xs">{{ (r.grains.get("ipv4") or ["–"])[0] }}</td>
@@ -34,7 +34,7 @@
           <summary class="btn btn-ghost btn-xs [&::-webkit-details-marker]:hidden" aria-label="Actions for {{ r.id }}">
             <span class="icon-[lucide--ellipsis-vertical] size-4" aria-hidden="true"></span>
           </summary>
-          <ul class="menu dropdown-content bg-base-100 border border-base-300 rounded-box shadow-md w-44 p-2 z-10">
+          <ul class="menu dropdown-content bg-base-100 border border-base-300 rounded-box shadow-md w-44 p-2 z-10" aria-label="Actions">
             <li><form method="post" action="{{ url_for('minions.refresh_one', mid=r.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="w-full text-left">Refresh</button></form></li>
             <li><button type="button" class="w-full text-left text-error" onclick='openRemoveModal({{ r.id|tojson }})'>Remove</button></li>
           </ul>

@@ -19,8 +19,9 @@
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <label class="fieldset flex-1 min-w-48">
       <span class="fieldset-legend">Search stream</span>
-      <input id="event-filter" type="search" placeholder="Filter shown events…" class="input input-sm" autocomplete="off">
+      <input id="event-filter" type="search" placeholder="Filter shown events…" class="input input-sm" autocomplete="off" aria-describedby="event-count">
     </label>
+    <span id="event-count" class="text-xs opacity-70 pb-1" aria-label="Shown event count"></span>
   </div>
 </form>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
@@ -35,12 +36,23 @@
   var list = document.getElementById("event-list");
   var note = document.getElementById("event-note");
   var filterInput = document.getElementById("event-filter");
+  var count = document.getElementById("event-count");
+  function updateCount() {
+    // Plain text, not live-announced: keystroke chatter would drown the
+    // status line. Screen-reader users can navigate to it on demand.
+    var shown = 0;
+    Array.prototype.forEach.call(list.children, function (li) {
+      if (!li.classList.contains("hidden")) shown += 1;
+    });
+    if (count) count.textContent = list.children.length ? (shown + " of " + list.children.length + " shown") : "";
+  }
   function applyFilter() {
     var q = filterInput.value.toLowerCase();
     Array.prototype.forEach.call(list.children, function (li) {
       var text = li.textContent.toLowerCase();
       li.classList.toggle("hidden", !!q && text.indexOf(q) === -1);
     });
+    updateCount();
   }
   filterInput.addEventListener("input", applyFilter);
   src.onopen = function () {
@@ -54,6 +66,7 @@
     li.className = "flex items-center gap-2 px-4 py-2 border-b border-base-200 last:border-0 font-mono text-xs";
     var dot = document.createElement("span");
     dot.className = "status status-info shrink-0";
+    dot.setAttribute("aria-hidden", "true");
     li.appendChild(dot);
     var text = document.createElement("span");
     text.className = "break-all";
