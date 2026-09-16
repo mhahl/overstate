@@ -6,6 +6,7 @@
   <p class="text-sm opacity-70 mt-0.5">App preferences. They live in the database.</p>
 </div>
 {% set is_admin = current_user.role == "admin" %}
+{% with active="server" %}{% include "_settings_tabs.html" %}{% endwith %}
 <form method="post" class="max-w-2xl flex flex-col gap-4">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% for section in sections %}

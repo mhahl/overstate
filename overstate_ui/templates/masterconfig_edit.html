@@ -2,6 +2,7 @@
 {% block title %}Edit {{ key }} · Master config{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
+  {% with active="master" %}{% include "_settings_tabs.html" %}{% endwith %}
   <div class="flex flex-wrap items-center gap-2 mb-4">
     <a class="btn btn-sm btn-ghost" href="{{ url_for('masterconfig.view', key=key) }}">‹ Back</a>
     <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ key }}</h1>

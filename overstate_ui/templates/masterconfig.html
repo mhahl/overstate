@@ -2,6 +2,7 @@
 {% block title %}Master config · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
+  {% with active="master" %}{% include "_settings_tabs.html" %}{% endwith %}
   <div class="flex flex-wrap items-center gap-2 mb-4">
     <h1 class="text-xl font-bold tracking-tight">Master config</h1>
     <span class="badge badge-sm badge-ghost">ConfigMap</span>

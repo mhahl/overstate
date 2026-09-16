@@ -76,6 +76,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(keys.bp)
     app.register_blueprint(masterconfig.bp)
+    app.register_blueprint(masterconfig.legacy_bp)
     app.register_blueprint(minions.bp)
     app.register_blueprint(mine.bp)
     app.register_blueprint(groups.bp)

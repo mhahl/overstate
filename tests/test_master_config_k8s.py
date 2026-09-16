@@ -286,18 +286,36 @@ def _actions(client):
 
 
 def test_admin_lists_keys(mui):
-    rv = mui["login"]("admin").get("/master-config/")
+    rv = mui["login"]("admin").get("/settings/master/")
     assert rv.status_code == 200
     assert b"master.conf" in rv.data and b"api.conf" in rv.data
+
+
+def test_legacy_prefix_forwards(mui):
+    client = mui["login"]("admin")
+    rv = client.get("/master-config/view", query_string={"key": "api.conf"})
+    assert rv.status_code == 302
+    assert rv.headers["Location"].endswith("/settings/master/view?key=api.conf")
+
+
+def test_settings_tabs_switch_sides(mui):
+    admin = mui["login"]("admin")
+    server = admin.get("/settings/").data.decode()
+    assert "Server Settings" in server and "Master Settings" in server
+    master = admin.get("/settings/master/").data.decode()
+    assert "Master Settings" in master
+    op = mui["login"]("op")
+    ope = op.get("/settings/").data.decode()
+    assert "Server Settings" in ope and "Master Settings" not in ope
 
 
 def test_operator_and_viewer_forbidden(mui):
     for user in ("op", "v"):
         client = mui["login"](user)
-        assert client.get("/master-config/").status_code == 403
+        assert client.get("/settings/master/").status_code == 403
         assert (
             client.post(
-                "/master-config/save",
+                "/settings/master/save",
                 data={"key": "master.conf", "content": "x: 1\n"},
             ).status_code
             == 403
@@ -307,16 +325,16 @@ def test_operator_and_viewer_forbidden(mui):
 def test_unknown_key_404s(mui):
     client = mui["login"]("admin")
     assert (
-        client.get("/master-config/view", query_string={"key": "nope"}).status_code
+        client.get("/settings/master/view", query_string={"key": "nope"}).status_code
         == 404
     )
     assert (
-        client.get("/master-config/edit", query_string={"key": "nope"}).status_code
+        client.get("/settings/master/edit", query_string={"key": "nope"}).status_code
         == 404
     )
     assert (
         client.post(
-            "/master-config/save", data={"key": "nope", "content": "x"}
+            "/settings/master/save", data={"key": "nope", "content": "x"}
         ).status_code
         == 404
     )
@@ -326,7 +344,7 @@ def test_valid_save_snapshots_history_before_live_write(mui):
     fake = mui["fake"]
     client = mui["login"]("admin")
     rv = client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={
             "key": "master.conf",
             "content": "# changed\n",
@@ -354,7 +372,7 @@ def test_stale_save_refuses_and_writes_nothing(mui):
     fake.live["rv"] = "11"  # raced external edit after the form was read
     client = mui["login"]("admin")
     rv = client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={
             "key": "master.conf",
             "content": "# raced\n",
@@ -373,7 +391,7 @@ def test_invalid_yaml_blocked_with_live_untouched(mui):
     fake = mui["fake"]
     client = mui["login"]("admin")
     rv = client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={
             "key": "master.conf",
             "content": "foo: [unclosed\n",
@@ -391,7 +409,7 @@ def test_invalid_yaml_blocked_with_live_untouched(mui):
 def test_non_mapping_yaml_blocked(mui):
     client = mui["login"]("admin")
     rv = client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={
             "key": "master.conf",
             "content": "- just\n- a\n- list\n",
@@ -406,7 +424,7 @@ def test_empty_config_saves_fine(mui):
     fake = mui["fake"]
     client = mui["login"]("admin")
     rv = client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={
             "key": "master.conf",
             "content": "",
@@ -422,7 +440,7 @@ def test_identical_content_is_noop(mui):
     fake = mui["fake"]
     client = mui["login"]("admin")
     rv = client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={
             "key": "master.conf",
             "content": "# base\n",
@@ -438,11 +456,11 @@ def test_identical_content_is_noop(mui):
 def test_offline_degrades_with_kubectl_hint(mui):
     mui["fake"].unavailable = True
     client = mui["login"]("admin")
-    rv = client.get("/master-config/")
+    rv = client.get("/settings/master/")
     assert rv.status_code == 200
     assert b"kubectl -n overstate edit configmap salt-master-config" in rv.data
     rv = client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={"key": "master.conf", "content": "x: 1\n"},
         follow_redirects=True,
     )
@@ -454,9 +472,11 @@ def test_offline_degrades_with_kubectl_hint(mui):
 
 def test_auth_banner_on_api_conf_only(mui):
     client = mui["login"]("admin")
-    edit_api = client.get("/master-config/edit", query_string={"key": "api.conf"})
+    edit_api = client.get("/settings/master/edit", query_string={"key": "api.conf"})
     assert b"Lockout risk" in edit_api.data
-    edit_master = client.get("/master-config/edit", query_string={"key": "master.conf"})
+    edit_master = client.get(
+        "/settings/master/edit", query_string={"key": "master.conf"}
+    )
     assert b"Lockout risk" not in edit_master.data
 
 
@@ -480,7 +500,7 @@ def m4(mui, monkeypatch):
 
 def _save(client, content="# changed\n", base="10"):
     return client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={
             "key": "master.conf",
             "content": content,
@@ -492,8 +512,8 @@ def _save(client, content="# changed\n", base="10"):
 
 def test_operator_restart_and_revert_forbidden(m4):
     client = m4["login"]("op")
-    assert client.post("/master-config/restart").status_code == 403
-    assert client.post("/master-config/revert").status_code == 403
+    assert client.post("/settings/master/restart").status_code == 403
+    assert client.post("/settings/master/revert").status_code == 403
 
 
 def test_restart_offline_names_manual_command(m4):
@@ -502,7 +522,7 @@ def test_restart_offline_names_manual_command(m4):
         server=None, token=None, namespace="overstate", ca_path=None
     )
     client = m4["login"]("admin")
-    rv = client.post("/master-config/restart", follow_redirects=True)
+    rv = client.post("/settings/master/restart", follow_redirects=True)
     assert b"rollout restart statefulset/salt-master" in rv.data
     assert m4["fake"].stamps == []
     assert any(a == "master-restart:refused-offline" for a in _actions(client))
@@ -510,7 +530,7 @@ def test_restart_offline_names_manual_command(m4):
 
 def test_restart_success(m4):
     client = m4["login"]("admin")
-    rv = client.post("/master-config/restart", follow_redirects=True)
+    rv = client.post("/settings/master/restart", follow_redirects=True)
     assert b"Masters restarted and healthy" in rv.data
     assert m4["fake"].stamps == ["salt-master"]
     assert any(a == "master-restart:ok" for a in _actions(client))
@@ -519,7 +539,7 @@ def test_restart_success(m4):
 def test_restart_timeout_links_revert(m4):
     m4["fake"].converge = False
     client = m4["login"]("admin")
-    rv = client.post("/master-config/restart", follow_redirects=True)
+    rv = client.post("/settings/master/restart", follow_redirects=True)
     assert b"did not finish in time" in rv.data
     assert b"revert to the last snapshot" in rv.data
     assert any(a == "master-restart:timeout" for a in _actions(client))
@@ -528,7 +548,7 @@ def test_restart_timeout_links_revert(m4):
 def test_restart_api_down_is_unhealthy(m4, monkeypatch):
     monkeypatch.setattr(masterconfig_mod, "_salt_api_healthy", lambda: False)
     client = m4["login"]("admin")
-    rv = client.post("/master-config/restart", follow_redirects=True)
+    rv = client.post("/settings/master/restart", follow_redirects=True)
     assert b"salt-api did not come back healthy" in rv.data
     assert any(a == "master-restart:timeout" for a in _actions(client))
 
@@ -536,7 +556,7 @@ def test_restart_api_down_is_unhealthy(m4, monkeypatch):
 def test_revert_empty_history_writes_nothing(m4):
     fake = m4["fake"]
     client = m4["login"]("admin")
-    rv = client.post("/master-config/revert", follow_redirects=True)
+    rv = client.post("/settings/master/revert", follow_redirects=True)
     assert b"No snapshots yet" in rv.data
     assert fake.live["data"]["master.conf"] == "# base\n"
     assert fake.stamps == []
@@ -550,7 +570,7 @@ def test_revert_last_restores_snapshot_and_restarts(m4):
     client = m4["login"]("admin")
     _save(client)
     assert fake.live["data"]["master.conf"] == "# changed\n"
-    rv = client.post("/master-config/revert", follow_redirects=True)
+    rv = client.post("/settings/master/revert", follow_redirects=True)
     assert b"Reverted and restarted healthy" in rv.data
     assert fake.live["data"]["master.conf"] == "# base\n"
     assert fake.stamps == ["salt-master"]
@@ -568,7 +588,7 @@ def test_oversize_save_refuses(mui):
     fake = mui["fake"]
     client = mui["login"]("admin")
     rv = client.post(
-        "/master-config/save",
+        "/settings/master/save",
         data={
             "key": "master.conf",
             "content": "x" * (MAX_BYTES + 1),

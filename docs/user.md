@@ -383,8 +383,9 @@ the browser.
 
 ## Master config
 
-Admins only — operators and viewers see no link and get 403 on forged
-requests. The page lists the data keys of the owned master ConfigMap
+Settings → **Master Settings** tab, admins only — operators and
+viewers see no tab and get 403 on forged requests. The page lists the
+data keys of the owned master ConfigMap
 (`master.conf`, `api.conf`). Opening a key shows the live content;
 **Edit** opens the code editor with a plain-textarea fallback.
 

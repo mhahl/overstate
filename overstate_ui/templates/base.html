@@ -138,16 +138,13 @@
             <span class="icon-[lucide--scroll-text] size-4.5" aria-hidden="true"></span>
             Audit</a></li>
           <li class="menu-title mt-2">System</li>
-          <li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('settings') }}">
+          <li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith(('settings', 'masterconfig')) }}">
             <span class="icon-[lucide--settings] size-4.5" aria-hidden="true"></span>
             Settings</a></li>
           {% if current_user.is_authenticated and current_user.role == 'admin' %}
           <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('users') }}">
             <span class="icon-[lucide--users] size-4.5" aria-hidden="true"></span>
             Users</a></li>
-          <li><a href="{{ url_for('masterconfig.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('masterconfig') }}">
-            <span class="icon-[lucide--sliders-horizontal] size-4.5" aria-hidden="true"></span>
-            Master config</a></li>
           {% endif %}
         </ul>
       </nav>

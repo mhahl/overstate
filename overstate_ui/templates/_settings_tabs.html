@@ -1,0 +1,6 @@
+<div class="tabs tabs-border mb-5" role="tablist" aria-label="Settings sections">
+  <a role="tab" aria-selected="{{ 'true' if active == 'server' else 'false' }}" class="tab{% if active == 'server' %} tab-active{% endif %}" href="{{ url_for('settings.index') }}">Server Settings</a>
+  {% if current_user.role == "admin" %}
+  <a role="tab" aria-selected="{{ 'true' if active == 'master' else 'false' }}" class="tab{% if active == 'master' %} tab-active{% endif %}" href="{{ url_for('masterconfig.index') }}">Master Settings</a>
+  {% endif %}
+</div>

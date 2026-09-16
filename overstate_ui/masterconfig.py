@@ -27,14 +27,28 @@ from flask import (
     request,
     url_for,
 )
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 from .audit import log_event
 from .auth import roles_required
 from .files import MAX_BYTES
 from .k8s import K8sClient, K8sConflictError, K8sError, K8sUnavailableError
 
-bp = Blueprint("masterconfig", __name__, url_prefix="/master-config")
+bp = Blueprint("masterconfig", __name__, url_prefix="/settings/master")
+
+# Forwarding address for the pre-move /master-config/* URLs (bookmarks).
+legacy_bp = Blueprint("masterconfig_legacy", __name__)
+
+
+@legacy_bp.route("/master-config/")
+@legacy_bp.route("/master-config/<path:subpath>")
+@login_required
+def legacy_redirect(subpath: str = ""):
+    target = f"/settings/master/{subpath}"
+    if request.query_string:
+        target += "?" + request.query_string.decode("ascii", "replace")
+    return redirect(target)
+
 
 HISTORY_KEY = "history.json"
 HISTORY_LIMIT = 20
