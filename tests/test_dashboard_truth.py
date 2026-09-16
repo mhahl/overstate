@@ -100,6 +100,19 @@ def test_shell_polls_without_touching_salt(monkeypatch):
     assert "Salt masters" in html and "Probing masters" in html
 
 
+def test_shell_queues_capabilities_without_minions(monkeypatch):
+    """Wheel/runner/history doors must probe before any minion is
+    inventoried: gating the caps probe on a ping target leaves @wheel
+    and @runner failing with no capabilities on a fresh deploy."""
+    _fake_queue(monkeypatch)
+    client = _dashboard_client()
+    with client.application.app_context():
+        get_session().query(Minion).delete()
+        get_session().commit()
+    html = client.get("/").data.decode()
+    assert "caps=c1" in html
+
+
 def test_shell_shows_worker_warning_without_redis():
     """No queue (Redis down in tests) means no panels: snapshot shell
     with a worker warning instead of a salt-api claim we never tested."""

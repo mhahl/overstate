@@ -137,8 +137,10 @@ def index():
     presence_job = queue_or_none(fleet_presence_task)
     versions_job = queue_or_none(fleet_versions_task)
     masters_job = queue_or_none(master_status_task)
+    # Always probe: wheel/runner/history doors are meaningful before any
+    # minion exists to ping, and the ping door skips itself on None.
     target = ping_target()
-    caps_job = queue_or_none(capabilities_task, target) if target is not None else None
+    caps_job = queue_or_none(capabilities_task, target)
     panels = {
         "keys": keys_job.id if keys_job is not None else None,
         "presence": presence_job.id if presence_job is not None else None,
