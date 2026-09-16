@@ -142,3 +142,23 @@ shred -u /tmp/returner.conf 2>/dev/null || rm -P /tmp/returner.conf
 
 Rotate the same way (replace Secret, roll both pods one at a time).
 The owned ConfigMap never holds passwords — enforced by test.
+
+## 6. Master cluster credential
+
+The pair runs as a Salt master cluster (isolated filesystem), so the
+Traefik TCP round-robin is the supported topology instead of a
+split-brain. Peers authenticate each other with `cluster_secret`,
+overlaid as a `cluster.conf` drop-in from the owner-held
+`salt-master-cluster` Secret (never committed, never visible in the
+Master Settings UI):
+
+```sh
+kubectl -n overstate create secret generic salt-master-cluster \
+  --from-literal=cluster.conf="cluster_secret: '$(openssl rand -hex 32)'"
+```
+
+Rotation: replace the Secret, then roll both pods one at a time — a
+peer with the old secret cannot rejoin, so confirm the new pods form
+the cluster before the last old pod leaves. Removing a peer for good
+also means deleting its `peers/<id>.pub` from the cluster key store
+on the remaining pods.

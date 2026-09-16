@@ -205,3 +205,47 @@ def test_returner_credentials_ride_a_secret_not_the_configmap():
     text = (K8S / "salt-master-config.yaml").read_text()
     assert not re.search(r"(?m)^\s*(passwd|password)\s*:", text)
     assert "salt-master-db" not in (K8S / "kustomization.yaml").read_text()
+
+
+def test_cluster_credential_rides_a_secret_not_the_configmap():
+    sts = _salt_master_sts()
+    pod = sts["spec"]["template"]["spec"]
+    volumes = {v["name"]: v for v in pod["volumes"]}
+    sources = volumes["config"]["projected"]["sources"]
+    kinds = set()
+    for source in sources:
+        kind, ref = next(iter(source.items()))
+        kinds.add((kind, ref.get("name")))
+    assert ("secret", "salt-master-cluster") in kinds
+    text = (K8S / "salt-master-config.yaml").read_text()
+    assert not re.search(r"(?m)^\s*cluster_secret\s*:", text)
+    assert "salt-master-cluster" not in (K8S / "kustomization.yaml").read_text()
+    assert not (K8S / "salt-master-cluster.yaml").exists()
+
+
+def test_master_cluster_wiring():
+    docs = _load("salt-master.yaml")
+    (sts,) = [d for d in docs if d.get("kind") == "StatefulSet"]
+    (master,) = [
+        c
+        for c in sts["spec"]["template"]["spec"]["containers"]
+        if c["name"] == "salt-master"
+    ]
+    ports = {p["name"]: p["containerPort"] for p in master["ports"]}
+    assert ports["cluster"] == 4507
+    (headless,) = [
+        d
+        for d in docs
+        if d.get("kind") == "Service" and d["metadata"]["name"] == "salt-master"
+    ]
+    svc_ports = {p["name"]: p["port"] for p in headless["spec"]["ports"]}
+    assert svc_ports["cluster"] == 4507
+    text = (K8S / "salt-master-config.yaml").read_text()
+    for key in (
+        "cluster_id:",
+        "cluster_peers:",
+        "cluster_pool_port:",
+        "cluster_pki_dir:",
+        "cluster_isolated_filesystem:",
+    ):
+        assert key in text

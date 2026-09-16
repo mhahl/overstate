@@ -1,8 +1,11 @@
 # Salt master + salt-api (project image: stock :lts plus the postgres
-# driver for the shared job cache). Active-active pair: both pods present
-# the same keypair (owner-held `salt-master-keys` Secret, never committed)
-# and share one ConfigMap; accepted minion keys stay per-pod on PVCs.
-# Rolling restarts go one pod at a time, so one master always serves.
+# driver for the shared job cache). Clustered pair (isolated
+# filesystem): both pods share one AES session key and one accepted-keys
+# store, so the Traefik TCP round-robin in front of 4505/4506 is the
+# supported topology. Same keypair (owner-held `salt-master-keys`
+# Secret, never committed), one ConfigMap, cluster credential from the
+# owner-held `salt-master-cluster` Secret (never committed). Rolling
+# restarts go one pod at a time, so one master always serves.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -59,6 +62,8 @@ spec:
               containerPort: 4506
             - name: api
               containerPort: 8000
+            - name: cluster
+              containerPort: 4507
           volumeMounts:
             # Owned configuration (ConfigMap salt-master-config).
             - name: config
@@ -68,8 +73,9 @@ spec:
             - name: srv
               mountPath: /home/salt/data/srv
               readOnly: true
-            # Accepted minion keys (per-pod PVC): must survive reschedules
-            # or minions go pending on the rescheduled pod.
+            # Cluster key store (per-pod PVC): cluster_pki_dir lives here,
+            # so accepted keys survive reschedules. A fresh pod rejoins
+            # via cluster_secret + cluster_peers and pulls keys in-band.
             - name: keys
               mountPath: /home/salt/data/keys
             # Shared master identity: the same keypair on both pods, from
@@ -98,10 +104,11 @@ spec:
             limits:
               memory: 2Gi
       volumes:
-        # One directory from two sources: the owned ConfigMap plus the
-        # owner-held returner Secret. Projected (not subPath overlays):
-        # file mounts into a read-only ConfigMap mount fail on these
-        # nodes. The UI keeps editing the ConfigMap object itself.
+        # One directory from three sources: the owned ConfigMap plus the
+        # owner-held returner and cluster Secrets. Projected (not subPath
+        # overlays): file mounts into a read-only ConfigMap mount fail on
+        # these nodes. The UI keeps editing the ConfigMap object itself;
+        # the Secrets never appear there.
         - name: config
           projected:
             defaultMode: 0440
@@ -110,6 +117,8 @@ spec:
                   name: salt-master-config
               - secret:
                   name: salt-master-db
+              - secret:
+                  name: salt-master-cluster
         - name: master-keypair
           secret:
             secretName: salt-master-keys
@@ -127,7 +136,8 @@ spec:
           requests:
             storage: 5Gi
 ---
-# Headless service: StatefulSet identity.
+# Headless service: StatefulSet identity, plus Raft peer traffic for
+# the master cluster.
 apiVersion: v1
 kind: Service
 metadata:
@@ -143,6 +153,8 @@ spec:
       port: 4506
     - name: api
       port: 8000
+    - name: cluster
+      port: 4507
 ---
 # salt-api for the app (in-cluster HTTPS; the image mints its own cert —
 # see SALT_API_VERIFY_CA=false on the app with a follow-up to pin it).

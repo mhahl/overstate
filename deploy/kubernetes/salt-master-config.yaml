@@ -17,6 +17,18 @@ data:
   # this file minimal — every key here beats an image default.
   master.conf: |
     # Managed by Overstate. Add master overrides below this line.
+    # Salt master cluster (isolated filesystem): both pods share one AES
+    # session key and one accepted-keys store, so the Traefik TCP
+    # round-robin in front of 4505/4506 is the supported topology.
+    # cluster_secret arrives as cluster.conf from the owner-held
+    # salt-master-cluster Secret (never in this file, never in the UI).
+    cluster_id: overstate-masters
+    cluster_peers:
+      - salt-master-0.salt-master
+      - salt-master-1.salt-master
+    cluster_pool_port: 4507
+    cluster_pki_dir: /home/salt/data/keys/_cluster
+    cluster_isolated_filesystem: true
   # salt-api auth for the `overstate` eauth user. Mirrors
   # salt-config/api.conf from the repo (grants the app needs, nothing
   # more). TLS for salt-api is the image's own self-signed cert (see
