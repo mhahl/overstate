@@ -124,7 +124,7 @@ def test_master_raft_timeouts_fit_cross_node_k8s():
 def test_master_image_always_pulls_floating_tag():
     sts = _salt_master_sts()
     (container,) = sts["spec"]["template"]["spec"]["containers"]
-    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg12"
+    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg13"
     # Same-tag rebuilds (entrypoint fixes) must reach the nodes.
     assert container["imagePullPolicy"] == "Always"
 

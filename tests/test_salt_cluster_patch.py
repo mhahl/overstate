@@ -80,7 +80,9 @@ def test_patch_table_is_well_formed():
         assert rel.endswith(".py") and not rel.startswith("/")
         assert len(old.strip()) > 20, "anchor too short to be safe"
         assert old != new
-        assert "cluster_node_id" in new, f"{rel}: replacement must use the opt"
+        assert "cluster_node_id" in new or "READY_SENTINEL" in new, (
+            f"{rel}: replacement must use cluster_node_id or the ready sentinel"
+        )
         files.add(rel)
     # Raft identity, join sentinel + founder, and ring ownership.
     assert "salt/cluster/consensus/service.py" in files

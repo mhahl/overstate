@@ -54,7 +54,7 @@ spec:
           # Own repo (not the app repo): quay.io/sigaint/overstate
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
-          image: quay.io/sigaint/overstate-salt-master:lts-pg12
+          image: quay.io/sigaint/overstate-salt-master:lts-pg13
           # Floating tag redeploys (entrypoint fixes) must actually pull.
           imagePullPolicy: Always
           env:

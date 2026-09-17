@@ -76,6 +76,41 @@ PATCHES = [
     (
         "salt/channel/server.py",
         """\
+    if not opts.get("cluster_id"):
+        return True
+    import salt.master  # pylint: disable=import-outside-toplevel
+
+    entry = salt.master.SMaster.secrets.get("cluster_ready")
+    if entry is None:
+        return False
+    return entry["event"].is_set()
+""",
+        """\
+    if not opts.get("cluster_id"):
+        return True
+    import salt.master  # pylint: disable=import-outside-toplevel
+
+    entry = salt.master.SMaster.secrets.get("cluster_ready")
+    if entry is not None and entry["event"].is_set():
+        return True
+    # Python 3.14 defaults to forkserver: MWorkers do not inherit
+    # SMaster.secrets. PubServer writes <cachedir>/health/ready when
+    # this node is a committed voter; honor that so pillar is not
+    # deferred forever (minion: "Master did not return a session key").
+    try:
+        import salt.cluster.healthchecks as _hc
+
+        ready = _hc.health_dir(opts)
+        if ready is not None and (ready / _hc.READY_SENTINEL).is_file():
+            return True
+    except Exception:
+        pass
+    return False
+""",
+    ),
+    (
+        "salt/channel/server.py",
+        """\
         interface = self.opts.get("interface") or "unknown"
         return pathlib.Path(self.opts["cachedir"]) / f".cluster_joined.{interface}"
 """,
