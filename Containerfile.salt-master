@@ -6,10 +6,11 @@ FROM ghcr.io/cdalvaro/docker-salt-master:lts
 
 RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
 
-# Cluster founder election sorts on `interface`, so every pod needs its
-# own address there — 0.0.0.0 makes each pod bootstrap a solo cluster.
-# The base regenerates /etc/salt/master at boot, so the wrapper appends
-# the pod address (from POD_NAME) once the file lands, then hands over.
+# Cluster election sorts on `interface` and the AES exchange looks
+# peers up by `id`, so every pod needs its own values — defaults make
+# each pod bootstrap a solo cluster. The base regenerates
+# /etc/salt/master at boot, so the wrapper appends both (from POD_NAME)
+# once the file lands, then hands over.
 COPY cluster-entrypoint.sh /usr/local/bin/cluster-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/cluster-entrypoint.sh"]
 

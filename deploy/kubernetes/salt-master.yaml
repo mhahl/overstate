@@ -42,7 +42,7 @@ spec:
           # Own repo (not the app repo): quay.io/sigaint/overstate
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
-          image: quay.io/sigaint/overstate-salt-master:lts-pg2
+          image: quay.io/sigaint/overstate-salt-master:lts-pg3
           env:
             # Pod name for cluster founder election (see
             # cluster-entrypoint.sh): salt-master-0 sorts first and
