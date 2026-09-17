@@ -249,3 +249,17 @@ def test_master_cluster_wiring():
         "cluster_isolated_filesystem:",
     ):
         assert key in text
+
+
+def test_master_pods_carry_name_for_cluster_election():
+    # Founder election sorts on `interface`, which the entrypoint pins
+    # to the pod name — without POD_NAME every pod sorts on 0.0.0.0 and
+    # bootstraps a solo cluster.
+    sts = _salt_master_sts()
+    (master,) = [
+        c
+        for c in sts["spec"]["template"]["spec"]["containers"]
+        if c["name"] == "salt-master"
+    ]
+    env = {e["name"]: e for e in master["env"]}
+    assert env["POD_NAME"]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.name"

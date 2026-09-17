@@ -6,6 +6,13 @@ FROM ghcr.io/cdalvaro/docker-salt-master:lts
 
 RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
 
+# Cluster founder election sorts on `interface`, so every pod needs its
+# own address there — 0.0.0.0 makes each pod bootstrap a solo cluster.
+# The base regenerates /etc/salt/master at boot, so the wrapper appends
+# the pod address (from POD_NAME) once the file lands, then hands over.
+COPY cluster-entrypoint.sh /usr/local/bin/cluster-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/cluster-entrypoint.sh"]
+
 # The built-in dev minion reports these mine functions so the Mine
 # browser has real data (plus whatever mine.send publishes). The
 # image reads minion drop-ins from /home/salt/data/minion_config,

@@ -42,8 +42,15 @@ spec:
           # Own repo (not the app repo): quay.io/sigaint/overstate
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
-          image: quay.io/sigaint/overstate-salt-master:lts-pg1
+          image: quay.io/sigaint/overstate-salt-master:lts-pg2
           env:
+            # Pod name for cluster founder election (see
+            # cluster-entrypoint.sh): salt-master-0 sorts first and
+            # founds, the rest join.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: SALT_API_ENABLED
               value: "True"
             - name: SALT_API_USER
