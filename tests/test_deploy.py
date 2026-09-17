@@ -208,6 +208,7 @@ def test_master_trio_replicas_and_image():
 def test_master_rolls_out_sequentially():
     sts = _salt_master_sts()
     assert sts["spec"]["podManagementPolicy"] == "OrderedReady"
+    assert sts["spec"]["updateStrategy"]["type"] == "RollingUpdate"
 
 
 def test_master_readiness_means_joined():

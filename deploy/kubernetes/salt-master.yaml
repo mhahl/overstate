@@ -17,6 +17,8 @@ spec:
   # joining after its predecessor is Ready, so key exchange never
   # runs against two half-started peers at once. Never Parallel.
   podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
   selector:
     matchLabels:
       app.kubernetes.io/name: salt-master
