@@ -100,13 +100,52 @@ def test_preseed_runs_synchronously_before_daemon_start():
     call = next(
         i for i, l in enumerate(lines) if re.match(r"\s*preseed_master_keys\s*$", l)
     )
+    cluster = next(
+        i for i, l in enumerate(lines) if re.match(r"\s*preseed_cluster_keys\s*$", l)
+    )
     guard = next(
         i for i, l in enumerate(lines) if "POD_NAME:-" in l and "POD_IP:-" in l
     )
     entrypoint_exec = next(
         i for i, l in enumerate(lines) if l.startswith("exec /sbin/entrypoint.sh")
     )
-    assert guard < call < entrypoint_exec
+    assert guard < call < cluster < entrypoint_exec
+
+
+def _run_cluster_preseed(tmp_path, src_dir, pki_dir):
+    driver = _function("log") + "\n" + _function("preseed_cluster_keys")
+    driver += "\npreseed_cluster_keys\n"
+    env = {
+        **os.environ,
+        "CLUSTER_KEYS_SRC": str(src_dir),
+        "CLUSTER_PKI_DIR": str(pki_dir),
+        "KEY_OWNER": f"{os.getuid()}:{os.getgid()}",
+        "LOG": str(tmp_path / "entrypoint.log"),
+    }
+    subprocess.run(["bash", "-c", driver], env=env, check=True)
+
+
+def test_preseed_cluster_keys_copies_secret_over_minted_pvc(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "cluster.pem").write_text("PINNED-PEM\n", encoding="utf-8")
+    (src / "cluster.pub").write_text("PINNED-PUB\n", encoding="utf-8")
+    pki = tmp_path / "pki"
+    pki.mkdir()
+    (pki / "cluster.pem").write_text("MINTED-PEM\n", encoding="utf-8")
+    (pki / "cluster.pub").write_text("MINTED-PUB\n", encoding="utf-8")
+    _run_cluster_preseed(tmp_path, src, pki)
+    assert (pki / "cluster.pem").read_text(encoding="utf-8") == "PINNED-PEM\n"
+    assert (pki / "cluster.pub").read_text(encoding="utf-8") == "PINNED-PUB\n"
+    assert stat.S_IMODE((pki / "cluster.pem").stat().st_mode) == 0o400
+
+
+def test_preseed_cluster_keys_skips_when_secret_absent(tmp_path):
+    pki = tmp_path / "pki"
+    pki.mkdir()
+    (pki / "cluster.pem").write_text("KEEP\n", encoding="utf-8")
+    _run_cluster_preseed(tmp_path, tmp_path / "no-src", pki)
+    assert (pki / "cluster.pem").read_text(encoding="utf-8") == "KEEP\n"
 
 
 MARKER = "# test identity marker"

@@ -5,14 +5,15 @@
 #
 #   kubectl apply -k deploy/kubernetes
 #
-# Secrets are NOT committed: create `overstate-secrets` before the first
-# apply (see docs/install-kubernetes.md):
+# Secrets are NOT committed. Create them before the first apply
+# (docs/install-kubernetes.md §1, §4, §6) or salt-master pods stay
+# CreateContainerConfigError:
 #
-#   kubectl -n overstate create secret generic overstate-secrets \
-#     --from-literal=SECRET_KEY="$(openssl rand -hex 32)" \
-#     --from-literal=ADMIN_PASSWORD="$(openssl rand -hex 16)" \
-#     --from-literal=REDIS_PASSWORD="$(openssl rand -hex 16)" \
-#     --from-literal=SALT_API_USER_PASS="$(openssl rand -hex 24)"
+#   overstate-secrets
+#   salt-master-keys            (master.pem / master.pub)
+#   salt-master-cluster         (cluster.conf with cluster_secret)
+#   salt-master-cluster-keys    (cluster.pem / cluster.pub)
+#   salt-master-db              (returner.conf; optional until job cache)
 #
 # The app/worker image is set via the `images:` transformer below.
 apiVersion: kustomize.config.k8s.io/v1beta1

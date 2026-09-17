@@ -146,6 +146,7 @@ passwords (enforced by test).
 |---|---|---|---|
 | `overstate-secrets` | Owner | Django, admin, Redis, salt-api passwords | Regenerate + restart all workloads |
 | `salt-master-keys` | Owner | Shared master keypair | **Fleet-wide identity change** (roll pods one at a time, every minion must trust the new key before the last old pod leaves) |
+| `salt-master-cluster-keys` | Owner | Pinned `cluster.pem` / `cluster.pub` | **Fleet-wide cluster identity** (entrypoint copies onto each PVC before the daemon can mint; minions cache this as `minion_master.pub`) |
 | `salt-master-db` | Owner | Returner PG password | Replace Secret, roll pods one at a time |
 | `overstate-db-app`, `-superuser` | CNPG | App/superuser PG passwords | CNPG-managed |
 

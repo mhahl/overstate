@@ -124,7 +124,7 @@ def test_master_raft_timeouts_fit_cross_node_k8s():
 def test_master_image_always_pulls_floating_tag():
     sts = _salt_master_sts()
     (container,) = sts["spec"]["template"]["spec"]["containers"]
-    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg11"
+    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg12"
     # Same-tag rebuilds (entrypoint fixes) must reach the nodes.
     assert container["imagePullPolicy"] == "Always"
 
@@ -228,6 +228,11 @@ def test_master_trio_shares_keypair_but_not_accepted_keys():
     pod = sts["spec"]["template"]["spec"]
     volumes = {v["name"]: v for v in pod["volumes"]}
     assert volumes["master-keypair"]["secret"]["secretName"] == "salt-master-keys"
+    assert volumes["cluster-keypair"]["secret"]["secretName"] == "salt-master-cluster-keys"
+    items = {
+        i["key"] for i in volumes["cluster-keypair"]["secret"]["items"]
+    }
+    assert items == {"cluster.pem", "cluster.pub"}
     assert "keys" not in volumes  # accepted keys ride the claim template
     templates = {t["metadata"]["name"] for t in sts["spec"]["volumeClaimTemplates"]}
     assert templates == {"keys"}
@@ -237,12 +242,19 @@ def test_master_trio_shares_keypair_but_not_accepted_keys():
     }
     assert mounts["/home/salt/data/keys/master.pem"]["subPath"] == "master.pem"
     assert mounts["/home/salt/data/keys/master.pub"]["subPath"] == "master.pub"
+    assert mounts["/home/salt/data/cluster-keys"]["readOnly"] is True
 
 
 def test_keypair_secret_is_owner_created_not_committed():
     text = (K8S / "kustomization.yaml").read_text()
-    assert "salt-master-keys" not in text
-    assert not (K8S / "salt-master-keys.yaml").exists()
+    for name in (
+        "salt-master-keys.yaml",
+        "salt-master-cluster-keys.yaml",
+        "salt-master-cluster.yaml",
+        "salt-master-db.yaml",
+    ):
+        assert name not in text
+        assert not (K8S / name).exists()
 
 
 def test_app_role_grants_no_secret_access():
@@ -313,6 +325,7 @@ def test_keypair_secret_readable_by_salt_user():
     assert pod["securityContext"]["fsGroup"] == 1000
     volumes = {v["name"]: v for v in pod["volumes"]}
     assert volumes["master-keypair"]["secret"]["defaultMode"] == 0o440
+    assert volumes["cluster-keypair"]["secret"]["defaultMode"] == 0o440
 
 
 def test_returner_credentials_ride_a_secret_not_the_configmap():
@@ -336,7 +349,8 @@ def test_returner_credentials_ride_a_secret_not_the_configmap():
             )
     text = (K8S / "salt-master-config.yaml").read_text()
     assert not re.search(r"(?m)^\s*(passwd|password)\s*:", text)
-    assert "salt-master-db" not in (K8S / "kustomization.yaml").read_text()
+    assert "salt-master-db.yaml" not in (K8S / "kustomization.yaml").read_text()
+    assert not (K8S / "salt-master-db.yaml").exists()
 
 
 def test_cluster_credential_rides_a_secret_not_the_configmap():
@@ -351,7 +365,7 @@ def test_cluster_credential_rides_a_secret_not_the_configmap():
     assert ("secret", "salt-master-cluster") in kinds
     text = (K8S / "salt-master-config.yaml").read_text()
     assert not re.search(r"(?m)^\s*cluster_secret\s*:", text)
-    assert "salt-master-cluster" not in (K8S / "kustomization.yaml").read_text()
+    assert "salt-master-cluster.yaml" not in (K8S / "kustomization.yaml").read_text()
     assert not (K8S / "salt-master-cluster.yaml").exists()
 
 

@@ -18,6 +18,9 @@
 # - `.cluster_ready` means this node sees a Raft leader (not "peer
 #   pubs exist"). Deleted at wrapper start. `.joined` still means
 #   every live peer's key is on disk, for recovery only.
+# - cluster.pem/pub are copied from Secret salt-master-cluster-keys
+#   onto the PVC before the daemon starts, so a pod cannot mint its
+#   own cluster identity.
 #
 # Peers come from the Kubernetes API (EndpointSlices, all pod names
 # incl. self via publishNotReadyAddresses) with constructed-name
@@ -44,6 +47,12 @@ KEYS_DIR="${KEYS_DIR:-/home/salt/data/keys}"
 KEY_OWNER="${KEY_OWNER:-salt:salt}"
 # Mirrors cluster_pki_dir in master.conf; override for tests.
 PEER_KEYS_DIR="${PEER_KEYS_DIR:-$KEYS_DIR/_cluster/peers}"
+CLUSTER_PKI_DIR="${CLUSTER_PKI_DIR:-$KEYS_DIR/_cluster}"
+# Owner-held cluster.pem/pub (Secret salt-master-cluster-keys). Copied
+# onto the PVC before the daemon starts so Salt cannot mint a per-pod
+# cluster identity. Unset/missing in compose: skip, leave generation
+# to Salt. Override for tests.
+CLUSTER_KEYS_SRC="${CLUSTER_KEYS_SRC:-/home/salt/data/cluster-keys}"
 IDENTITY_CONF="${IDENTITY_CONF:-$KEYS_DIR/cluster-identity.conf}"
 READY_MARK="${READY_MARK:-$KEYS_DIR/.cluster_ready}"
 
@@ -59,6 +68,28 @@ preseed_master_keys() {
       chown "$KEY_OWNER" "$dest"
       chmod 0400 "$dest"
       log "pre-seeded $dest from Secret keypair"
+    fi
+  done
+}
+
+preseed_cluster_keys() {
+  # Pin cluster.pem/pub from the Secret onto cluster_pki_dir before
+  # the daemon can find_or_create_keys(name="cluster"). A missing
+  # source (compose) is a no-op. Refresh on content drift so a
+  # rotated Secret replaces a minted PVC copy.
+  src_pem="$CLUSTER_KEYS_SRC/cluster.pem"
+  src_pub="$CLUSTER_KEYS_SRC/cluster.pub"
+  [ -f "$src_pem" ] && [ -f "$src_pub" ] || return 0
+  mkdir -p "$CLUSTER_PKI_DIR"
+  for ext in pem pub; do
+    src="$CLUSTER_KEYS_SRC/cluster.$ext"
+    dest="$CLUSTER_PKI_DIR/cluster.$ext"
+    if [ ! -f "$dest" ] || ! cmp -s "$src" "$dest"; then
+      rm -f "$dest"
+      cp -f "$src" "$dest"
+      chown "$KEY_OWNER" "$dest"
+      chmod 0400 "$dest"
+      log "pre-seeded $dest from cluster-keys Secret"
     fi
   done
 }
@@ -356,6 +387,7 @@ if [ -n "${POD_NAME:-}" ] && [ -n "${POD_IP:-}" ]; then
   NODE_NAME="${NODE_NAME:-$POD_NAME.${MASTER_HEADLESS_SERVICE:-$SVC}}"
   # Synchronous, before the base entrypoint starts the daemon below.
   preseed_master_keys
+  preseed_cluster_keys
   wait_for_peer_dns
   # Each boot re-proves join and Raft-ready: drop previous markers
   # so the readiness probe holds the pod out of the Services.

@@ -9,10 +9,13 @@ StorageClass (Longhorn here), and free DNS for `overstate.sigaint.au`.
 Everything Overstate manages lives in the `overstate` namespace —
 never touch anything outside it.
 
-## 1. Create the secret
+## 1. Create the secrets
 
-Secrets are never committed. Create `overstate-secrets` before the
-first apply:
+Secrets are never committed. Create these **before** `kubectl apply
+-k` — the salt-master StatefulSet will not start without the three
+master Secrets (missing volume = `CreateContainerConfigError`).
+
+App / API:
 
 ```sh
 kubectl -n overstate create secret generic overstate-secrets \
@@ -25,6 +28,15 @@ kubectl -n overstate create secret generic overstate-secrets \
 `ADMIN_PASSWORD` seeds the first admin login (change it in Users
 afterwards). The other three have no recoverable default — losing
 the Secret means regenerating and restarting every workload.
+
+Master cluster (details in §4, §6):
+
+| Secret | Keys | Required for |
+|---|---|---|
+| `salt-master-keys` | `master.pem`, `master.pub` | Shared per-process master identity |
+| `salt-master-cluster` | `cluster.conf` (`cluster_secret`) | Peer join authentication |
+| `salt-master-cluster-keys` | `cluster.pem`, `cluster.pub` | Pinned cluster identity (minion `minion_master.pub`) |
+| `salt-master-db` | `returner.conf` | Shared job cache (§5); can wait until after first apply if you do not need history yet |
 
 ## 2. Apply
 
@@ -143,14 +155,21 @@ shred -u /tmp/returner.conf 2>/dev/null || rm -P /tmp/returner.conf
 Rotate the same way (replace Secret, roll the pods one at a time).
 The owned ConfigMap never holds passwords — enforced by test.
 
-## 6. Master cluster credential
+## 6. Master cluster credential and pinned cluster key
 
 The three run as a Salt master cluster (isolated filesystem), so the
 Traefik TCP round-robin is the supported topology instead of a
-split-brain. Peers authenticate each other with `cluster_secret`,
-overlaid as a `cluster.conf` drop-in from the owner-held
-`salt-master-cluster` Secret (never committed, never visible in the
-Master Settings UI):
+split-brain. Two owner Secrets are required:
+
+- `salt-master-cluster` — `cluster_secret` (peers authenticate the
+  join over 4507). Never visible in the Master Settings UI.
+- `salt-master-cluster-keys` — `cluster.pem` / `cluster.pub` (the
+  identity minions cache as `minion_master.pub`). The StatefulSet
+  mounts this at `/home/salt/data/cluster-keys/`; the entrypoint
+  copies it onto each PVC **before** salt-master starts so a pod
+  cannot mint its own pair.
+
+### 6.1 Join secret
 
 ```sh
 kubectl -n overstate create secret generic salt-master-cluster \
@@ -162,6 +181,98 @@ peer with the old secret cannot rejoin, so confirm the new pods form
 the cluster before the last old pod leaves. Removing a peer for good
 also means deleting its `peers/<id>.pub` from the cluster key store
 on the remaining pods.
+
+### 6.2 Generate `cluster.pem` / `cluster.pub`
+
+RSA 2048. The public key must be PKCS#1 (`BEGIN RSA PUBLIC KEY`),
+which is what Salt's `localfs_key` driver writes and reads.
+
+**Greenfield** (no live master yet), with openssl:
+
+```sh
+openssl genrsa -out /tmp/ck.pem 2048
+openssl rsa -in /tmp/ck.pem -RSAPublicKey_out -out /tmp/ck.pub
+chmod 600 /tmp/ck.pem
+```
+
+Or with Salt (same format Salt itself would mint):
+
+```sh
+salt-key --gen-keys=cluster --gen-keys-dir=/tmp
+# writes /tmp/cluster.pem and /tmp/cluster.pub
+mv /tmp/cluster.pem /tmp/ck.pem
+mv /tmp/cluster.pub /tmp/ck.pub
+chmod 600 /tmp/ck.pem
+```
+
+**Existing cluster** (keep the identity minions already trust):
+
+```sh
+kubectl -n overstate cp salt-master-0:/home/salt/data/keys/_cluster/cluster.pem /tmp/ck.pem
+kubectl -n overstate cp salt-master-0:/home/salt/data/keys/_cluster/cluster.pub /tmp/ck.pub
+chmod 600 /tmp/ck.pem
+```
+
+Check the pair before loading it:
+
+```sh
+# private and public modulus must match
+openssl rsa -in /tmp/ck.pem -noout -modulus | sha256sum
+openssl rsa -in /tmp/ck.pub -RSAPublicKey_in -pubin -noout -modulus | sha256sum
+sha256sum /tmp/ck.pub
+```
+
+### 6.3 Load into Kubernetes
+
+Keys in the Secret **must** be named `cluster.pem` and `cluster.pub`:
+
+```sh
+kubectl -n overstate create secret generic salt-master-cluster-keys \
+  --from-file=cluster.pem=/tmp/ck.pem --from-file=cluster.pub=/tmp/ck.pub
+shred -u /tmp/ck.pem /tmp/ck.pub 2>/dev/null || rm -P /tmp/ck.pem /tmp/ck.pub
+```
+
+Replace an existing Secret (rotation or re-pin):
+
+```sh
+kubectl -n overstate create secret generic salt-master-cluster-keys \
+  --from-file=cluster.pem=/tmp/ck.pem --from-file=cluster.pub=/tmp/ck.pub \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Then apply or roll the masters (`kubectl apply -k deploy/kubernetes`
+or `kubectl -n overstate rollout restart statefulset/salt-master`).
+Without this Secret the pods stay `CreateContainerConfigError`.
+
+After Ready, every pod's on-disk copy and the Secret must share one
+hash (the live trio uses this check):
+
+```sh
+kubectl -n overstate get secret salt-master-cluster-keys \
+  -o jsonpath='{.data.cluster\.pub}' | base64 -d | sha256sum
+for p in salt-master-0 salt-master-1 salt-master-2; do
+  echo -n "$p "; kubectl -n overstate exec $p -- sha256sum \
+    /home/salt/data/keys/_cluster/cluster.pub \
+    /home/salt/data/cluster-keys/cluster.pub
+done
+```
+
+A mismatch means the entrypoint did not copy (wrong image) or Salt
+rewrote the PVC after start — roll that pod again.
+
+### 6.4 Rotate the cluster key
+
+This is a fleet-wide identity change. Replace the Secret (§6.3),
+roll one pod at a time, then on **every minion**:
+
+```sh
+systemctl stop salt-minion
+rm -f /etc/salt/pki/minion/minion_master.pub
+systemctl start salt-minion
+```
+
+Do not delete `minion.pem` / `minion.pub`. Confirm
+`salt-run manage.status` before the last old master leaves.
 
 ## 7. Scale up/down + stale peer cleanup
 

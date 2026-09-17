@@ -4,7 +4,9 @@
 # store, so the Traefik TCP round-robin in front of 4505/4506 is the
 # supported topology. Same keypair (owner-held `salt-master-keys`
 # Secret, never committed), one ConfigMap, cluster credential from the
-# owner-held `salt-master-cluster` Secret (never committed). Rolling
+# owner-held `salt-master-cluster` Secret (never committed), pinned
+# cluster.pem/pub from owner-held `salt-master-cluster-keys` (never
+# committed). Rolling
 # restarts go one pod at a time, so quorum (2 of 3) always serves.
 apiVersion: apps/v1
 kind: StatefulSet
@@ -52,7 +54,7 @@ spec:
           # Own repo (not the app repo): quay.io/sigaint/overstate
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
-          image: quay.io/sigaint/overstate-salt-master:lts-pg11
+          image: quay.io/sigaint/overstate-salt-master:lts-pg12
           # Floating tag redeploys (entrypoint fixes) must actually pull.
           imagePullPolicy: Always
           env:
@@ -114,6 +116,16 @@ spec:
               mountPath: /home/salt/data/keys/master.pub
               subPath: master.pub
               readOnly: true
+            # Pinned cluster identity (docs/install-kubernetes.md §6):
+            # owner-held Secret salt-master-cluster-keys with keys
+            # cluster.pem and cluster.pub. The entrypoint copies them
+            # onto the PVC before salt-master starts so a pod cannot
+            # mint its own pair. Generate with openssl genrsa +
+            # -RSAPublicKey_out, or copy from a live founder. Not a
+            # subPath onto _cluster/ (Salt may rewrite those files).
+            - name: cluster-keypair
+              mountPath: /home/salt/data/cluster-keys
+              readOnly: true
             # (The returner drop-in arrives via the projected `config`
             # volume below — never a subPath file mount into this
             # read-only directory: these nodes reject that with ENOTDIR.)
@@ -173,6 +185,17 @@ spec:
           secret:
             secretName: salt-master-keys
             defaultMode: 0440
+        - name: cluster-keypair
+          secret:
+            # Required. Create before apply — see install §6.2–6.3.
+            # Keys must be named cluster.pem and cluster.pub.
+            secretName: salt-master-cluster-keys
+            defaultMode: 0440
+            items:
+              - key: cluster.pem
+                path: cluster.pem
+              - key: cluster.pub
+                path: cluster.pub
         - name: srv
           persistentVolumeClaim:
             claimName: srv-data
