@@ -13,18 +13,22 @@
 # - `interface` must be an IP literal (salt brackets it at startup),
 #   so DNS names are rejected outright.
 #
-# So stamp interface/id/peers from the pod IP every boot: peers are
-# resolved live from the headless service (all pod IPs, ourselves
-# included thanks to publishNotReadyAddresses), which also makes the
-# election set identical on every pod — exactly one founder.
-# `cluster_peers` lives ONLY here, never in the shared ConfigMap
-# (drop-ins beat the main file, so a static entry there would win
-# over this one and mismatch the stamped identity). The base
-# rewrites the file in several passes, so normalize for the first
-# two minutes; salt's strict YAML loader rejects duplicate keys, so
-# the old block is removed before the new one lands. Outside
-# Kubernetes (dev compose) POD_NAME/POD_IP are unset and the base
-# behavior is untouched.
+# So stamp interface/id/peers from the pod IP: peers resolve live
+# from the headless service (all pod IPs, ourselves included thanks
+# to publishNotReadyAddresses), making the election set identical on
+# every pod — exactly one founder. `cluster_peers` lives ONLY here,
+# never in the shared ConfigMap (drop-ins beat the main file, so a
+# static entry there would win over the stamp and mismatch it).
+#
+# Pod IPs change on every recreate while the daemon reads config
+# once at startup, so a sibling recreate orphans this pod's peer
+# list. The loop therefore runs forever: when live DNS disagrees
+# with the stamped peers twice in a row, it restamps and bounces
+# the daemon (pod IP unchanged, so the sibling's view of us stays
+# valid). Restarts are jittered so both pods never bounce together,
+# skipped while the daemon is still starting, and logged.
+# Outside Kubernetes (dev compose) POD_NAME/POD_IP are unset and the
+# base behavior is untouched.
 set -u
 MASTER_CONF=/etc/salt/master
 MARKER="# Pod identity for cluster election (POD_NAME)."
@@ -35,15 +39,24 @@ log() {
   echo "$(date -u +%FT%TZ) $*" >>"$LOG"
 }
 
+peers_live() {
+  getent hosts "$SVC" 2>/dev/null | awk '{print $1}' | sort -u || true
+}
+
+daemon_running() {
+  supervisorctl status salt-master 2>/dev/null | grep -q '^salt-master *RUNNING'
+}
+
 if [ -n "${POD_NAME:-}" ] && [ -n "${POD_IP:-}" ]; then
   (
     log "watching $MASTER_CONF as $POD_NAME ($POD_IP)"
-    for _ in $(seq 1 120); do
+    last_peers=""
+    pending=""
+    pending_n=0
+    while true; do
       if [ -s "$MASTER_CONF" ]; then
-        peers=$(getent hosts "$SVC" | awk '{print $1}' | sort -u || true)
+        peers=$(peers_live)
         if [ -n "$peers" ]; then
-          # Desired block content (no trailing blank; both sides are
-          # compared after command substitution strips them).
           want=$(printf '%s\ninterface: %s\nid: %s\ncluster_peers:' \
             "$MARKER" "$POD_IP" "$POD_IP")
           # Word-split on purpose: one list item per address.
@@ -60,21 +73,48 @@ if [ -n "${POD_NAME:-}" ] && [ -n "${POD_IP:-}" ]; then
             awk -v m="$MARKER" '$0==m{s=1;next} s&&/^$/{s=0;next} !s' \
               "$MASTER_CONF" >"$tmp" && cat "$tmp" >"$MASTER_CONF"
             rm -f "$tmp"
-            # Neutralize base lines (skip comments: idempotent).
+            # Neutralize base lines (skip comments: idempotent; `&`
+            # replays the match portably — no backreference).
             sed -i -E '/^#/! s/^(id|interface):/# superseded by cluster-entrypoint: &/' \
               "$MASTER_CONF"
             # Leading blank separates, trailing blank terminates the
             # block for the awk range above.
             printf '\n%s\n\n' "$want" >>"$MASTER_CONF"
-            log "stamped identity for $POD_IP (peers: $(echo "$peers" | tr '\n' ' '))"
+            log "stamped identity (peers: $(echo "$peers" | tr '\n' ' '))"
+          fi
+          # Bounce the daemon onto fresh peers only when a previously
+          # converged set actually changes (never on first stamp),
+          # confirmed twice to ride out DNS blips.
+          if [ -z "$last_peers" ]; then
+            last_peers="$peers"
+            pending=""
+            pending_n=0
+          elif [ "$peers" = "$last_peers" ]; then
+            pending=""
+            pending_n=0
+          elif [ "$peers" = "$pending" ]; then
+            pending_n=$((pending_n + 1))
+            if [ "$pending_n" -ge 1 ] && daemon_running; then
+              sleep $((RANDOM % 15))
+              log "peers changed ($pending) — restarting salt-master"
+              if supervisorctl restart salt-master >>"$LOG" 2>&1; then
+                last_peers="$peers"
+                pending=""
+                pending_n=0
+              else
+                log "restart failed, will retry"
+              fi
+            fi
+          else
+            pending="$peers"
+            pending_n=0
           fi
         else
           log "peer DNS not ready yet"
         fi
       fi
-      sleep 1
+      sleep 10
     done
-    log "watch done"
   ) >>"$LOG" 2>&1 &
 fi
 
