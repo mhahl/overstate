@@ -20,13 +20,15 @@ data:
     # Salt master cluster (isolated filesystem): both pods share one AES
     # session key and one accepted-keys store, so the Traefik TCP
     # round-robin in front of 4505/4506 is the supported topology.
-    # cluster_secret arrives as cluster.conf from the owner-held
-    # salt-master-cluster Secret (never in this file, never in the UI).
+    # Per-pod identity (interface/id/peers) is stamped at boot by
+    # cluster-entrypoint.sh from the pod IP — static names CANNOT work
+    # here (election and the AES exchange both key on exact values, and
+    # drop-ins beat the main file, so a static entry would win over the
+    # stamp and mismatch it). cluster_secret arrives as cluster.conf
+    # from the owner-held salt-master-cluster Secret (never in this
+    # file, never in the UI).
     cluster_id: overstate-masters
-    cluster_peers:
-      - salt-master-0.salt-master
-      - salt-master-1.salt-master
-    cluster_pool_port: 4507
+    cluster_port: 4507
     cluster_pki_dir: /home/salt/data/keys/_cluster
     cluster_isolated_filesystem: true
   # salt-api auth for the `overstate` eauth user. Mirrors

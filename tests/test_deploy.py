@@ -243,18 +243,20 @@ def test_master_cluster_wiring():
     text = (K8S / "salt-master-config.yaml").read_text()
     for key in (
         "cluster_id:",
-        "cluster_peers:",
-        "cluster_pool_port:",
+        "cluster_port:",
         "cluster_pki_dir:",
         "cluster_isolated_filesystem:",
     ):
         assert key in text
+    # Peers are stamped per-pod at boot (pod IPs): a static entry in
+    # the shared drop-in would beat the stamp (drop-ins win) and
+    # mismatch the stamped identity, breaking the join.
+    assert "cluster_peers:" not in text
 
 
 def test_master_pods_carry_name_for_cluster_election():
-    # Founder election sorts on `interface`, which the entrypoint pins
-    # to the pod name — without POD_NAME every pod sorts on 0.0.0.0 and
-    # bootstraps a solo cluster.
+    # Cluster identity (interface/id/peers) is stamped from the pod IP
+    # at boot: static values make every pod bootstrap a solo cluster.
     sts = _salt_master_sts()
     (master,) = [
         c
@@ -263,6 +265,7 @@ def test_master_pods_carry_name_for_cluster_election():
     ]
     env = {e["name"]: e for e in master["env"]}
     assert env["POD_NAME"]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.name"
+    assert env["POD_IP"]["valueFrom"]["fieldRef"]["fieldPath"] == "status.podIP"
 
 
 def test_headless_service_publishes_unready_pods():
