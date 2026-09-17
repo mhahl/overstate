@@ -12,7 +12,11 @@ RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
 # /etc/salt/master at boot, so the wrapper appends both (from POD_NAME)
 # once the file lands, then hands over.
 COPY cluster-entrypoint.sh /usr/local/bin/cluster-entrypoint.sh
+# N.B. setting ENTRYPOINT clears the base CMD, so restate it — without
+# args the base falls through to `exec "$@"` with nothing and the
+# container exits 0 immediately.
 ENTRYPOINT ["/usr/local/bin/cluster-entrypoint.sh"]
+CMD ["app:start"]
 
 # The built-in dev minion reports these mine functions so the Mine
 # browser has real data (plus whatever mine.send publishes). The
