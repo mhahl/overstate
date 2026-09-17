@@ -114,7 +114,7 @@ def test_master_raft_timeouts_fit_cross_node_k8s():
     # duel of spurious elections with no stable leader.
     assert master_conf["cluster_election_min"] >= 3000
     assert master_conf["cluster_election_max"] >= 6000
-    assert master_conf.get("keys.cache_driver") == "mmap_key"
+    assert master_conf.get("keys.cache_driver") == "localfs_key"
     include = master_conf.get("include") or []
     if isinstance(include, str):
         include = [include]
@@ -124,7 +124,7 @@ def test_master_raft_timeouts_fit_cross_node_k8s():
 def test_master_image_always_pulls_floating_tag():
     sts = _salt_master_sts()
     (container,) = sts["spec"]["template"]["spec"]["containers"]
-    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg10"
+    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg11"
     # Same-tag rebuilds (entrypoint fixes) must reach the nodes.
     assert container["imagePullPolicy"] == "Always"
 

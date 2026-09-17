@@ -31,7 +31,12 @@ data:
     cluster_port: 4507
     cluster_pki_dir: /home/salt/data/keys/_cluster
     cluster_isolated_filesystem: true
-    keys.cache_driver: mmap_key
+    # localfs_key (not mmap_key): mmap's master_keys bank was empty on
+    # each PVC, so each pod generated its own cluster.pub for minion
+    # auth. Traefik then flipped minions between three keys and they
+    # logged "The master key has changed" even after deleting
+    # minion_master.pub. On-disk cluster.pem is already identical.
+    keys.cache_driver: localfs_key
     # Raft timing for cross-node Kubernetes: the defaults (0.75-1.5 s
     # follower timeout against 50-100 ms beacons) assume loop delays
     # stay in the tens of ms. Our two voters phase-locked into a
