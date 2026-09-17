@@ -55,7 +55,12 @@ def test_history_configmap_deploys_empty_and_managed():
 
 
 def _app_role():
-    (role,) = [d for d in _load("rbac.yaml") if d.get("kind") == "Role"]
+    (role,) = [
+        d
+        for d in _load("rbac.yaml")
+        if d.get("kind") == "Role"
+        and d.get("metadata", {}).get("name") == "overstate-app"
+    ]
     return role
 
 
@@ -109,14 +114,45 @@ def test_master_raft_timeouts_fit_cross_node_k8s():
     # duel of spurious elections with no stable leader.
     assert master_conf["cluster_election_min"] >= 3000
     assert master_conf["cluster_election_max"] >= 6000
+    assert master_conf.get("keys.cache_driver") == "mmap_key"
+    include = master_conf.get("include") or []
+    if isinstance(include, str):
+        include = [include]
+    assert "/home/salt/data/keys/cluster-identity.conf" in include
 
 
 def test_master_image_always_pulls_floating_tag():
     sts = _salt_master_sts()
     (container,) = sts["spec"]["template"]["spec"]["containers"]
-    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg8"
+    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg10"
     # Same-tag rebuilds (entrypoint fixes) must reach the nodes.
     assert container["imagePullPolicy"] == "Always"
+
+
+def _master_container():
+    sts = _salt_master_sts()
+    (container,) = sts["spec"]["template"]["spec"]["containers"]
+    return container
+
+
+def test_master_liveness_checks_daemon_not_health():
+    probe = _master_container()["livenessProbe"]["exec"]["command"]
+    text = " ".join(probe)
+    # Process-existence only: a clustered-but-uncommitted master is
+    # alive and must not be restarted for it.
+    assert "supervisorctl" in text
+    assert "salt-master" in text
+
+
+def test_api_service_sticks_clients_to_one_master():
+    (svc,) = [
+        d
+        for d in _load("salt-master.yaml")
+        if d.get("kind") == "Service" and d.get("metadata", {}).get("name") == "salt-master-api"
+    ]
+    # Eauth tokens live on the minting pod: without affinity every
+    # flap round-robins clients into 401s.
+    assert svc["spec"].get("sessionAffinity") == "ClientIP"
 
 
 def test_master_quorum_survives_drain():
@@ -169,6 +205,23 @@ def test_master_trio_replicas_and_image():
     assert "ghcr.io" not in master["image"]
 
 
+def test_master_rolls_out_sequentially():
+    sts = _salt_master_sts()
+    assert sts["spec"]["podManagementPolicy"] == "OrderedReady"
+
+
+def test_master_readiness_means_joined():
+    containers = _salt_master_sts()["spec"]["template"]["spec"]["containers"]
+    (master,) = [c for c in containers if c["name"] == "salt-master"]
+    probe = master["readinessProbe"]
+    text = " ".join(probe["exec"]["command"])
+    # Joined marker plus a serving check: restarts must not go Ready
+    # on the previous join marker before the new daemon boots.
+    assert "/home/salt/data/keys/.cluster_ready" in text
+    assert "8000" in text
+    assert probe["initialDelaySeconds"] >= 30
+
+
 def test_master_trio_shares_keypair_but_not_accepted_keys():
     sts = _salt_master_sts()
     pod = sts["spec"]["template"]["spec"]
@@ -196,6 +249,61 @@ def test_app_role_grants_no_secret_access():
     assert "secrets" not in [
         r for rule in role["rules"] for r in rule.get("resources", [])
     ]
+
+
+def _rbac_doc(kind, name):
+    (doc,) = [
+        d
+        for d in _load("rbac.yaml")
+        if d.get("kind") == kind and d.get("metadata", {}).get("name") == name
+    ]
+    return doc
+
+
+def test_master_has_dedicated_service_account():
+    sts = _salt_master_sts()
+    assert sts["spec"]["template"]["spec"]["serviceAccountName"] == "salt-master"
+    _rbac_doc("ServiceAccount", "salt-master")
+
+
+def test_master_peers_role_is_read_only_and_namespaced():
+    role = _rbac_doc("Role", "salt-master-peers")
+    for rule in role["rules"]:
+        assert set(rule.get("verbs", [])) <= {"get", "list"}
+        assert "secrets" not in rule.get("resources", [])
+        assert "configmaps" not in rule.get("resources", [])
+        assert "pods" not in rule.get("resources", [])
+    kinds = set()
+    for rule in role["rules"]:
+        kinds.update(
+            (rule.get("apiGroups", [""])[0], r) for r in rule.get("resources", [])
+        )
+    assert ("discovery.k8s.io", "endpointslices") in kinds
+    binding = _rbac_doc("RoleBinding", "salt-master-peers")
+    assert binding["roleRef"]["name"] == "salt-master-peers"
+    assert {(s.get("kind"), s.get("name")) for s in binding["subjects"]} == {
+        ("ServiceAccount", "salt-master")
+    }
+
+
+def test_master_image_ships_peer_discovery_helper():
+    text = (REPO / "Containerfile.salt-master").read_text(encoding="utf-8")
+    assert "COPY cluster-peers.py /usr/local/bin/cluster-peers.py" in text
+    assert (REPO / "cluster-peers.py").exists()
+    assert "COPY cluster-ready.py /usr/local/bin/cluster-ready.py" in text
+    assert (REPO / "cluster-ready.py").exists()
+
+
+def test_master_image_applies_stable_identity_patch():
+    # The build redirects salt's interface-keyed cluster identity to
+    # cluster_node_id and must fail loudly on upstream drift.
+    text = (REPO / "Containerfile.salt-master").read_text(encoding="utf-8")
+    assert (
+        "COPY salt-cluster-identity-patch.py /usr/local/bin/salt-cluster-identity-patch.py"
+        in text
+    )
+    assert "salt-cluster-identity-patch.py" in text
+    assert (REPO / "salt-cluster-identity-patch.py").exists()
 
 
 def test_keypair_secret_readable_by_salt_user():
@@ -271,15 +379,16 @@ def test_master_cluster_wiring():
         "cluster_isolated_filesystem:",
     ):
         assert key in text
-    # Peers are stamped per-pod at boot (pod IPs): a static entry in
-    # the shared drop-in would beat the stamp (drop-ins win) and
-    # mismatch the stamped identity, breaking the join.
+    # Peers are stamped per-pod at boot (stable DNS names): a static
+    # entry in the shared drop-in would beat the stamp (drop-ins win)
+    # and mismatch the stamped identity, breaking the join.
     assert "cluster_peers:" not in text
 
 
 def test_master_pods_carry_name_for_cluster_election():
-    # Cluster identity (interface/id/peers) is stamped from the pod IP
-    # at boot: static values make every pod bootstrap a solo cluster.
+    # Cluster identity (id/cluster_node_id/peers as the stable pod DNS
+    # name, interface as the pod IP) is stamped at boot: static values
+    # make every pod bootstrap a solo cluster.
     sts = _salt_master_sts()
     (master,) = [
         c

@@ -44,3 +44,38 @@ roleRef:
   kind: Role
   name: overstate-app
   apiGroup: rbac.authorization.k8s.io
+---
+# Peer self-healing for the salt-master entrypoint: read-only,
+# namespace-scoped discovery of cluster members. The entrypoint
+# prefers the EndpointSlice member list over DNS, prunes dead peer
+# keys only on a provably complete view, and bounces stalled joins.
+# No secrets, configmaps, pods, or writes of any kind.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: salt-master
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: salt-master-peers
+rules:
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [statefulsets]
+    resourceNames: [salt-master]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: salt-master-peers
+subjects:
+  - kind: ServiceAccount
+    name: salt-master
+roleRef:
+  kind: Role
+  name: salt-master-peers
+  apiGroup: rbac.authorization.k8s.io

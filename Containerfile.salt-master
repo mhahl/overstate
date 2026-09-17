@@ -6,12 +6,28 @@ FROM ghcr.io/cdalvaro/docker-salt-master:lts
 
 RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
 
-# Cluster election sorts on `interface` and the AES exchange looks
-# peers up by `id`, so every pod needs its own values — defaults make
-# each pod bootstrap a solo cluster. The base regenerates
-# /etc/salt/master at boot, so the wrapper appends both (from POD_NAME)
-# once the file lands, then hands over.
+# Cluster identity is the stable pod DNS name (<POD_NAME>.<headless
+# service>), not the pod IP: upstream salt keys Raft membership, the
+# join sentinel, founder election, and ring ownership on `interface`,
+# so pod recreates orphan membership (dead voters, lost quorum,
+# cluster_retry on all traffic). The patcher redirects those sites to
+# the `cluster_node_id` opt the entrypoint stamps; it fails the build
+# loudly if its anchors drift (base-image salt upgrade). The base
+# regenerates /etc/salt/master at boot, so the wrapper writes
+# interface/id/cluster_node_id/peers to a PVC drop-in included from
+# the ConfigMap before handing over.
 COPY cluster-entrypoint.sh /usr/local/bin/cluster-entrypoint.sh
+# Sibling helper: API-backed peer discovery for the entrypoint's
+# self-healing (EndpointSlices with constructed-name fallback), stdlib only.
+COPY cluster-peers.py /usr/local/bin/cluster-peers.py
+COPY cluster-ready.py /usr/local/bin/cluster-ready.py
+# Build-time Salt patch: stable DNS node identities. Resolves the
+# installed tree (not a hardcoded python version path) and aborts
+# the build on any anchor mismatch.
+COPY salt-cluster-identity-patch.py /usr/local/bin/salt-cluster-identity-patch.py
+RUN SALT_PY="$(ls /opt/saltstack/salt/bin/python3* | grep -v -e config -e -dbg | head -1)" \
+    && "$SALT_PY" /usr/local/bin/salt-cluster-identity-patch.py \
+    "$("$SALT_PY" -c 'import os, salt; print(os.path.dirname(os.path.dirname(salt.__file__)))')"
 # N.B. setting ENTRYPOINT clears the base CMD, so restate it — without
 # args the base falls through to `exec "$@"` with nothing and the
 # container exits 0 immediately.

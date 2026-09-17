@@ -162,3 +162,70 @@ peer with the old secret cannot rejoin, so confirm the new pods form
 the cluster before the last old pod leaves. Removing a peer for good
 also means deleting its `peers/<id>.pub` from the cluster key store
 on the remaining pods.
+
+## 7. Scale up/down + stale peer cleanup
+
+Peer identity is the stable pod DNS name
+(`<POD_NAME>.salt-master`, stamped by `cluster-entrypoint.sh`), so a
+reschedule keeps the same peer ID and Raft membership survives it.
+The entrypoint heals the rest itself: it prefers the EndpointSlice
+member list over DNS (with constructed-name fallback when the API is
+unreachable), prunes dead peer keys only when the slice count equals
+the StatefulSet's desired replicas, and bounces a joined pod whose
+key exchange stalls (rate-limited to one restart per 10 minutes).
+That needs the `salt-master` ServiceAccount plus its read-only
+`salt-master-peers` Role (both in-repo), and a master image built
+with `cluster-peers.py` next to the entrypoint. Scale one step at a
+time and confirm the join before the next step. Never run 1 replica
+except as a brief diagnostic: the image requires a non-empty
+`cluster_peers` and a solo pod crash-loops until DNS returns itself.
+
+```sh
+kubectl -n overstate scale statefulset salt-master --replicas=3
+```
+
+Wait for all pods Ready — Ready means this node sees a Raft leader
+AND salt-api is accepting (the probe watches `.cluster_ready` plus
+TCP 8000), so an Unready pod past its first minutes is a stuck join,
+not a slow start; check its entrypoint log at
+`/tmp/cluster-entrypoint.log` and `salt-run cluster.members`. Then
+confirm every pod holds every live peer's key:
+
+```sh
+for p in salt-master-0 salt-master-1 salt-master-2; do echo "== $p";
+kubectl -n overstate exec $p -- ls /home/salt/data/keys/_cluster/peers/; done
+```
+
+A pod missing a live peer's key has a stalled join: bounce its
+daemon so it rejoins the settled cluster, then recheck after ~90s:
+
+```sh
+kubectl -n overstate exec salt-master-1 -- supervisorctl restart salt-master
+```
+
+If it still misses the peer, seed the public key from a pod that
+has it and bounce again (public keys only — the AES handshake still
+authenticates via `cluster_secret`):
+
+```sh
+kubectl -n overstate cp salt-master-0:/home/salt/data/keys/_cluster/peers/salt-master-0.salt-master.pub /tmp/peer.pub
+kubectl -n overstate cp /tmp/peer.pub salt-master-1:/home/salt/data/keys/_cluster/peers/salt-master-0.salt-master.pub
+```
+
+While the join is incomplete the event forwarder crashes with
+`KeyError: 'aes'` and pillar fetches plus job returns fail
+fleet-wide — fix the join first, then retest minions. If the
+automatic recovery already pruned and bounced (see the entrypoint
+log at `/tmp/cluster-entrypoint.log`), just verify with the
+listing above. Leftover `peers/*.pub` names that are not current
+DNS identities (`<pod>.salt-master`) are inert (forwarding targets
+come from live `cluster_peers`, not the files) and wait for the next
+automatic prune on a complete replica view.
+
+If `salt-run cluster.members` still shows `leader_id: null` and an
+empty voter set after a full OrderedReady roll of a current image,
+Raft membership on the volume is poisoned. Last resort, one pod at
+a time, founder first: inspect `find /var/cache/salt -iname '*raft*'`
+and delete only those Raft log/snapshot files (never `cluster_pki_dir`
+minion keys, never `master.pem`). Bounce that pod and recheck
+`cluster.members` before touching the next.

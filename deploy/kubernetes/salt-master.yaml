@@ -13,6 +13,10 @@ metadata:
 spec:
   serviceName: salt-master
   replicas: 3
+  # Sequential bootstrap (and rolling updates): a pod only starts
+  # joining after its predecessor is Ready, so key exchange never
+  # runs against two half-started peers at once. Never Parallel.
+  podManagementPolicy: OrderedReady
   selector:
     matchLabels:
       app.kubernetes.io/name: salt-master
@@ -26,6 +30,10 @@ spec:
       # with the image's salt uid/gid.
       securityContext:
         fsGroup: 1000
+      # Dedicated identity for the entrypoint's peer self-healing (API
+      # discovery of EndpointSlices, read-only; see
+      # salt-master-peers Role). Never the default ServiceAccount.
+      serviceAccountName: salt-master
       # The three are only three on different nodes: never schedule two
       # masters onto one hostname, or one node loss kills quorum.
       affinity:
@@ -42,13 +50,14 @@ spec:
           # Own repo (not the app repo): quay.io/sigaint/overstate
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
-          image: quay.io/sigaint/overstate-salt-master:lts-pg8
+          image: quay.io/sigaint/overstate-salt-master:lts-pg10
           # Floating tag redeploys (entrypoint fixes) must actually pull.
           imagePullPolicy: Always
           env:
             # Pod name and IP for cluster identity (see
-            # cluster-entrypoint.sh): interface/id/peers are stamped
-            # from the pod IP at boot.
+            # cluster-entrypoint.sh): interface is stamped from the
+            # pod IP, id/cluster_node_id/peers from the stable pod
+            # DNS name (<POD_NAME>.<headless-svc>).
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -106,10 +115,36 @@ spec:
             # (The returner drop-in arrives via the projected `config`
             # volume below — never a subPath file mount into this
             # read-only directory: these nodes reject that with ENOTDIR.)
+          # Ready means a Raft leader is visible AND salt-api is
+          # accepting: the watcher touches .cluster_ready only after
+          # cluster.members shows a leader this node belongs to, and
+          # deletes it at every wrapper start. Peer .pub files existing
+          # is not enough (that was true with voter_count 0). TCP 8000
+          # is the serving check (no curl in the image). Until both
+          # hold, the pod stays out of the MQ/API Services.
           readinessProbe:
-            tcpSocket:
-              port: api
+            exec:
+              command:
+                - bash
+                - -c
+                - test -f /home/salt/data/keys/.cluster_ready && exec 3<>/dev/tcp/127.0.0.1/8000
+            initialDelaySeconds: 60
             periodSeconds: 10
+            timeoutSeconds: 5
+          # Dead daemon, wedged supervisor: kubelet restarts the pod
+          # into a clean rejoin. Process-existence only (never health):
+          # a clustered-but-uncommitted master is alive and must NOT
+          # be restarted for it. The entrypoint's rate-limited
+          # recovery still owns the wedged-but-alive cases.
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - supervisorctl status salt-master 2>/dev/null | grep -q '^salt-master *RUNNING'
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            failureThreshold: 3
           resources:
             requests:
               memory: 1Gi
@@ -150,11 +185,11 @@ spec:
             storage: 5Gi
 ---
 # Headless service: StatefulSet identity, plus Raft peer traffic for
-# the master cluster. publishNotReadyAddresses is load-bearing: each
-# pod binds `interface` to its own DNS name at boot, before it is
-# Ready, so the name must resolve pre-readiness or the daemon can
-# never bind (chicken-and-egg). Traefik uses the sibling Services,
-# so this changes nothing on the minion path.
+# the master cluster. publishNotReadyAddresses is load-bearing: peer
+# discovery (API + DNS) must see every pod's stable DNS name before
+# it is Ready, or the election set can never agree on a founder
+# (chicken-and-egg). Traefik uses the sibling Services, so this
+# changes nothing on the minion path.
 apiVersion: v1
 kind: Service
 metadata:
@@ -176,11 +211,14 @@ spec:
 ---
 # salt-api for the app (in-cluster HTTPS; the image mints its own cert —
 # see SALT_API_VERIFY_CA=false on the app with a follow-up to pin it).
+# ClientIP affinity: eauth tokens live on the minting pod, so clients
+# must stick to one master instead of round-robining into 401s.
 apiVersion: v1
 kind: Service
 metadata:
   name: salt-master-api
 spec:
+  sessionAffinity: ClientIP
   selector:
     app.kubernetes.io/name: salt-master
   ports:

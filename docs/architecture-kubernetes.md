@@ -225,11 +225,11 @@ exactly the master StatefulSet.
 
 **Medium:**
 
-- **8.4 Salt-api VIP has no session affinity.** Default-client calls go
-  to `salt-master-api` (round-robin); eauth tokens are per-master, so
-  calls flap pods and each flap costs a 401 + re-login. Self-healing
-  but chatty under load. Fix: `sessionAffinity: ClientIP` on
-  `salt-master-api`, or route all reads per-pod.
+- **8.4 Salt-api VIP session affinity.** `salt-master-api` uses
+  `sessionAffinity: ClientIP` so eauth tokens stick to the minting
+  pod. Residual 401s are Raft-not-ready (`cluster_retry`), not VIP
+  flaps: Ready requires `.cluster_ready` (a leader this node belongs
+  to) plus TCP 8000.
 - **8.5 salt-api TLS is unverified in-cluster** (`SALT_API_VERIFY_CA:
   false`; the image mints a self-signed cert at boot). Fine inside a
   trusted CNI, but any pod-compromise or CNI-sniffing position yields
@@ -255,6 +255,29 @@ exactly the master StatefulSet.
   up and down. Rule out version skew first (a 3006 minion against
   3008 masters fails similarly); if matched-version minions still
   flap, the fix is stickiness on `salt-master-mq`, not more replicas.
+- **8.10 Peer identity is the stable pod DNS name (fixed).** Peer
+  identity used to be the pod IP, so every reschedule orphaned the
+  old ID in Raft membership (dead voters, lost quorum,
+  `cluster_retry` on all traffic → salt-api 401s, minion pillar/auth
+  flap) and in each pod's `_cluster/peers/` store (stalled join,
+  `KeyError: 'aes'`). Identity is now `<POD_NAME>.<headless-svc>`
+  (`id`, `cluster_node_id`, `cluster_peers`, peer key files); a
+  build-time patch (`salt-cluster-identity-patch.py`, fails loudly on
+  upstream drift) redirects salt's interface-keyed identity (Raft
+  node-id, join sentinel, founder sort, ring ownership) to
+  `cluster_node_id`, while `interface` keeps the pod IP for binding.
+  Identity is a PVC drop-in (`cluster-identity.conf`) included from
+  the shared ConfigMap and written before the daemon starts, so the
+  first preflight always sees peers. `cluster_peers` is the other
+  members (self only for a solo replica). Sibling churn restamps that
+  file and does not restart the daemon. Scale one step at a time with
+  the §7 runbook in `install-kubernetes.md`; the entrypoint discovers
+  members via the API (dedicated read-only ServiceAccount), prunes
+  dead peer keys and bounces stalled joins only on a complete replica
+  view — constructed-name fallback keeps stamp-only behavior.
+  Residual risk: scaling to 1 keeps
+  a 3-voter Raft set with no quorum (documented limitation — shrink
+  membership via a leader-driven removal before single-replica ops).
 
 **Low (accepted, documented):**
 
