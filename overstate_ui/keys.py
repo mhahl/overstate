@@ -1,4 +1,4 @@
-"""Key management. Tabs per status; every action fans out to both masters.
+"""Key management. Tabs per status; every action fans out to all masters.
 
 A minion must be accepted on the pod it lands on, so accept/reject/delete
 run on every reachable master pod (idempotent wheel calls). The roster

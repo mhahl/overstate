@@ -71,9 +71,9 @@ Database damage is CNPG's domain (`overstate-db` cluster backups);
 accepted minion keys live on the masters' per-pod `keys` PVCs and
 survive reschedules.
 
-## 4. Shared master keypair (failover pair)
+## 4. Shared master keypair (failover trio)
 
-Both master pods present one identity from the owner-held
+All three master pods present one identity from the owner-held
 `salt-master-keys` Secret (never committed). To bootstrap from the
 live single master — same bytes, no rotation, minions unaffected:
 
@@ -92,7 +92,7 @@ replace the Secret, roll the pods one at a time, and confirm every
 minion trusts the new key before the last old pod leaves. A botched
 rotation needs the re-acceptance procedure, not just revert.
 
-## 5. Shared job cache (failover pair)
+## 5. Shared job cache (failover trio)
 
 Job results live in a dedicated `salt` database so either master
 answers consistently. One-shot provisioning as the CNPG superuser
@@ -140,12 +140,12 @@ kubectl -n overstate create secret generic salt-master-db \
 shred -u /tmp/returner.conf 2>/dev/null || rm -P /tmp/returner.conf
 ```
 
-Rotate the same way (replace Secret, roll both pods one at a time).
+Rotate the same way (replace Secret, roll the pods one at a time).
 The owned ConfigMap never holds passwords — enforced by test.
 
 ## 6. Master cluster credential
 
-The pair runs as a Salt master cluster (isolated filesystem), so the
+The three run as a Salt master cluster (isolated filesystem), so the
 Traefik TCP round-robin is the supported topology instead of a
 split-brain. Peers authenticate each other with `cluster_secret`,
 overlaid as a `cluster.conf` drop-in from the owner-held
@@ -157,7 +157,7 @@ kubectl -n overstate create secret generic salt-master-cluster \
   --from-literal=cluster.conf="cluster_secret: '$(openssl rand -hex 32)'"
 ```
 
-Rotation: replace the Secret, then roll both pods one at a time — a
+Rotation: replace the Secret, then roll the pods one at a time — a
 peer with the old secret cannot rejoin, so confirm the new pods form
 the cluster before the last old pod leaves. Removing a peer for good
 also means deleting its `peers/<id>.pub` from the cluster key store

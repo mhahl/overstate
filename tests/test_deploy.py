@@ -86,7 +86,7 @@ def _salt_master_sts():
     return sts
 
 
-def test_master_pair_never_shares_a_node():
+def test_master_trio_never_shares_a_node():
     sts = _salt_master_sts()
     required = sts["spec"]["template"]["spec"]["affinity"]["podAntiAffinity"][
         "requiredDuringSchedulingIgnoredDuringExecution"
@@ -119,11 +119,12 @@ def test_master_image_always_pulls_floating_tag():
     assert container["imagePullPolicy"] == "Always"
 
 
-def test_master_pair_keeps_one_pod_on_drain():
+def test_master_quorum_survives_drain():
     (pdb,) = [
         d for d in _load("salt-master.yaml") if d.get("kind") == ("PodDisruptionBudget")
     ]
-    assert pdb["spec"]["minAvailable"] == 1
+    # 3-node Raft needs two voters: a drain must never take two masters.
+    assert pdb["spec"]["minAvailable"] == 2
     assert pdb["spec"]["selector"]["matchLabels"] == {
         "app.kubernetes.io/name": "salt-master"
     }
@@ -159,16 +160,16 @@ def test_app_keeps_one_replica_on_drain():
     }
 
 
-def test_master_pair_replicas_and_image():
+def test_master_trio_replicas_and_image():
     sts = _salt_master_sts()
-    assert sts["spec"]["replicas"] == 2
+    assert sts["spec"]["replicas"] == 3
     containers = sts["spec"]["template"]["spec"]["containers"]
     (master,) = [c for c in containers if c["name"] == "salt-master"]
     assert master["image"].startswith("quay.io/sigaint/overstate-salt-master:")
     assert "ghcr.io" not in master["image"]
 
 
-def test_master_pair_shares_keypair_but_not_accepted_keys():
+def test_master_trio_shares_keypair_but_not_accepted_keys():
     sts = _salt_master_sts()
     pod = sts["spec"]["template"]["spec"]
     volumes = {v["name"]: v for v in pod["volumes"]}

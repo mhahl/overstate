@@ -25,7 +25,7 @@
 # list. The loop therefore runs forever: when live DNS disagrees
 # with the stamped peers twice in a row, it restamps and bounces
 # the daemon (pod IP unchanged, so the sibling's view of us stays
-# valid). Restarts are jittered so both pods never bounce together,
+# valid). Restarts are jittered so two pods never bounce together,
 # skipped while the daemon is still starting, and logged.
 # Outside Kubernetes (dev compose) POD_NAME/POD_IP are unset and the
 # base behavior is untouched.

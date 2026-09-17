@@ -1,4 +1,4 @@
-# Kubernetes architecture: Overstate + Salt failover pair
+# Kubernetes architecture: Overstate + Salt master trio
 
 How-to lives in `install-kubernetes.md`; the non-Kubernetes path lives in
 `deployment.md`. This document explains **what** runs on the cluster,
@@ -29,7 +29,7 @@ Non-goals:
   its own namespace.
 - Zero-downtime everything: brief control-plane pauses (single worker,
   single Redis, single Postgres instance) are accepted; only the
-  master pair and the app itself are redundant.
+  master trio and the app itself are redundant.
 - Replacing Salt semantics: job execution, grains, and states behave
   exactly as upstream Salt defines them.
 
@@ -51,8 +51,8 @@ Non-goals:
               fan-out             queues)
                            │
               ┌────────────▼──────────────────────────────────────┐
-              │ salt-master StatefulSet ×2 overstate-salt-master │
-              │  pod-0 and pod-1: same keypair, shared ConfigMap, │
+              │ salt-master StatefulSet ×3 overstate-salt-master │
+              │  pod-0..pod-2:  same keypair, shared ConfigMap, │
               │  per-pod accepted-keys PVC, PG job-cache returner │
               └────────────┬──────────────────────────────────────┘
                            │ Traefik TCP 4505/4506 → salt-master-mq
@@ -67,7 +67,7 @@ Component inventory (all in `deploy/kubernetes/`):
 |---|---|---|---|
 | `app` | Deployment ×2 | 2 replicas | Stateless (sessions/cache in Redis) |
 | `worker` | Deployment ×1 | **1 replica** | Stateless, restarts fast |
-| `salt-master` | StatefulSet ×2 | 2 replicas, ordered rollout | Accepted keys on per-pod `keys` PVC (5Gi RWO Longhorn) |
+| `salt-master` | StatefulSet ×3 | 3 replicas, ordered rollout | Accepted keys on per-pod `keys` PVC (5Gi RWO Longhorn) |
 | `salt-master` (headless) | Service, ClusterIP None | — | Stable per-pod DNS for fan-out |
 | `salt-master-api` | Service ClusterIP :8000 | Load-balanced | Default salt-api target |
 | `salt-master-mq` | Service ClusterIP :4505/:4506 | Load-balanced | Minion ZMQ via Traefik TCP routers (`salt-mq-routes.yaml`) |
@@ -91,19 +91,19 @@ connection currently terminates on pod-0. There is no shared bus. So
 **same JID**. Each single-homed minion therefore receives the job exactly
 once (from whichever pod it is attached to), executes once, and returns
 once — to that same pod. This is the load-bearing invariant of the whole
-pair; section 7 lists what breaks if it is violated.
+cluster; section 7 lists what breaks if it is violated.
 
 **3.2 Master identity is shared, accepted keys are not.**
-Both pods mount the same `master.pem`/`master.pub` from the owner-held
+All three pods mount the same `master.pem`/`master.pub` from the owner-held
 `salt-master-keys` Secret, so from a minion's perspective there is one
 master identity: either pod authenticates, and a pod reschedule never
 forces re-enrollment. But Salt stores accepted minion keys as files in
 the local PKI dir, and two masters must never share one PKI dir
 concurrently (no locking — shared writes corrupt it). Hence accepted
 keys live on **per-pod PVCs** that survive reschedules, and every key
-mutation (accept, reject, delete) is fanned out to both pods by
+mutation (accept, reject, delete) is fanned out to all three pods by
 `overstate_ui/keys.py` (`accept-on-both`). The Keys roster shown in the
-UI is the **union** of both pods with per-pod state chips.
+UI is the **union** of all three pods with per-pod state chips.
 
 **3.3 Job history lives in Postgres, not on either master.**
 Salt's default local job cache dies with its pod. Both masters run the
@@ -117,7 +117,7 @@ passwords (enforced by test).
 ## 4. Data flows
 
 - **Run a job:** UI → per-pod salt-api clients (headless DNS) publish the
-  same JID on both pods → each minion gets it once via its single ZMQ
+  same JID on all three pods → each minion gets it once via its single ZMQ
   connection → executes → returns to its attached pod → returner writes
   to shared PG → UI reads merged history from PG.
 - **Key action:** UI → idempotent wheel call on every reachable pod →
@@ -159,13 +159,13 @@ exactly the master StatefulSet.
 
 | Failure | Effect | Why it is OK (or not) |
 |---|---|---|
-| One master pod killed | Minions reconnect via the MQ VIP to the survivor; publishes still fan out (dead pod errors, survivor delivers); history intact in PG | Core HA case — pending live drill proof |
+| One master pod killed | Minions reconnect via the MQ VIP to a survivor; publishes still fan out (dead pod errors, survivors deliver); history intact in PG | Core HA case — pending live drill proof |
 | Master pod rescheduled | Accepted keys persist on its PVC; same identity from Secret | No re-enrollment |
 | Bad master config edit | Previous snapshot re-applied from history, pods re-rolled | UI-first recovery |
 | Postgres down | Masters keep serving; returns fail to persist; UI history degrades (explicit degraded mode) | **History gap, not outage** — but silent if unnoticed |
 | Redis down | Sessions/cache/queues drop; app error-pages until it returns | Short full-UI outage |
 | Worker down | Background jobs pause; Deployment restarts it | Minutes-scale pause |
-| Whole node lost | Depends which pods were on it (see §8.4) | The pair is only a pair if pods sit on different nodes |
+| Whole node lost | Depends which pods were on it (see §8.4) | The trio is only three if pods sit on different nodes |
 | Lost owner Secret | Regenerate everything that consumed it | No backup exists — operator procedure, not automation |
 
 ## 7. Assumptions (explicit)
@@ -184,9 +184,10 @@ exactly the master StatefulSet.
    scale-ups and outages. Anything rejected/denied, globally pending,
    or fingerprint-mismatched still needs a human, surfaced via the
    per-pod chips and the Keys-page banner.
-4. **Pre-pair keys live on pod-0 only.** Keys accepted before the
-   second pod existed are unknown to pod-1 until re-accepted; minions
-   that land on pod-1 show as pending there.
+4. **Keys accepted before a pod existed are unknown to it.** Keys
+   accepted before a later pod joined (e.g. pod-2) are unknown there
+   until re-accepted or reconciled; minions that land on the new pod
+   show as pending there.
 5. **Clocks and DNS are trustworthy.** Same-JID fan-out assumes both
    pods agree on time; per-pod fan-out assumes headless DNS resolves.
 6. **The out-of-repo halves exist.** Traefik 4505/4506 entrypoints, DNS,
@@ -200,10 +201,11 @@ exactly the master StatefulSet.
 
 **High:**
 
-- **8.1 Placement protection is partial.** The master pair carries
-  required hostname anti-affinity plus a `minAvailable: 1` PDB, and
+- **8.1 Placement protection is partial.** The master trio carries
+  required hostname anti-affinity plus a `minAvailable: 2` PDB (Raft
+  quorum needs two voters), and
   the app preferred anti-affinity plus its own PDB — so a node loss or
-  drain no longer takes the whole pair. What remains: no
+  drain no longer takes the whole trio. What remains: no
   `topologySpreadConstraints`, no PDBs on the singletons (worker,
   Redis, single-instance Postgres), and Longhorn RWO volumes still pin
   rescheduled pods to the old node's data until replicated.
@@ -244,6 +246,15 @@ exactly the master StatefulSet.
 - **8.8 Single worker, single Redis.** Background work and UI sessions
   have no redundancy; both restart fast, but a prolonged Redis volume
   issue is a full UI outage with no graceful degradation.
+- **8.9 Minion request channels assume any pod serves any session.**
+  The MQ Service spreads every new TCP connection across all three
+  pods with no stickiness. If a minion's reconnect lands its 4506
+  channel on a pod that never issued its AES session, pillar fetches
+  and job returns fail session decrypt (`message authentication
+  failed`) while subscribes (4505) keep working — the minion flaps
+  up and down. Rule out version skew first (a 3006 minion against
+  3008 masters fails similarly); if matched-version minions still
+  flap, the fix is stickiness on `salt-master-mq`, not more replicas.
 
 **Low (accepted, documented):**
 
@@ -269,9 +280,9 @@ What Kubernetes earns here:
   cache, routes, history plumbing) is a reviewable diff instead of a
   wiki page of manual master setup. That is the project's biggest
   operational win.
-- **Cheap second master.** The failover pair is ~30 lines of
-  StatefulSet plus fan-out code. On VMs the same pair means a second
-  machine, key sync, config sync, and a load balancer — all hand-run.
+- **Cheap extra masters.** The failover trio is ~30 lines of
+  StatefulSet plus fan-out code. On VMs the same trio means more
+  machines, key sync, config sync, and a load balancer — all hand-run.
 - **Recovery primitives that actually get used:** history ConfigMap +
   one-at-a-time rollouts already saved real debugging sessions in this
   project (bad-edit revert, reschedule-safe keys).
@@ -311,12 +322,12 @@ When to retreat: if minion count stays tiny (single digits) and the
 owner stops enjoying cluster maintenance, collapse to one master
 replica and eventually to the VM path. The design degrades gracefully
 in that direction — fan-out to one pod is just a publish, and the PG
-returner works for a single master too. Nothing about the pair poisons
+returner works for a single master too. Nothing about the trio poisons
 the simple topology.
 
 ## 10. Open proofs
 
 - Pod-kill failover drill (minion reconnect, publish during outage,
   merged history) — owner-scheduled.
-- Second-minion join against the pair (validates accept-on-both on a
+- Second-minion join against the trio (validates accept-on-both on a
   fresh key, and the reconcile path for pre-pair keys).

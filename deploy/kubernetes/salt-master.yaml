@@ -1,18 +1,18 @@
 # Salt master + salt-api (project image: stock :lts plus the postgres
-# driver for the shared job cache). Clustered pair (isolated
-# filesystem): both pods share one AES session key and one accepted-keys
+# driver for the shared job cache). Three-node cluster (isolated
+# filesystem): all three pods share one AES session key and one accepted-keys
 # store, so the Traefik TCP round-robin in front of 4505/4506 is the
 # supported topology. Same keypair (owner-held `salt-master-keys`
 # Secret, never committed), one ConfigMap, cluster credential from the
 # owner-held `salt-master-cluster` Secret (never committed). Rolling
-# restarts go one pod at a time, so one master always serves.
+# restarts go one pod at a time, so quorum (2 of 3) always serves.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: salt-master
 spec:
   serviceName: salt-master
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app.kubernetes.io/name: salt-master
@@ -26,8 +26,8 @@ spec:
       # with the image's salt uid/gid.
       securityContext:
         fsGroup: 1000
-      # The pair is only a pair on different nodes: never schedule both
-      # masters onto one hostname, or one node loss kills the failover.
+      # The three are only three on different nodes: never schedule two
+      # masters onto one hostname, or one node loss kills quorum.
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -91,7 +91,7 @@ spec:
             # via cluster_secret + cluster_peers and pulls keys in-band.
             - name: keys
               mountPath: /home/salt/data/keys
-            # Shared master identity: the same keypair on both pods, from
+            # Shared master identity: the same keypair on all three pods, from
             # the owner-held `salt-master-keys` Secret (see
             # docs/install-kubernetes.md). subPath file mounts leave the
             # rest of the keys dir (accepted minions) on the PVC.
@@ -205,14 +205,15 @@ spec:
       port: 4506
       targetPort: request
 ---
-# Voluntary disruptions (node drains, upgrades) must always leave one
-# master up: minions ride out the drain on the survivor.
+# Voluntary disruptions (node drains, upgrades) must always leave quorum
+# (2 of 3) up: Raft loses its leader without two voters. Minions ride
+# out the drain on the survivors.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: salt-master
 spec:
-  minAvailable: 1
+  minAvailable: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: salt-master

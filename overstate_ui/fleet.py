@@ -1,4 +1,4 @@
-"""Failover-pair addressing (D12: full active-active).
+"""Failover-cluster addressing (D12: full active-active).
 
 Every publish fans out to all master pods because publish buses are
 per-master: a job fired on one pod never reaches minions attached to
