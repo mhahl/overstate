@@ -144,13 +144,18 @@ spec:
             storage: 5Gi
 ---
 # Headless service: StatefulSet identity, plus Raft peer traffic for
-# the master cluster.
+# the master cluster. publishNotReadyAddresses is load-bearing: each
+# pod binds `interface` to its own DNS name at boot, before it is
+# Ready, so the name must resolve pre-readiness or the daemon can
+# never bind (chicken-and-egg). Traefik uses the sibling Services,
+# so this changes nothing on the minion path.
 apiVersion: v1
 kind: Service
 metadata:
   name: salt-master
 spec:
   clusterIP: None
+  publishNotReadyAddresses: true
   selector:
     app.kubernetes.io/name: salt-master
   ports:

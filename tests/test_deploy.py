@@ -263,3 +263,16 @@ def test_master_pods_carry_name_for_cluster_election():
     ]
     env = {e["name"]: e for e in master["env"]}
     assert env["POD_NAME"]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.name"
+
+
+def test_headless_service_publishes_unready_pods():
+    # Cluster boot binds `interface` to the pod's own DNS name before
+    # it is Ready; without this the name never resolves and the daemon
+    # can never bind (chicken-and-egg).
+    docs = _load("salt-master.yaml")
+    (headless,) = [
+        d
+        for d in docs
+        if d.get("kind") == "Service" and d["metadata"]["name"] == "salt-master"
+    ]
+    assert headless["spec"].get("publishNotReadyAddresses") is True
