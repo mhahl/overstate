@@ -43,6 +43,8 @@ spec:
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
           image: quay.io/sigaint/overstate-salt-master:lts-pg8
+          # Floating tag redeploys (entrypoint fixes) must actually pull.
+          imagePullPolicy: Always
           env:
             # Pod name and IP for cluster identity (see
             # cluster-entrypoint.sh): interface/id/peers are stamped

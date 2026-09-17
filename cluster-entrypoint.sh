@@ -34,6 +34,33 @@ MASTER_CONF=/etc/salt/master
 MARKER="# Pod identity for cluster election (POD_NAME)."
 LOG=/tmp/cluster-entrypoint.log
 SVC=salt-master
+# Salt 3008 migrates the legacy master.pem/pub to <id>.pem/pub on every
+# boot where <id>.pem is absent, then DELETES the legacy files
+# (MasterKeys._setup_keys → cache.flush on the master_keys bank). Our
+# master.pem/pub are read-only Secret subPath mounts, so the delete
+# raises SaltCacheError and the daemon never starts. Pre-seed writable
+# <POD_IP>.pem/pub copies (same key content, daemon-owned) so the
+# migration finds its target and is skipped. Refresh on content drift
+# so a rotated Secret takes effect instead of a stale PVC copy
+# shadowing the new key. KEYS_DIR/KEY_OWNER are overridable for tests.
+KEYS_DIR="${KEYS_DIR:-/home/salt/data/keys}"
+KEY_OWNER="${KEY_OWNER:-salt:salt}"
+
+preseed_master_keys() {
+  for ext in pem pub; do
+    src="$KEYS_DIR/master.$ext"
+    dest="$KEYS_DIR/$POD_IP.$ext"
+    if [ ! -f "$dest" ] || ! cmp -s "$src" "$dest"; then
+      # rm first (portable, and never writes through a symlink the
+      # way cp -f alone would) — the daemon is not running yet.
+      rm -f "$dest"
+      cp -f "$src" "$dest"
+      chown "$KEY_OWNER" "$dest"
+      chmod 0400 "$dest"
+      log "pre-seeded $dest from Secret keypair"
+    fi
+  done
+}
 
 log() {
   echo "$(date -u +%FT%TZ) $*" >>"$LOG"
@@ -48,6 +75,8 @@ daemon_running() {
 }
 
 if [ -n "${POD_NAME:-}" ] && [ -n "${POD_IP:-}" ]; then
+  # Synchronous, before the base entrypoint starts the daemon below.
+  preseed_master_keys
   (
     log "watching $MASTER_CONF as $POD_NAME ($POD_IP)"
     last_peers=""

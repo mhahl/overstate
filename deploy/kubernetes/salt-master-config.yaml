@@ -31,6 +31,15 @@ data:
     cluster_port: 4507
     cluster_pki_dir: /home/salt/data/keys/_cluster
     cluster_isolated_filesystem: true
+    # Raft timing for cross-node Kubernetes: the defaults (0.75-1.5 s
+    # follower timeout against 50-100 ms beacons) assume loop delays
+    # stay in the tens of ms. Our two voters phase-locked into a
+    # ~1 Hz duel of spurious elections (terms in the thousands, no
+    # leader holds long enough to commit), so followers tolerate
+    # multi-second beacon gaps instead. Failover detection moves to
+    # 3-6 s — fine for minions, which ride out blips on TCP.
+    cluster_election_min: 3000
+    cluster_election_max: 6000
   # salt-api auth for the `overstate` eauth user. Mirrors
   # salt-config/api.conf from the repo (grants the app needs, nothing
   # more). TLS for salt-api is the image's own self-signed cert (see

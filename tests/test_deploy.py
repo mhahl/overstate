@@ -97,6 +97,28 @@ def test_master_pair_never_shares_a_node():
     } in required
 
 
+def test_master_raft_timeouts_fit_cross_node_k8s():
+    import yaml as _yaml
+
+    (cm,) = [
+        d for d in _load("salt-master-config.yaml") if d.get("kind") == "ConfigMap"
+    ]
+    master_conf = _yaml.safe_load(cm["data"]["master.conf"])
+    # Followers must tolerate multi-second beacon gaps (50-100 ms
+    # beacons): tight timeouts phase-locked our voters into a ~1 Hz
+    # duel of spurious elections with no stable leader.
+    assert master_conf["cluster_election_min"] >= 3000
+    assert master_conf["cluster_election_max"] >= 6000
+
+
+def test_master_image_always_pulls_floating_tag():
+    sts = _salt_master_sts()
+    (container,) = sts["spec"]["template"]["spec"]["containers"]
+    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg8"
+    # Same-tag rebuilds (entrypoint fixes) must reach the nodes.
+    assert container["imagePullPolicy"] == "Always"
+
+
 def test_master_pair_keeps_one_pod_on_drain():
     (pdb,) = [
         d for d in _load("salt-master.yaml") if d.get("kind") == ("PodDisruptionBudget")
