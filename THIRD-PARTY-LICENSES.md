@@ -38,6 +38,7 @@ Dev-only (not shipped in the image): pytest (MIT), pytest-cov (MIT).
 | codemirror | 6.0.2 | MIT |
 | @codemirror/lang-yaml | 6.1.3 | MIT |
 | esbuild | 0.28.2 | MIT |
+| wunderbaum | 0.14.1 | MIT |
 
 ## Compatibility verdict: no conflicts
 

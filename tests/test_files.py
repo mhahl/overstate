@@ -11,9 +11,12 @@ from overstate_ui.auth import _ph, seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.files import (
+    build_tree,
+    dir_crumbs,
     highlight_json,
     highlight_yaml,
     list_tree,
+    normalize_dir,
     read_text,
     safe_join,
     sync_revision,
@@ -518,3 +521,162 @@ def test_index_links_repo_settings_for_admin(rooted):
     assert rv.status_code == 200
     assert b"Repo settings" in rv.data
     assert b'href="/files/repo"' in rv.data
+
+
+def test_normalize_dir_cleans_prefix():
+    assert normalize_dir("") == ""
+    assert normalize_dir("sub") == "sub"
+    assert normalize_dir("sub/") == "sub"
+    assert normalize_dir("/sub/deep/") == "sub/deep"
+    assert normalize_dir("a/./b") == "a/b"
+    for hostile in ("..", "../..", "sub/../../x", "a\\b", "..\\x"):
+        assert normalize_dir(hostile) == "", hostile
+
+
+def test_dir_crumbs_segments():
+    assert dir_crumbs("") == [{"label": "Files", "dir": ""}]
+    assert dir_crumbs("sub/deep") == [
+        {"label": "Files", "dir": ""},
+        {"label": "sub", "dir": "sub"},
+        {"label": "deep", "dir": "sub/deep"},
+    ]
+
+
+def test_build_tree_nests_folders_only():
+    # Folders only: files stay in the list pane so the tree never shows
+    # a name that search or pagination filtered out of the listing.
+    nodes = build_tree(
+        [
+            {"rel": "web.sls", "size": 3},
+            {"rel": "sub/db.sls", "size": 3},
+            {"rel": "sub/nested/inner.sls", "size": 3},
+        ]
+    )
+    assert [n["key"] for n in nodes] == ["sub"]
+    (sub,) = nodes
+    assert sub["folder"] is True and sub["title"] == "sub"
+    assert [n["key"] for n in sub["children"]] == ["sub/nested"]
+    assert build_tree([{"rel": "top.sls", "size": 1}]) == []
+
+
+def test_build_tree_marks_active_path():
+    nodes = build_tree([{"rel": "sub/deep/x.sls", "size": 1}], active_dir="sub/deep")
+    (sub,) = nodes
+    assert sub["expanded"] is True and sub["active"] is False
+    (deep,) = sub["children"]
+    assert deep["expanded"] is True and deep["active"] is True
+
+
+def test_list_tree_skips_git_internals(rooted, tmp_path):
+    # NOTE: rooted already wrote web.sls + sub/db.sls into this same
+    # tmp dir (shared tmp_path fixture) — assert around them.
+    (tmp_path / ".git" / "objects").mkdir(parents=True)
+    (tmp_path / ".git" / "objects" / "pack").write_text("x")
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    (tmp_path / "top.sls").write_text("base:\n  '*': []\n")
+    with rooted.app.app_context():
+        rels = [e["rel"] for e in list_tree()]
+    assert rels == ["sub/db.sls", "top.sls", "web.sls"]
+    assert not any(r.startswith(".git") for r in rels)
+
+
+def test_index_dir_filters_listing_and_crumbs(rooted):
+    rv = rooted.get("/files/", query_string={"dir": "sub"})
+    assert rv.status_code == 200
+    html = rv.data.decode()
+    assert "sub/db.sls" in html and "web.sls" not in html
+    assert 'aria-label="Current folder"' in html
+    assert "Back to all files" not in html  # non-empty needs no escape hatch
+    assert 'name="dir" value="sub"' in html  # search stays in the folder
+
+
+def test_index_unknown_dir_explains_with_way_back(rooted):
+    rv = rooted.get("/files/", query_string={"dir": "nope"})
+    assert rv.status_code == 200
+    assert 'No files under "nope"' in rv.data.decode()
+    assert b"Back to all files" in rv.data
+
+
+def test_index_hostile_dir_collapses_to_everything(rooted):
+    rv = rooted.get("/files/", query_string={"dir": "../.."})
+    assert rv.status_code == 200
+    html = rv.data.decode()
+    assert "web.sls" in html and "sub/db.sls" in html
+    assert 'aria-label="Current folder"' not in html
+
+
+def test_index_embeds_tree_json_with_active_dir(rooted):
+    import json
+
+    html = rooted.get("/files/", query_string={"dir": "sub"}).data.decode()
+    assert 'id="file-tree-data"' in html
+    assert 'id="file-tree-fallback"' in html  # no-JS link list
+    payload = html.split('id="file-tree-data">', 1)[1].split("</script>", 1)[0]
+    nodes = json.loads(payload)
+    by_key = {n["key"]: n for n in nodes}
+    assert by_key["sub"]["folder"] is True
+    assert by_key["sub"]["active"] is True
+    assert "web.sls" not in payload  # files live in the list, not the tree
+    assert 'href="/files/?dir=sub' in html  # fallback navigates folders
+
+
+def test_index_dir_survives_pagination(rooted, tmp_path):
+    (tmp_path / "big").mkdir()
+    for i in range(30):
+        (tmp_path / "big" / f"keep-{i:02d}.sls").write_text("x:\n  test.nop: []\n")
+    with rooted.app.app_context():
+        rooted.app.config["FILE_ROOTS"] = str(tmp_path)
+        html = rooted.get(
+            "/files/",
+            query_string={"dir": "big", "per_page": "25", "page": "2"},
+        ).data.decode()
+    assert "Page 2 of 2" in html
+    assert "dir=big" in html.split("Page 2 of 2")[1].split("</div>")[0]
+    assert "big/keep-29.sls" in html
+
+
+def test_view_shows_breadcrumbs(rooted):
+    html = rooted.get("/files/view", query_string={"path": "sub/db.sls"}).data.decode()
+    assert 'aria-label="File path"' in html
+    assert 'href="/files/?dir=sub"' in html
+    assert "<span" in html and "db.sls" in html
+
+
+def test_browser_bundle_served_locally(rooted):
+    rv = rooted.get("/static/browser.bundle.js")
+    assert rv.status_code == 200
+    assert len(rv.data) > 50_000  # real bundle, not a stub
+    assert b"file-tree" in rv.data  # our entry code is in the bundle
+    assert b"wunderbaum" in rv.data.lower()  # the tree dependency ships too
+    css = rooted.get("/static/browser.bundle.css")
+    assert css.status_code == 200
+    assert b".wb-" in css.data  # tree stylesheet bundled alongside
+
+
+def test_built_css_binds_tree_to_theme():
+    import pathlib
+
+    css = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "overstate_ui"
+        / "static"
+        / "app.css"
+    ).read_text()
+    assert "#file-tree" in css
+    assert "var(--color-base-content)" in css  # theme tokens, not fixed greys
+    assert "lucide--folder" in css  # JS-injected tree icons generated
+
+
+def test_files_page_has_no_external_scripts(rooted):
+    rv = rooted.get("/files/")
+    assert rv.status_code == 200
+    assert b'src="http' not in rv.data  # vendored only, CSP-safe
+
+
+def test_third_party_licenses_list_the_tree():
+    import pathlib
+
+    text = (
+        pathlib.Path(__file__).resolve().parent.parent / "THIRD-PARTY-LICENSES.md"
+    ).read_text()
+    assert "wunderbaum" in text.lower()

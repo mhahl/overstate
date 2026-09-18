@@ -81,6 +81,33 @@
   color: var(--color-error);
 }
 
+/* File browser tree: browser.js injects these icons after render, so the
+   class scanner cannot see them — force-generate like the OS icons. */
+@source inline("icon-[lucide--folder]");
+@source inline("icon-[lucide--file-code]");
+@source inline("icon-[lucide--file-json]");
+@source inline("icon-[lucide--file-terminal]");
+@source inline("icon-[lucide--file-text]");
+
+/* File browser tree: Wunderbaum ships its own default surface, which
+   reads as a flat grey slab against the app themes. Bind it to the
+   daisyUI theme tokens instead, mirroring the editor rules above. */
+#file-tree {
+  max-height: 70vh;
+  overflow: auto;
+  color: var(--color-base-content);
+  --wb-background-color: transparent;
+  --wb-border-color: transparent;
+  --wb-font-stack: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  --wb-active-color: color-mix(in oklab, var(--color-primary) 22%, transparent);
+  --wb-active-hover-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  --wb-focus-border-color: var(--color-primary);
+  --wb-dim-color: var(--color-base-content);
+}
+#file-tree .wb-title {
+  font-size: 0.8125rem;
+}
+
 /* File editor: the CodeMirror 6 bundle ships its own default surface,
    which reads as a flat grey slab against the app themes. These rules
    bind the editor to the daisyUI theme tokens instead, mirroring the

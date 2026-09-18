@@ -114,18 +114,97 @@ def list_tree(limit: int | None = None) -> list[dict]:
     entries = []
     if not base.is_dir():
         return entries
-    for path in base.rglob("*"):
-        if path.is_dir():
-            continue
+    for path, rel in _iter_files(base):
         try:
             size = path.stat().st_size
         except OSError:
             continue
-        entries.append({"rel": str(path.relative_to(base)), "size": size})
+        entries.append({"rel": rel, "size": size})
         if limit is not None and len(entries) >= limit:
             break
     entries.sort(key=lambda e: e["rel"])
     return entries
+
+
+def _iter_files(base: Path):
+    """File paths under roots, skipping git internals.
+
+    ``.git/`` would otherwise flood the browser with thousands of
+    object rows that can never be viewed or edited meaningfully.
+    """
+    for path in base.rglob("*"):
+        if path.is_dir():
+            continue
+        try:
+            rel = path.relative_to(base)
+        except ValueError:
+            continue
+        if ".git" in rel.parts:
+            continue
+        yield path, str(rel)
+
+
+def normalize_dir(value: str) -> str:
+    """Clean a ``?dir=`` navigation prefix. ``""`` means the whole tree.
+
+    Anything that escapes roots (``..``, backslashes) collapses to
+    ``""`` instead of erroring — a mistyped bookmark still shows files.
+    """
+    parts = [p for p in (value or "").split("/") if p not in ("", ".")]
+    if not parts or any(p == ".." or "\\" in p for p in parts):
+        return ""
+    return "/".join(parts)
+
+
+def dir_crumbs(d: str) -> list[dict]:
+    """Breadcrumb segments for a dir prefix: Files plus each level."""
+    crumbs = [{"label": "Files", "dir": ""}]
+    prefix = []
+    for seg in d.split("/"):
+        if not seg:
+            continue
+        prefix.append(seg)
+        crumbs.append({"label": seg, "dir": "/".join(prefix)})
+    return crumbs
+
+
+def build_tree(entries: list[dict], active_dir: str = "") -> list[dict]:
+    """Nested Wunderbaum source: folders only, from flat entries.
+
+    Each node is a folder (``key`` = dir path); files stay in the list
+    pane so search and pagination keep their contracts — the tree never
+    shows a name the listing filtered out. Children sort
+    alphabetically; nodes on the ``active_dir`` path come back
+    ``expanded`` with the dir itself ``active``. Pure data — no
+    ``url_for`` so unit tests need no request context.
+    """
+    root: dict = {}
+    for entry in entries:
+        node = root
+        for seg in entry["rel"].split("/")[:-1]:
+            node = node.setdefault(seg, {})
+    active_parts = active_dir.split("/") if active_dir else []
+
+    def build(node: dict, prefix: list[str], depth: int) -> list[dict]:
+        kids = []
+        for name in sorted(node):
+            path = prefix + [name]
+            dirpath = "/".join(path)
+            on_path = active_parts[: len(path)] == path
+            kids.append(
+                {
+                    "key": dirpath,
+                    "title": name,
+                    "folder": True,
+                    "expanded": on_path and depth < len(active_parts),
+                    "active": dirpath == active_dir,
+                    "children": build(node[name], path, depth + 1),
+                }
+            )
+        kids.sort(key=lambda k: k["title"].lower())
+        return kids
+
+    return build(root, [], 0)
 
 
 def group_rows(entries: list[dict]) -> list[dict]:
@@ -213,9 +292,15 @@ def index():
         per_page = DEFAULT_PAGE_SIZE
     if per_page not in PAGE_SIZES:
         per_page = DEFAULT_PAGE_SIZE
+    d = normalize_dir(request.args.get("dir", ""))
     entries = list_tree(limit=LIST_LIMIT + 1)
     truncated = len(entries) > LIST_LIMIT
     entries = entries[:LIST_LIMIT]
+    tree_nodes = build_tree(entries, active_dir=d)
+    if d:
+        entries = [
+            e for e in entries if e["rel"] == d or e["rel"].startswith(d + "/")
+        ]
     if q:
         entries = [e for e in entries if q in e["rel"].lower()]
     total = len(entries)
@@ -228,6 +313,9 @@ def index():
         rows=rows,
         revision=sync_revision(),
         q=request.args.get("q", ""),
+        d=d,
+        crumbs=dir_crumbs(d),
+        tree_nodes=tree_nodes,
         page=page,
         pages=pages,
         per_page=per_page,
@@ -623,6 +711,8 @@ def view():
     target = safe_join(rel)
     if not target or not target.is_file():
         abort(404)
+    parent = rel.rpartition("/")[0] if "/" in rel else ""
+    crumbs = dir_crumbs(parent)
     content = read_text(target)
     if content is not None:
         highlighted = (
@@ -631,6 +721,7 @@ def view():
         return render_template(
             "file_view.html",
             rel=rel,
+            crumbs=crumbs,
             content=content,
             lines=content.splitlines(),
             highlighted=highlighted,
@@ -648,6 +739,7 @@ def view():
     return render_template(
         "file_view.html",
         rel=rel,
+        crumbs=crumbs,
         content=None,
         lines=[],
         reason=reason,

@@ -2,8 +2,15 @@
 {% block title %}{{ rel }} · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
+  <nav class="breadcrumbs text-sm mb-1" aria-label="File path">
+    <ul>
+      {% for c in crumbs %}
+      <li><a class="link font-mono" href="{{ url_for('files.index', dir=c.dir) }}">{{ c.label }}</a></li>
+      {% endfor %}
+      <li aria-current="page"><span class="font-mono">{{ rel.rsplit("/", 1)[-1] }}</span></li>
+    </ul>
+  </nav>
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <a class="btn btn-sm btn-ghost" href="{{ url_for('files.index') }}">‹ Files</a>
     <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
   </div>
   <div class="flex flex-wrap items-center gap-2 mb-4">

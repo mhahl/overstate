@@ -10,7 +10,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:css": "tailwindcss -i ./assets/app.css -o ./overstate_ui/static/app.css",
-    "build:editor": "esbuild ./assets/editor.js --bundle --minify --format=iife --outfile=./overstate_ui/static/editor.bundle.js"
+    "build:editor": "esbuild ./assets/editor.js --bundle --minify --format=iife --outfile=./overstate_ui/static/editor.bundle.js",
+    "build:browser": "esbuild ./assets/browser.js --bundle --minify --format=iife --outfile=./overstate_ui/static/browser.bundle.js"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +26,7 @@
     "codemirror": "^6.0.2",
     "daisyui": "^5.7.36",
     "esbuild": "^0.28.2",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "wunderbaum": "^0.14.1"
   }
 }

@@ -50,10 +50,49 @@
       {% endif %}
     </div>
   </section>
+  {% macro dir_tree(nodes) %}
+  <ul class="menu menu-sm p-0">
+    {% for n in nodes %}
+    <li>
+      <a href="{{ url_for('files.index', dir=n.key, q=q) }}" class="font-mono{% if n.key == d %} menu-active{% endif %}">
+        <span class="icon-[lucide--folder] size-4 opacity-60 shrink-0" aria-hidden="true"></span>{{ n.title }}/
+      </a>
+      {% if n.children %}{{ dir_tree(n.children) }}{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endmacro %}
+  <div class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] items-start">
+  <nav class="card bg-base-100 border border-base-300 shadow-sm" aria-label="Folders">
+    <div class="card-body p-3">
+      <div class="flex items-center gap-2 px-1 pb-1">
+        <h2 class="font-semibold text-sm">Folders</h2>
+        <a class="btn btn-xs btn-ghost ms-auto" href="{{ url_for('files.index', q=q) }}">All files</a>
+      </div>
+      <div id="file-tree" data-index-url="{{ url_for('files.index') }}"></div>
+      <div id="file-tree-fallback">{{ dir_tree(tree_nodes) }}</div>
+      <script type="application/json" id="file-tree-data">{{ tree_nodes|tojson }}</script>
+    </div>
+  </nav>
+  <div class="min-w-0">
+  {% if d %}
+  <nav class="breadcrumbs text-sm mb-3" aria-label="Current folder">
+    <ul>
+      {% for c in crumbs %}
+      {% if loop.last %}
+      <li aria-current="page"><span class="font-mono">{{ c.label }}/</span></li>
+      {% else %}
+      <li><a class="link font-mono" href="{{ url_for('files.index', dir=c.dir, q=q) }}">{{ c.label }}</a></li>
+      {% endif %}
+      {% endfor %}
+    </ul>
+  </nav>
+  {% endif %}
   <form method="get" action="{{ url_for('files.index') }}" class="flex gap-2 mb-3">
+    <input type="hidden" name="dir" value="{{ d }}">
     <input name="q" value="{{ q }}" placeholder="Search files…" class="input input-sm flex-1" aria-label="Search files">
     <button class="btn btn-sm btn-primary">Search</button>
-    {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index') }}">Clear</a>{% endif %}
+    {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', dir=d) }}">Clear</a>{% endif %}
   </form>
   {% if truncated %}
   <div class="alert alert-warning text-sm mb-3" role="status">Listing capped at {{ total }} of many files — narrow with search.</div>
@@ -61,18 +100,26 @@
   <div class="card bg-base-100 border border-base-300 shadow-sm">
   {% if not rows %}
   <div class="py-8 text-center">
-    <p class="font-medium">{% if q %}No files match "{{ q }}"{% else %}No files found{% endif %}</p>
-    <p class="text-sm opacity-70">{% if q %}Try a shorter search.{% else %}Nothing under the configured roots.{% endif %}</p>
+    <p class="font-medium">{% if q %}No files match "{{ q }}"{% elif d %}No files under "{{ d }}"{% else %}No files found{% endif %}</p>
+    <p class="text-sm opacity-70">{% if q %}Try a shorter search.{% elif d %}<a class="link" href="{{ url_for('files.index') }}">Back to all files</a>.{% else %}Nothing under the configured roots.{% endif %}</p>
   </div>
   {% else %}
   <ul>
     {% for r in rows %}
-    {% if r.group is defined %}
+    {% if r.group is defined and not d %}
     <li class="px-4 py-1.5 bg-base-200 font-mono text-xs opacity-70">{{ r.group }}/</li>
-    {% else %}
+    {% elif r.group is not defined %}
     <li class="border-b border-base-200 last:border-0">
       <a href="{{ url_for('files.view', path=r.rel) }}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-base-200">
+        {% if r.rel.endswith((".sls", ".yaml", ".yml", ".jinja")) %}
+        <span class="icon-[lucide--file-code] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
+        {% elif r.rel.endswith(".json") %}
+        <span class="icon-[lucide--file-json] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
+        {% elif r.rel.endswith(".sh") %}
+        <span class="icon-[lucide--file-terminal] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
+        {% else %}
         <span class="icon-[lucide--file-text] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
+        {% endif %}
         <span class="font-mono text-sm mr-auto break-all">{{ r.rel }}</span>
         <span class="badge badge-sm badge-ghost">{{ r.size }} B</span>
       </a>
@@ -86,12 +133,16 @@
   <div class="flex items-center gap-2 mt-3 text-sm">
     <span class="opacity-70">Page {{ page }} of {{ pages }} · {{ total }} files</span>
     <span class="ms-auto flex gap-1">
-      {% if page > 1 %}<a class="btn btn-xs btn-outline" href="{{ url_for('files.index', q=q, page=page - 1, per_page=per_page) }}">‹ Prev</a>{% endif %}
-      {% if page < pages %}<a class="btn btn-xs btn-outline" href="{{ url_for('files.index', q=q, page=page + 1, per_page=per_page) }}">Next ›</a>{% endif %}
+      {% if page > 1 %}<a class="btn btn-xs btn-outline" href="{{ url_for('files.index', q=q, dir=d, page=page - 1, per_page=per_page) }}">‹ Prev</a>{% endif %}
+      {% if page < pages %}<a class="btn btn-xs btn-outline" href="{{ url_for('files.index', q=q, dir=d, page=page + 1, per_page=per_page) }}">Next ›</a>{% endif %}
     </span>
   </div>
   {% elif total %}
-  <p class="text-sm opacity-70 mt-3">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching "{{ q }}"{% endif %}.</p>
+  <p class="text-sm opacity-70 mt-3">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching "{{ q }}"{% endif %}{% if d %} under "{{ d }}"{% endif %}.</p>
   {% endif %}
+  </div>
+  </div>
+  <link href="{{ url_for('static', filename='browser.bundle.css') }}" rel="stylesheet" type="text/css">
+  <script src="{{ url_for('static', filename='browser.bundle.js') }}"></script>
 </div>
 {% endblock %}
