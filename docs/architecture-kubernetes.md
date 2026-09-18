@@ -226,11 +226,13 @@ exactly the master StatefulSet.
 
 **Medium:**
 
-- **8.4 Salt-api VIP session affinity.** `salt-master-api` uses
-  `sessionAffinity: ClientIP` so eauth tokens stick to the minting
-  pod. Residual 401s are Raft-not-ready (`cluster_retry`), not VIP
-  flaps: Ready requires `.cluster_ready` (a leader this node belongs
-  to) plus TCP 8000.
+- **8.4 Salt-api and minion MQ session affinity.** `salt-master-api`
+  and `salt-master-mq` use `sessionAffinity: ClientIP`. Eauth tokens
+  and per-pod AES session files (`cachedir/sessions/<minion>`) live
+  on the minting pod; round-robin 4506 after `_auth` on another pod
+  fails pillar (`Master did not return a session key`). Traefik SNAT
+  means the Service sees Traefik's IP, so stickiness is per Traefik
+  replica, not per minion — enough if 4505 and 4506 share a replica.
 - **8.5 salt-api TLS is unverified in-cluster** (`SALT_API_VERIFY_CA:
   false`; the image mints a self-signed cert at boot). Fine inside a
   trusted CNI, but any pod-compromise or CNI-sniffing position yields

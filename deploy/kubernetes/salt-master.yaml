@@ -253,11 +253,19 @@ spec:
 ---
 # ZeroMQ publish/request for minions. Traefik routes (salt-mq-routes.yaml)
 # target this service once the 4505/4506 entrypoints exist.
+# ClientIP affinity: each master keeps its own AES session file under
+# cachedir/sessions/<minion> (not shared). Round-robin 4506 after
+# _auth on another pod returns no pillar session key
+# ("Master did not return a session key for pillar request").
 apiVersion: v1
 kind: Service
 metadata:
   name: salt-master-mq
 spec:
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 86400
   selector:
     app.kubernetes.io/name: salt-master
   ports:

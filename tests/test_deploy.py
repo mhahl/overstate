@@ -155,6 +155,20 @@ def test_api_service_sticks_clients_to_one_master():
     assert svc["spec"].get("sessionAffinity") == "ClientIP"
 
 
+def test_mq_service_sticks_minions_to_one_master():
+    (svc,) = [
+        d
+        for d in _load("salt-master.yaml")
+        if d.get("kind") == "Service" and d.get("metadata", {}).get("name") == "salt-master-mq"
+    ]
+    # Per-pod AES session files: 4506 round-robin after _auth on
+    # another pod fails pillar with "Master did not return a session key".
+    assert svc["spec"].get("sessionAffinity") == "ClientIP"
+    assert (
+        svc["spec"]["sessionAffinityConfig"]["clientIP"]["timeoutSeconds"] == 86400
+    )
+
+
 def test_master_quorum_survives_drain():
     (pdb,) = [
         d for d in _load("salt-master.yaml") if d.get("kind") == ("PodDisruptionBudget")
