@@ -43,6 +43,38 @@
 </form>
 </div>
 </div>
+{% if roots_nonempty %}
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card-body">
+<h2 class="font-semibold">Re-clone from scratch</h2>
+<p class="text-sm opacity-70 mb-2">File roots is not empty, so plain clone refuses. Re-clone clears it first, then clones fresh.</p>
+{% if pending %}
+<div class="alert alert-warning mb-2" role="note"><span>This will destroy the current files and clone <span class="font-mono">{{ pending.url }}</span>{% if pending.branch %} (branch <span class="font-mono">{{ pending.branch }}</span>){% endif %}.</span></div>
+<form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-wrap items-center gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="confirm" value="1">
+  <input type="hidden" name="url" value="{{ pending.url }}">
+  <input type="hidden" name="branch" value="{{ pending.branch }}">
+  <label class="fieldset"><span class="fieldset-legend">Token (re-enter — never echoed back)</span>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <button class="btn btn-sm btn-error" data-confirm="Destroy these files and re-clone?">Confirm re-clone</button>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
+</form>
+{% else %}
+<form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-col gap-2 max-w-xl">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="fieldset"><span class="fieldset-legend">Repo URL</span>
+  <input type="text" name="url" class="input input-sm"></label>
+  <label class="fieldset"><span class="fieldset-legend">Branch (blank = remote default)</span>
+  <input type="text" name="branch" class="input input-sm"></label>
+  <label class="fieldset"><span class="fieldset-legend">Token, https only (stored, never shown)</span>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <div><button class="btn btn-sm btn-outline">Preview re-clone…</button></div>
+</form>
+{% endif %}
+</div>
+</div>
+{% endif %}
 {% else %}
 <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
 <div class="card-body">

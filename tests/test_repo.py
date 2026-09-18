@@ -384,3 +384,80 @@ def test_git_origin_reports_remote(web_client, tmp_path):
         assert gs.git_origin() is None
         assert gs._clone(f"file://{bare}", None)["ok"]
         assert gs.git_origin() == f"file://{bare}"
+
+
+@needs_git
+def test_clone_refuses_into_nonempty_non_checkout(ctx, tmp_path):
+    """Stray files without .git: plain clone names the re-clone path."""
+    app_ctx, roots = ctx
+    roots.mkdir(parents=True)
+    (roots / "stray.sls").write_text("# leftover\n")
+    bare = _bare(tmp_path)
+    _seed(bare, tmp_path)
+    with app_ctx:
+        assert not gs.is_checkout()
+        result = gs._clone(f"file://{bare}", None)
+    assert not result["ok"]
+    assert result["reason"] == "directory not empty — re-clone to replace it"
+    assert (roots / "stray.sls").is_file()  # nothing was destroyed
+
+
+@needs_git
+def test_reclone_rescues_nonempty_non_checkout(ctx, tmp_path):
+    """The advised path works: re-clone clears strays, then clones fresh."""
+    app_ctx, roots = ctx
+    roots.mkdir(parents=True)
+    (roots / "stray.sls").write_text("# leftover\n")
+    bare = _bare(tmp_path)
+    _seed(bare, tmp_path)
+    with app_ctx:
+        result = gs._reclone(f"file://{bare}", None)
+    assert result["ok"], result
+    assert (roots / "top.sls").read_text() == "# seed\n"
+    assert not (roots / "stray.sls").exists()
+
+
+def test_roots_nonempty_never_raises(ctx):
+    app_ctx, roots = ctx
+    with app_ctx:
+        assert gs.roots_nonempty() is False  # missing dir reads as empty
+        roots.mkdir(parents=True)
+        assert gs.roots_nonempty() is False
+        (roots / "stray.sls").write_text("# leftover\n")
+        assert gs.roots_nonempty() is True
+
+
+def test_repo_view_offers_reclone_when_roots_nonempty(web_client):
+    _, client, roots = web_client
+    roots.mkdir(parents=True)
+    (roots / "stray.sls").write_text("# leftover\n")
+    rv = client.get("/files/repo")
+    assert rv.status_code == 200
+    assert b"Re-clone from scratch" in rv.data
+    assert b"not empty" in rv.data
+
+
+def test_repo_view_hides_reclone_when_empty(web_client):
+    _, client, _roots = web_client
+    rv = client.get("/files/repo")
+    assert rv.status_code == 200
+    assert b"Clone" in rv.data
+    assert b"Re-clone from scratch" not in rv.data
+
+
+def test_repo_clone_refusal_prefills_reclone(web_client):
+    """The dead end from the report: clone fails naming re-clone, and the
+    page answers with the re-clone confirm one click away."""
+    _, client, roots = web_client
+    roots.mkdir(parents=True)
+    (roots / "stray.sls").write_text("# leftover\n")
+    rv = client.post(
+        "/files/repo/clone",
+        data={"url": "https://git.example.com/salt/states.git"},
+    )
+    assert rv.status_code == 200  # stays on the page, not a redirect loop
+    assert b"Clone refused" in rv.data
+    assert b"re-clone to replace it" in rv.data
+    assert b"Confirm re-clone" in rv.data
+    assert b"https://git.example.com/salt/states.git" in rv.data
+    assert (roots / "stray.sls").is_file()  # nothing was destroyed

@@ -90,6 +90,19 @@ def is_checkout() -> bool:
     return _is_checkout()
 
 
+def roots_nonempty() -> bool:
+    """True when file roots exists and holds any entry. Never raises.
+
+    Clone needs an empty destination; when this is True without a
+    checkout, the Repo tab offers re-clone (which clears first) instead
+    of letting clone fail again.
+    """
+    try:
+        return _root().exists() and any(_root().iterdir())
+    except OSError:
+        return False
+
+
 def git_head() -> str | None:
     """Full HEAD SHA of the checkout, or None when it cannot be read."""
     proc = _run("rev-parse", "HEAD")

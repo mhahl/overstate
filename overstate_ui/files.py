@@ -41,6 +41,7 @@ from .git_sync import (
     has_token,
     is_checkout,
     reclone_repo,
+    roots_nonempty,
     reset_hard,
     reset_preview,
     save_token,
@@ -465,6 +466,7 @@ def _repo_context(preview=None, pending=None):
         "token_configured": has_token(),
         "preview": preview,
         "pending": pending,
+        "roots_nonempty": roots_nonempty(),
     }
 
 
@@ -504,6 +506,14 @@ def repo_clone():
     else:
         flash(f"Clone refused: {result['reason']}. Nothing changed.", "error")
         log_event(current_user.username, f"git-clone-refused:{result['reason']}")
+        if result["reason"].startswith("directory not empty"):
+            # Plain clone can never succeed here (git needs an empty
+            # destination); stay on the page with the re-clone form
+            # prefilled so the advised path is one click away.
+            return render_template(
+                "repo.html",
+                **_repo_context(pending={"url": url, "branch": branch}),
+            )
     return redirect(url_for("files.repo"))
 
 
