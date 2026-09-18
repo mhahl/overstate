@@ -161,12 +161,22 @@ def test_mq_service_sticks_minions_to_one_master():
         for d in _load("salt-master.yaml")
         if d.get("kind") == "Service" and d.get("metadata", {}).get("name") == "salt-master-mq"
     ]
-    # Per-pod AES session files: 4506 round-robin after _auth on
-    # another pod fails pillar with "Master did not return a session key".
+    # Per-node pin: Traefik on a node only reaches the local master.
+    assert svc["spec"].get("internalTrafficPolicy") == "Local"
     assert svc["spec"].get("sessionAffinity") == "ClientIP"
     assert (
         svc["spec"]["sessionAffinityConfig"]["clientIP"]["timeoutSeconds"] == 86400
     )
+
+
+def test_mq_traefik_routes_use_native_lb():
+    docs = _load("salt-mq-routes.yaml")
+    routes = [d for d in docs if d.get("kind") == "IngressRouteTCP"]
+    assert {d["metadata"]["name"] for d in routes} == {"salt-publish", "salt-request"}
+    for doc in routes:
+        (svc,) = doc["spec"]["routes"][0]["services"]
+        assert svc["name"] == "salt-master-mq"
+        assert svc.get("nativeLB") is True
 
 
 def test_master_quorum_survives_drain():

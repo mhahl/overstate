@@ -2,11 +2,12 @@
 #
 # REQUIRES entrypoints `salt-publish` (4505) and `salt-request` (4506)
 # on Traefik's static config — that lives in the `traefik` namespace,
-# outside this boundary, so these routes stay detached until those
-# entrypoints are approved and added. Applying them early is inert:
-# Traefik ignores routes whose entrypoints do not exist. Raw ZeroMQ
-# carries no SNI, so each router catch-alls its own entrypoint (same
-# shape as the cluster's adguard-dot precedent).
+# outside this boundary. Raw ZeroMQ carries no SNI, so each router
+# catch-alls its own entrypoint.
+#
+# nativeLB: true — Traefik dials the Service ClusterIP so kube-proxy
+# honours salt-master-mq internalTrafficPolicy: Local (per-node pin).
+# Without it Traefik load-balances to all pod IPs and Local is a no-op.
 apiVersion: traefik.io/v1alpha1
 kind: IngressRouteTCP
 metadata:
@@ -19,6 +20,7 @@ spec:
       services:
         - name: salt-master-mq
           port: 4505
+          nativeLB: true
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRouteTCP
@@ -32,3 +34,4 @@ spec:
       services:
         - name: salt-master-mq
           port: 4506
+          nativeLB: true

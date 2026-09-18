@@ -1,12 +1,12 @@
 # Salt master + salt-api (project image: stock :lts plus the postgres
 # driver for the shared job cache). Three-node cluster (isolated
-# filesystem): all three pods share one AES session key and one accepted-keys
-# store, so the Traefik TCP round-robin in front of 4505/4506 is the
-# supported topology. Same keypair (owner-held `salt-master-keys`
-# Secret, never committed), one ConfigMap, cluster credential from the
-# owner-held `salt-master-cluster` Secret (never committed), pinned
-# cluster.pem/pub from owner-held `salt-master-cluster-keys` (never
-# committed). Rolling
+# filesystem). Minion 4505/4506 is per-node (Traefik hostPort +
+# salt-master-mq internalTrafficPolicy: Local): a connection to a
+# node's public IP only reaches the master on that node. Same keypair
+# (owner-held `salt-master-keys` Secret, never committed), one
+# ConfigMap, cluster credential from the owner-held
+# `salt-master-cluster` Secret (never committed), pinned cluster.pem/pub
+# from owner-held `salt-master-cluster-keys` (never committed). Rolling
 # restarts go one pod at a time, so quorum (2 of 3) always serves.
 apiVersion: apps/v1
 kind: StatefulSet
@@ -251,17 +251,18 @@ spec:
       port: 8000
       targetPort: api
 ---
-# ZeroMQ publish/request for minions. Traefik routes (salt-mq-routes.yaml)
-# target this service once the 4505/4506 entrypoints exist.
-# ClientIP affinity: each master keeps its own AES session file under
-# cachedir/sessions/<minion> (not shared). Round-robin 4506 after
-# _auth on another pod returns no pillar session key
-# ("Master did not return a session key for pillar request").
+# ZeroMQ publish/request for minions. Traefik on each node (hostPort
+# 4505/4506) targets this Service. internalTrafficPolicy: Local so
+# kube-proxy on that node only has the local master as an endpoint —
+# salt-c010 / salt-42e5 / salt-b2b6 each stick to one pod. Traefik
+# must nativeLB the ClusterIP (see salt-mq-routes.yaml) or it dials
+# pod IPs and ignores this. ClientIP affinity is a backstop.
 apiVersion: v1
 kind: Service
 metadata:
   name: salt-master-mq
 spec:
+  internalTrafficPolicy: Local
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:

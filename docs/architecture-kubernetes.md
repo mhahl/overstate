@@ -226,13 +226,13 @@ exactly the master StatefulSet.
 
 **Medium:**
 
-- **8.4 Salt-api and minion MQ session affinity.** `salt-master-api`
-  and `salt-master-mq` use `sessionAffinity: ClientIP`. Eauth tokens
-  and per-pod AES session files (`cachedir/sessions/<minion>`) live
-  on the minting pod; round-robin 4506 after `_auth` on another pod
-  fails pillar (`Master did not return a session key`). Traefik SNAT
-  means the Service sees Traefik's IP, so stickiness is per Traefik
-  replica, not per minion — enough if 4505 and 4506 share a replica.
+- **8.4 Minion MQ is per-node, not RR.** `salt-master-mq` uses
+  `internalTrafficPolicy: Local` and Traefik TCP routes set
+  `nativeLB: true`, so a connection to a node's :4505/:4506 only
+  reaches the master on that node. Minions should use the three
+  node hostnames (`salt-c010` / `salt-42e5` / `salt-b2b6`) with
+  `master_type: failover`. `sessionAffinity: ClientIP` remains a
+  backstop on mq and salt-api.
 - **8.5 salt-api TLS is unverified in-cluster** (`SALT_API_VERIFY_CA:
   false`; the image mints a self-signed cert at boot). Fine inside a
   trusted CNI, but any pod-compromise or CNI-sniffing position yields
