@@ -260,6 +260,8 @@ def test_master_readiness_means_joined():
     assert "/home/salt/data/keys/.cluster_ready" in text
     assert "8000" in text
     assert "4507" in text
+    # Cluster TCP binds the pod IP, not loopback.
+    assert "$POD_IP" in text or "${POD_IP}" in text
     assert probe["initialDelaySeconds"] >= 30
 
 

@@ -154,7 +154,7 @@ spec:
               command:
                 - bash
                 - -c
-                - test -f /home/salt/data/keys/.cluster_ready && exec 3<>/dev/tcp/127.0.0.1/8000 && exec 4<>/dev/tcp/127.0.0.1/4507
+                - test -f /home/salt/data/keys/.cluster_ready && exec 3<>/dev/tcp/127.0.0.1/8000 && exec 4<>/dev/tcp/$POD_IP/4507
             initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 5
