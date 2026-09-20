@@ -1,4 +1,4 @@
-FROM node:24-slim AS css
+FROM node:25-slim AS css
 WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
