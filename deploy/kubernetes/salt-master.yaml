@@ -41,6 +41,19 @@ spec:
       # The three are only three on different nodes: never schedule two
       # masters onto one hostname, or one node loss kills quorum.
       affinity:
+        # Ordinal-to-node is Longhorn RWO (the keys PVC) plus this
+        # three-node allow-list. DNS: salt-c010=rancher-1894 (pod-0),
+        # salt-b2b6=rancher-afe5 (pod-1), salt-42e5=rancher-4e60 (pod-2).
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - rancher-1894.syd.prod.sigaint.au
+                      - rancher-4e60.syd.prod.sigaint.au
+                      - rancher-afe5.syd.prod.sigaint.au
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
@@ -54,7 +67,7 @@ spec:
           # Own repo (not the app repo): quay.io/sigaint/overstate
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
-          image: quay.io/sigaint/overstate-salt-master:lts-pg13
+          image: quay.io/sigaint/overstate-salt-master:lts-pg14
           # Floating tag redeploys (entrypoint fixes) must actually pull.
           imagePullPolicy: Always
           env:
@@ -141,7 +154,7 @@ spec:
               command:
                 - bash
                 - -c
-                - test -f /home/salt/data/keys/.cluster_ready && exec 3<>/dev/tcp/127.0.0.1/8000
+                - test -f /home/salt/data/keys/.cluster_ready && exec 3<>/dev/tcp/127.0.0.1/8000 && exec 4<>/dev/tcp/127.0.0.1/4507
             initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 5

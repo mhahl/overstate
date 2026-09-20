@@ -17,9 +17,8 @@ data:
   # this file minimal — every key here beats an image default.
   master.conf: |
     # Managed by Overstate. Add master overrides below this line.
-    # Salt master cluster (isolated filesystem): all three pods share one
-    # AES session key and one accepted-keys store, so the Traefik TCP
-    # round-robin in front of 4505/4506 is the supported topology.
+    # Salt master cluster (isolated filesystem). Minion 4505/4506 is
+    # per-node (Traefik hostPort + salt-master-mq Local), not RR.
     # Per-pod identity (interface = pod IP, id/cluster_node_id/peers =
     # DNS names) is a writable drop-in on the keys PVC, included below.
     # Static peers CANNOT live in this file (drop-ins beat the stamp).
@@ -29,7 +28,9 @@ data:
       - /home/salt/data/keys/cluster-identity.conf
     cluster_id: overstate-masters
     cluster_port: 4507
+    cluster_pool_port: 4507
     cluster_pki_dir: /home/salt/data/keys/_cluster
+    cachedir: /home/salt/data/keys/cache
     cluster_isolated_filesystem: true
     # localfs_key (not mmap_key): mmap's master_keys bank was empty on
     # each PVC, so each pod generated its own cluster.pub for minion

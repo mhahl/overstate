@@ -124,7 +124,7 @@ def test_master_raft_timeouts_fit_cross_node_k8s():
 def test_master_image_always_pulls_floating_tag():
     sts = _salt_master_sts()
     (container,) = sts["spec"]["template"]["spec"]["containers"]
-    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg13"
+    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg14"
     # Same-tag rebuilds (entrypoint fixes) must reach the nodes.
     assert container["imagePullPolicy"] == "Always"
 
@@ -235,6 +235,21 @@ def test_master_rolls_out_sequentially():
     assert sts["spec"]["updateStrategy"]["type"] == "RollingUpdate"
 
 
+def test_master_schedules_one_per_known_node():
+    aff = _salt_master_sts()["spec"]["template"]["spec"]["affinity"]
+    terms = aff["nodeAffinity"]["requiredDuringSchedulingIgnoredDuringExecution"][
+        "nodeSelectorTerms"
+    ]
+    hosts = terms[0]["matchExpressions"][0]["values"]
+    assert set(hosts) == {
+        "rancher-1894.syd.prod.sigaint.au",
+        "rancher-4e60.syd.prod.sigaint.au",
+        "rancher-afe5.syd.prod.sigaint.au",
+    }
+    anti = aff["podAntiAffinity"]["requiredDuringSchedulingIgnoredDuringExecution"][0]
+    assert anti["topologyKey"] == "kubernetes.io/hostname"
+
+
 def test_master_readiness_means_joined():
     containers = _salt_master_sts()["spec"]["template"]["spec"]["containers"]
     (master,) = [c for c in containers if c["name"] == "salt-master"]
@@ -244,6 +259,7 @@ def test_master_readiness_means_joined():
     # on the previous join marker before the new daemon boots.
     assert "/home/salt/data/keys/.cluster_ready" in text
     assert "8000" in text
+    assert "4507" in text
     assert probe["initialDelaySeconds"] >= 30
 
 
@@ -331,6 +347,11 @@ def test_master_image_ships_peer_discovery_helper():
     assert (REPO / "cluster-ready.py").exists()
 
 
+def test_master_image_pins_base_digest():
+    text = (REPO / "Containerfile.salt-master").read_text(encoding="utf-8")
+    assert "ghcr.io/cdalvaro/docker-salt-master:lts@sha256:" in text
+
+
 def test_master_image_applies_stable_identity_patch():
     # The build redirects salt's interface-keyed cluster identity to
     # cluster_node_id and must fail loudly on upstream drift.
@@ -414,10 +435,14 @@ def test_master_cluster_wiring():
     for key in (
         "cluster_id:",
         "cluster_port:",
+        "cluster_pool_port:",
         "cluster_pki_dir:",
         "cluster_isolated_filesystem:",
+        "cachedir:",
     ):
         assert key in text
+    assert "cachedir: /home/salt/data/keys/cache" in text
+    assert "cluster_pool_port: 4507" in text
     # Peers are stamped per-pod at boot (stable DNS names): a static
     # entry in the shared drop-in would beat the stamp (drop-ins win)
     # and mismatch the stamped identity, breaking the join.

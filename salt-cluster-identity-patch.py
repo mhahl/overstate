@@ -109,6 +109,93 @@ PATCHES = [
 """,
     ),
     (
+        "salt/master.py",
+        """\
+                if not ipc_publisher._has_joined_cluster() and not is_founder:
+                    log.info("No cluster join sentinel — running cluster discover/join")
+                    join_event = multiprocessing.Event()
+                    ipc_publisher._discover_event = join_event
+                    ipc_publisher.discover_peers()
+""",
+        """\
+                _join_existing = False
+                if is_founder and not ipc_publisher._has_joined_cluster():
+                    import socket as _sock
+
+                    _port = int(
+                        self.opts.get("cluster_port")
+                        or self.opts.get("cluster_pool_port")
+                        or 4507
+                    )
+                    _self = self.opts.get("cluster_node_id") or self.opts["interface"]
+                    for _peer in self.opts.get("cluster_peers") or []:
+                        if _peer == _self:
+                            continue
+                        try:
+                            _s = _sock.create_connection((_peer, _port), timeout=2)
+                            _s.close()
+                            _join_existing = True
+                            log.info(
+                                "Founder saw live peer %s:%s — joining, not founding",
+                                _peer,
+                                _port,
+                            )
+                            break
+                        except OSError:
+                            pass
+                if not ipc_publisher._has_joined_cluster() and (
+                    not is_founder or _join_existing
+                ):
+                    log.info("No cluster join sentinel — running cluster discover/join")
+                    join_event = multiprocessing.Event()
+                    ipc_publisher._discover_event = join_event
+                    ipc_publisher.discover_peers()
+""",
+    ),
+    (
+        "salt/channel/server.py",
+        """\
+                if bootstrap_pool and bootstrap_pool[0] == self.opts["interface"]:
+                    log.info(
+                        "New node bootstrapping cluster %r as designated founder",
+                        self.opts["cluster_id"],
+                    )
+""",
+        """\
+                _self_id = self.opts.get("cluster_node_id") or self.opts["interface"]
+                _is_founder = bool(bootstrap_pool) and bootstrap_pool[0] == _self_id
+                _join_existing = False
+                if _is_founder:
+                    import socket as _sock
+
+                    _port = int(
+                        self.opts.get("cluster_port")
+                        or self.opts.get("cluster_pool_port")
+                        or 4507
+                    )
+                    for _peer in self.opts.get("cluster_peers") or []:
+                        if _peer == _self_id:
+                            continue
+                        try:
+                            _s = _sock.create_connection((_peer, _port), timeout=2)
+                            _s.close()
+                            _join_existing = True
+                            log.info(
+                                "Founder saw live peer %s:%s — joining, not founding",
+                                _peer,
+                                _port,
+                            )
+                            break
+                        except OSError:
+                            pass
+                if _is_founder and not _join_existing:
+                    log.info(
+                        "New node bootstrapping cluster %r as designated founder",
+                        self.opts["cluster_id"],
+                    )
+""",
+    ),
+    (
         "salt/channel/server.py",
         """\
         interface = self.opts.get("interface") or "unknown"
@@ -131,11 +218,6 @@ PATCHES = [
                     {{{SELF_NODE_ID}, *self.opts.get("cluster_peers", [])}}
                 )
 """,
-    ),
-    (
-        "salt/channel/server.py",
-        "bootstrap_pool[0] == self.opts[\"interface\"]",
-        f"bootstrap_pool[0] == {SELF_NODE_ID}",
     ),
     (
         "salt/master.py",

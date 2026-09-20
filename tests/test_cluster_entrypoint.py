@@ -493,10 +493,13 @@ def test_wrapper_drops_stale_joined_before_watcher_start():
     ident = next(
         i for i, l in enumerate(lines) if 'write_identity "$IDENTITY_CONF"' in l
     )
+    cache = next(i for i, l in enumerate(lines) if 'mkdir -p "$CACHE_DIR"' in l)
     entrypoint_exec = next(
         i for i, l in enumerate(lines) if l.startswith("exec /sbin/entrypoint.sh")
     )
     assert drop < ident < entrypoint_exec
+    assert cache < entrypoint_exec
+    assert any("health/ready" in l for l in lines)
 
 
 def _fallback_env(tmp_path):

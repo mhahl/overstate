@@ -21,6 +21,9 @@
 # - cluster.pem/pub are copied from Secret salt-master-cluster-keys
 #   onto the PVC before the daemon starts, so a pod cannot mint its
 #   own cluster identity.
+# - cachedir lives on the keys PVC so Raft logs and the join sentinel
+#   survive recreates. health/ready is deleted at wrapper start so
+#   forkserver workers do not serve pillar from a stale sentinel.
 #
 # Peers come from the Kubernetes API (EndpointSlices, all pod names
 # incl. self via publishNotReadyAddresses) with constructed-name
@@ -55,6 +58,7 @@ CLUSTER_PKI_DIR="${CLUSTER_PKI_DIR:-$KEYS_DIR/_cluster}"
 CLUSTER_KEYS_SRC="${CLUSTER_KEYS_SRC:-/home/salt/data/cluster-keys}"
 IDENTITY_CONF="${IDENTITY_CONF:-$KEYS_DIR/cluster-identity.conf}"
 READY_MARK="${READY_MARK:-$KEYS_DIR/.cluster_ready}"
+CACHE_DIR="${CACHE_DIR:-$KEYS_DIR/cache}"
 
 preseed_master_keys() {
   for ext in pem pub; do
@@ -388,10 +392,15 @@ if [ -n "${POD_NAME:-}" ] && [ -n "${POD_IP:-}" ]; then
   # Synchronous, before the base entrypoint starts the daemon below.
   preseed_master_keys
   preseed_cluster_keys
+  mkdir -p "$CACHE_DIR"
+  chown "$KEY_OWNER" "$CACHE_DIR" 2>/dev/null || :
   wait_for_peer_dns
   # Each boot re-proves join and Raft-ready: drop previous markers
   # so the readiness probe holds the pod out of the Services.
-  rm -f "$KEYS_DIR/.joined" "$READY_MARK"
+  # Keep consensus/ and .cluster_joined.* — those are the persisted
+  # Raft log and join sentinel. Only health/ready is a serving gate
+  # and must not outlive this process.
+  rm -f "$KEYS_DIR/.joined" "$READY_MARK" "$CACHE_DIR/health/ready"
   # Identity drop-in on the PVC, included from the ConfigMap: the
   # daemon's first preflight reads this file. Prefer live API names,
   # constructed ordinals otherwise. Never wait on supervisord.

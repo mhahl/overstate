@@ -1,8 +1,9 @@
 # Salt master: stock image plus the postgres driver the pgjsonb /
 # postgres_local_cache returners need (multi-master shared job cache).
 # Used in local dev and production alike.
-# TODO: pin :lts to a digest (docker manifest inspect) for reproducibility.
-FROM ghcr.io/cdalvaro/docker-salt-master:lts
+# Pin :lts by digest so a retag cannot silently skip
+# salt-cluster-identity-patch.py anchors.
+FROM ghcr.io/cdalvaro/docker-salt-master:lts@sha256:4f226ed993df57488ceeb4a95cc9208ffc10ae79a2614a5a3fb39f342eb2aa52
 
 RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
 

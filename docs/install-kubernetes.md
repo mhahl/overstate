@@ -296,11 +296,12 @@ kubectl -n overstate scale statefulset salt-master --replicas=3
 ```
 
 Wait for all pods Ready — Ready means this node sees a Raft leader
-AND salt-api is accepting (the probe watches `.cluster_ready` plus
-TCP 8000), so an Unready pod past its first minutes is a stuck join,
-not a slow start; check its entrypoint log at
-`/tmp/cluster-entrypoint.log` and `salt-run cluster.members`. Then
-confirm every pod holds every live peer's key:
+AND salt-api is accepting AND cluster TCP 4507 is up (the probe
+watches `.cluster_ready` plus ports 8000 and 4507), so an Unready
+pod past its first minutes is a stuck join, not a slow start; check
+its entrypoint log at `/tmp/cluster-entrypoint.log` and
+`salt-run cluster.members`. Then confirm every pod holds every live
+peer's key:
 
 ```sh
 for p in salt-master-0 salt-master-1 salt-master-2; do echo "== $p";
@@ -313,6 +314,48 @@ daemon so it rejoins the settled cluster, then recheck after ~90s:
 ```sh
 kubectl -n overstate exec salt-master-1 -- supervisorctl restart salt-master
 ```
+
+### 7.1 Minion MQ DNS (per node, not RR)
+
+Minions must **not** use `overstate.sigaint.au` for 4505/4506.
+Each name is one node IP; Traefik Local + `nativeLB` pins that IP
+to the master on that node. Salt 3008.x (onedir RPM), not Leap's
+3006.0:
+
+| DNS | Node | Typical ordinal |
+|---|---|---|
+| `salt-c010.overstate.syd.prod.sigaint.au` | rancher-1894 (`139.99.149.92`) | salt-master-0 |
+| `salt-b2b6.overstate.syd.prod.sigaint.au` | rancher-afe5 (`139.99.210.170`) | salt-master-1 |
+| `salt-42e5.overstate.syd.prod.sigaint.au` | rancher-4e60 (`139.99.210.89`) | salt-master-2 |
+
+```yaml
+master:
+  - salt-c010.overstate.syd.prod.sigaint.au
+  - salt-42e5.overstate.syd.prod.sigaint.au
+  - salt-b2b6.overstate.syd.prod.sigaint.au
+master_type: failover
+master_alive_interval: 30
+```
+
+The keys PVC (Longhorn RWO) plus anti-affinity keep an ordinal on
+one node; if a pod is forced onto another node, update the A record.
+
+### 7.2 Raft cache and split-brain
+
+`cachedir` is `/home/salt/data/keys/cache` on the per-pod PVC so the
+Raft log and join sentinel survive a recreate. `health/ready` is
+deleted at every wrapper start.
+
+If a **single** pod recreate still leaves `leader_id: null` and
+climbing terms, the founder founded a second empty ring. Last
+resort — delete **all three** pods so OrderedReady bootstraps
+together (keys, `cluster.pem`, and minion pubs stay on the PVCs):
+
+```sh
+kubectl -n overstate delete pod salt-master-0 salt-master-1 salt-master-2
+```
+
+Do not `rollout restart` one ordinal and walk away.
 
 If it still misses the peer, seed the public key from a pod that
 has it and bounce again (public keys only — the AES handshake still
