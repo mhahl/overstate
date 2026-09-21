@@ -121,6 +121,18 @@ def test_master_raft_timeouts_fit_cross_node_k8s():
     assert "/home/salt/data/keys/cluster-identity.conf" in include
 
 
+def test_master_conf_seeds_reactor_stanza():
+    import yaml as _yaml
+
+    (cm,) = [
+        d for d in _load("salt-master-config.yaml") if d.get("kind") == "ConfigMap"
+    ]
+    master_conf = _yaml.safe_load(cm["data"]["master.conf"])
+    # The reactor: stanza is the persisted mapping (plan Unit 5): the
+    # Master Config editor can set it, the runner changes live state only.
+    assert isinstance(master_conf.get("reactor"), list)
+
+
 def test_master_image_always_pulls_floating_tag():
     sts = _salt_master_sts()
     (container,) = sts["spec"]["template"]["spec"]["containers"]

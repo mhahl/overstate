@@ -47,6 +47,14 @@ data:
     # 3-6 s — fine for minions, which ride out blips on TCP.
     cluster_election_min: 3000
     cluster_election_max: 6000
+    # Reactor mapping (persisted truth): this `reactor:` stanza is the
+    # boot-time mapping. The Reactor page's add/delete (salt-api reactor
+    # runner) changes the live mapping on all three pods at runtime, and
+    # a master restart restores this file's stanza — runner changes are
+    # lost on restart unless also recorded here. So: paste the Reactor
+    # export below, edit through the Master Config page (one snapshot per
+    # save), then restart. Empty list = no file-defined reactors.
+    reactor: []
   # salt-api auth for the `overstate` eauth user. Mirrors
   # salt-config/api.conf from the repo (grants the app needs, nothing
   # more). TLS for salt-api is the image's own self-signed cert (see

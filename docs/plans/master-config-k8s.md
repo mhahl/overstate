@@ -255,10 +255,12 @@ built.
    one-click revert (re-patch last snapshot + restart). Dev/unconfigured
    refuses with the manual `kubectl rollout restart` command. Tests:
    fake-transport success/timeout/refusal matrix, operator-403, audit rows.
-5. **Reactor bodies under the admin gate.** Ensure `/srv/states/reactor`
+5. **Reactor bodies under the admin gate (built).** Ensure `/srv/states/reactor`
    exists (seed initContainer addition, first-boot-only like states);
-   admin-only edit/save for reactor SLS reusing Unit 3 guards; mapping and
-   export unchanged on the runner. Tests: missing-roots bootstrap, admin
+   admin-only edit/save for reactor SLS reusing Unit 3 guards. Mapping
+   mutations fan out to all pods through the runner (per-master reactor
+   systems would otherwise diverge); export renders the union for
+   pasting into the stanza. Tests: missing-roots bootstrap, admin
    gate, operator v4 flows untouched.
 6. **Docs + audit polish.** Create the missing `docs/install-kubernetes.md`
    (secret creation, apply, restore runbook); `docs/user.md` Master Config

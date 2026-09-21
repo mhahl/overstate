@@ -367,3 +367,156 @@ def test_missing_roots_degrade_to_404(tmp_path):
         ).status_code
         == 404
     )
+
+
+# -- Trio: mapping fan-out across pods ---------------------------------------
+
+from overstate_ui import reactor as reactormod
+
+
+def _pod_transport(calls, mapping=None, fail=False):
+    import json
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
+        body = json.loads(request.content or b"{}")
+        if body.get("client") == "runner":
+            if fail:
+                return httpx.Response(500, json={"error": "down"})
+            fun = body.get("fun")
+            calls.append((fun, body))
+            if fun == "reactor.list":
+                return httpx.Response(200, json={"return": [mapping or []]})
+            return httpx.Response(200, json={"return": [True]})
+
+    return httpx.MockTransport(handler)
+
+
+def _pod_app(tmp_path, monkeypatch, specs):
+    """App whose pod_clients fans out to one fake client per spec.
+
+    Each spec is (calls, mapping, fail) for _pod_transport.
+    """
+    app = _app(tmp_path)
+    pods = [
+        (
+            f"pod-{i}",
+            SaltClient(
+                f"https://pod-{i}:8000", "u", "p", transport=_pod_transport(*spec)
+            ),
+        )
+        for i, spec in enumerate(specs)
+    ]
+    monkeypatch.setattr(reactormod, "pod_clients", lambda default: pods)
+    return app, pods
+
+
+def _actions(app):
+    with app.app_context():
+        return [row.action for row in get_session().query(AuditEvent).all()]
+
+
+def test_add_fans_out_to_all_pods(tmp_path, monkeypatch):
+    calls = [[], [], []]
+    app, _ = _pod_app(
+        tmp_path,
+        monkeypatch,
+        [(calls[0], [], False), (calls[1], [], False), (calls[2], [], False)],
+    )
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/reactor/add",
+        data={"event": "salt/key", "sls": "salt://reactor/key.sls"},
+        follow_redirects=True,
+    )
+    assert "reactor added." in rv.data.decode()
+    for pod_calls in calls:
+        assert [c for c in pod_calls if c[0] == "reactor.add"]
+    assert "reactor-add:salt/key" in _actions(app)
+
+
+def test_add_partial_when_pod_down(tmp_path, monkeypatch):
+    calls = [[], []]
+    app, _ = _pod_app(
+        tmp_path, monkeypatch, [(calls[0], [], False), (calls[1], [], True)]
+    )
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/reactor/add",
+        data={"event": "salt/key", "sls": "salt://reactor/key.sls"},
+        follow_redirects=True,
+    )
+    html = rv.data.decode()
+    assert "reactor added on 1 of 2 pod(s)" in html
+    assert "unreachable" in html
+    assert [c for c in calls[0] if c[0] == "reactor.add"]
+    assert not [c for c in calls[1] if c[0] == "reactor.add"]
+    assert "reactor-add:salt/key:partial" in _actions(app)
+
+
+def test_add_refuses_when_no_pod_reachable(tmp_path, monkeypatch):
+    app, _ = _pod_app(tmp_path, monkeypatch, [([], [], True)])
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/reactor/add",
+        data={"event": "salt/key", "sls": "salt://reactor/key.sls"},
+        follow_redirects=True,
+    )
+    assert "no master reachable" in rv.data.decode()
+    assert "reactor-add:salt/key" not in _actions(app)
+
+
+def test_index_unions_pod_mappings(tmp_path, monkeypatch):
+    app, _ = _pod_app(
+        tmp_path,
+        monkeypatch,
+        [
+            ([], [{"salt/minion/*/start": ["salt://reactor/greet.sls"]}], False),
+            ([], [{"salt/auth": ["/srv/reactor/auth.sls"]}], False),
+        ],
+    )
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/reactor/").data.decode()
+    assert "salt/minion/*/start" in html
+    assert "salt/auth" in html
+    # Precedence banner names the persisted truth.
+    assert "master.conf" in html
+    assert "reactor:" in html
+
+
+def test_index_flags_divergent_mapping(tmp_path, monkeypatch):
+    app, _ = _pod_app(
+        tmp_path,
+        monkeypatch,
+        [
+            ([], [{"salt/key": ["salt://reactor/key.sls"]}], False),
+            ([], [], False),
+        ],
+    )
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/reactor/").data.decode()
+    assert "On some pods only" in html
+    assert "salt/key" in html
+
+
+def test_delete_partial_when_pod_down(tmp_path, monkeypatch):
+    calls = [[], []]
+    app, _ = _pod_app(
+        tmp_path, monkeypatch, [(calls[0], [], False), (calls[1], [], True)]
+    )
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/reactor/delete", data={"event": "salt/auth"}, follow_redirects=True
+    )
+    html = rv.data.decode()
+    assert "reactor deleted on 1 of 2 pod(s)" in html
+    assert "reactor-delete:salt/auth:partial" in _actions(app)

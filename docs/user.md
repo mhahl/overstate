@@ -384,13 +384,21 @@ reaches the page.
 
 ## Reactor
 
-The Reactor page lists the master's event → SLS mapping exactly as
-`reactor.list` reports it. Reactor rows link to the matching Events
-family so you can watch them fire. Operators can add and delete
-mappings (delete asks once on its own page); every change is
-audit-logged. The mapping is master-config state, not git content —
-but **Export for git** renders the live mapping as a `reactor:` YAML
-block you can commit by hand. The app never writes your repo.
+The Reactor page lists the live event → SLS mapping, unioned across
+all three master pods exactly as `reactor.list` reports it. Reactor
+rows link to the matching Events family so you can watch them fire.
+Operators can add and delete mappings (delete asks once on its own
+page); every change fans out to all reachable pods and is
+audit-logged, with a warning when a pod is missed.
+
+The mapping has two truths. The `reactor:` stanza in `master.conf`
+(Master Config page, admins only) is the persisted, boot-time mapping;
+the Reactor page shows the live, runtime one. Salt persists nothing
+the runner writes, so a master restart restores the file's stanza —
+runner-only changes are lost unless also recorded there. **Export**
+renders the live mapping as a `reactor:` block: paste it into the
+stanza, save, and restart to make it durable. The app never writes
+your repo.
 
 SLS bodies are admin-edited from the SLS view. This code runs with
 master privileges and fires on matching events fleet-wide, so saving

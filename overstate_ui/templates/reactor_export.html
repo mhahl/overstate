@@ -4,7 +4,7 @@
 <div class="flex flex-wrap items-end gap-3 mb-5">
   <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Reactor export</h1>
-    <p class="text-sm opacity-70 mt-0.5">The live mapping as a master-config block. Commit it to git by hand — the app never writes the repo.</p>
+    <p class="text-sm opacity-70 mt-0.5">The live mapping as a <code>master.conf</code> block. Paste it into the <code>reactor:</code> stanza through the Master Config page, then restart — the app never writes the repo.</p>
   </div>
   {% if body %}<a class="btn btn-sm btn-outline" href="{{ url_for('reactor.export', download='1') }}">Download reactor.conf</a>{% endif %}
 </div>
@@ -12,7 +12,7 @@
 {% if disabled %}<div class="alert alert-info mb-4" role="status">Reactor is not running on the master, so there is no mapping to export.</div>{% endif %}
 {% if body %}
 <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ body }}</code></pre>
-<p class="text-sm opacity-70 mt-3">{{ total }} reactor{{ "s" if total != 1 }} exported. Paste under your master's config (e.g. <code class="font-mono">master.d/reactor.conf</code>) and restart or refresh the master.</p>
+<p class="text-sm opacity-70 mt-3">{{ total }} reactor{{ "s" if total != 1 }} exported. Paste into the <code class="font-mono">reactor:</code> stanza in <code class="font-mono">master.conf</code> (Master Config page) and restart the masters.</p>
 {% else %}
 <div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
   <p class="font-medium">Nothing to export</p>

@@ -1,10 +1,13 @@
-"""Master reactor mapping: list, inspect SLS, add/delete, export for git.
+"""Master reactor mapping: list, inspect SLS, add/delete, export to file.
 
-The mapping (event tag -> SLS) is master-config state, read and changed
-through salt-api's ``reactor`` runner. SLS bodies are admin-editable:
-reactor code runs with master privileges and fires on events fleet-wide,
-so operators keep the read-only view. The export renders the live
-mapping as a master-config YAML block for committing to git by hand.
+The mapping (event tag -> SLS) has two truths. The `reactor:` stanza in
+``master.conf`` (owned ConfigMap) is the persisted, boot-time mapping;
+the salt-api ``reactor`` runner changes the live mapping, fanned out to
+every master pod because reactor systems are per-master. Runner writes
+persist nothing, so a restart restores the file's stanza — record durable
+mappings there (the export renders the live mapping in stanza shape).
+SLS bodies are admin-editable: reactor code runs with master privileges
+and fires on events fleet-wide, so operators keep the read-only view.
 """
 
 import hashlib
@@ -31,6 +34,7 @@ from .auth import roles_required
 from .dashboard import get_salt
 from .events import TAG_CHOICES
 from .files import MAX_BYTES, highlight_yaml
+from .fleet import pod_clients
 from .salt_client import SaltApiError
 
 bp = Blueprint("reactor", __name__, url_prefix="/reactor")
@@ -149,6 +153,58 @@ def render_export(entries: dict[str, list[str]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _live_mappings(clients):
+    """Union of the live reactor mapping across master pods.
+
+    Returns (merged, raw, failed, divergent): merged {event: [sls]} with
+    refs unioned in first-seen order; first non-empty raw fallback; failed
+    pod names (transport/runner errors); divergent events (missing on at
+    least one reachable pod). A pod whose reactor system is not running
+    contributes an empty mapping — an empty state, not a failure. Runner
+    add/delete mutate only the live mapping (Salt persists nothing), so a
+    restart restores the `reactor:` stanza in master.conf.
+    """
+    merged: dict[str, list[str]] = {}
+    present: dict[str, set[str]] = {}
+    reached: list[str] = []
+    failed: list[str] = []
+    raw = ""
+    for name, client in clients:
+        try:
+            value = client.runner("reactor.list", http_timeout=30.0)
+            value = _unwrap(value)
+            failure = _extract_failure(value)
+            if failure is not None:
+                if NOT_RUNNING in failure:
+                    reached.append(name)
+                    continue
+                failed.append(name)
+                continue
+            entries, pod_raw = parse_reactor_list(value)
+            if pod_raw and not raw:
+                raw = pod_raw
+        except SaltApiError as exc:
+            # A 500 carrying the traceback body means the reactor system
+            # is not running there — empty state, not a failure.
+            if NOT_RUNNING in str(exc):
+                reached.append(name)
+                continue
+            failed.append(name)
+            continue
+        reached.append(name)
+        for event, refs in entries.items():
+            present.setdefault(event, set()).add(name)
+            for ref in refs:
+                if ref not in merged.setdefault(event, []):
+                    merged[event].append(ref)
+    divergent = (
+        sorted(e for e, pods in present.items() if len(pods) < len(reached))
+        if reached
+        else []
+    )
+    return merged, raw, failed, divergent
+
+
 @bp.route("/")
 @login_required
 def index():
@@ -159,22 +215,16 @@ def index():
     direction = request.args.get("dir", "asc")
     if direction not in ("asc", "desc"):
         direction = "asc"
-    entries: dict[str, list[str]] = {}
-    raw = ""
+    clients = pod_clients(get_salt())
+    entries, raw, failed, divergent = _live_mappings(clients)
     error = None
-    try:
-        value = get_salt().runner("reactor.list", http_timeout=30.0)
-        value = _unwrap(value)
-        failure = _extract_failure(value)
-        if failure is not None:
-            error = f"salt-api error: {failure}"
-        else:
-            entries, raw = parse_reactor_list(value)
-    except SaltApiError as exc:
-        error = f"salt-api error: {exc}"
+    if not entries and len(failed) == len(clients):
+        error = "salt-api error: no master reachable."
+    for name in failed:
+        flash(f"{name} unreachable: mapping may be partial.", "warning")
     # A master without reactor configured answers with "Reactor system
     # is not running" — an empty state with setup guidance, not an error.
-    disabled = error is not None and NOT_RUNNING in error
+    disabled = not entries and error is None
     rows = [
         {
             "event": event,
@@ -195,8 +245,10 @@ def index():
         "reactor.html",
         rows=rows,
         raw=raw,
-        error=None if disabled else error,
+        error=error,
         disabled=disabled,
+        pod_count=len(clients),
+        divergent=divergent,
         q=request.args.get("q", ""),
         sort=sort,
         direction=direction,
@@ -260,15 +312,43 @@ def add():
     ):
         flash("An event pattern and one SLS reference are required.", "error")
         return redirect(url_for("reactor.index"))
-    try:
-        result = get_salt().runner(
-            "reactor.add", event=event, reactors=sls, http_timeout=30.0
-        )
-    except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
+    # Fan out to every pod: publish buses and reactor systems are
+    # per-master, so a single-pod add would fire only for minions on
+    # that pod. Runner writes are runtime-only (Salt persists nothing),
+    # so a restart restores the `reactor:` stanza in master.conf.
+    clients = pod_clients(get_salt())
+    ok, refused, failed = [], [], []
+    for name, client in clients:
+        try:
+            result = client.runner(
+                "reactor.add", event=event, reactors=sls, http_timeout=30.0
+            )
+        except SaltApiError:
+            failed.append(name)
+            continue
+        if isinstance(result, dict) and result.get("result") is False:
+            refused.append(name)
+        else:
+            ok.append(name)
+    if not ok:
+        flash("salt-api error: no master reachable. Nothing changed.", "error")
         return redirect(url_for("reactor.index"))
-    if isinstance(result, dict) and result.get("result") is False:
-        flash(f"{event}: salt did not confirm the add.", "warning")
+    for name in failed:
+        flash(
+            f"{name} unreachable: mapping may be partial — re-run to converge.",
+            "warning",
+        )
+    if refused:
+        flash(
+            f"{event}: salt did not confirm the add on {', '.join(refused)}.",
+            "warning",
+        )
+    if failed or refused:
+        log_event(current_user.username, f"reactor-add:{event}:partial")
+        flash(
+            f"{event}: reactor added on {len(ok)} of {len(clients)} pod(s).",
+            "warning",
+        )
     else:
         log_event(current_user.username, f"reactor-add:{event}")
         flash(f"{event}: reactor added.", "success")
@@ -282,13 +362,34 @@ def delete():
     if not event:
         flash("Pick a reactor first: an empty selection never fires.", "error")
         return redirect(url_for("reactor.index"))
-    try:
-        get_salt().runner("reactor.delete", event=event, http_timeout=30.0)
-    except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
+    # Fan out like add: a mapping deleted on one pod only keeps firing
+    # for minions attached to the other pods.
+    clients = pod_clients(get_salt())
+    ok, failed = [], []
+    for name, client in clients:
+        try:
+            client.runner("reactor.delete", event=event, http_timeout=30.0)
+        except SaltApiError:
+            failed.append(name)
+            continue
+        ok.append(name)
+    if not ok:
+        flash("salt-api error: no master reachable. Nothing changed.", "error")
         return redirect(url_for("reactor.index"))
-    log_event(current_user.username, f"reactor-delete:{event}")
-    flash(f"{event}: reactor deleted.", "success")
+    for name in failed:
+        flash(
+            f"{name} unreachable: mapping may be partial — re-run to converge.",
+            "warning",
+        )
+    if failed:
+        log_event(current_user.username, f"reactor-delete:{event}:partial")
+        flash(
+            f"{event}: reactor deleted on {len(ok)} of {len(clients)} pod(s).",
+            "warning",
+        )
+    else:
+        log_event(current_user.username, f"reactor-delete:{event}")
+        flash(f"{event}: reactor deleted.", "success")
     return redirect(url_for("reactor.index"))
 
 
@@ -396,21 +497,19 @@ def save():
 @bp.route("/export")
 @login_required
 def export():
-    """Render the live mapping as a YAML block for committing to git."""
-    entries: dict[str, list[str]] = {}
+    """Render the live mapping as a YAML block for master.conf.
+
+    Union across pods (same fan-out reason as add/delete); paste the
+    block into the `reactor:` stanza in master.conf through the Master
+    Config page, then restart to make it the persisted mapping.
+    """
+    clients = pod_clients(get_salt())
+    entries, _, failed, _ = _live_mappings(clients)
     error = None
-    try:
-        value = get_salt().runner("reactor.list", http_timeout=30.0)
-        value = _unwrap(value)
-        failure = _extract_failure(value)
-        if failure is not None:
-            error = f"salt-api error: {failure}"
-        else:
-            entries, _ = parse_reactor_list(value)
-    except SaltApiError as exc:
-        error = f"salt-api error: {exc}"
-    disabled = error is not None and NOT_RUNNING in error
-    body = render_export(entries) if not error else ""
+    if not entries and len(failed) == len(clients):
+        error = "salt-api error: no master reachable."
+    disabled = not entries and error is None
+    body = render_export(entries) if entries else ""
     if request.args.get("download") == "1" and not error:
         return Response(
             body,
