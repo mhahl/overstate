@@ -34,6 +34,8 @@ from .tasks_k8s import (
     MASTER_LABEL,
     master_status_now,
     master_status_task,
+    mastercheck_now,
+    mastercheck_task,
 )
 from .tasks_queue import (
     CAPABILITY_CACHE_KEY,
@@ -109,6 +111,8 @@ __all__ = [
     "list_functions_now",
     "master_status_now",
     "master_status_task",
+    "mastercheck_now",
+    "mastercheck_task",
     "mine_get_now",
     "mine_get_task",
     "normalize_versions",

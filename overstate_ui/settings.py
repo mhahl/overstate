@@ -1,5 +1,6 @@
 """DB-backed settings. Only the OIDC client secret may live here (declared exception); all other credentials stay env-only."""
 
+import secrets
 import socket
 from urllib.parse import urlsplit
 
@@ -12,8 +13,9 @@ from flask import (
     request,
     url_for,
 )
-from flask_login import login_required
+from flask_login import current_user, login_required
 
+from .audit import log_event
 from .auth import roles_required
 from .db import get_session
 from .models import Setting
@@ -143,11 +145,7 @@ def get_setting(key: str) -> str:
     return DEFS.get(key, {}).get("default", "")
 
 
-@bp.route("/")
-@login_required
-def index():
-    from flask_login import current_user
-
+def _settings_context():
     is_admin = current_user.role == "admin"
     values = {key: get_setting(key) for key in DEFS}
     # The stored secret is never echoed: the form posts it back only
@@ -165,9 +163,72 @@ def index():
         sections = [
             {**s, "fields": [(k, DEFS[k]) for k in s["keys"]]} for s in SECTIONS
         ]
+    return sections, values, is_admin
+
+
+@bp.route("/")
+@login_required
+def index():
+    sections, values, is_admin = _settings_context()
     return render_template(
-        "settings.html", sections=sections, values=values, is_admin=is_admin
+        "settings.html",
+        sections=sections,
+        values=values,
+        is_admin=is_admin,
+        rotation_user=current_app.config["SALT_EAUTH_USER"],
+        rotation_password=None,
     )
+
+
+@bp.post("/rotation/generate")
+@roles_required("admin")
+def rotation_generate():
+    """Mint a replacement salt-api password and show it exactly once.
+    Nothing is stored anywhere — the audit row records the act, never
+    the secret, and the admin pastes it into the Secret by hand."""
+    password = secrets.token_urlsafe(24)
+    log_event(current_user.username, "rotation-password-generated")
+    sections, values, is_admin = _settings_context()
+    return render_template(
+        "settings.html",
+        sections=sections,
+        values=values,
+        is_admin=is_admin,
+        rotation_user=current_app.config["SALT_EAUTH_USER"],
+        rotation_password=password,
+    )
+
+
+@bp.post("/rotation/verify")
+@roles_required("admin")
+def rotation_verify():
+    """Try a candidate password against salt-api with an ephemeral
+    client. Proves a hand-applied rotation took; stores nothing."""
+    import httpx
+
+    from .salt_client import SaltApiError, SaltClient
+
+    candidate = request.form.get("password", "")
+    user = current_app.config["SALT_EAUTH_USER"]
+    if not candidate:
+        flash("Paste the candidate password first — nothing was tried.", "error")
+        return redirect(url_for("settings.index"))
+    client = SaltClient(
+        current_app.config["SALT_API_URL"],
+        user,
+        candidate,
+        current_app.config["SALT_EAUTH_TYPE"],
+        verify=current_app.config["SALT_API_VERIFY"],
+    )
+    try:
+        client.login(http_timeout=15.0)
+    except (SaltApiError, httpx.HTTPError, KeyError) as exc:
+        flash(f"salt-api refused the candidate ({exc}). Nothing changed.", "error")
+        log_event(current_user.username, "rotation-verify:failed")
+    else:
+        flash(f"salt-api accepted a login as {user}.", "success")
+        log_event(current_user.username, "rotation-verify:ok")
+    return redirect(url_for("settings.index"))
 
 
 @bp.post("/")

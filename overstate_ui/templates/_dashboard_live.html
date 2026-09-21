@@ -124,6 +124,12 @@ already says so. Only claim "unreachable" once polling settled. #}
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base">salt-api health</h2>
         <span class="badge badge-sm ms-auto {{ 'badge-success' if stats.reachable else ('badge-neutral' if probing else 'badge-error') }}">{{ "reachable" if stats.reachable else ("checking" if probing else "unreachable") }}</span>
+        {% if current_user.role in ("admin", "operator") %}
+        <form method="post" action="{{ url_for('dashboard.check_now') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-xs btn-ghost" title="Re-run the capability probes now">Check now</button>
+        </form>
+        {% endif %}
       </div>
       <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt class="opacity-70">URL</dt><dd class="font-mono text-xs break-all">{{ health.url }}</dd>
@@ -145,7 +151,7 @@ already says so. Only claim "unreachable" once polling settled. #}
           <span class="badge badge-sm {{ 'badge-success' if c.ok else 'badge-error' }}">{{ "ok" if c.ok else "failing" }}</span>
           <span><span class="font-medium">{{ c.feature }}</span> <span class="opacity-70 font-mono text-xs">{{ c.fun }}</span></span>
         </li>
-        {% if not c.ok %}<li class="text-xs opacity-70 -mt-1 ml-14">{{ c.grant }}</li>{% endif %}
+        <li class="text-xs opacity-70 -mt-1 ml-14">{{ c.grant }}</li>
         {% endfor %}
         {% endif %}
       </ul>

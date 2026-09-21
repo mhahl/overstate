@@ -47,5 +47,30 @@
     </ul>
   </div>
   {% endif %}
+  <div class="card bg-base-100 border border-base-300 shadow-sm mt-4">
+    <div class="card-body p-4">
+      <div class="flex items-center gap-2">
+        <h2 class="card-title text-base">Observability checklist</h2>
+        <form method="post" action="{{ url_for('masterconfig.checklist_refresh') }}" class="ms-auto">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-ghost" title="Re-run the checklist (worker, or inline fallback)">Refresh</button>
+        </form>
+      </div>
+      {% if checklist is none %}
+      <p class="text-sm opacity-70">Never checked. Refresh runs salt-api login, masters rollout, returner freshness, and the capability check.</p>
+      {% else %}
+      <ul class="flex flex-col gap-2 text-sm mt-2">
+        {% for item in checklist["items"] %}
+        <li class="flex items-center gap-2">
+          <span class="badge badge-sm {{ 'badge-success' if item.state == 'ok' else ('badge-neutral' if item.state == 'skipped' else 'badge-error') }}">{{ item.state }}</span>
+          <span class="font-medium">{{ item.label }}</span>
+          {% if item.detail %}<span class="opacity-70 text-xs">{{ item.detail }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="text-xs opacity-60 mt-2">Checked {{ checklist.checked_at }}{% if checklist.failing %} · {{ checklist.failing }} failing{% endif %}.</p>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

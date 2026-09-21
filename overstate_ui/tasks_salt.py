@@ -31,8 +31,8 @@ CAPABILITY_CHECKS = [
     {
         "key": "history_ok",
         "feature": "Job history",
-        "fun": "returner tables",
-        "grant": "Set master_job_cache: pgjsonb on the master",
+        "fun": "jobs.list_jobs",
+        "grant": "Grant @jobs to the eauth user",
     },
     {
         "key": "ping_ok",
@@ -262,7 +262,9 @@ def probe_capabilities(
 ) -> dict:
     """One probe per door the UI depends on. Never raises for Salt, and
     each door reports independently: a slow or denied wheel door must
-    not blank the runner, history, or ping doors behind it."""
+    not blank the runner, history, or ping doors behind it. The history
+    door asks the master's job cache (jobs.list_jobs) — Postgres-side
+    freshness has its own Returns signal on the dashboard."""
     out: dict[str, Any] = {c["key"]: False for c in CAPABILITY_CHECKS}
     out["ping_target"] = ping_target
     out["error"] = None
@@ -281,20 +283,10 @@ def probe_capabilities(
         "runner_ok",
         lambda: client.runner("manage.status", http_timeout=http_timeout),
     )
-
-    def check_history() -> None:
-        from .db import get_session
-        from .models import SaltReturn
-
-        get_session().query(SaltReturn.jid).limit(1).all()
-
-    try:
-        check_history()
-    except Exception as exc:  # noqa: BLE001 — DB problems degrade too
-        if out["error"] is None:
-            out["error"] = str(exc)
-    else:
-        out["history_ok"] = True
+    attempt(
+        "history_ok",
+        lambda: client.runner("jobs.list_jobs", http_timeout=http_timeout),
+    )
     if ping_target:
         attempt(
             "ping_ok",

@@ -138,6 +138,20 @@ def test_probe_capabilities_denied_and_no_target(app):
     assert skipped["ping_ok"] is False and skipped["ping_target"] is None
 
 
+def test_probe_history_door_asks_job_cache(app):
+    """D3: the history door is jobs.list_jobs on the master, not a DB
+    read — Postgres freshness has its own Returns signal."""
+    from overstate_ui.tasks import probe_capabilities
+
+    with app.app_context():
+        out = probe_capabilities(StubClient(), ping_target="m1")
+    assert out["history_ok"] is True
+    with app.app_context():
+        denied = probe_capabilities(StubClient(deny={"jobs.list_jobs"}))
+    assert denied["history_ok"] is False
+    assert denied["runner_ok"] is True  # doors stay independent
+
+
 def test_probe_ping_uses_short_salt_timeout(app):
     """The ping door must not wait out a dead minion: it carries a short
     Salt job timeout instead of relying on the HTTP backstop."""

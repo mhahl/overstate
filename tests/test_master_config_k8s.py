@@ -638,6 +638,39 @@ def test_revert_last_restores_snapshot_and_restarts(m4):
     )
 
 
+def test_checklist_card_shows_never_checked(mui):
+    html = mui["login"]("admin").get("/settings/master/").data.decode()
+    assert "Observability checklist" in html
+    assert "Never checked" in html
+
+
+def test_checklist_refresh_falls_back_inline_and_audits(mui, monkeypatch):
+    """D1+D5: no worker in tests, so the refresh runs the checklist
+    inline right now instead of queueing."""
+    import overstate_ui.tasks_queue as queue_mod
+
+    def no_salt():
+        raise RuntimeError("no client")
+
+    monkeypatch.setattr(queue_mod, "build_client", no_salt)
+    client = mui["login"]("admin")
+    rv = client.post("/settings/master/checklist/refresh", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"salt-api login" in rv.data
+    assert b"no Salt client configured" in rv.data
+    assert "mastercheck:inline" in _actions(client)
+
+
+def test_checklist_refresh_viewer_forbidden_and_get_disallowed(mui):
+    assert (
+        mui["login"]("v").post("/settings/master/checklist/refresh").status_code == 403
+    )
+    assert (
+        mui["login"]("admin").get("/settings/master/checklist/refresh").status_code
+        == 405
+    )
+
+
 def test_oversize_save_refuses(mui):
     from overstate_ui.files import MAX_BYTES
 

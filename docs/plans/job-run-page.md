@@ -1,6 +1,9 @@
 ## Status
 
-Draft — grill in progress (target confirmed 2026-09-16). Nothing here is accepted until you explicitly approve the settled contract.
+Superseded — the work described here is already implemented in
+`job_new.html` (grid rail, sticky docs aside, "Loading docs…" line),
+confirmed 2026-09-21. Disregard the contract below; it is kept as a
+record of the decisions, not as pending work.
 
 ## Grill decisions (Draft)
 

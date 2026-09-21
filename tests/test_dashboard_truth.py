@@ -231,6 +231,83 @@ def test_age_label_buckets():
     assert _age_label(200000) == "2d ago"
 
 
+def test_check_now_queues_recheck_and_audits(monkeypatch):
+    """D2 self-check: an explicit re-probe queues, audits, and lands
+    back on the dashboard."""
+    from overstate_ui.models import AuditEvent
+
+    _fake_queue(monkeypatch)
+    c = _dashboard_client()
+    rv = c.post("/dashboard/check-now", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"Capability check queued" in rv.data
+    with c.application.app_context():
+        actions = [r.action for r in get_session().query(AuditEvent).all()]
+    assert "capabilities-recheck:queued" in actions
+
+
+def test_check_now_offline_warns_and_audits():
+    """No worker: the cached check stays put and the page says so."""
+    from overstate_ui.models import AuditEvent
+
+    c = _dashboard_client()
+    rv = c.post("/dashboard/check-now", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"Worker unreachable" in rv.data
+    with c.application.app_context():
+        actions = [r.action for r in get_session().query(AuditEvent).all()]
+    assert "capabilities-recheck:refused-offline" in actions
+
+
+def test_check_now_viewer_forbidden_and_get_disallowed():
+    import overstate_ui.auth as authmod
+    from overstate_ui.models import User
+
+    c = _dashboard_client()
+    with c.application.app_context():
+        session = get_session()
+        session.add(
+            User(username="vie", password_hash=authmod._ph.hash("pw"), role="viewer")
+        )
+        session.commit()
+    c.post("/logout")
+    c.post("/login", data={"username": "vie", "password": "pw"})
+    assert c.post("/dashboard/check-now").status_code == 403
+    c.post("/logout")
+    c.post("/login", data={"username": "admin", "password": "pw"})
+    assert c.get("/dashboard/check-now").status_code == 405
+
+
+def test_capability_grants_render_as_permission_display(monkeypatch):
+    """D2 permission display: the needs-vs-grants line renders under
+    every door, passing or failing — not only on failure."""
+    import overstate_ui.dashboard as dashboard_mod
+
+    def fake_describe(jid):
+        if jid != "c1":
+            return ("gone", None)
+        return (
+            "ready",
+            {
+                "wheel_ok": False,
+                "runner_ok": True,
+                "history_ok": True,
+                "ping_ok": False,
+                "ping_target": None,
+                "error": "denied",
+            },
+        )
+
+    monkeypatch.setattr(dashboard_mod, "describe_job", fake_describe)
+    c = _dashboard_client()
+    html = c.get(
+        "/dashboard/panels?caps=c1&started=9999999999&seen=",
+    ).data.decode()
+    assert "Grant @wheel" in html  # failing door keeps its guidance
+    assert "Grant @runner" in html  # passing doors show needs too
+    assert "Grant @jobs" in html  # D3's renamed history door
+
+
 def test_shell_shows_returns_row_without_alarm(monkeypatch):
     """Fixture fleet ran nothing to completion: the Returns row reads
     neutral ('none yet'), never the dead-returner badge."""

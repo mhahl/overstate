@@ -152,19 +152,21 @@ def _load_live(client: K8sClient, live_name: str) -> tuple[dict, str] | None:
     return current["data"] or {}, current["resourceVersion"]
 
 
-@bp.route("/")
-@roles_required("admin")
-def index():
-    client = K8sClient()
+def _checklist() -> dict | None:
+    from .tasks_queue import read_mastercheck_cache
+
+    return read_mastercheck_cache()
+
+
+def _index_context(client: K8sClient) -> dict:
     live_name, history_name = _names()
     loaded = _load_live(client, live_name)
     if loaded is None:
-        return render_template(
-            "masterconfig.html",
-            rows=None,
-            manual=_manual(client.config.namespace, live_name),
-            snapshots=None,
-        )
+        return {
+            "rows": None,
+            "manual": _manual(client.config.namespace, live_name),
+            "snapshots": None,
+        }
     data, revision = loaded
     rows = [
         {
@@ -175,13 +177,46 @@ def index():
         }
         for key, value in sorted(data.items())
     ]
+    return {
+        "rows": rows,
+        "revision": revision,
+        "manual": None,
+        "snapshots": _history_count(client, history_name),
+    }
+
+
+@bp.route("/")
+@roles_required("admin")
+def index():
+    client = K8sClient()
     return render_template(
-        "masterconfig.html",
-        rows=rows,
-        revision=revision,
-        manual=None,
-        snapshots=_history_count(client, history_name),
+        "masterconfig.html", checklist=_checklist(), **_index_context(client)
     )
+
+
+@bp.post("/checklist/refresh")
+@roles_required("admin")
+def checklist_refresh():
+    """Re-run the observability checklist: worker when one answers,
+    inline fallback otherwise (D1+D5). The inline result renders
+    immediately; the queued one lands in cache for the next load."""
+    from .tasks import mastercheck_task, queue_or_none
+
+    job = queue_or_none(mastercheck_task)
+    if job is None:
+        from .tasks_k8s import mastercheck_now
+        from .tasks_queue import write_mastercheck_cache
+
+        out = mastercheck_now()
+        write_mastercheck_cache(out)
+        flash("No worker answered — checked inline.", "info")
+        log_event(current_user.username, "mastercheck:inline")
+        return render_template(
+            "masterconfig.html", checklist=out, **_index_context(K8sClient())
+        )
+    flash("Checklist queued — refresh the page for results.", "info")
+    log_event(current_user.username, "mastercheck:queued")
+    return redirect(url_for("masterconfig.index"))
 
 
 @bp.route("/view")

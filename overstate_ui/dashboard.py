@@ -7,10 +7,20 @@ import datetime as dt
 import time
 from typing import Any
 
-from flask import Blueprint, current_app, render_template, request
-from flask_login import login_required
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+from flask_login import current_user, login_required
 from sqlalchemy import func
 
+from .audit import log_event
+from .auth import roles_required
 from .db import get_session
 from .models import Job, JobReturn, Minion, SaltReturn
 from .salt_client import SaltClient
@@ -209,6 +219,24 @@ def index():
         probing=any(panels.values()),
         worker_down=not any(panels.values()),
     )
+
+
+@bp.post("/dashboard/check-now")
+@roles_required("operator")
+def check_now():
+    """Operator self-check: re-run the capability probes now. The panel
+    picks the fresh result up through the normal poll path; when no
+    worker answers, the cached check stays put and the page says so."""
+    from .tasks import capabilities_task, queue_or_none
+
+    job = queue_or_none(capabilities_task, ping_target())
+    if job is None:
+        flash("Worker unreachable — showing the last cached check.", "warning")
+        log_event(current_user.username, "capabilities-recheck:refused-offline")
+    else:
+        flash("Capability check queued — the panel updates live.", "info")
+        log_event(current_user.username, "capabilities-recheck:queued")
+    return redirect(url_for("dashboard.index"))
 
 
 @bp.get("/dashboard/panels")

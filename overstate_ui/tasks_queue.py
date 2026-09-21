@@ -161,6 +161,32 @@ def isolated_app():
             ctx.pop()
 
 
+MASTERCHECK_CACHE_KEY = "salt:mastercheck"
+
+
+def read_mastercheck_cache() -> dict | None:
+    """Cached observability checklist. Shares the capability TTL by
+    grill decision D5 — one TTL for the whole health surface."""
+    import redis
+
+    try:
+        raw = get_redis_client().get(MASTERCHECK_CACHE_KEY)
+        return json.loads(raw) if raw else None
+    except (redis.exceptions.RedisError, ValueError):
+        return None
+
+
+def write_mastercheck_cache(payload: dict) -> None:
+    import redis
+
+    try:
+        get_redis_client().set(
+            MASTERCHECK_CACHE_KEY, json.dumps(payload), ex=CAPABILITY_TTL
+        )
+    except redis.exceptions.RedisError:
+        pass
+
+
 def read_capability_cache() -> dict | None:
     import redis
 

@@ -55,6 +55,8 @@ MUTATIONS = [
     ("post", "/minions/m1/beacons/enable", {}),
     ("post", "/minions/m1/beacons/disable", {}),
     ("post", "/settings/", {"theme": "dark"}),
+    ("post", "/settings/rotation/generate", {}),
+    ("post", "/settings/rotation/verify", {}),
     ("get", "/users/", None),
 ]
 
@@ -191,3 +193,108 @@ def test_oidc_callback_provisions_and_logs_in(client, monkeypatch):
     with client.app.app_context():
         user = get_session().query(User).filter_by(username="sso-bob").one()
         assert user.role == "viewer"
+
+
+def _rotation_audit_actions(client):
+    from overstate_ui.models import AuditEvent
+
+    with client.app.app_context():
+        return [row.action for row in get_session().query(AuditEvent).all()]
+
+
+def _rotation_settings_keys(client):
+    from overstate_ui.models import Setting
+
+    with client.app.app_context():
+        return [row.key for row in get_session().query(Setting).all()]
+
+
+def test_rotation_card_visible_to_admin_only(client):
+    login_as(client, "vwr")
+    assert "salt-api password rotation" not in client.get("/settings/").data.decode()
+    login_as(client, "admin")
+    html = client.get("/settings/").data.decode()
+    assert "salt-api password rotation" in html
+    assert "overstate" in html  # eauth user shown, never a password
+
+
+def test_rotation_generate_shows_once_and_stores_nothing(client):
+    """D4: each generate mints fresh, shows once, and persists nothing —
+    no setting row, no secret in the audit trail."""
+    login_as(client, "admin")
+    first = client.post("/settings/rotation/generate").data.decode()
+    second = client.post("/settings/rotation/generate").data.decode()
+    assert "Copy now" in first and "Copy now" in second
+    assert first != second  # fresh secret every time, never replayed
+    assert _rotation_settings_keys(client) == []
+    actions = _rotation_audit_actions(client)
+    assert actions.count("rotation-password-generated") == 2
+    assert all("token" not in a for a in actions)
+
+
+def _fake_login(monkeypatch, ok):
+    from overstate_ui.salt_client import SaltApiError
+
+    seen = {}
+
+    class FakeClient:
+        def __init__(
+            self, base_url, username, password, eauth="pam", transport=None, verify=True
+        ):
+            seen["username"] = username
+            seen["password"] = password
+
+        def login(self, http_timeout=None):
+            if not ok:
+                raise SaltApiError("denied")
+            return True
+
+    monkeypatch.setattr("overstate_ui.salt_client.SaltClient", FakeClient)
+    return seen
+
+
+def test_rotation_verify_ok_uses_candidate_and_stores_nothing(client, monkeypatch):
+    seen = _fake_login(monkeypatch, ok=True)
+    login_as(client, "admin")
+    rv = client.post(
+        "/settings/rotation/verify",
+        data={"password": "candidate-pw"},
+        follow_redirects=True,
+    )
+    assert b"salt-api accepted a login" in rv.data
+    assert seen == {"username": "overstate", "password": "candidate-pw"}
+    assert _rotation_settings_keys(client) == []
+    assert "rotation-verify:ok" in _rotation_audit_actions(client)
+
+
+def test_rotation_verify_failure_changes_nothing(client, monkeypatch):
+    _fake_login(monkeypatch, ok=False)
+    login_as(client, "admin")
+    rv = client.post(
+        "/settings/rotation/verify",
+        data={"password": "candidate-pw"},
+        follow_redirects=True,
+    )
+    assert b"refused the candidate" in rv.data
+    assert _rotation_settings_keys(client) == []
+    assert "rotation-verify:failed" in _rotation_audit_actions(client)
+
+
+def test_rotation_empty_candidate_tries_nothing(client, monkeypatch):
+    seen = _fake_login(monkeypatch, ok=True)
+    login_as(client, "admin")
+    rv = client.post(
+        "/settings/rotation/verify", data={"password": ""}, follow_redirects=True
+    )
+    assert b"nothing was tried" in rv.data
+    assert seen == {}
+    assert "rotation-verify:ok" not in _rotation_audit_actions(client)
+
+
+def test_rotation_operator_blocked_and_no_get(client):
+    login_as(client, "op")
+    assert client.post("/settings/rotation/generate").status_code == 403
+    assert client.post("/settings/rotation/verify").status_code == 403
+    login_as(client, "admin")
+    assert client.get("/settings/rotation/generate").status_code == 405
+    assert client.get("/settings/rotation/verify").status_code == 405

@@ -76,6 +76,108 @@ def master_status_now(
     }
 
 
+def mastercheck_now(salt=None, k8s=None) -> dict[str, Any]:
+    """Observability checklist: salt-api login, masters rollout,
+    returner freshness, capability cache. Each item reports
+    ok/skipped/failing independently and the whole check never raises,
+    so a dead master still yields a readable card. All values stay
+    JSON-serializable for the RQ result store. Pass explicit clients in
+    tests; production builds its own."""
+    import datetime as _dt
+
+    from flask import current_app
+
+    from .dashboard import returns_health
+    from .tasks_queue import read_capability_cache
+    from .tasks_salt import CAPABILITY_CHECKS
+
+    items: list[dict[str, str]] = []
+
+    def add(key: str, label: str, state: str, detail: str = "") -> None:
+        items.append({"key": key, "label": label, "state": state, "detail": detail})
+
+    if salt is None:
+        from .tasks_queue import build_client
+
+        try:
+            salt = build_client()
+        except Exception:  # noqa: BLE001 — no client configured
+            salt = None
+    if salt is None:
+        add("salt-api", "salt-api login", "skipped", "no Salt client configured")
+    else:
+        try:
+            salt.login(http_timeout=15.0)
+        except Exception:  # noqa: BLE001 — any failure means unhealthy
+            add("salt-api", "salt-api login", "failing", "login refused")
+        else:
+            add("salt-api", "salt-api login", "ok")
+
+    if k8s is None:
+        k8s = K8sClient()
+    if not k8s.config.available:
+        add("rollout", "Masters rollout", "skipped", "no cluster from here")
+    else:
+        try:
+            rollout = k8s.statefulset_rollout(current_app.config["MASTER_STATEFULSET"])
+        except K8sError:
+            add("rollout", "Masters rollout", "failing", "API refused")
+        else:
+            ready = rollout.get("readyReplicas", 0) or 0
+            wanted = rollout.get("replicas") or 0
+            if _rollout_complete(rollout):
+                add("rollout", "Masters rollout", "ok", f"{ready}/{wanted} ready")
+            else:
+                add("rollout", "Masters rollout", "failing", f"{ready}/{wanted} ready")
+
+    try:
+        health = returns_health()
+    except Exception:  # noqa: BLE001 — an unreadable store is a finding
+        health = None
+    if health is None:
+        add("returner", "Returner fresh", "failing", "return store unreadable")
+    elif health["stale"]:
+        add("returner", "Returner fresh", "failing", "jobs completed, nothing stored")
+    elif health["age"] is None:
+        add("returner", "Returner fresh", "ok", "nothing run yet")
+    else:
+        add("returner", "Returner fresh", "ok", f"last return {health['age']}")
+
+    cached = read_capability_cache()
+    if cached is None:
+        add("capabilities", "Capability check", "failing", "no check yet")
+    else:
+        bad = [c["feature"] for c in CAPABILITY_CHECKS if not cached.get(c["key"])]
+        if bad:
+            add(
+                "capabilities",
+                "Capability check",
+                "failing",
+                f"{len(bad)} door(s) failing",
+            )
+        else:
+            add("capabilities", "Capability check", "ok", "all doors ok")
+
+    failing = sum(1 for item in items if item["state"] == "failing")
+    return {
+        "items": items,
+        "failing": failing,
+        "checked_at": _dt.datetime.now(_dt.UTC).isoformat(),
+    }
+
+
+def mastercheck_task() -> dict[str, Any]:
+    """RQ checklist probe for the Master Config card. Caches with the
+    shared capability TTL; sync fallback in the route runs
+    :func:`mastercheck_now` inline."""
+    with isolated_app():
+        from .tasks_queue import write_mastercheck_cache
+
+        out = mastercheck_now()
+        write_mastercheck_cache(out)
+        return out
+
+
 def master_status_task() -> dict[str, Any]:
     """RQ probe for the dashboard masters panel. Outside a cluster
     (no ServiceAccount) this reports unavailable instead of failing,
