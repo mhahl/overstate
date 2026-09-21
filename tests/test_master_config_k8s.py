@@ -70,6 +70,39 @@ def test_replace_carries_base_resource_version():
     assert calls[0]["body"]["data"] == {"a": "b"}
 
 
+def test_transport_content_type_per_method(monkeypatch):
+    """PUT replace needs application/json; PATCH keeps merge-patch (else 415)."""
+    import urllib.request
+
+    from overstate_ui.k8s import _default_transport
+
+    seen = {}
+
+    class FakeResp:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout=None, context=None):
+        seen[request.get_method()] = request.get_header("Content-type")
+        return FakeResp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    _default_transport("PUT", "https://10.0.0.1:443/x", b"{}", "t", None, 5.0)
+    _default_transport("PATCH", "https://10.0.0.1:443/x", b"{}", "t", None, 5.0)
+    assert seen == {
+        "PUT": "application/json",
+        "PATCH": "application/merge-patch+json",
+    }
+
+
 def test_stale_base_refuses_with_conflict():
     calls = []
     client = _client(

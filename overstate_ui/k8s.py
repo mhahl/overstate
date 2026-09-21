@@ -99,7 +99,12 @@ def _default_transport(
     request.add_header("Authorization", f"Bearer {token}")
     request.add_header("Accept", "application/json")
     if body is not None:
-        request.add_header("Content-Type", "application/merge-patch+json")
+        # Merge-patch is PATCH-only; a PUT replace under it fails with
+        # HTTP 415 from the API server.
+        content_type = (
+            "application/merge-patch+json" if method == "PATCH" else "application/json"
+        )
+        request.add_header("Content-Type", content_type)
     context = ssl.create_default_context(cafile=ca_path) if ca_path else None
     try:
         with urllib.request.urlopen(request, timeout=timeout, context=context) as resp:
