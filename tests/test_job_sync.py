@@ -71,6 +71,17 @@ def test_real_jid_still_ages_out(client):
         assert sync_job("202609150000000099").complete is True
 
 
+def test_completed_job_without_returns_explains_returner(client):
+    """A complete job with no stored returns names the returner instead
+    of leaving a bare 'recorded nothing' card."""
+    with client.app.app_context():
+        _old_job(get_session(), "202609150000000098", fun="test.ping", minutes=5)
+        assert sync_job("202609150000000098").complete is True
+    html = client.get("/jobs/202609150000000098").data.decode()
+    assert "No returns recorded" in html
+    assert "returner" in html
+
+
 class _StubSalt:
     def __init__(self, result):
         self.result = result

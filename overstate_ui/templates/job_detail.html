@@ -69,7 +69,7 @@
 <div class="card bg-base-100 border border-base-300 shadow-sm" id="no-returns"><div class="py-8 text-center">
   {% if job.complete %}
   <p class="font-medium">No returns recorded</p>
-  <p class="text-sm opacity-70">No minion reported back for this job.</p>
+  <p class="text-sm opacity-70">No minion reported back for this job. If minions ran it, the master never stored their returns — check the returner (master job cache), then re-run. Live output stops once a job completes.</p>
   {% else %}
   <p class="font-medium">No returns yet</p>
   <p class="text-sm opacity-70">Waiting on minions. This page updates live.</p>

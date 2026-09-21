@@ -123,6 +123,124 @@ def test_shell_shows_worker_warning_without_redis():
     assert "3006.5" in html
 
 
+def _returns_app():
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    with app.app_context():
+        create_all()
+        seed_admin(password="pw")
+    return app
+
+
+def _done_job(now, minutes_ago):
+    import datetime as dt
+
+    return Job(
+        jid=f"9{int(minutes_ago):019d}",
+        fun="test.ping",
+        tgt="*",
+        tgt_type="glob",
+        user="admin",
+        complete=True,
+        started_at=now - dt.timedelta(minutes=minutes_ago),
+    )
+
+
+def _stored_return(now, minutes_ago):
+    import datetime as dt
+
+    from overstate_ui.models import SaltReturn
+
+    return SaltReturn(
+        fun="test.ping",
+        jid="returner-probe",
+        minion_id="web-01",
+        success="True",
+        payload={},
+        full_ret={},
+        alter_time=now - dt.timedelta(minutes=minutes_ago),
+    )
+
+
+def test_returns_health_quiet_fleet_is_fresh():
+    """Nothing run, nothing stored: silence alone never alarms."""
+    import datetime as dt
+
+    from overstate_ui.dashboard import returns_health
+
+    app = _returns_app()
+    with app.app_context():
+        assert returns_health(now=dt.datetime.now(dt.UTC)) == {
+            "age": None,
+            "stale": False,
+        }
+
+
+def test_returns_health_completed_job_without_returns_is_stale():
+    """The dead-returner signature: jobs completed, store is empty."""
+    import datetime as dt
+
+    from overstate_ui.dashboard import returns_health
+
+    app = _returns_app()
+    now = dt.datetime.now(dt.UTC)
+    with app.app_context():
+        get_session().add(_done_job(now, 30))
+        get_session().commit()
+        assert returns_health(now=now) == {"age": None, "stale": True}
+
+
+def test_returns_health_fresh_when_return_covers_job():
+    import datetime as dt
+
+    from overstate_ui.dashboard import returns_health
+
+    app = _returns_app()
+    now = dt.datetime.now(dt.UTC)
+    with app.app_context():
+        get_session().add(_done_job(now, 5))
+        get_session().add(_stored_return(now, 0))
+        get_session().commit()
+        health = returns_health(now=now)
+    assert health["stale"] is False
+    assert health["age"] == "just now"
+
+
+def test_returns_health_stale_when_job_newer_than_return():
+    import datetime as dt
+
+    from overstate_ui.dashboard import returns_health
+
+    app = _returns_app()
+    now = dt.datetime.now(dt.UTC)
+    with app.app_context():
+        get_session().add(_done_job(now, 1))
+        get_session().add(_stored_return(now, 10))
+        get_session().commit()
+        health = returns_health(now=now)
+    assert health == {"age": "10m ago", "stale": True}
+
+
+def test_age_label_buckets():
+    from overstate_ui.dashboard import _age_label
+
+    assert _age_label(30) == "just now"
+    assert _age_label(90) == "1m ago"
+    assert _age_label(3600) == "1h ago"
+    assert _age_label(200000) == "2d ago"
+
+
+def test_shell_shows_returns_row_without_alarm(monkeypatch):
+    """Fixture fleet ran nothing to completion: the Returns row reads
+    neutral ('none yet'), never the dead-returner badge."""
+    _fake_queue(monkeypatch)
+    html = _dashboard_client().get("/").data.decode()
+    assert "Returns" in html
+    assert "none yet" in html
+    assert "none recorded" not in html
+
+
 def test_panels_resolve_to_live_and_stop_polling(monkeypatch):
     import overstate_ui.dashboard as dashboard_mod
 

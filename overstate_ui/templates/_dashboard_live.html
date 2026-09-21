@@ -130,6 +130,7 @@ already says so. Only claim "unreachable" once polling settled. #}
         <dt class="opacity-70">Token age</dt><dd>{{ "%.0f"|format(health.token_age) if health.token_age >= 0 else "none" }}s</dd>
         <dt class="opacity-70">@wheel</dt><dd><span class="badge badge-sm {{ 'badge-success' if health.wheel_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.wheel_ok else ("checking" if probing else "failing") }}</span></dd>
         <dt class="opacity-70">@runner</dt><dd><span class="badge badge-sm {{ 'badge-success' if health.runner_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.runner_ok else ("checking" if probing else "failing") }}</span></dd>
+        <dt class="opacity-70">Returns</dt><dd>{% if stats.returns.age is none %}{% if stats.returns.stale %}<span class="badge badge-sm badge-error" title="Jobs completed but the returner stored nothing — check master_job_cache">none recorded</span>{% else %}<span class="opacity-70">none yet</span>{% endif %}{% else %}<span class="{{ 'text-error' if stats.returns.stale else '' }}" title="Newest stored return">{{ stats.returns.age }}</span>{% endif %}</dd>
       </dl>
       {% if health.error %}<p class="text-error text-sm mt-2">{{ health.error }}</p>{% endif %}
       <div class="divider my-1">Capabilities</div>

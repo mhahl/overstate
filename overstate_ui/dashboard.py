@@ -3,14 +3,16 @@ by polling. No Salt I/O happens in these request paths — only fast DB
 reads and Redis job lookups — so a slow or sick master can never pin a
 gunicorn worker. History always comes from Postgres."""
 
+import datetime as dt
 import time
 from typing import Any
 
 from flask import Blueprint, current_app, render_template, request
 from flask_login import login_required
+from sqlalchemy import func
 
 from .db import get_session
-from .models import Job, JobReturn, Minion
+from .models import Job, JobReturn, Minion, SaltReturn
 from .salt_client import SaltClient
 from .tasks_queue import describe_job
 
@@ -42,6 +44,47 @@ def snapshot_versions() -> dict[str, int]:
     return counts
 
 
+def _aware(value: dt.datetime | None) -> dt.datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
+
+
+def _age_label(seconds: float) -> str:
+    """Short relative age for the returns row. Pure data, unit-tested."""
+    if seconds < 60:
+        return "just now"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours}h ago"
+    return f"{hours // 24}d ago"
+
+
+def returns_health(now: dt.datetime | None = None) -> dict:
+    """Returner freshness: newest stored return vs newest completed job.
+
+    ``stale`` is True only when jobs completed but no return covers
+    them — the dead-returner signature. A quiet fleet with nothing run
+    yet reads fresh with ``age`` None, so silence alone never alarms.
+    """
+    session = get_session()
+    moment = now or dt.datetime.now(dt.UTC)
+    last = _aware(session.query(func.max(SaltReturn.alter_time)).scalar())
+    newest_done = _aware(
+        session.query(func.max(Job.started_at)).filter_by(complete=True).scalar()
+    )
+    if last is None:
+        stale = newest_done is not None
+        age = None
+    else:
+        stale = newest_done is not None and newest_done > last
+        age = _age_label((moment - last).total_seconds())
+    return {"age": age, "stale": stale}
+
+
 def snapshot_stats() -> dict:
     """Database-only dashboard numbers. No Salt I/O, so the shell and
     the poll endpoint serve it on every load while live panels resolve
@@ -59,6 +102,7 @@ def snapshot_stats() -> dict:
         "versions": snapshot_versions(),
         "versions_live": False,
         "last_failures": last_failure_returns(limit=5),
+        "returns": returns_health(),
     }
 
 
@@ -240,6 +284,7 @@ def _fingerprint(live: dict[str, Any], caps: dict | None, stats: dict) -> str:
     parts.append(f"masters-{bool(live.get('masters'))}")
     parts.append(f"in-flight-{stats['in_flight']}")
     parts.append(f"failures-{len(stats['last_failures'])}")
+    parts.append(f"returns-stale-{stats['returns']['stale']}")
     return ",".join(parts)
 
 
