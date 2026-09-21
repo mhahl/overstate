@@ -106,50 +106,51 @@ rotation needs the re-acceptance procedure, not just revert.
 
 ## 5. Shared job cache (failover trio)
 
-Job results live in a dedicated `salt` database so either master
-answers consistently. One-shot provisioning as the CNPG superuser
-(password in the `overstate-db-superuser` Secret):
-
-```sql
-CREATE ROLE salt LOGIN PASSWORD '<generated>';
-CREATE DATABASE salt OWNER salt;
--- then, connected to the salt database (exact DDL from the
--- postgres_local_cache returner module itself):
-CREATE TABLE jids (
-  jid varchar(20) PRIMARY KEY,
-  started TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  tgt_type text NOT NULL, cmd text NOT NULL, tgt text NOT NULL,
-  kwargs text NOT NULL, ret text NOT NULL, username text NOT NULL,
-  arg text NOT NULL, fun text NOT NULL);
-CREATE TABLE salt_returns (
-  added TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  fun text NOT NULL, jid varchar(20) NOT NULL, return text NOT NULL,
-  id text NOT NULL, success boolean);
-CREATE INDEX ON salt_returns (added);
-CREATE INDEX ON salt_returns (id);
-CREATE INDEX ON salt_returns (jid);
-CREATE INDEX ON salt_returns (fun);
-ALTER TABLE jids OWNER TO salt;
-ALTER TABLE salt_returns OWNER TO salt;
-```
+Job results live in Postgres so every master answers consistently —
+and the UI reads them from there. All three masters run the stock
+`pgjsonb` returner straight into the app's own `overstate` database
+(tables `jids` / `salt_returns`, created by the app); there is no
+separate `salt` database. A legacy `postgres_local_cache` block, or
+an empty `master_job_cache` value, leaves the masters on their local
+disk cache — jobs then run fine but complete with no output in the UI,
+because the completed page renders returner rows only.
 
 The masters read the whole returner block — password included — from
 the owner-held `salt-master-db` Secret, overlaid as one more config
-drop-in (`returner.conf`):
+drop-in (`returner.conf`). Flat dotted keys (the master job-cache path
+does not traverse a nested mapping), reusing the `overstate` role:
 
 ```sh
-cat > /tmp/returner.conf <<'EOF'
-master_job_cache: postgres_local_cache
-master_job_cache.postgres.host: overstate-db-rw
-master_job_cache.postgres.user: salt
-master_job_cache.postgres.passwd: '<generated>'
-master_job_cache.postgres.db: salt
-master_job_cache.postgres.port: 5432
+DBPASS=$(kubectl -n overstate get secret overstate-db-app \
+  -o jsonpath='{.data.password}' | base64 -d)
+cat > /tmp/returner.conf <<EOF
+master_job_cache: pgjsonb
+returner.pgjsonb.host: overstate-db-rw
+returner.pgjsonb.port: 5432
+returner.pgjsonb.db: overstate
+returner.pgjsonb.user: overstate
+returner.pgjsonb.pass: '${DBPASS}'
 EOF
 chmod 600 /tmp/returner.conf
 kubectl -n overstate create secret generic salt-master-db \
-  --from-file=returner.conf=/tmp/returner.conf
+  --from-file=returner.conf=/tmp/returner.conf \
+  --dry-run=client -o yaml | kubectl apply -f -
 shred -u /tmp/returner.conf 2>/dev/null || rm -P /tmp/returner.conf
+unset DBPASS
+```
+
+Then roll the masters one at a time and prove the path with a trivial
+job before the next real apply:
+
+```sh
+kubectl -n overstate rollout restart sts/salt-master
+kubectl -n overstate exec salt-master-0 -- salt 'MINION' test.ping
+# a row per minion return must appear (replace MINION):
+kubectl -n overstate exec deploy/overstate-app -- python3 -c "
+import os, urllib.parse, psycopg
+u = urllib.parse.urlparse(os.environ['DATABASE_URL'].replace('postgresql+psycopg','postgresql'))
+c = psycopg.connect(host=u.hostname, port=u.port or 5432, dbname=u.path.lstrip('/'), user=u.username, password=u.password, connect_timeout=10)
+print(c.execute('select count(*) from salt_returns').fetchone())"
 ```
 
 Rotate the same way (replace Secret, roll the pods one at a time).

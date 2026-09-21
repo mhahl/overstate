@@ -106,13 +106,14 @@ mutation (accept, reject, delete) is fanned out to all three pods by
 UI is the **union** of all three pods with per-pod state chips.
 
 **3.3 Job history lives in Postgres, not on either master.**
-Salt's default local job cache dies with its pod. Both masters run the
-`postgres_local_cache` returner against one shared `salt` database on
-the CNPG cluster, so returns from either pod land in one store and
-either master (and the UI) reads the merged history. The returner
-credentials arrive as the `salt-master-db` Secret projected into the
-config dir as `returner.conf` — the owned ConfigMap never holds
-passwords (enforced by test).
+Salt's default local job cache dies with its pod. All three masters run
+the stock `pgjsonb` returner (`master_job_cache: pgjsonb`, flat
+`returner.pgjsonb.*` keys) against the shared `overstate` database on
+the CNPG cluster — the same tables the app reads (`jids`,
+`salt_returns`, created by the app) — so returns from any pod land in
+the one store the UI renders. The returner credentials arrive as the
+`salt-master-db` Secret projected into the config dir as `returner.conf`
+— the owned ConfigMap never holds passwords (enforced by test).
 
 ## 4. Data flows
 
