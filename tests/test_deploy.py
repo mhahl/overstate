@@ -235,19 +235,16 @@ def test_master_rolls_out_sequentially():
     assert sts["spec"]["updateStrategy"]["type"] == "RollingUpdate"
 
 
-def test_master_schedules_one_per_known_node():
+def test_master_floats_with_hard_hostname_anti_affinity():
     aff = _salt_master_sts()["spec"]["template"]["spec"]["affinity"]
-    terms = aff["nodeAffinity"]["requiredDuringSchedulingIgnoredDuringExecution"][
-        "nodeSelectorTerms"
-    ]
-    hosts = terms[0]["matchExpressions"][0]["values"]
-    assert set(hosts) == {
-        "rancher-1894.syd.prod.sigaint.au",
-        "rancher-4e60.syd.prod.sigaint.au",
-        "rancher-afe5.syd.prod.sigaint.au",
-    }
-    anti = aff["podAntiAffinity"]["requiredDuringSchedulingIgnoredDuringExecution"][0]
-    assert anti["topologyKey"] == "kubernetes.io/hostname"
+    # No node allow-list: ordinals float and node replacement needs
+    # no manifest edit.
+    assert "nodeAffinity" not in aff
+    anti = aff["podAntiAffinity"]["requiredDuringSchedulingIgnoredDuringExecution"]
+    assert {
+        "labelSelector": {"matchLabels": {"app.kubernetes.io/name": "salt-master"}},
+        "topologyKey": "kubernetes.io/hostname",
+    } in anti
 
 
 def test_master_readiness_means_joined():

@@ -41,19 +41,10 @@ spec:
       # The three are only three on different nodes: never schedule two
       # masters onto one hostname, or one node loss kills quorum.
       affinity:
-        # Ordinal-to-node is Longhorn RWO (the keys PVC) plus this
-        # three-node allow-list. DNS: salt-c010=rancher-1894 (pod-0),
-        # salt-b2b6=rancher-afe5 (pod-1), salt-42e5=rancher-4e60 (pod-2).
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - rancher-1894.syd.prod.sigaint.au
-                      - rancher-4e60.syd.prod.sigaint.au
-                      - rancher-afe5.syd.prod.sigaint.au
+        # No node allow-list: ordinals float and the Longhorn RWO keys
+        # PVC follows its pod. The only placement rule is one master
+        # per hostname, so one node loss never kills quorum. Per-node
+        # minion MQ assumes exactly three nodes (see salt-master-mq).
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
