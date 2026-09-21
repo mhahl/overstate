@@ -29,6 +29,7 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .git_sync import (
+    checkout_layout,
     clear_token,
     clone_repo,
     git_commit_file,
@@ -40,12 +41,14 @@ from .git_sync import (
     git_sync_now,
     has_token,
     is_checkout,
+    paths_changed,
     reclone_repo,
-    roots_nonempty,
     reset_hard,
     reset_preview,
+    roots_nonempty,
     save_token,
     set_remote_origin,
+    srv_nonempty,
     validate_repo_url,
 )
 from .salt_client import SaltApiError
@@ -364,11 +367,34 @@ def sync():
                     "warning",
                 )
                 log_event(current_user.username, f"fileserver-update-failed:{err}")
+            if paths_changed(result["old"], result["new"], "_modules"):
+                flash(
+                    "Custom Salt modules changed — run Sync modules so "
+                    "minions pick them up.",
+                    "info",
+                )
         else:
             flash(f"Already up to date at {result['new']}.", "info")
     else:
         flash(f"Sync refused: {result['reason']}. Nothing changed.", "error")
         log_event(current_user.username, f"git-sync-refused:{result['reason']}")
+    return redirect(url_for("files.index"))
+
+
+@bp.post("/sync-modules")
+@roles_required("operator")
+def sync_modules():
+    """Publish custom modules fleet-wide: ``saltutil.sync_all`` on the
+    master. Operator+. Salt stays the arbiter — this only distributes
+    files, it applies nothing."""
+    try:
+        get_salt().runner("saltutil.sync_all", http_timeout=120.0)
+    except (SaltApiError, httpx.HTTPError, KeyError) as exc:
+        flash(f"Module sync failed (salt-api error: {exc}). Nothing sent.", "error")
+        log_event(current_user.username, "modules-sync-failed")
+        return redirect(url_for("files.index"))
+    flash("Custom modules synced to the master.", "success")
+    log_event(current_user.username, "modules-sync")
     return redirect(url_for("files.index"))
 
 
@@ -545,7 +571,7 @@ def push():
     return redirect(url_for("files.index"))
 
 
-def _repo_context(preview=None, pending=None):
+def _repo_context(preview=None, pending=None, replace_pending=None):
     checkout = is_checkout()
     return {
         "checkout": checkout,
@@ -554,7 +580,10 @@ def _repo_context(preview=None, pending=None):
         "token_configured": has_token(),
         "preview": preview,
         "pending": pending,
+        "replace_pending": replace_pending,
         "roots_nonempty": roots_nonempty(),
+        "srv_nonempty": srv_nonempty(),
+        "layout": checkout_layout(),
     }
 
 
@@ -576,28 +605,56 @@ def _note_refreshed(verb, sha):
 @bp.get("/repo")
 @roles_required("admin")
 def repo():
-    """Repo tab: bootstrap, repoint, and repair the file-roots checkout."""
+    """Repo tab: bootstrap, repoint, and repair the shared-states checkout."""
     return render_template("repo.html", **_repo_context())
+
+
+def _short_list(names: list[str], limit: int = 12) -> str:
+    """Human-sized file list for flashes: first names, then a count."""
+    shown = ", ".join(names[:limit])
+    if len(names) > limit:
+        shown += f", and {len(names) - limit} more"
+    return shown
 
 
 @bp.post("/repo/clone")
 @roles_required("admin")
 def repo_clone():
-    """Clone the canonical repo into an empty file roots. Admin-only."""
+    """Clone the canonical states repo at the srv roots. Admin-only."""
     url = request.form.get("url", "")
     branch = request.form.get("branch", "")
     token = request.form.get("token", "") or None
-    result = clone_repo(url, branch, token)
+    replace = request.form.get("confirm") == "1"
+    result = clone_repo(url, branch, token, replace=replace)
     if result["ok"]:
         log_event(current_user.username, "git-clone")
         _note_refreshed("Cloned", git_head())
+        if result.get("replaced"):
+            flash(
+                f"Replaced the existing salt/ tree: {_short_list(result['replaced'])}.",
+                "info",
+            )
+    elif result.get("confirm_replace") is not None:
+        # An existing salt/ tree (the deploy seed) is only ever replaced
+        # on a second, explicit confirm — stay on the page naming it.
+        log_event(current_user.username, "git-clone-needs-confirm")
+        return render_template(
+            "repo.html",
+            **_repo_context(
+                replace_pending={
+                    "url": url,
+                    "branch": branch,
+                    "files": result["confirm_replace"],
+                }
+            ),
+        )
     else:
         flash(f"Clone refused: {result['reason']}. Nothing changed.", "error")
         log_event(current_user.username, f"git-clone-refused:{result['reason']}")
         if result["reason"].startswith("directory not empty"):
-            # Plain clone can never succeed here (git needs an empty
-            # destination); stay on the page with the re-clone form
-            # prefilled so the advised path is one click away.
+            # Plain clone can never succeed here (unexpected content needs
+            # the destructive path); stay on the page with the re-clone
+            # form prefilled so the advised path is one click away.
             return render_template(
                 "repo.html",
                 **_repo_context(pending={"url": url, "branch": branch}),

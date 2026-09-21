@@ -346,18 +346,31 @@ never applies anything to minions; the master serves the new states
 after its fileserver refresh, same as after a sync.
 
 Admins also get a **Repo** tab for bootstrap and repair. **Clone**
-checks out the canonical repo when file roots hold no checkout yet
-(the fresh-deploy case): repo URL, branch (blank means the remote
-default), and an https token that is stored `0600` beside the
-checkout — one slot, never shown back. **Repoint origin** moves to a
-new canonical URL and refuses on dirty trees and unpushed commits.
-**Reset to upstream** abandons tracked changes after a preview naming
-every doomed file (untracked files survive unless ticked separately),
-and **Re-clone** destroys a corrupt checkout and clones fresh — both
-refuse on unpushed commits, and every run or refusal is audited.
-Credentials for https remotes live in that one `0600` file outside
-the checkout (the browser can read anything *inside* it); SSH remotes
-use deploy keys instead.
+checks out the canonical states repo at the shared roots when no
+checkout exists yet (the fresh-deploy case): repo URL, branch (blank
+means the remote default), and an https token that is stored `0600`
+at the shared roots — one slot, never shown back. The checkout holds
+`salt/` (file roots, what you browse) next to `pillar/` (served by
+the master); the status card shows whether each tree's `top.sls` is
+present. Cloning keeps the Overstate-owned `reactor/` sibling and
+replaces an existing `salt/` seed tree only after a second confirm
+that names every replaced file; anything else in the way refuses
+toward **Re-clone**. **Repoint origin** moves to a new canonical URL
+and refuses on dirty trees and unpushed commits. **Reset to upstream**
+abandons tracked changes after a preview naming every doomed file
+(untracked files survive unless ticked separately), and **Re-clone**
+destroys a corrupt checkout and clones fresh while keeping `reactor/`
+— both refuse on unpushed commits, and every run or refusal is
+audited. Credentials for https remotes live in that one `0600` file
+outside the browsed `salt/` tree; SSH remotes use deploy keys
+instead. Fresh trees are normalized world-readable so the non-root
+master workers can traverse them.
+
+A changed pull also refreshes the master fileserver, and when the
+pulled range touches custom Salt modules (`_modules/`) the page says
+so — press **Sync modules** (operators and admins, on the Files page)
+to publish them with `saltutil.sync_all`. That distributes files only;
+like saving, it applies nothing.
 
 ## Events
 

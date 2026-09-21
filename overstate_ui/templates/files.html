@@ -6,7 +6,7 @@
     <div>
     <h1 class="text-2xl font-bold tracking-tight">State files</h1>
     <p class="text-sm opacity-70 mt-0.5">Browse and edit state files. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
-    {% if has_top %}<p class="text-sm mt-1"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% endif %}
+    {% if has_top %}<p class="text-sm mt-1"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% else %}<p class="text-sm mt-1 text-warning">No top.sls at file roots — the master serves nothing until the states repo is cloned on the Repo tab.</p>{% endif %}
     </div>
     {% if current_user.role == "admin" %}
     <a class="btn btn-sm btn-outline mt-1" title="Clone, repoint, and repair the file-roots checkout" href="{{ url_for('files.repo') }}">Repo settings</a>
@@ -30,6 +30,10 @@
           <form method="post" action="{{ url_for('files.sync') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-outline">Sync now</button>
+          </form>
+          <form method="post" action="{{ url_for('files.sync_modules') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-ghost" title="Publish custom Salt modules (saltutil.sync_all) — distributes files, applies nothing">Sync modules</button>
           </form>
           {% if current_user.role == "admin" %}
           <form method="post" action="{{ url_for('files.push') }}">

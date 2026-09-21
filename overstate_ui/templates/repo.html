@@ -4,7 +4,7 @@
 <div class="mb-5 flex flex-wrap items-start justify-between gap-2">
   <div>
   <h1 class="text-2xl font-bold tracking-tight">Repo</h1>
-  <p class="text-sm opacity-70 mt-0.5">Bootstrap, repoint, and repair the file-roots checkout. Admin only.</p>
+  <p class="text-sm opacity-70 mt-0.5">Bootstrap, repoint, and repair the shared-states checkout (salt/ + pillar/). Admin only.</p>
   </div>
   <a class="btn btn-sm btn-ghost mt-1" href="{{ url_for('files.index') }}">← State files</a>
 </div>
@@ -21,8 +21,19 @@
 </div>
 <p class="text-sm mt-2">Origin: <span class="font-mono text-xs break-all">{{ origin or "none" }}</span></p>
 <p class="text-sm">Push credentials: {% if token_configured %}<span class="badge badge-sm badge-success">stored</span>{% else %}<span class="badge badge-sm badge-ghost">none</span>{% endif %}</p>
+{% if layout %}
+<p class="text-sm mt-1">States entry point <span class="font-mono text-xs">salt/top.sls</span>:
+  {% if layout.salt_top %}<span class="badge badge-sm badge-success">present</span>
+  {% else %}<span class="badge badge-sm badge-warning">missing — the master serves nothing without it</span>{% endif %}</p>
+<p class="text-sm mt-1">Pillar entry point <span class="font-mono text-xs">pillar/top.sls</span>:
+  {% if layout.pillar_top %}<span class="badge badge-sm badge-success">present</span>
+  {% else %}<span class="badge badge-sm badge-ghost">missing</span>{% endif %}</p>
+{% if layout.checkout and layout.at_roots %}
+<p class="text-sm mt-1 opacity-70">Legacy layout: the checkout sits at file roots, so only salt/ is served — re-clone to adopt the shared salt/ + pillar/ layout.</p>
+{% endif %}
+{% endif %}
 {% else %}
-<p class="text-sm">No git checkout here yet — clone the canonical repo below to bootstrap file roots.</p>
+<p class="text-sm">No git checkout here yet — clone the canonical states repo below to bootstrap the shared roots.</p>
 {% endif %}
 </div>
 </div>
@@ -31,23 +42,38 @@
 <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Clone</h2>
+<p class="text-sm opacity-70 mb-2">Clones the states repo at the shared roots: <span class="font-mono text-xs">salt/</span> and <span class="font-mono text-xs">pillar/</span> land beside each other. An existing <span class="font-mono text-xs">salt/</span> seed tree is replaced only after you confirm; <span class="font-mono text-xs">reactor/</span> is always kept.</p>
+{% if replace_pending %}
+<div class="alert alert-warning mb-2" role="note"><span>Replacing the existing <span class="font-mono">salt/</span> tree with <span class="font-mono">{{ replace_pending.url }}</span>{% if replace_pending.branch %} (branch <span class="font-mono">{{ replace_pending.branch }}</span>){% endif %} will destroy: {{ replace_pending.files|join(", ") }}.</span></div>
+<form method="post" action="{{ url_for('files.repo_clone') }}" class="flex flex-wrap items-center gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="confirm" value="1">
+  <input type="hidden" name="url" value="{{ replace_pending.url }}">
+  <input type="hidden" name="branch" value="{{ replace_pending.branch }}">
+  <label class="fieldset"><span class="fieldset-legend">Token (re-enter — never echoed back)</span>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <button class="btn btn-sm btn-error" data-confirm="Destroy the salt/ tree and clone?">Confirm replace and clone</button>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
+</form>
+{% else %}
 <form method="post" action="{{ url_for('files.repo_clone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="fieldset"><span class="fieldset-legend">Repo URL (https or SSH)</span>
   <input type="text" name="url" class="input input-sm" placeholder="https://git.example.com/salt/states.git"></label>
   <label class="fieldset"><span class="fieldset-legend">Branch (blank = remote default)</span>
   <input type="text" name="branch" class="input input-sm"></label>
-  <label class="fieldset"><span class="fieldset-legend">Token, https only (stored 0600 beside the checkout, one slot)</span>
+  <label class="fieldset"><span class="fieldset-legend">Token, https only (stored 0600 at the shared roots, one slot)</span>
   <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
-  <div><button class="btn btn-sm btn-primary" data-confirm="Clone this repo into file roots?">Clone</button></div>
+  <div><button class="btn btn-sm btn-primary" data-confirm="Clone this repo at the shared roots?">Clone</button></div>
 </form>
+{% endif %}
 </div>
 </div>
-{% if roots_nonempty %}
+{% if srv_nonempty %}
 <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Re-clone from scratch</h2>
-<p class="text-sm opacity-70 mb-2">File roots is not empty, so plain clone refuses. Re-clone clears it first, then clones fresh.</p>
+<p class="text-sm opacity-70 mb-2">The shared roots are not empty, so plain clone refuses. Re-clone clears them first (keeping <span class="font-mono text-xs">reactor/</span>), then clones fresh.</p>
 {% if pending %}
 <div class="alert alert-warning mb-2" role="note"><span>This will destroy the current files and clone <span class="font-mono">{{ pending.url }}</span>{% if pending.branch %} (branch <span class="font-mono">{{ pending.branch }}</span>){% endif %}.</span></div>
 <form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-wrap items-center gap-2">
@@ -145,7 +171,7 @@
 <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Push credentials</h2>
-<p class="text-sm opacity-70 mb-2">One slot, stored 0600 beside the checkout (never inside it). {% if token_configured %}Configured.{% else %}Empty.{% endif %}</p>
+<p class="text-sm opacity-70 mb-2">One slot, stored 0600 at the shared roots, outside the browsed salt/ tree. {% if token_configured %}Configured.{% else %}Empty.{% endif %}</p>
 <div class="flex flex-wrap gap-2">
 <form method="post" action="{{ url_for('files.repo_token_save') }}" class="flex flex-wrap items-end gap-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

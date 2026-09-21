@@ -1,5 +1,12 @@
-"""Git status, sync, commit, and push for the file-roots checkout behind
-the Files page.
+"""Git status, sync, commit, and push for the shared-states checkout
+behind the Files page.
+
+The checkout lives at the srv roots — the *parent* of file roots —
+holding the ``salt/`` tree the browser serves (file roots itself) next
+to the ``pillar/`` tree the master reads. All git commands run with
+file roots as cwd and resolve upward, so a checkout at either level
+keeps working; clone and re-clone always (re)build the srv-level
+layout, preserving the Overstate-owned ``reactor/`` sibling.
 
 Reads (status) stay free; writes are explicit and gated: ``fetch`` +
 ``pull --ff-only`` (Sync, same flags as ``scripts/sync-file-roots.sh``),
@@ -15,11 +22,13 @@ Repo controls (the Files "Repo" tab) extend the same contract to
 bootstrap and repair: ``clone`` a missing checkout, ``set-remote`` a
 moved origin, ``reset --hard`` to the tracked upstream, and full
 ``re-clone`` when ``.git`` itself is corrupt. Destruction is gated:
-reset and re-clone both refuse on unpushed commits, and previews name
+clone confirms before replacing an existing ``salt/`` seed tree, reset
+and re-clone both refuse on unpushed commits, and previews name
 everything a destructive run would destroy.
 Remote URLs pass an allowlist (https and SSH only — credentials ride a
-0600 helper file *beside* the checkout, never in it, because the file
-browser serves everything under roots to any logged-in user).
+0600 helper file at the srv roots, outside the browsed ``salt/`` tree
+and filtered out of status, because the file browser serves everything
+under roots to any logged-in user).
 """
 
 from __future__ import annotations
@@ -59,6 +68,121 @@ def _single_flight():
 
 def _root() -> Path:
     return Path(current_app.config["FILE_ROOTS"]).resolve()
+
+
+def _srv() -> Path:
+    """Checkout home: the srv roots whose ``salt/`` child is file roots.
+
+    Holds the ``salt/`` tree, the ``pillar/`` tree the master reads, and
+    the Overstate-owned ``reactor/`` sibling that clone/re-clone preserve.
+    """
+    return _root().parent
+
+
+def _toplevel() -> Path | None:
+    """Enclosing checkout root, or None when file roots hold no checkout."""
+    proc = _run("rev-parse", "--show-toplevel")
+    if proc is None or proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        return Path(proc.stdout.strip()).resolve()
+    except (OSError, ValueError):
+        return None
+
+
+def _pillar_dir() -> Path:
+    """Pillar tree: ``pillar/`` beside file roots under the checkout."""
+    top = _toplevel()
+    return (top / "pillar") if top is not None else (_srv() / "pillar")
+
+
+def checkout_layout() -> dict:
+    """Where the checkout lives and which Salt entry points exist.
+
+    ``salt_top`` answers from file roots in either layout; ``pillar_top``
+    needs the srv-level tree, so a legacy checkout at file roots (or a
+    bare seed) reports it missing until the repo is (re-)cloned.
+    """
+    top = _toplevel()
+    return {
+        "checkout": top is not None,
+        "at_roots": top is not None and top == _root(),
+        "salt_top": (_root() / "top.sls").is_file(),
+        "pillar_top": (_pillar_dir() / "top.sls").is_file(),
+    }
+
+
+def _visible(lines: list[str]) -> list[str]:
+    """Porcelain lines the Files surface owns.
+
+    The checkout root sits above file roots, so status can name paths
+    outside the browsed tree (``../``). Tracked changes out there (a
+    pillar edit) still count — the master serves them. Hidden are the
+    token helper (deployment surface, never working tree) and untracked
+    siblings like ``reactor/`` (the reset cleaner only runs under file
+    roots, so listing them would promise deletions that never happen).
+    """
+    kept = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        path = line[3:].lstrip('"') if len(line) > 3 else line
+        if Path(path).name == CREDENTIALS_NAME:
+            continue
+        if path.startswith("../") and stripped.startswith("??"):
+            continue
+        kept.append(line)
+    return kept
+
+
+def _add_mode(path: Path, bits: int) -> None:
+    """Best-effort permission widening. Symlinks are never followed."""
+    try:
+        if path.is_symlink():
+            return
+        os.chmod(path, path.stat().st_mode | bits)
+    except OSError:
+        pass
+
+
+def _ensure_world_readable(path: Path) -> bool:
+    """Best-effort a+rX over a fresh tree. Never fails the caller.
+
+    Checkouts made under a 027 umask land 640/750, which the non-root
+    master workers cannot traverse — the tree then silently vanishes
+    from the fileserver. Directories gain o+rX, files o+r.
+    """
+    try:
+        if path.is_dir() and not path.is_symlink():
+            for base, dirs, files in os.walk(path):
+                for name in dirs:
+                    _add_mode(Path(base) / name, 0o555)
+                for name in files:
+                    _add_mode(Path(base) / name, 0o444)
+        elif path.exists():
+            _add_mode(path, 0o444)
+    except OSError:
+        return False
+    return True
+
+
+def paths_changed(old_sha: str | None, new_sha: str | None, marker: str) -> bool:
+    """True when the pulled range touches any path containing ``marker``.
+
+    Advisory only (drives the "sync your modules" hint): any failure
+    reads as False, never as a sync error.
+    """
+    if not old_sha or not new_sha or old_sha == new_sha or not marker:
+        return False
+    proc = _run("diff", "--name-only", old_sha, new_sha)
+    if proc is None or proc.returncode != 0:
+        return False
+    return any(
+        marker in Path(line.strip()).parts
+        for line in proc.stdout.splitlines()
+        if line.strip()
+    )
 
 
 def _run(
@@ -185,7 +309,7 @@ def git_status() -> dict:
     porcelain = _run("status", "--porcelain")
     if porcelain is None:
         return {"ok": False, "reason": "git status failed"}
-    dirty = [line for line in porcelain.stdout.splitlines() if line.strip()]
+    dirty = [line for line in _visible(porcelain.stdout.splitlines()) if line.strip()]
     out["clean"] = not dirty
     out["dirty_count"] = len(dirty)
     upstream = _run("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
@@ -262,6 +386,10 @@ def git_sync_now() -> dict:
             return {"ok": False, "reason": _failure(pull, "git pull refused")}
         new = _run("rev-parse", "--short", "HEAD")
         new_sha = new.stdout.strip() if new and new.returncode == 0 else None
+        if old_sha != new_sha:
+            # Freshly pulled files inherit the checkout umask; normalize
+            # so the master workers can always traverse the tree.
+            _ensure_world_readable(_toplevel() or _root())
         return {
             "ok": True,
             "old": old_sha,
@@ -487,8 +615,32 @@ def _git_clone(dest: Path, url: str, branch: str | None, token: str | None) -> d
     return {"ok": True}
 
 
-def _clone(url: str, branch: str | None, token: str | None = None) -> dict:
-    """Clone into roots. Lock-free; ``clone_repo`` validates + serializes.
+def _tree_names(tree: Path) -> list[str]:
+    """Relative names of everything under ``tree`` (for replace reports)."""
+    names = []
+    for base, dirs, files in os.walk(tree, followlinks=False):
+        for name in dirs + files:
+            try:
+                names.append(str((Path(base) / name).relative_to(tree)))
+            except (OSError, ValueError):
+                continue
+    return sorted(names)
+
+
+def _clone(
+    url: str,
+    branch: str | None,
+    token: str | None = None,
+    replace: bool = False,
+) -> dict:
+    """Clone the canonical repo at the srv roots. Lock-free; ``clone_repo``
+    validates + serializes.
+
+    The install keeps the Overstate-owned ``reactor/`` sibling and the
+    token helper, and replaces an existing ``salt/`` seed tree only with
+    ``replace=True`` — without it the caller gets ``confirm_replace``
+    naming every doomed file so the UI can ask first. Anything else in
+    the way refuses toward re-clone.
 
     ``file://`` URLs work here (local bare repos in tests, disaster
     recovery from disk) — the public wrapper never lets them through.
@@ -500,10 +652,40 @@ def _clone(url: str, branch: str | None, token: str | None = None) -> dict:
         branch = check["branch"]
     if _is_checkout():
         return {"ok": False, "reason": "already a git checkout — use re-clone"}
-    return _git_clone(_root(), url, branch, token)
+    srv = _srv()
+    salt_name = _root().name
+    try:
+        entries = {p.name for p in srv.iterdir()} if srv.is_dir() else set()
+    except OSError:
+        return {"ok": False, "reason": "cannot read the checkout directory"}
+    if entries - {salt_name, "reactor", CREDENTIALS_NAME}:
+        return {"ok": False, "reason": "directory not empty — re-clone to replace it"}
+    salt_dir = srv / salt_name
+    doomed = _tree_names(salt_dir) if salt_dir.exists() or salt_dir.is_symlink() else []
+    if doomed and not replace:
+        return {
+            "ok": False,
+            "reason": f"existing {salt_name}/ tree — confirm to replace it",
+            "confirm_replace": doomed,
+        }
+    staged = _stage_clone(url, branch, token)
+    if not staged["ok"]:
+        return staged
+    try:
+        if salt_dir.is_symlink() or salt_dir.is_file():
+            salt_dir.unlink()
+        elif salt_dir.is_dir():
+            shutil.rmtree(salt_dir)
+    except OSError:
+        _drop_staged(staged["tmp"])
+        return {"ok": False, "reason": "cannot clear the old checkout"}
+    if not _move_staged(staged["tmp"], srv, keep_existing=frozenset({"reactor"})):
+        return {"ok": False, "reason": "cannot install the fresh clone"}
+    _ensure_world_readable(srv)
+    return {"ok": True, "replaced": doomed}
 
 
-def clone_repo(url: str, branch: str, token: str | None) -> dict:
+def clone_repo(url: str, branch: str, token: str | None, replace: bool = False) -> dict:
     """Validated, serialized clone for the Repo tab."""
     valid = validate_repo_url((url or "").strip())
     if not valid["ok"]:
@@ -522,7 +704,7 @@ def clone_repo(url: str, branch: str, token: str | None) -> dict:
     with _single_flight() as free:
         if not free:
             return {"ok": False, "reason": "a sync is already running"}
-        result = _clone(valid_url(url), checked["branch"], token)
+        result = _clone(valid_url(url), checked["branch"], token, replace=replace)
         if result["ok"] and token:
             saved = save_token(token, valid["host"])
             if not saved["ok"]:
@@ -562,7 +744,7 @@ def _porcelain_lists() -> tuple[list, list] | None:
     if proc is None or proc.returncode != 0:
         return None
     dirty, untracked = [], []
-    for line in proc.stdout.splitlines():
+    for line in _visible(proc.stdout.splitlines()):
         if line.startswith("?? "):
             untracked.append(line[3:])
         elif line.strip():
@@ -638,15 +820,35 @@ def reset_hard(clean_untracked: bool = False) -> dict:
             clean = _run("clean", "-fd")
             if clean is None or clean.returncode != 0:
                 return {"ok": False, "reason": _failure(clean, "git clean refused")}
+        _ensure_world_readable(_toplevel() or _root())
         new = _run("rev-parse", "--short", "HEAD")
         new_sha = new.stdout.strip() if new and new.returncode == 0 else None
         return {"ok": True, "new": new_sha}
 
 
-def _clear_dir(path: Path) -> bool:
-    """Empty a directory in place (never the mountpoint itself)."""
+def srv_nonempty() -> bool:
+    """True when the srv roots hold anything at all. Never raises.
+
+    Clone needs a compliant destination; when this is True without a
+    checkout, the Repo tab offers re-clone instead of letting clone
+    fail again.
+    """
+    try:
+        return _srv().exists() and any(_srv().iterdir())
+    except OSError:
+        return False
+
+
+def _clear_dir(path: Path, keep: frozenset[str] = frozenset()) -> bool:
+    """Empty a directory in place (never the mountpoint itself).
+
+    ``keep`` names entries that survive — the Overstate-owned
+    ``reactor/`` sibling and the token helper beside the salt tree.
+    """
     try:
         for entry in path.iterdir():
+            if entry.name in keep:
+                continue
             if entry.is_symlink() or entry.is_file():
                 entry.unlink()
             elif entry.is_dir():
@@ -658,26 +860,12 @@ def _clear_dir(path: Path) -> bool:
     return True
 
 
-def _reclone(url: str, branch: str | None, token: str | None = None) -> dict:
-    """Destroy the checkout and clone fresh. Lock-free; ``reclone_repo``
-    validates + serializes. Refuses only on unpushed commits — everything
-    else (dirty, untracked, corrupt ``.git``) is what re-clone is for."""
-    if branch is not None:
-        check = validate_branch(branch)
-        if not check["ok"] or check["branch"] is None:
-            return {"ok": False, "reason": "that branch name cannot be used"}
-        branch = check["branch"]
-    root = _root()
-    if _is_checkout():
-        ahead = _ahead_count()
-        if ahead is None:
-            return {"ok": False, "reason": "cannot reach the remote"}
-        if ahead > 0:
-            return {
-                "ok": False,
-                "reason": "unpushed commits would be destroyed — push first",
-            }
-    tmp = root.parent / (root.name + ".__reclone_tmp")
+def _stage_clone(url: str, branch: str | None, token: str | None) -> dict:
+    """Clone into a tmp sibling of the srv roots. Lock-free; callers
+    validate, serialize, and install. Failures clean up after
+    themselves; success returns ``{"ok": True, "tmp": <dir>}``."""
+    srv = _srv()
+    tmp = srv.parent / (srv.name + ".__clone_tmp")
     if tmp.exists() and not _clear_dir(tmp):
         return {"ok": False, "reason": "cannot clear a previous attempt"}
     if tmp.exists():
@@ -693,15 +881,73 @@ def _reclone(url: str, branch: str | None, token: str | None = None) -> dict:
         except OSError:
             pass
         return cloned
-    if root.exists() and not _clear_dir(root):
-        return {"ok": False, "reason": "cannot clear the old checkout"}
+    return {"ok": True, "tmp": tmp}
+
+
+def _move_staged(tmp: Path, dest: Path, keep_existing: frozenset[str]) -> bool:
+    """Install a staged clone into place. Entries whose name survives in
+    ``keep_existing`` stay untouched (the staged copy is dropped)."""
     try:
-        root.mkdir(parents=True, exist_ok=True)
+        dest.mkdir(parents=True, exist_ok=True)
         for entry in tmp.iterdir():
-            shutil.move(str(entry), str(root))
+            target = dest / entry.name
+            if entry.name in keep_existing and target.exists():
+                if entry.is_symlink() or entry.is_file():
+                    entry.unlink()
+                elif entry.is_dir():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
+                continue
+            shutil.move(str(entry), str(target))
         tmp.rmdir()
     except (OSError, shutil.Error):
+        return False
+    return True
+
+
+def _drop_staged(tmp: Path) -> None:
+    """Best-effort cleanup of a staged clone the caller abandons."""
+    _clear_dir(tmp)
+    try:
+        tmp.rmdir()
+    except OSError:
+        pass
+
+
+def _reclone(url: str, branch: str | None, token: str | None = None) -> dict:
+    """Destroy the checkout and clone fresh at the srv roots. Lock-free;
+    ``reclone_repo`` validates + serializes. Refuses only on unpushed
+    commits — everything else (dirty, untracked, corrupt ``.git``,
+    foreign files) is what re-clone is for. The ``reactor/`` sibling
+    and the token helper survive the swap."""
+    if branch is not None:
+        check = validate_branch(branch)
+        if not check["ok"] or check["branch"] is None:
+            return {"ok": False, "reason": "that branch name cannot be used"}
+        branch = check["branch"]
+    if _is_checkout():
+        ahead = _ahead_count()
+        if ahead is None:
+            return {"ok": False, "reason": "cannot reach the remote"}
+        if ahead > 0:
+            return {
+                "ok": False,
+                "reason": "unpushed commits would be destroyed — push first",
+            }
+    staged = _stage_clone(url, branch, token)
+    if not staged["ok"]:
+        return staged
+    srv = _srv()
+    keep = frozenset({"reactor", CREDENTIALS_NAME})
+    if srv.exists() and not _clear_dir(srv, keep=keep):
+        _drop_staged(staged["tmp"])
+        return {"ok": False, "reason": "cannot clear the old checkout"}
+    # A staged reactor/ never nests inside the preserved live one: the
+    # live tree (edited through the UI) wins and the staged copy drops.
+    if not _move_staged(staged["tmp"], srv, keep_existing=frozenset({"reactor"})):
         return {"ok": False, "reason": "cannot install the fresh clone"}
+    _ensure_world_readable(srv)
     return {"ok": True}
 
 

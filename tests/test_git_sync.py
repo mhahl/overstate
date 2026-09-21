@@ -365,6 +365,103 @@ def test_fetch_viewer_forbidden(checkout):
     assert c.get("/files/fetch").status_code == 405
 
 
+def _salt_stub_modules():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
+        body = json.loads(request.content or b"{}")
+        if body.get("client") == "runner" and body.get("fun") in (
+            "fileserver.update",
+            "saltutil.sync_all",
+        ):
+            return httpx.Response(200, json={"return": [True]})
+        return httpx.Response(200, json={"return": [{}]})
+
+    return SaltClient(
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler)
+    )
+
+
+def _behind_modules_checkout(tmp_path):
+    """A checkout behind its remote by a commit touching salt/_modules/."""
+    remote = tmp_path / "remote.git"
+    git("init", "--bare", "-q", str(remote), cwd=tmp_path)
+    seed = tmp_path / "seed"
+    git("clone", "-q", str(remote), str(seed), cwd=tmp_path)
+    git("config", "user.email", "t@t", cwd=seed)
+    git("config", "user.name", "t", cwd=seed)
+    git("checkout", "-qb", "main", cwd=seed)
+    commit_file(seed, "a.sls", "a:\n  test.nop: []\n")
+    git("push", "-qu", "origin", "main", cwd=seed)
+    mine = tmp_path / "mine"
+    git("clone", "-q", str(remote), str(mine), cwd=tmp_path)
+    git("checkout", "-q", "main", cwd=mine)
+    (seed / "salt" / "_modules").mkdir(parents=True)
+    commit_file(seed, "salt/_modules/m.py", "# custom module\n")
+    git("push", "-q", "origin", "main", cwd=seed)
+    subprocess.run(
+        ["git", "--git-dir", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"],
+        check=True,
+    )
+    return mine
+
+
+def test_sync_modules_route_publishes_and_audits(checkout):
+    c = app_for(checkout)
+    c.app.extensions["salt_client"] = _salt_stub_modules()
+    rv = c.post("/files/sync-modules", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"modules synced" in rv.data
+    assert "modules-sync" in _audit_actions(c)
+
+
+def test_sync_modules_failure_warns_not_fails(checkout):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
+        return httpx.Response(500, json={})
+
+    c = app_for(checkout)
+    c.app.extensions["salt_client"] = SaltClient(
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler)
+    )
+    rv = c.post("/files/sync-modules", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"Module sync failed" in rv.data
+    assert "modules-sync-failed" in _audit_actions(c)
+
+
+def test_sync_modules_viewer_forbidden_and_get_disallowed(checkout):
+    c = app_for(checkout)
+    c.post("/logout")
+    c.post("/login", data={"username": "vie", "password": "pw"})
+    assert c.post("/files/sync-modules").status_code == 403
+    c.post("/logout")
+    c.post("/login", data={"username": "admin", "password": "pw"})
+    assert c.get("/files/sync-modules").status_code == 405
+
+
+def test_sync_changed_pull_hints_modules(tmp_path):
+    c = app_for(_behind_modules_checkout(tmp_path))
+    c.app.extensions["salt_client"] = _salt_stub_modules()
+    rv = c.post("/files/sync", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"master fileserver refreshed" in rv.data
+    assert b"Custom Salt modules changed" in rv.data
+
+
+def test_sync_changed_pull_without_modules_hints_nothing(tmp_path):
+    c = app_for(_behind_checkout(tmp_path))
+    c.app.extensions["salt_client"] = _salt_stub_modules()
+    rv = c.post("/files/sync", follow_redirects=True)
+    assert rv.status_code == 200
+    assert b"Custom Salt modules changed" not in rv.data
+
+
 def test_git_failure_reason_never_carries_remote_secrets():
     from overstate_ui.git_sync import _failure
 
