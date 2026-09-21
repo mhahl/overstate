@@ -54,7 +54,16 @@ from .salt_client import SaltApiError
 bp = Blueprint("minions", __name__, url_prefix="/minions")
 
 PAGE_SIZES = (10, 25, 50)
-DETAIL_TABS = ["overview", "states", "jobs", "schedule", "pillar", "beacons", "mine"]
+DETAIL_TABS = [
+    "overview",
+    "states",
+    "jobs",
+    "schedule",
+    "pillar",
+    "beacons",
+    "mine",
+    "raw",
+]
 BEACON_ACTIONS = {
     "enable": "beacons.enable_beacon",
     "disable": "beacons.disable_beacon",
@@ -405,7 +414,6 @@ def states_refresh(mid: str):
             "grains": grains,
             "stored": _states_stored(mid),
             "live": _summarize_state_run(live) if live else None,
-            "live_raw": live,
             "live_note": note,
         },
         error=None,
@@ -546,6 +554,21 @@ def detail(mid: str):
                     data["beacon_pillar"] = set(entries) - set(
                         parse_beacon_list(local_value)
                     )
+        elif tab == "raw":
+            # Advanced diagnostic dump: the payloads the per-tab raw
+            # accordions used to show, in one panel. Stored states come
+            # from the DB; schedule and pillar cost one live call each —
+            # the price of opening this tab, never prefetched elsewhere.
+            data["stored"] = _states_stored(mid)
+            data["schedule"] = client.local(
+                mid,
+                "schedule.list",
+                tgt_type="list",
+                kwarg={"return_yaml": False},
+            )[0].get(mid, {})
+            data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[0].get(
+                mid
+            )
     except SaltApiError as exc:
         error = str(exc)
     sort = request.args.get("sort", "jid")

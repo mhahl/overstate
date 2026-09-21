@@ -7,7 +7,7 @@ from overstate_ui import create_app
 from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
-from overstate_ui.models import Minion, User
+from overstate_ui.models import Job, JobReturn, Minion, User
 from overstate_ui.salt_client import SaltClient
 from overstate_ui.seed_mock import seed as seed_mock
 
@@ -198,6 +198,72 @@ def test_operator_sees_action_buttons():
     schedules = client.get("/schedules/").data.decode()
     assert "Add schedule" in schedules
     assert "Delete" in schedules
+
+
+def _seed_stored_state(app, mid="web-01"):
+    with app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="202609200000000001",
+                fun="state.apply",
+                tgt=mid,
+                tgt_type="list",
+                user="op",
+                complete=True,
+            )
+        )
+        session.add(
+            JobReturn(
+                jid="202609200000000001",
+                minion_id=mid,
+                success=True,
+                payload={"mystate": {"result": True, "comment": "ok"}},
+            )
+        )
+        session.commit()
+
+
+def test_minion_raw_tab_is_own_panel():
+    """Raw JSON lives on the Raw tab, not inside per-tab accordions."""
+    app = _app()
+    _seed_stored_state(app)
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/minions/web-01", query_string={"tab": "raw"}).data.decode()
+    assert 'tab-active">Raw' in html
+    assert "Advanced diagnostic dump" in html
+    assert "mystate" in html  # stored payload, uncollapsed
+    assert "state.highstate" in html  # schedule payload, uncollapsed
+    assert "Raw JSON (advanced)" not in html
+    assert "Raw live data" not in html
+    assert "Raw stored return" not in html
+
+
+def test_minion_tabs_have_no_raw_accordions():
+    """States, schedule, and pillar tabs render without raw accordions."""
+    app = _app()
+    _seed_stored_state(app)
+    client = app.test_client()
+    _login(client, "op")
+    for tab in ("states", "schedule", "pillar"):
+        html = client.get("/minions/web-01", query_string={"tab": tab}).data.decode()
+        assert "Raw JSON (advanced)" not in html
+        assert "Raw live data" not in html
+        assert "Raw stored return" not in html
+    # ...while the pretty surfaces survive the move.
+    states = client.get("/minions/web-01", query_string={"tab": "states"}).data.decode()
+    assert "Last stored run" in states
+
+
+def test_minion_raw_tab_empty_states():
+    """A minion with nothing stored gets guidance, not blank JSON."""
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/minions/ok-01", query_string={"tab": "raw"}).data.decode()
+    assert "No stored state run" in html
+    assert "No pillar data" in html
 
 
 def test_conformity_badges_have_accessible_labels_without_semantic_change():

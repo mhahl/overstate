@@ -500,7 +500,16 @@ def test_minion_detail_rejects_glob(client):
 
 
 def test_minion_detail_tabs(client):
-    for tab in ("overview", "states", "jobs", "schedule", "pillar", "beacons"):
+    for tab in (
+        "overview",
+        "states",
+        "jobs",
+        "schedule",
+        "pillar",
+        "beacons",
+        "mine",
+        "raw",
+    ):
         rv = client.get(f"/minions/web-01?tab={tab}")
         assert rv.status_code == 200, tab
     assert "osfinger" in client.get("/minions/web-01").data.decode()
@@ -545,12 +554,15 @@ def test_schedule_renders_table_and_pillar_highlighted():
     assert "nightly" in html and "state.sls" in html
     assert "every 5 minutes" in html
     assert "scheduler enabled" in html
-    assert "Raw JSON (advanced)" in html
+    assert "Raw JSON (advanced)" not in html  # raw lives on the Raw tab now
 
     html = c.get("/minions/web-01?tab=pillar").data.decode()
     assert "codehltable" in html  # highlighted, not a plain blob
     assert "s3cr3t" in html
-    assert "Raw JSON (advanced)" in html
+    assert "Raw JSON (advanced)" not in html
+
+    html = c.get("/minions/web-01?tab=raw").data.decode()
+    assert "nightly" in html and "s3cr3t" in html  # both payloads, uncollapsed
 
 
 def test_schedule_pillar_empty_states_link_docs_no_raw(client):

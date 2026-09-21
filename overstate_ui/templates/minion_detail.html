@@ -205,13 +205,11 @@
 {% if data.live %}
 <p class="font-medium text-sm">Live description <span class="badge badge-sm badge-info">not stored</span></p>
 {{ state_chip_rows(data.live) }}
-<details class="collapse collapse-arrow border border-base-300"><summary class="collapse-title text-sm font-medium">Raw live data</summary><div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.live_raw | tojson(indent=1) }}</code></pre></div></details>
 {% endif %}
 {% if data.stored %}
 <p class="font-medium text-sm">Last stored run · <span class="font-mono">{{ data.stored.fun }}</span> in <a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=data.stored.jid) }}">{{ data.stored.jid }}</a> {% if data.stored.success %}<span class="badge badge-sm badge-success">ok</span>{% else %}<span class="badge badge-sm badge-error">failed</span>{% endif %}</p>
 {% if data.stored.states %}
 {{ state_chip_rows(data.stored.states) }}
-<details class="collapse collapse-arrow border border-base-300"><summary class="collapse-title text-sm font-medium">Raw stored return</summary><div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.stored.raw | tojson(indent=1) }}</code></pre></div></details>
 {% else %}
 <p class="text-sm opacity-70">Stored return has no per-state data.</p>
 {% endif %}
@@ -271,9 +269,7 @@
 </tbody></table>
 </div>
 {% endif %}
-{% if data.schedule is mapping %}
-<details class="collapse collapse-arrow border border-base-300"><summary class="collapse-title text-sm font-medium">Raw JSON (advanced)</summary><div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.schedule | tojson(indent=1) }}</code></pre></div></details>
-{% elif data.schedule is string %}
+{% if data.schedule is string %}
 <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ data.schedule }}</code></pre>
 {% endif %}
 </div>
@@ -284,7 +280,20 @@
   <a class="link text-xs" href="https://docs.saltproject.io/en/3006/topics/pillar/index.html" target="_blank" rel="noopener">Salt pillar documentation</a>
 </div>
 {{ data.pillar_html | safe }}
-<details class="collapse collapse-arrow border border-base-300"><summary class="collapse-title text-sm font-medium">Raw JSON (advanced)</summary><div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.pillar | tojson(indent=1) }}</code></pre></div></details>
+</div>
+{% elif tab == "raw" %}
+<div class="p-4 flex flex-col gap-4">
+<p class="text-xs opacity-70">Advanced diagnostic dump: the exact payloads behind the States, Schedule, and Pillar tabs.</p>
+<p class="font-medium text-sm">States — last stored return{% if data.stored %} · <span class="font-mono">{{ data.stored.fun }}</span> in <a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=data.stored.jid) }}">{{ data.stored.jid }}</a>{% endif %}</p>
+{% if data.stored %}<pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.stored.raw | tojson(indent=1) }}</code></pre>
+{% else %}<p class="text-sm opacity-70">No stored state run for {{ mid }}.</p>{% endif %}
+<p class="font-medium text-sm">Schedule</p>
+{% if data.schedule is mapping %}<pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.schedule | tojson(indent=1) }}</code></pre>
+{% elif data.schedule is string %}<pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.schedule }}</code></pre>
+{% else %}<p class="text-sm opacity-70">No schedule data for {{ mid }}.</p>{% endif %}
+<p class="font-medium text-sm">Pillar</p>
+{% if data.pillar %}<pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.pillar | tojson(indent=1) }}</code></pre>
+{% else %}<p class="text-sm opacity-70">No pillar data for {{ mid }}.</p>{% endif %}
 </div>
 {% else %}
 <div class="p-4"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.get(tab, data.get("highstate", data.get("schedule", data.get("pillar", "No data")))) | tojson(indent=1) }}</code></pre></div>
