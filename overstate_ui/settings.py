@@ -95,7 +95,7 @@ SECTIONS = [
     },
     {
         "title": "Single sign-on (OIDC)",
-        "desc": "Provider connection and role mapping. Values set here override the environment; clearing a field defers back to it. The client secret may be stored here or via OIDC_CLIENT_SECRET.",
+        "desc": "Provider connection and role mapping. Values here override the environment; clearing defers back to it. The client secret may live here or in OIDC_CLIENT_SECRET.",
         "keys": [
             "oidc_issuer",
             "oidc_client_id",
@@ -211,7 +211,7 @@ def rotation_verify():
     candidate = request.form.get("password", "")
     user = current_app.config["SALT_EAUTH_USER"]
     if not candidate:
-        flash("Paste the candidate password first — nothing was tried.", "error")
+        flash("Paste the candidate password first.", "error")
         return redirect(url_for("settings.index"))
     client = SaltClient(
         current_app.config["SALT_API_URL"],
@@ -226,7 +226,7 @@ def rotation_verify():
         flash(f"salt-api refused the candidate ({exc}). Nothing changed.", "error")
         log_event(current_user.username, "rotation-verify:failed")
     else:
-        flash(f"salt-api accepted a login as {user}.", "success")
+        flash(f"Login as {user} works.", "success")
         log_event(current_user.username, "rotation-verify:ok")
     return redirect(url_for("settings.index"))
 

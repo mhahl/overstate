@@ -487,7 +487,7 @@ def add():
         or not EVENT_RE.match(event)
         or not SLS_RE.match(sls)
     ):
-        flash("An event pattern and one SLS reference are required.", "error")
+        flash("Event pattern and SLS reference required.", "error")
         return redirect(url_for("reactor.index"))
     # Fan out to every pod: publish buses and reactor systems are
     # per-master, so a single-pod add would fire only for minions on
@@ -512,7 +512,7 @@ def add():
         return redirect(url_for("reactor.index"))
     for name in failed:
         flash(
-            f"{name} unreachable: mapping may be partial — re-run to converge.",
+            f"{name} unreachable: mapping may be partial. Re-run to converge.",
             "warning",
         )
     if refused:
@@ -559,7 +559,7 @@ def delete():
         return redirect(url_for("reactor.index"))
     for name in failed:
         flash(
-            f"{name} unreachable: mapping may be partial — re-run to converge.",
+            f"{name} unreachable: mapping may be partial. Re-run to converge.",
             "warning",
         )
     if failed:
@@ -634,7 +634,7 @@ def add_review():
             files=files,
             pick=sls if files and sls in ["salt://" + f for f in files] else "",
             custom="" if files and sls in ["salt://" + f for f in files] else sls,
-            error="Pick an SLS file or enter one SLS reference (max 512 chars).",
+            error="Pick an SLS file or enter one reference (max 512).",
         )
     clients = pod_clients(get_salt())
     entries, _raw, failed, _divergent = _live_mappings(clients)

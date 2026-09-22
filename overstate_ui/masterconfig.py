@@ -209,12 +209,12 @@ def checklist_refresh():
 
         out = mastercheck_now()
         write_mastercheck_cache(out)
-        flash("No worker answered — checked inline.", "info")
+        flash("No worker answered. Checked inline.", "info")
         log_event(current_user.username, "mastercheck:inline")
         return render_template(
             "masterconfig.html", checklist=out, **_index_context(K8sClient())
         )
-    flash("Checklist queued — refresh the page for results.", "info")
+    flash("Checklist queued. Refresh for results.", "info")
     log_event(current_user.username, "mastercheck:queued")
     return redirect(url_for("masterconfig.index"))
 
@@ -496,6 +496,6 @@ def revert():
         )
         log_event(current_user.username, f"masterconfig-revert:{new_rv}:timeout")
         return redirect(url_for("masterconfig.index"))
-    flash(f"Reverted and restarted healthy (revision {new_rv}).", "success")
+    flash(f"Reverted to revision {new_rv}. Masters restarted healthy.", "success")
     log_event(current_user.username, f"masterconfig-revert:{new_rv}")
     return redirect(url_for("masterconfig.index"))

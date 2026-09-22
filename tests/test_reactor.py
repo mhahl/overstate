@@ -145,7 +145,7 @@ def test_add_rejects_bad_event(tmp_path):
         data={"event": "salt/key; rm -rf /", "sls": "salt://reactor/key.sls"},
         follow_redirects=True,
     )
-    assert "event pattern and one SLS" in rv.data.decode()
+    assert "Event pattern and SLS reference required" in rv.data.decode()
     assert not [c for c in calls if c[0] == "reactor.add"]
 
 
@@ -206,7 +206,9 @@ def test_not_running_master_shows_empty_state(tmp_path):
     assert "Reactor not configured" in html
     assert "Salt reactor docs" in html
     assert "Reactor disabled" in html
-    assert "Add reactor" not in html
+    # Wizard entry stays available when down: the review warns, and
+    # admins can bootstrap via the master.conf persistence offer.
+    assert "Add reactor" in html
     assert "Traceback" not in html
     export = client.get("/reactor/export").data.decode()
     assert "no mapping to export" in export
@@ -503,7 +505,7 @@ def test_index_flags_divergent_mapping(tmp_path, monkeypatch):
     client = app.test_client()
     _login(client, "op")
     html = client.get("/reactor/").data.decode()
-    assert "On some pods only" in html
+    assert "Only on some pods" in html
     assert "salt/key" in html
 
 
@@ -632,7 +634,7 @@ def test_wizard_review_custom_unbrowsable_warns(tmp_path):
         "/reactor/add/review",
         data={"event": "salt/key", "sls": "/elsewhere/x.sls"},
     ).data.decode()
-    assert "not resolve under the reactor roots" in html
+    assert "outside the reactor roots" in html
 
 
 # -- Wizard persistence: stanza merge -------------------------------------

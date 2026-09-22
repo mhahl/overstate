@@ -307,7 +307,7 @@ def refresh():
         if status == "ready":
             flash(f"Inventory refreshed: {value['count']} minions.", "success")
         elif status == "pending":
-            flash("Refresh queued in the background — reload to see it.", "info")
+            flash("Refresh queued. Reload to see it.", "info")
         else:
             flash(f"refresh failed in the background: {value}", "error")
     return redirect(url_for("minions.index"))
@@ -399,7 +399,7 @@ def states_refresh(mid: str):
         note = f"Live refresh unavailable: salt-api error: {exc}"
     if live:
         log_event(current_user.username, f"states-refresh:{mid}")
-        flash(f"{mid}: live description loaded ({len(live)} states).", "success")
+        flash(f"{mid}: {len(live)} live states loaded.", "success")
     else:
         note = note or "Live refresh returned nothing — showing stored data."
         flash(note, "warning")

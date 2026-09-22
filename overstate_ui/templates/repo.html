@@ -125,7 +125,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="confirm" value="1">
   <label class="label text-sm cursor-pointer gap-1"><input type="checkbox" name="clean" value="1" class="checkbox checkbox-sm"> also delete untracked files{% if preview.untracked %} ({{ preview.untracked|join(", ") }}){% endif %}</label>
-  <button class="btn btn-sm btn-error" data-confirm="Abandon these changes for good?">Confirm reset</button>
+  <button class="btn btn-sm btn-error" data-confirm="Abandon these changes?">Confirm reset</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
 </form>
 {% else %}

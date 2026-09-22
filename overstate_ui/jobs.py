@@ -388,9 +388,9 @@ def run():
         return redirect(_new_url())
     if via == "ssh" and asynchronous:
         asynchronous = False
-        flash("salt-ssh runs synchronously, in sync mode only.", "info")
+        flash("salt-ssh runs in sync mode only.", "info")
     if not FUN_RE.match(fun) or fun not in ALLOWED_FUNS:
-        flash("That function cannot be fired from the run form.", "error")
+        flash("That function cannot run here.", "error")
         return redirect(_new_url())
     if fun == "schedule.add":
         for arg in args:
@@ -400,7 +400,7 @@ def run():
                 and name == "function"
                 and (not FUN_RE.match(value) or value not in ALLOWED_FUNS)
             ):
-                flash("That scheduled function cannot be fired from here.", "error")
+                flash("That function cannot run here.", "error")
                 return redirect(_new_url())
     if fun in CONFIRM_FUNS and not is_test_mode(fun, args):
         batch_preview = parse_batch_fields(request.form) or {}
@@ -413,7 +413,7 @@ def run():
         preview_ok = matched is not None or request.form.get("no_preview_ok") == "on"
         if not (confirmed and typed_ok and preview_ok):
             if confirmed and not typed_ok:
-                flash("Type the target exactly to confirm this run.", "error")
+                flash("Type the target exactly to confirm.", "error")
             elif confirmed:
                 flash("Confirm firing without a match preview.", "error")
             return render_template(
@@ -459,7 +459,7 @@ def run():
         except IntegrityError:
             # The job already ran: keep its JID, drop only the duplicate save.
             session.rollback()
-            flash("Saved job name already exists; the job still ran.", "warning")
+            flash("Name taken. The job still ran.", "warning")
     return redirect(url_for("jobs.detail", jid=jid))
 
 
@@ -569,7 +569,7 @@ def orchestrate_run():
         else:
             flash("Orchestration finished synchronously.", "success")
     else:
-        flash("Orchestration queued. Watch this page.", "success")
+        flash("Orchestration queued.", "success")
     return redirect(url_for("jobs.detail", jid=jid))
 
 

@@ -124,7 +124,7 @@ def test_schedule_add_rejects_disallowed_function():
         },
         follow_redirects=True,
     )
-    assert "cannot be scheduled from here" in rv.data.decode()
+    assert "cannot run here" in rv.data.decode()
 
 
 def test_schedule_add_accepts_allowed_function():

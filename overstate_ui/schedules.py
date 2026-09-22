@@ -126,10 +126,10 @@ def add(mid: str):
         value = 0
     enabled = request.form.get("enabled", "") == "on"
     if not name or not fun or unit not in SCHEDULE_UNITS or value < 1:
-        flash("Name, function, and a positive interval are required.", "error")
+        flash("Name, function, and positive interval required.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     if not FUN_RE.match(fun) or fun not in ALLOWED_FUNS:
-        flash("That function cannot be scheduled from here.", "error")
+        flash("That function cannot run here.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     client = get_salt()
     try:

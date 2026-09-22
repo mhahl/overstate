@@ -441,11 +441,7 @@ def launch(
 def _warn_missed(missed: list[str], fun: str, jid: str) -> None:
     """Name unreachable pods loudly: partial results are never silent."""
     for name in missed:
-        flash(
-            f"{name} unreachable: published on the other master only, "
-            "results may be partial.",
-            "warning",
-        )
+        flash(f"{name} unreachable: results may be partial.", "warning")
         log_event(current_user.username, f"run-partial:{fun}:{name}", jid=jid)
 
 
@@ -483,7 +479,7 @@ def run_batched(
         flash("Batch mode supports list, glob, and group targets.", "error")
         return redirect(url_for("jobs.new"))
     if not roster:
-        flash("Batch roster is empty: no known minions match.", "error")
+        flash("No known minions match.", "error")
         return redirect(url_for("jobs.new"))
     from .tasks import split_roster
 
@@ -542,5 +538,5 @@ def run_batched(
             "warning",
         )
     else:
-        flash(f"Batch queued: {len(waves)} waves. Watch this page.", "success")
+        flash(f"Batch queued: {len(waves)} waves.", "success")
     return redirect(url_for("jobs.detail", jid=f"batch-{group}"))

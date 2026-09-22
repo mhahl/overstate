@@ -361,18 +361,13 @@ def sync():
                 log_event(current_user.username, "fileserver-update")
             else:
                 flash(
-                    f"Synced {result['old']} → {result['new']}, but the "
-                    f"master refresh failed ({err}) — applies may lag "
-                    "until the master updates.",
+                    f"Synced {result['old']} → {result['new']}. "
+                    f"Master refresh failed ({err}); applies may lag.",
                     "warning",
                 )
                 log_event(current_user.username, f"fileserver-update-failed:{err}")
             if paths_changed(result["old"], result["new"], "_modules"):
-                flash(
-                    "Custom Salt modules changed — run Sync modules so "
-                    "minions pick them up.",
-                    "info",
-                )
+                flash("Custom modules changed. Run Sync modules.", "info")
         else:
             flash(f"Already up to date at {result['new']}.", "info")
     else:
@@ -411,11 +406,11 @@ def fetch():
         behind = git_status().get("behind")
         if behind:
             flash(
-                f"Fetched: {behind} commit(s) behind — Sync to pull.",
+                f"Fetched: {behind} behind. Sync to pull.",
                 "info",
             )
         else:
-            flash("Fetched: up to date with the remote.", "info")
+            flash("Already up to date.", "info")
         log_event(current_user.username, "git-fetch")
     else:
         flash(f"Check failed: {result['reason']}. Nothing changed.", "error")
@@ -508,8 +503,8 @@ def save():
     ):
         short = head[:7] if head else "unknown"
         flash(
-            f"That file changed underneath you (now at {short}). Reload the "
-            "edit page and re-apply your change. Nothing was written.",
+            f"That file changed underneath you (now {short}). Reload and "
+            "re-apply. Nothing was written.",
             "error",
         )
         log_event(current_user.username, f"file-save-refused:{rel}:stale")
@@ -531,7 +526,7 @@ def save():
     if not result["ok"]:
         flash(
             f"Saved on disk but not committed ({result['reason']}). "
-            "Resolve it in git; the file itself is updated.",
+            "Fix it in git.",
             "error",
         )
         log_event(
@@ -540,11 +535,11 @@ def save():
         return redirect(url_for("files.view", path=rel))
     err = _refresh_fileserver()
     if err is None:
-        flash(f"Saved {rel} — committed as {result['new']}.", "success")
+        flash(f"Saved {rel} as {result['new']}.", "success")
     else:
         flash(
-            f"Saved {rel} — committed as {result['new']}, but the master "
-            f"refresh failed ({err}); applies may lag until the master updates.",
+            f"Saved {rel} as {result['new']}. "
+            f"Master refresh failed ({err}); applies may lag.",
             "warning",
         )
     advisory = yaml_advisory(target, data)
@@ -595,8 +590,7 @@ def _note_refreshed(verb, sha):
         log_event(current_user.username, "fileserver-update")
     else:
         flash(
-            f"{verb} at {sha}, but the master refresh failed ({err}) — "
-            "applies may lag until the master updates.",
+            f"{verb} at {sha}. Master refresh failed ({err}); applies may lag.",
             "warning",
         )
         log_event(current_user.username, f"fileserver-update-failed:{err}")

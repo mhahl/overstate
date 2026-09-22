@@ -121,7 +121,7 @@ def rotation_regenerate():
         flash("Rotation needs the cache.", "error")
         return redirect(url_for("users.rotation"))
     store.set(_rotation_key(), secrets.token_urlsafe(18), ex=ROTATION_TTL)
-    flash("Generated a new password; the previous one was discarded.", "info")
+    flash("New password generated. Previous discarded.", "info")
     return redirect(url_for("users.rotation"))
 
 

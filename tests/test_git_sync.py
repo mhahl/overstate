@@ -335,7 +335,7 @@ def test_sync_changed_pull_refresh_failure_warns_not_fails(tmp_path):
     rv = c.post("/files/sync", follow_redirects=True)
     assert rv.status_code == 200
     assert b"Synced" in rv.data  # the pull landed
-    assert b"master refresh failed" in rv.data  # refresh advisory only
+    assert b"Master refresh failed" in rv.data  # refresh advisory only
     actions = _audit_actions(c)
     assert any(a.startswith("fileserver-update-failed:") for a in actions)
 
@@ -345,7 +345,7 @@ def test_fetch_reports_behind_without_pulling(tmp_path):
     c = app_for(mine)
     rv = c.post("/files/fetch", follow_redirects=True)
     assert rv.status_code == 200
-    assert b"1 commit(s) behind" in rv.data
+    assert b"1 behind. Sync to pull." in rv.data
     assert not (mine / "b.sls").is_file()  # fetch touches no files
     assert "git-fetch" in _audit_actions(c)
 
@@ -354,7 +354,7 @@ def test_fetch_up_to_date(checkout):
     c = app_for(checkout)
     rv = c.post("/files/fetch", follow_redirects=True)
     assert rv.status_code == 200
-    assert b"up to date with the remote" in rv.data
+    assert b"Already up to date." in rv.data
 
 
 def test_fetch_viewer_forbidden(checkout):
@@ -451,7 +451,7 @@ def test_sync_changed_pull_hints_modules(tmp_path):
     rv = c.post("/files/sync", follow_redirects=True)
     assert rv.status_code == 200
     assert b"master fileserver refreshed" in rv.data
-    assert b"Custom Salt modules changed" in rv.data
+    assert b"Custom modules changed" in rv.data
 
 
 def test_sync_changed_pull_without_modules_hints_nothing(tmp_path):
@@ -459,7 +459,7 @@ def test_sync_changed_pull_without_modules_hints_nothing(tmp_path):
     c.app.extensions["salt_client"] = _salt_stub_modules()
     rv = c.post("/files/sync", follow_redirects=True)
     assert rv.status_code == 200
-    assert b"Custom Salt modules changed" not in rv.data
+    assert b"Custom modules changed" not in rv.data
 
 
 def test_git_failure_reason_never_carries_remote_secrets():

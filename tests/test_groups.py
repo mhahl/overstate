@@ -296,7 +296,7 @@ def test_viewer_sees_readonly_hint(app):
     client = app.test_client()
     client.post("/login", data={"username": "v", "password": "pw"})
     html = client.get("/groups/").data.decode()
-    assert "Only operators can create or change groups" in html
+    assert "Operators only" in html
     assert 'id="group-modal"' not in html
 
 

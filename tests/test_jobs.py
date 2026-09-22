@@ -87,7 +87,7 @@ def test_run_rejects_disallowed_function(client):
         data={"tgt": "*", "tgt_type": "glob", "fun": "cmd.run", "args": "id"},
         follow_redirects=True,
     )
-    assert "cannot be fired from the run form" in rv.data.decode()
+    assert "cannot run here" in rv.data.decode()
     with client.app.app_context():
         assert get_session().query(Job).filter_by(fun="cmd.run").count() == 0
 
@@ -103,7 +103,7 @@ def test_run_rejects_scheduled_smuggled_function(client):
         },
         follow_redirects=True,
     )
-    assert "cannot be fired from here" in rv.data.decode()
+    assert "cannot run here" in rv.data.decode()
     with client.app.app_context():
         assert get_session().query(Job).filter_by(fun="schedule.add").count() == 0
 
@@ -661,7 +661,7 @@ def test_duplicate_save_as_still_runs(client):
     jid = rv.headers["Location"].rsplit("/", 1)[1]
     assert len(jid) == 20 and jid.isdigit()  # app-side shared JID (D12)
     html = client.get(rv.headers["Location"]).data.decode()
-    assert "Saved job name already exists; the job still ran." in html
+    assert "Name taken. The job still ran." in html
 
 
 def test_stream_counts_live_cache_minions(client, monkeypatch):

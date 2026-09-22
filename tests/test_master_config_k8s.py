@@ -660,7 +660,7 @@ def test_revert_last_restores_snapshot_and_restarts(m4):
     _save(client)
     assert fake.live["data"]["master.conf"] == "# changed\n"
     rv = client.post("/settings/master/revert", follow_redirects=True)
-    assert b"Reverted and restarted healthy" in rv.data
+    assert b"Reverted to revision" in rv.data
     assert fake.live["data"]["master.conf"] == "# base\n"
     assert fake.stamps == ["salt-master"]
     revisions = _json.loads(fake.history["data"]["history.json"])

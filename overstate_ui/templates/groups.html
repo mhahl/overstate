@@ -4,9 +4,9 @@
 <div class="flex flex-wrap items-end gap-3 mb-5">
   <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Groups <span class="badge badge-neutral align-middle">{{ total }}</span></h1>
-    <p class="text-sm opacity-70 mt-0.5">Saved member lists for the group job target. Unknown IDs drop out when you fire.</p>
+    <p class="text-sm opacity-70 mt-0.5">Saved member lists for group targets. Unknown IDs drop out on fire.</p>
     {% if current_user.role not in ["operator", "admin"] %}
-    <p class="text-sm opacity-70 mt-0.5">Only operators can create or change groups; saved groups appear as the “group” target on the <a class="link" href="{{ url_for('jobs.new') }}">New job</a> form.</p>
+    <p class="text-sm opacity-70 mt-0.5">Operators only. Saved groups appear as the “group” target on the <a class="link" href="{{ url_for('jobs.new') }}">New job</a> form.</p>
     {% endif %}
   </div>
   {% if current_user.role in ["operator", "admin"] %}
@@ -38,7 +38,7 @@
           {% if current_user.role in ["operator", "admin"] %}
           <td class="text-right whitespace-nowrap">
             <button type="button" class="btn btn-xs" onclick='openGroupModal({{ g.id }}, {{ g.name|tojson }}, {{ g.members|tojson }})'>Edit</button>
-            <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline" data-confirm="Delete group '{{ g.name }}' ({{ g.members|length }} members)? This cannot be undone.">
+            <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline" data-confirm="Delete group '{{ g.name }}' ({{ g.members|length }} members)?">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-xs btn-error btn-outline">Delete</button>
             </form>

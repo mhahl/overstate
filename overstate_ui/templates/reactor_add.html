@@ -27,7 +27,7 @@
           {% for r in recents %}<option value="{{ r }}">{% endfor %}
         </optgroup>{% endif %}
       </datalist>
-      <span class="text-xs opacity-70">Pick a common pattern or type your own. Globs like <code class="font-mono">* / ? [ ]</code> allowed.</span>
+      <span class="text-xs opacity-70">Pick a pattern or type your own. Globs (<code class="font-mono">* ? [ ]</code>) allowed.</span>
     </label>
     <div class="card-actions justify-end">
       <button class="btn btn-primary">Continue</button>
@@ -70,10 +70,10 @@
       <dt class="opacity-70">SLS</dt><dd class="font-mono">{{ sls }}</dd>
       <dt class="opacity-70">Fan-out</dt><dd>{{ pod_count }} master pod{{ "s" if pod_count != 1 }}</dd>
     </dl>
-    {% if not browsable %}<div class="alert alert-warning" role="status"><span>That SLS does not resolve under the reactor roots: it will list but not link to a readable body.</span></div>{% endif %}
+    {% if not browsable %}<div class="alert alert-warning" role="status"><span>That SLS is outside the reactor roots: it lists without a readable body.</span></div>{% endif %}
     <div class="alert alert-warning" role="status"><span>Reactor code runs with master privileges and fires on matching events fleet-wide. Confirm the pattern matches only what you intend.</span></div>
-    {% if unreachable %}<div class="alert alert-error" role="alert"><span>No master reachable — confirming will change nothing.</span></div>{% endif %}
-    {% if down %}<div class="alert alert-info" role="status"><span>The reactor system is not running: this mapping will confirm but will not list until a reactor runs. Record it in <code class="font-mono">master.conf</code> and restart to make it durable.</span></div>{% endif %}
+    {% if unreachable %}<div class="alert alert-error" role="alert"><span>No master reachable. Confirming changes nothing.</span></div>{% endif %}
+    {% if down %}<div class="alert alert-info" role="status"><span>Reactor system is not running: this confirms but will not list until a reactor runs. Record it in <code class="font-mono">master.conf</code> and restart.</span></div>{% endif %}
   </div>
 </div>
 <form method="post" action="{{ url_for('reactor.add') }}" class="card bg-base-100 border border-base-300 shadow-sm">

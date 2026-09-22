@@ -65,7 +65,7 @@
 {% if current_user.role in ["operator", "admin"] %}<td class="text-right"><span class="join join-horizontal">
   <form method="post" action="{{ url_for('schedules.act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
   <form method="post" action="{{ url_for('schedules.act', mid=mid, action='disable') }}" data-confirm="Disable job '{{ name }}' on {{ mid }}? Scheduled runs pause; the job stays listed."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
-  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='delete') }}" data-confirm="Delete job '{{ name }}' on {{ mid }}? Scheduled runs stop."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
+  <form method="post" action="{{ url_for('schedules.act', mid=mid, action='delete') }}" data-confirm="Delete job '{{ name }}' on {{ mid }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
 </span></td>{% endif %}</tr>
 {% endfor %}
 </tbody></table>
@@ -76,7 +76,7 @@
 {% else %}
 <div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
   <p class="font-medium">{% if mid %}No schedules on {{ mid }}{% else %}No accepted minions{% endif %}</p>
-  <p class="text-sm opacity-70">New scheduler entries show up here.</p>
+  <p class="text-sm opacity-70">New scheduler entries appear here.</p>
 </div></div>
 {% endif %}
 {% endblock %}

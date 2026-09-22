@@ -340,7 +340,7 @@ def test_save_round_trip_commits_single_file(edit_checkout, tmp_path):
     assert _commits(tmp_path) == before + 1  # exactly one local commit
     assert _committed_files(tmp_path) == ["web.sls"]  # touching only that file
     shown = edit_checkout.get(rv.headers["Location"]).data.decode()
-    assert "committed as" in shown  # save flash names the commit, not a sync
+    assert "Saved web.sls as " in shown  # save flash names the commit, not a sync
     with edit_checkout.app.app_context():
         actions = [row.action for row in get_session().query(AuditEvent).all()]
     assert any(a.startswith("file-save:web.sls:") for a in actions)
@@ -437,7 +437,7 @@ def test_save_invalid_yaml_warns_but_saves(edit_checkout, tmp_path):
         data={"path": "web.sls", "content": "key: [unclosed\n", **fields},
         follow_redirects=True,
     )
-    assert b"committed as" in rv.data
+    assert b"Saved web.sls as " in rv.data
     assert b"does not parse" in rv.data
     assert (tmp_path / "web.sls").read_text() == "key: [unclosed\n"
 
@@ -453,7 +453,7 @@ def test_save_valid_yaml_has_no_warning(edit_checkout):
         },
         follow_redirects=True,
     )
-    assert b"committed as" in rv.data
+    assert b"Saved web.sls as " in rv.data
     assert b"does not parse" not in rv.data
 
 

@@ -4,7 +4,7 @@
 <div class="flex flex-wrap items-end gap-3 mb-5">
   <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Reactor export</h1>
-    <p class="text-sm opacity-70 mt-0.5">The live mapping as a <code>master.conf</code> block. Paste it into the <code>reactor:</code> stanza through the Master Config page, then restart — the app never writes the repo.</p>
+    <p class="text-sm opacity-70 mt-0.5">Live mapping as a <code>master.conf</code> block. Paste into the <code>reactor:</code> stanza, save, restart.</p>
   </div>
   {% if body %}<a class="btn btn-sm btn-outline" href="{{ url_for('reactor.export', download='1') }}">Download reactor.conf</a>{% endif %}
 </div>

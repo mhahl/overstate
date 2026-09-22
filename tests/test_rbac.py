@@ -261,7 +261,7 @@ def test_rotation_verify_ok_uses_candidate_and_stores_nothing(client, monkeypatc
         data={"password": "candidate-pw"},
         follow_redirects=True,
     )
-    assert b"salt-api accepted a login" in rv.data
+    assert b"Login as" in rv.data
     assert seen == {"username": "overstate", "password": "candidate-pw"}
     assert _rotation_settings_keys(client) == []
     assert "rotation-verify:ok" in _rotation_audit_actions(client)
@@ -286,7 +286,7 @@ def test_rotation_empty_candidate_tries_nothing(client, monkeypatch):
     rv = client.post(
         "/settings/rotation/verify", data={"password": ""}, follow_redirects=True
     )
-    assert b"nothing was tried" in rv.data
+    assert b"Paste the candidate password first." in rv.data
     assert seen == {}
     assert "rotation-verify:ok" not in _rotation_audit_actions(client)
 

@@ -20,7 +20,7 @@
   <span class="badge badge-outline gap-1 font-mono">
     {{ w.sls }}
     {% if current_user.role in ["operator", "admin"] %}
-    <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" class="inline-flex" data-confirm="Stop watching '{{ w.sls }}'? Conformity tracking stops for it.">
+    <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" class="inline-flex" data-confirm="Stop watching '{{ w.sls }}'?">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-xs btn-ghost opacity-60 hover:opacity-100" aria-label="Stop watching {{ w.sls }}">×</button>
     </form>
