@@ -520,3 +520,223 @@ def test_delete_partial_when_pod_down(tmp_path, monkeypatch):
     html = rv.data.decode()
     assert "reactor deleted on 1 of 2 pod(s)" in html
     assert "reactor-delete:salt/auth:partial" in _actions(app)
+
+
+# -- Wizard: stepped event -> SLS -> review -------------------------------
+
+
+def _seed_audit(app, *actions):
+    with app.app_context():
+        session = get_session()
+        for action in actions:
+            session.add(AuditEvent(user="op", action=action))
+        session.commit()
+
+
+def test_wizard_step1_shows_presets_and_recents(tmp_path):
+    app = _app(tmp_path)
+    _seed_audit(app, "reactor-add:salt/custom-thing", "reactor-add:salt/auth")
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/reactor/add").data.decode()
+    assert "Add reactor" in html
+    assert "salt/minion/" in html  # preset from TAG_CHOICES
+    assert "salt/custom-thing" in html  # recent, non-preset
+    assert html.count("salt/auth") >= 1  # preset still listed once
+
+
+def test_wizard_viewer_forbidden(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "vwr")
+    assert client.get("/reactor/add").status_code == 403
+    assert client.post("/reactor/add/step2", data={"event": "x"}).status_code == 403
+    assert (
+        client.post("/reactor/add/review", data={"event": "x", "sls": "y"}).status_code
+        == 403
+    )
+
+
+def test_wizard_step2_rejects_bad_event(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post("/reactor/add/step2", data={"event": "bad; rm -rf"})
+    html = rv.data.decode()
+    assert "no spaces" in html
+    assert "bad; rm -rf" in html  # input preserved
+
+
+def test_wizard_step2_lists_files(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "op")
+    html = client.post("/reactor/add/step2", data={"event": "salt/key"}).data.decode()
+    assert "salt://greet.sls" in html
+    assert "SLS file" in html
+
+
+def test_wizard_review_shows_blast_radius(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "op")
+    html = client.post(
+        "/reactor/add/review",
+        data={"event": "salt/key", "sls": "salt://greet.sls"},
+    ).data.decode()
+    assert "Fan-out" in html
+    assert "master privileges" in html
+    assert "Confirm and add" in html
+    assert "Also record" not in html  # operator sees no persist offer
+
+
+def test_wizard_review_admin_gets_persist_offer(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "admin")
+    html = client.post(
+        "/reactor/add/review",
+        data={"event": "salt/key", "sls": "salt://greet.sls"},
+    ).data.decode()
+    assert "Also record" in html
+    assert "master.conf" in html
+
+
+def test_wizard_review_rejects_bad_sls(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post("/reactor/add/review", data={"event": "salt/key", "sls": ";;;"})
+    html = rv.data.decode()
+    assert "Pick an SLS file" in html
+    assert "salt/key" in html  # event carried back
+
+
+def test_wizard_review_warns_when_reactor_down(tmp_path):
+    app = _app(tmp_path, fail=True, fail_body=NOT_RUNNING_BODY)
+    client = app.test_client()
+    _login(client, "op")
+    html = client.post(
+        "/reactor/add/review",
+        data={"event": "salt/key", "sls": "salt://greet.sls"},
+    ).data.decode()
+    assert "is not running" in html
+    assert "Traceback" not in html
+
+
+def test_wizard_review_custom_unbrowsable_warns(tmp_path):
+    app = _app(tmp_path)
+    client = app.test_client()
+    _login(client, "op")
+    html = client.post(
+        "/reactor/add/review",
+        data={"event": "salt/key", "sls": "/elsewhere/x.sls"},
+    ).data.decode()
+    assert "not resolve under the reactor roots" in html
+
+
+# -- Wizard persistence: stanza merge -------------------------------------
+
+
+def test_build_persisted_text_empty_block():
+    from overstate_ui.reactor import build_persisted_text
+
+    new, verdict = build_persisted_text(
+        "# masters\nreactor: []\n", "salt/key", "salt://reactor/key.sls"
+    )
+    assert verdict == "added"
+    assert "# masters" in new
+    assert "salt/key" in new
+    assert "reactor: []" not in new
+
+
+def test_build_persisted_text_populated_block_inserts():
+    from overstate_ui.reactor import build_persisted_text
+
+    current = (
+        "# c\nreactor:\n  - 'salt/auth':\n    - salt://reactor/auth.sls\nother: 1\n"
+    )
+    new, verdict = build_persisted_text(current, "salt/key", "salt://r/key.sls")
+    assert verdict == "added"
+    assert "other: 1" in new
+    assert "salt/auth" in new and "salt/key" in new
+
+
+def test_build_persisted_text_present_and_invalid():
+    from overstate_ui.reactor import build_persisted_text
+
+    current = "reactor:\n  - 'salt/key':\n    - salt://r/key.sls\n"
+    _, verdict = build_persisted_text(current, "salt/key", "salt://r/key.sls")
+    assert verdict == "present"
+    _, verdict = build_persisted_text("reactor: [unclosed\n", "x", "y")
+    assert verdict == "invalid"
+
+
+def test_confirm_with_persist_offline_still_adds(tmp_path):
+    calls = []
+    app = _app(tmp_path, calls)
+    client = app.test_client()
+    _login(client, "admin")
+    rv = client.post(
+        "/reactor/add",
+        data={"event": "salt/key", "sls": "salt://r/key.sls", "persist": "1"},
+        follow_redirects=True,
+    )
+    html = rv.data.decode()
+    assert "reactor added." in html  # runner path unaffected
+    assert "No cluster connection" in html  # persist refused offline
+    actions = _actions(app)
+    assert "reactor-add:salt/key" in actions
+    assert "masterconfig-save-refused:master.conf:persist-offline" in actions
+
+
+def test_confirm_with_persist_records_stanza(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from overstate_ui import masterconfig
+
+    calls = []
+    app = _app(tmp_path, calls)
+    fake = SimpleNamespace(
+        data={"master.conf": "# c\nreactor: []\n"},
+        rv="11",
+        replaced=None,
+        config=SimpleNamespace(namespace="overstate"),
+    )
+
+    def get_configmap(name):
+        assert name == "salt-master-config"
+        return {"data": dict(fake.data), "resourceVersion": fake.rv}
+
+    def replace_configmap(name, data, base_rv):
+        assert base_rv == "11"
+        fake.replaced = data
+        return "12"
+
+    snapshots = []
+    monkeypatch.setattr(
+        reactormod,
+        "K8sClient",
+        lambda: SimpleNamespace(
+            config=fake.config,
+            get_configmap=get_configmap,
+            replace_configmap=replace_configmap,
+        ),
+    )
+    monkeypatch.setattr(
+        masterconfig,
+        "_snapshot",
+        lambda *a: snapshots.append(a),
+    )
+    client = app.test_client()
+    _login(client, "admin")
+    rv = client.post(
+        "/reactor/add",
+        data={"event": "salt/key", "sls": "salt://r/key.sls", "persist": "1"},
+        follow_redirects=True,
+    )
+    assert "Recorded in the master.conf stanza" in rv.data.decode()
+    assert len(snapshots) == 1  # snapshot-first
+    assert "salt/key" in fake.replaced["master.conf"]
+    assert "# c" in fake.replaced["master.conf"]
+    assert "masterconfig-save:master.conf:12" in _actions(app)

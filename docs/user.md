@@ -387,9 +387,14 @@ reaches the page.
 The Reactor page lists the live event → SLS mapping, unioned across
 all three master pods exactly as `reactor.list` reports it. Reactor
 rows link to the matching Events family so you can watch them fire.
-Operators can add and delete mappings (delete asks once on its own
-page); every change fans out to all reachable pods and is
-audit-logged, with a warning when a pod is missed.
+Operators add mappings through a three-step wizard — event
+pattern (common presets plus your recent ones), SLS file (picker
+over the reactor roots plus a custom reference), then a review
+that states the blast radius before anything runs. Deleting asks
+once on its own page. Every change fans out to all reachable pods
+and is audit-logged, with a warning when a pod is missed. When no
+reactor system runs, the review says so plainly instead of
+pretending the add landed.
 
 The mapping has two truths. The `reactor:` stanza in `master.conf`
 (Master Config page, admins only) is the persisted, boot-time mapping;
@@ -397,8 +402,10 @@ the Reactor page shows the live, runtime one. Salt persists nothing
 the runner writes, so a master restart restores the file's stanza —
 runner-only changes are lost unless also recorded there. **Export**
 renders the live mapping as a `reactor:` block: paste it into the
-stanza, save, and restart to make it durable. The app never writes
-your repo.
+stanza, save, and restart to make it durable. Admins get a shortcut:
+the wizard review offers to record the new mapping into the stanza
+directly (snapshot first, restart still required, audit-logged).
+The app never writes your repo.
 
 SLS bodies are admin-edited from the SLS view. This code runs with
 master privileges and fires on matching events fleet-wide, so saving

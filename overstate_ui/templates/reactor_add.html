@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Add reactor · Overstate{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.index') }}">‹ Reactor</a>
+  <h1 class="text-2xl font-bold tracking-tight mt-2">Add reactor</h1>
+  <p class="text-sm opacity-70 mt-0.5">Three steps. Nothing runs until you confirm.</p>
+</div>
+<ul class="steps w-full mb-6" aria-label="Progress">
+  <li class="step {{ 'step-primary' if step >= 1 }}">Event</li>
+  <li class="step {{ 'step-primary' if step >= 2 }}">SLS file</li>
+  <li class="step {{ 'step-primary' if step >= 3 }}">Review</li>
+</ul>
+{% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
+{% if step == 1 %}
+<form method="post" action="{{ url_for('reactor.add_step2') }}" class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="card-body gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="fieldset">
+      <span class="fieldset-legend">Event pattern</span>
+      <input name="event" value="{{ event }}" list="reactor-event-presets" placeholder="salt/minion/*/start" class="input font-mono" required autocomplete="off">
+      <datalist id="reactor-event-presets">
+        <optgroup label="Common patterns">
+          {% for p in presets %}<option value="{{ p }}">{% endfor %}
+        </optgroup>
+        {% if recents %}<optgroup label="Recently added">
+          {% for r in recents %}<option value="{{ r }}">{% endfor %}
+        </optgroup>{% endif %}
+      </datalist>
+      <span class="text-xs opacity-70">Pick a common pattern or type your own. Globs like <code class="font-mono">* / ? [ ]</code> allowed.</span>
+    </label>
+    <div class="card-actions justify-end">
+      <button class="btn btn-primary">Continue</button>
+    </div>
+  </div>
+</form>
+{% elif step == 2 %}
+<form method="post" action="{{ url_for('reactor.add_review') }}" class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="card-body gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="event" value="{{ event }}">
+    <p class="text-sm">Event: <code class="font-mono">{{ event }}</code></p>
+    {% if files is none %}
+    <div class="alert alert-warning" role="status"><span>Reactor files are not readable here — enter the reference by hand.</span></div>
+    {% elif files %}
+    <label class="fieldset">
+      <span class="fieldset-legend">SLS file</span>
+      <select name="sls" class="select font-mono">
+        <option value="">Custom reference…</option>
+        {% for f in files %}<option value="salt://{{ f }}" {% if pick == "salt://" + f %}selected{% endif %}>{{ f }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label class="fieldset">
+      <span class="fieldset-legend">{% if files %}Or custom reference{% else %}SLS reference{% endif %}</span>
+      <input name="sls_custom" value="{{ custom }}" placeholder="salt://reactor/boot.sls" class="input font-mono" autocomplete="off">
+      <span class="text-xs opacity-70">Custom refs list but are not browsable here unless they resolve under the reactor roots.</span>
+    </label>
+    <div class="card-actions justify-between">
+      <a class="btn btn-ghost" href="{{ url_for('reactor.add_wizard') }}">‹ Back</a>
+      <button class="btn btn-primary">Review</button>
+    </div>
+  </div>
+</form>
+{% else %}
+<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+  <div class="card-body gap-2">
+    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+      <dt class="opacity-70">Event</dt><dd class="font-mono">{{ event }}</dd>
+      <dt class="opacity-70">SLS</dt><dd class="font-mono">{{ sls }}</dd>
+      <dt class="opacity-70">Fan-out</dt><dd>{{ pod_count }} master pod{{ "s" if pod_count != 1 }}</dd>
+    </dl>
+    {% if not browsable %}<div class="alert alert-warning" role="status"><span>That SLS does not resolve under the reactor roots: it will list but not link to a readable body.</span></div>{% endif %}
+    <div class="alert alert-warning" role="status"><span>Reactor code runs with master privileges and fires on matching events fleet-wide. Confirm the pattern matches only what you intend.</span></div>
+    {% if unreachable %}<div class="alert alert-error" role="alert"><span>No master reachable — confirming will change nothing.</span></div>{% endif %}
+    {% if down %}<div class="alert alert-info" role="status"><span>The reactor system is not running: this mapping will confirm but will not list until a reactor runs. Record it in <code class="font-mono">master.conf</code> and restart to make it durable.</span></div>{% endif %}
+  </div>
+</div>
+<form method="post" action="{{ url_for('reactor.add') }}" class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="card-body gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="event" value="{{ event }}">
+    <input type="hidden" name="sls" value="{{ sls }}">
+    {% if is_admin %}
+    <label class="label cursor-pointer justify-start gap-3">
+      <input type="checkbox" name="persist" value="1" class="checkbox checkbox-sm" checked>
+      <span class="text-sm">Also record in the <code class="font-mono">master.conf</code> reactor stanza (snapshot first; restart still required).</span>
+    </label>
+    {% endif %}
+    <div class="card-actions justify-between">
+      <a class="btn btn-ghost" href="{{ url_for('reactor.add_wizard') }}">‹ Start over</a>
+      <button class="btn btn-primary">Confirm and add</button>
+    </div>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

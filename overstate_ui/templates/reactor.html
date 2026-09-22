@@ -19,20 +19,9 @@
 {% else %}
 <div class="alert alert-info mb-4" role="status"><span>This is the <strong>live</strong> mapping from {{ pod_count }} master pod{{ "s" if pod_count != 1 }} — runtime truth only. Durable mappings live in <code>master.conf</code>'s <code>reactor:</code> stanza{% if current_user.role == "admin" %} (<a class="link" href="{{ url_for('masterconfig.index') }}">Master Config</a>){% endif %}; a restart restores the file, so record lasting mappings there after changing them here. <a class="link" href="{{ url_for('reactor.export') }}">Export</a> renders the stanza to paste.</span></div>
 {% if current_user.role in ["operator", "admin"] %}
-<form method="post" action="{{ url_for('reactor.add') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
-  <div class="card-body flex-row flex-wrap items-end gap-2">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="fieldset">
-      <span class="fieldset-legend">Event pattern</span>
-      <input name="event" placeholder="salt/minion/*/start" class="input input-sm font-mono" required>
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">SLS</span>
-      <input name="sls" placeholder="salt://reactor/boot.sls" class="input input-sm font-mono" required>
-    </label>
-    <button class="btn btn-sm btn-primary mb-1">Add reactor</button>
-  </div>
-</form>
+<div class="mb-4">
+  <a class="btn btn-sm btn-primary" href="{{ url_for('reactor.add_wizard') }}">Add reactor</a>
+</div>
 {% endif %}
 <form method="get" action="{{ url_for('reactor.index') }}" class="flex gap-2 mb-3">
   <input type="hidden" name="sort" value="{{ sort }}">

@@ -32,9 +32,12 @@ from flask_login import current_user, login_required
 from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
+from .db import get_session
 from .events import TAG_CHOICES
 from .files import MAX_BYTES, highlight_yaml
 from .fleet import pod_clients
+from .k8s import K8sClient
+from .models import AuditEvent
 from .salt_client import SaltApiError
 
 bp = Blueprint("reactor", __name__, url_prefix="/reactor")
@@ -151,6 +154,180 @@ def render_export(entries: dict[str, list[str]]) -> str:
         for sls in entries[event]:
             lines.append(f"    - {_yaml_quote(sls)}")
     return "\n".join(lines) + "\n"
+
+
+WIZARD_RECENTS_LIMIT = 5
+WIZARD_FILE_CAP = 200
+
+
+def _valid_event(event: str) -> bool:
+    return (
+        bool(event)
+        and len(event) <= MAX_EVENT_LEN
+        and EVENT_RE.match(event) is not None
+    )
+
+
+def _valid_sls(sls: str) -> bool:
+    return bool(sls) and len(sls) <= MAX_SLS_LEN and SLS_RE.match(sls) is not None
+
+
+def recent_events(limit: int = WIZARD_RECENTS_LIMIT) -> list[str]:
+    """Last distinct reactor-add event patterns, presets excluded."""
+    seen: list[str] = []
+    rows = (
+        get_session()
+        .query(AuditEvent.action)
+        .order_by(AuditEvent.id.desc())
+        .limit(60)
+        .all()
+    )
+    for (action,) in rows:
+        if not action.startswith("reactor-add:"):
+            continue
+        event = action[len("reactor-add:") :].removesuffix(":partial")
+        if not event or event in TAG_CHOICES or event in seen:
+            continue
+        seen.append(event)
+        if len(seen) >= limit:
+            break
+    return seen
+
+
+def list_reactor_files(cap: int = WIZARD_FILE_CAP) -> list[str] | None:
+    """Flat relative paths under REACTOR_ROOTS; None when unreadable."""
+    try:
+        base = roots()
+        out: list[str] = []
+        for dirpath, _dirnames, filenames in os.walk(base):
+            for name in filenames:
+                out.append(str(Path(dirpath, name).relative_to(base)))
+                if len(out) >= cap:
+                    return sorted(out)
+        return sorted(out)
+    except OSError:
+        return None
+
+
+def build_persisted_text(current_text: str, event: str, sls: str) -> tuple[str, str]:
+    """Merge one mapping into master.conf's reactor stanza, text-preserving.
+
+    Comments, key order, and everything outside the stanza survive:
+    an empty ``reactor: []`` line becomes a full block, a populated
+    block gains one inserted item, and a missing stanza is appended.
+    Returns (new_text, verdict) with verdict ``added`` / ``present`` /
+    ``invalid``.
+    """
+    try:
+        parsed = yaml.safe_load(current_text)
+    except yaml.YAMLError:
+        return current_text, "invalid"
+    entries: dict[str, list[str]] = {}
+    if isinstance(parsed, dict):
+        entries, _ = parse_reactor_list(parsed.get("reactor"))
+    if sls in entries.get(event, []):
+        return current_text, "present"
+    ending = "\n" if current_text.endswith("\n") else ""
+    lines = current_text.splitlines()
+    for i, line in enumerate(lines):
+        if re.match(r"^reactor:\s*\[\s*\]\s*$", line):
+            entries.setdefault(event, []).append(sls)
+            block = render_export(entries).rstrip("\n")
+            lines[i : i + 1] = block.splitlines()
+            return "\n".join(lines) + ending, "added"
+        if re.match(r"^reactor:\s*(#.*)?$", line):
+            item = f"  - {_yaml_quote(event)}:\n    - {_yaml_quote(sls)}"
+            lines.insert(i + 1, item)
+            return "\n".join(lines) + ending, "added"
+    merged = dict(entries)
+    merged.setdefault(event, []).append(sls)
+    block = render_export(merged)
+    sep = "" if current_text.endswith("\n\n") else "\n"
+    return current_text + sep + block, "added"
+
+
+def _persist_to_master_conf(event: str, sls: str) -> tuple[bool, str, str]:
+    """Append one mapping to the master.conf stanza, snapshot-first.
+
+    Returns (ok, flash message, audit tag). Outside a cluster the
+    write refuses with the manual kubectl equivalent.
+    """
+    from . import masterconfig as mc
+
+    client = K8sClient()
+    live_name = current_app.config["MASTER_CONFIGMAP"]
+    history_name = current_app.config["MASTER_CONFIG_HISTORY"]
+    namespace = client.config.namespace
+    try:
+        current = client.get_configmap(live_name)
+    except Exception as exc:  # noqa: BLE001 — mapped below by type
+        from .k8s import K8sUnavailableError as Offline
+
+        if isinstance(exc, Offline):
+            msg = (
+                "No cluster connection from here. "
+                f"Edit by hand instead: kubectl -n {namespace} "
+                f"edit configmap {live_name}. Nothing changed."
+            )
+            tag = "masterconfig-save-refused:master.conf:persist-offline"
+            return False, msg, tag
+        return (
+            False,
+            f"Could not read the live config: {exc}. Nothing changed.",
+            "masterconfig-save-refused:master.conf:persist-read",
+        )
+    data, revision = current["data"] or {}, current["resourceVersion"]
+    if "master.conf" not in data:
+        return (
+            False,
+            "master.conf is not in the live config. Nothing changed.",
+            ("masterconfig-save-refused:master.conf:persist-missing"),
+        )
+    new_text, verdict = build_persisted_text(data["master.conf"], event, sls)
+    if verdict == "invalid":
+        return (
+            False,
+            "master.conf does not parse as YAML. Nothing changed.",
+            "masterconfig-save-refused:master.conf:persist-invalid",
+        )
+    if verdict == "present":
+        return (
+            True,
+            "Already recorded in the master.conf stanza.",
+            ("masterconfig-save:master.conf:persist-present"),
+        )
+    try:
+        mc._snapshot(client, live_name, history_name, data, revision)
+    except Exception as exc:  # noqa: BLE001 — snapshot must not half-write
+        return (
+            False,
+            f"Could not snapshot history: {exc}. Nothing changed.",
+            "masterconfig-save-refused:master.conf:persist-history",
+        )
+    updated = dict(data)
+    updated["master.conf"] = new_text
+    try:
+        new_rv = client.replace_configmap(live_name, updated, revision)
+    except Exception as exc:  # noqa: BLE001 — conflict vs write mapped below
+        from .k8s import K8sConflictError as Conflict
+
+        if isinstance(exc, Conflict):
+            msg = (
+                "That config changed underneath you. Reload and try again. "
+                "Nothing was written."
+            )
+            tag = "masterconfig-save-refused:master.conf:persist-stale"
+            return False, msg, tag
+        return (
+            False,
+            f"Could not write the live config: {exc}. Nothing changed.",
+            "masterconfig-save-refused:master.conf:persist-write",
+        )
+    msg = (
+        f"Recorded in the master.conf stanza (revision {new_rv}). "
+        "Restart the masters to apply it."
+    )
+    return True, msg, f"masterconfig-save:master.conf:{new_rv}"
 
 
 def _live_mappings(clients):
@@ -352,6 +529,10 @@ def add():
     else:
         log_event(current_user.username, f"reactor-add:{event}")
         flash(f"{event}: reactor added.", "success")
+    if request.form.get("persist", "") == "1" and current_user.role == "admin":
+        pok, pmsg, ptag = _persist_to_master_conf(event, sls)
+        log_event(current_user.username, ptag)
+        flash(pmsg, "success" if pok else "error")
     return redirect(url_for("reactor.index"))
 
 
@@ -391,6 +572,86 @@ def delete():
         log_event(current_user.username, f"reactor-delete:{event}")
         flash(f"{event}: reactor deleted.", "success")
     return redirect(url_for("reactor.index"))
+
+
+@bp.get("/add")
+@roles_required("operator")
+def add_wizard():
+    """Add-wizard step 1: event pattern with presets and recents."""
+    return render_template(
+        "reactor_add.html",
+        step=1,
+        event="",
+        presets=TAG_CHOICES,
+        recents=recent_events(),
+        error=None,
+    )
+
+
+@bp.post("/add/step2")
+@roles_required("operator")
+def add_step2():
+    """Add-wizard step 2: SLS picker. Re-renders step 1 on bad event."""
+    event = request.form.get("event", "").strip()
+    if not _valid_event(event):
+        return render_template(
+            "reactor_add.html",
+            step=1,
+            event=event,
+            presets=TAG_CHOICES,
+            recents=recent_events(),
+            error="Enter an event pattern using letters, digits, and "
+            "/ . - * ? [ ] { } | + = : , @ _ (no spaces, max 256 chars).",
+        )
+    return render_template(
+        "reactor_add.html",
+        step=2,
+        event=event,
+        files=list_reactor_files(),
+        pick="",
+        custom="",
+        error=None,
+    )
+
+
+@bp.post("/add/review")
+@roles_required("operator")
+def add_review():
+    """Add-wizard step 3: blast-radius review before confirm."""
+    event = request.form.get("event", "").strip()
+    if not _valid_event(event):
+        return redirect(url_for("reactor.add_wizard"))
+    sls = (
+        request.form.get("sls_custom", "").strip()
+        or request.form.get("sls", "").strip()
+    )
+    if not _valid_sls(sls):
+        files = list_reactor_files()
+        return render_template(
+            "reactor_add.html",
+            step=2,
+            event=event,
+            files=files,
+            pick=sls if files and sls in ["salt://" + f for f in files] else "",
+            custom="" if files and sls in ["salt://" + f for f in files] else sls,
+            error="Pick an SLS file or enter one SLS reference (max 512 chars).",
+        )
+    clients = pod_clients(get_salt())
+    entries, _raw, failed, _divergent = _live_mappings(clients)
+    down = not entries and not (clients and len(failed) == len(clients))
+    unreachable = bool(clients) and not entries and len(failed) == len(clients)
+    return render_template(
+        "reactor_add.html",
+        step=3,
+        event=event,
+        sls=sls,
+        browsable=sls_to_rel(sls) is not None,
+        pod_count=len(clients),
+        down=down,
+        unreachable=unreachable,
+        is_admin=(current_user.role == "admin"),
+        error=None,
+    )
 
 
 @bp.route("/edit")
