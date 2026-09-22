@@ -41,10 +41,15 @@
   </div>
 </form>
 {% if compared %}
+<div class="join mb-4" role="tablist" aria-label="View">
+  <a role="tab" class="join-item btn btn-sm {{ 'btn-active' if view == 'changes' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='changes') }}">Changes</a>
+  <a role="tab" class="join-item btn btn-sm {{ 'btn-active' if view == 'full' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='full') }}">Full</a>
+</div>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="px-4 py-3 border-b border-base-300 text-sm">
     <span class="font-mono">{{ mid_a }}</span> <span class="opacity-60">vs</span> <span class="font-mono">{{ mid_b }}</span>
-    <span class="badge badge-sm badge-neutral ml-2">{{ rows|length }} difference{{ "s" if rows|length != 1 }}</span>
+    {% if view == "full" %}<span class="badge badge-sm badge-neutral ml-2">{{ ndiff }} of {{ rows|length }} differ</span>
+    {% else %}<span class="badge badge-sm badge-neutral ml-2">{{ rows|length }} difference{{ "s" if rows|length != 1 }}</span>{% endif %}
   </div>
   {% if rows %}
   <div class="overflow-x-auto">
@@ -55,6 +60,7 @@
     <td>
       {% if r.kind == "added" %}<span class="badge badge-sm badge-success">added</span>
       {% elif r.kind == "removed" %}<span class="badge badge-sm badge-error">removed</span>
+      {% elif r.kind == "same" %}<span class="badge badge-sm badge-ghost">same</span>
       {% else %}<span class="badge badge-sm badge-warning">changed</span>{% endif %}
     </td>
     <td class="font-mono text-xs break-all">{{ render_value(r.old) if r.old is not none else "–" }}</td>

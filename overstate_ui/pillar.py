@@ -40,8 +40,12 @@ def flatten(prefix: str, obj, out: dict) -> None:
         out[prefix.rstrip(".")] = obj
 
 
-def diff_pillars(left: dict, right: dict) -> list[dict]:
-    """Row-wise diff of two rendered pillars: added / removed / changed."""
+def diff_pillars(left: dict, right: dict, include_same: bool = False) -> list[dict]:
+    """Row-wise diff of two rendered pillars: added / removed / changed.
+
+    With include_same, unchanged paths ride along as ``same`` rows for
+    the full side-by-side view.
+    """
     flat_left: dict = {}
     flat_right: dict = {}
     flatten("", left or {}, flat_left)
@@ -58,6 +62,8 @@ def diff_pillars(left: dict, right: dict) -> list[dict]:
             new, sort_keys=True, default=str
         ):
             rows.append({"path": path, "kind": "changed", "old": old, "new": new})
+        elif include_same:
+            rows.append({"path": path, "kind": "same", "old": old, "new": new})
     return rows
 
 
@@ -184,8 +190,11 @@ def diff():
     rev_b = request.args.get("rev_b", "")
     left = _resolve(mid_a, rev_a) if mid_a else None
     right = _resolve(mid_b, rev_b) if mid_b else None
+    view = request.args.get("view", "changes")
+    if view not in ("changes", "full"):
+        view = "changes"
     rows = (
-        diff_pillars(left or {}, right or {})
+        diff_pillars(left or {}, right or {}, include_same=(view == "full"))
         if left is not None and right is not None
         else []
     )
@@ -201,6 +210,8 @@ def diff():
         snaps_a=snaps_a,
         snaps_b=snaps_b,
         rows=rows,
+        ndiff=sum(1 for r in rows if r["kind"] != "same"),
+        view=view,
         compared=left is not None and right is not None,
         render_value=render_value,
     )

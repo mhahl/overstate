@@ -137,6 +137,27 @@ def test_diff_unit():
     assert rows == [{"path": "b.c", "kind": "changed", "old": 2, "new": 3}]
 
 
+def test_diff_unit_include_same():
+    rows = diff_pillars(
+        {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 3}}, include_same=True
+    )
+    assert rows == [
+        {"path": "a", "kind": "same", "old": 1, "new": 1},
+        {"path": "b.c", "kind": "changed", "old": 2, "new": 3},
+    ]
+
+
+def test_diff_full_view_shows_unchanged(client):
+    client.post("/pillar/web-01/capture")
+    client.post("/pillar/web-02/capture")
+    changes = client.get("/pillar/diff?a=web-01&b=web-02").data.decode()
+    assert ">same<" not in changes  # default stays differences-only
+    full = client.get("/pillar/diff?a=web-01&b=web-02&view=full").data.decode()
+    assert ">same<" in full  # shared role: web rides along
+    assert "3 of 4 differ" in full
+    assert "view=full" in changes  # toggle preserves the comparison
+
+
 def test_suggest_glob_unit():
     glob, selected, covered = suggest_glob(
         ["web-02", "web-01"], ["web-01", "web-02", "db-01"]

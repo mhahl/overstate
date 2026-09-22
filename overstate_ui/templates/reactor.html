@@ -17,7 +17,6 @@
   <p class="text-sm opacity-70">No mappings until the master runs a reactor.</p>
   {% if current_user.role in ["operator", "admin"] %}
   <p class="mt-4"><a class="btn btn-sm btn-primary" href="{{ url_for('reactor.add_wizard') }}">Add reactor</a></p>
-  <p class="text-xs opacity-70 mt-2">First mapping? Admins can record it in <code class="font-mono">master.conf</code>, then restart.</p>
   {% endif %}
 </div></div>
 {% else %}
