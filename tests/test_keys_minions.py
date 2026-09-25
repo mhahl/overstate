@@ -209,6 +209,42 @@ def test_minions_row_menu_hidden_for_viewer(client):
     assert 'id="remove-modal"' not in html
 
 
+def test_minion_list_forms_never_nest(client):
+    """Row Refresh must submit its own form, not the bulk jobs.new form.
+
+    Nested <form> is invalid HTML: browsers drop the inner form, so the
+    row Refresh button submitted the outer bulk form and landed on the
+    job page with "Select minions first." Bulk controls therefore bind
+    to the standalone bulk form via the form attribute instead.
+    """
+    from html.parser import HTMLParser
+
+    html = client.get("/minions/").data.decode()
+
+    class Forms(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.depth = 0
+            self.max_depth = 0
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "form":
+                self.depth += 1
+                self.max_depth = max(self.max_depth, self.depth)
+
+        def handle_endtag(self, tag):
+            if tag == "form":
+                self.depth -= 1
+
+    forms = Forms()
+    forms.feed(html)
+    assert forms.max_depth == 1, "nested <form> breaks row Refresh"
+    assert 'action="/minions/web-01/refresh"' in html
+    assert 'id="bulk-form"' in html
+    assert 'name="bulk" value="web-01" form="bulk-form"' in html
+    assert 'form="bulk-form"' in html.split("Run job on selected")[0].rsplit("<button", 1)[1]
+
+
 def test_key_act_empty_id_rejected(client):
     rv = client.post("/keys/delete", data={"id": "", "tab": "accepted"})
     assert rv.status_code == 302

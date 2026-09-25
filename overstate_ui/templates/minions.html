@@ -42,10 +42,12 @@
     <button class="btn btn-sm mb-1">Filter</button>
   </div>
 </form>
-<form method="get" action="{{ url_for('jobs.new') }}" class="card bg-base-100 border border-base-300 shadow-sm">
+<form id="bulk-form" method="get" action="{{ url_for('jobs.new') }}">
 <input type="hidden" name="bulk_run" value="1">
-{% include "_minion_rows.html" %}
 </form>
+<div class="card bg-base-100 border border-base-300 shadow-sm">
+{% include "_minion_rows.html" %}
+</div>
 <noscript>
 <div class="card bg-base-100 border border-base-300 shadow-sm mt-4">
   <div class="card-body">
