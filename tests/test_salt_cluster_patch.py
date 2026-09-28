@@ -71,6 +71,49 @@ def test_missing_file_is_a_hard_error(tmp_path):
         mod.apply_patches(tmp_path, [(rel, old, new)])
 
 
+def test_transport_patch_drops_dead_client_without_retry(tmp_path):
+    """Fix 1: a failed send clears the cached client and re-raises.
+
+    No retry by design — retrying a possibly-delivered fire-and-forget
+    publish could duplicate Raft RPCs and poison candidacies.
+    """
+    mod = _load()
+    entry = next(e for e in mod.PATCHES if e[0] == "salt/cluster/consensus/peer.py")
+    _rel, old, new = entry
+    assert "await client.send(raw)" in old
+    assert "del pusher._consensus_async_client" in new
+    assert "raise" in new.split("del pusher._consensus_async_client")[1]
+    retry_markers = ("await client.send(raw)",)
+    assert new.count(retry_markers[0]) == 1, "must send exactly once (no retry)"
+    _tree(tmp_path, {_rel: f"# prefix\n{old}# suffix\n"})
+    mod.apply_patches(tmp_path, [entry])
+    text = (tmp_path / _rel).read_text(encoding="utf-8")
+    assert old not in text and "del pusher._consensus_async_client" in text
+
+
+def test_reconcile_replays_post_snapshot_config(tmp_path):
+    """Fix 2: reconcile_membership replays CONFIG entries after restore.
+
+    A restart whose snapshot predates the latest committed CONFIG
+    (observed: empty snapshot, 3-voter config in log entries) left
+    reconcile as a no-op, so on_change (cluster-ready) never fired
+    and the master deferred all traffic with cluster_retry.
+    """
+    mod = _load()
+    entry = next(
+        e for e in mod.PATCHES if e[0] == "salt/cluster/consensus/raft/node.py"
+    )
+    _rel, old, new = entry
+    assert "current_voters()" in old
+    assert "LogEntryType.CONFIG" in new
+    assert "membership_sm.apply(entry.cmd, index=entry.index)" in new
+    assert "current_voters()" in new
+    _tree(tmp_path, {_rel: f"# prefix\n{old}# suffix\n"})
+    mod.apply_patches(tmp_path, [entry])
+    text = (tmp_path / _rel).read_text(encoding="utf-8")
+    assert old not in text and "LogEntryType.CONFIG" in text
+
+
 def test_patch_table_is_well_formed():
     mod = _load()
     assert mod.PATCHES, "no patches declared"
@@ -84,7 +127,11 @@ def test_patch_table_is_well_formed():
             "cluster_node_id" in new
             or "READY_SENTINEL" in new
             or "joining, not founding" in new
-        ), f"{rel}: replacement must use cluster_node_id, ready sentinel, or join-existing"
+            or "_consensus_async_client" in new
+            or "replay" in new
+        ), (
+            f"{rel}: replacement must use cluster_node_id, ready sentinel, join-existing, transport recovery, or log replay"
+        )
         files.add(rel)
     # Raft identity, join sentinel + founder, and ring ownership.
     assert "salt/cluster/consensus/service.py" in files

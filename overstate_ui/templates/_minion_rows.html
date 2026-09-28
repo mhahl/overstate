@@ -1,7 +1,7 @@
 {% import "_macros.html" as m %}
 <div id="minion-table">
   <div class="overflow-x-auto">
-  <table class="table table-sm table-zebra">
+  <table class="table table-sm table-zebra table-pin-rows w-full">
     <thead><tr>{% if current_user.role in ["operator", "admin"] %}<th class="w-8"><input type="checkbox" id="bulk-all" class="checkbox checkbox-sm" aria-label="Select all minions"></th>{% endif %}{{ m.sort_th('minions.index', 'id', 'Id', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'key', 'Key', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'presence', 'Presence', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'os', 'OS', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}<th>IP</th><th>CPUs</th><th>Salt</th>{% if current_user.role in ["operator", "admin"] %}<th class="w-10"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
     <tbody>
     {% for r in rows %}
@@ -53,9 +53,11 @@
   </div>
   {% endif %}
   <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
-    {% if page > 1 %}{{ m.hx_link(url_for('minions.index', q=q, status=status, page=page-1, per_page=per_page, sort=sort, dir=direction), '#minion-table', '‹ Prev') }}{% endif %}
-    <span class="text-sm opacity-70">Page {{ page }} of {{ pages }}</span>
-    {% if page < pages %}{{ m.hx_link(url_for('minions.index', q=q, status=status, page=page+1, per_page=per_page, sort=sort, dir=direction), '#minion-table', 'Next ›') }}{% endif %}
+    <div class="join">
+      {% if page > 1 %}{{ m.hx_link(url_for('minions.index', q=q, status=status, page=page-1, per_page=per_page, sort=sort, dir=direction), '#minion-table', '‹ Prev', 'join-item btn btn-sm') }}{% endif %}
+      <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}{{ m.hx_link(url_for('minions.index', q=q, status=status, page=page+1, per_page=per_page, sort=sort, dir=direction), '#minion-table', 'Next ›', 'join-item btn btn-sm') }}{% endif %}
+    </div>
     {% if current_user.role in ["operator", "admin"] %}<button type="submit" form="bulk-form" class="btn btn-sm btn-primary ml-auto">Run job on selected</button>{% endif %}
   </div>
 </div>

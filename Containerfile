@@ -1,4 +1,4 @@
-FROM node:24-slim AS css
+FROM node:25-slim AS css
 WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -6,7 +6,7 @@ COPY assets ./assets
 COPY overstate_ui ./overstate_ui
 RUN npm run build:css -- --minify
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # git powers the Files page: fetch + pull --ff-only ("Sync now"),
 # single-file commits (edit saves), and upstream push (admin Push

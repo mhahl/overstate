@@ -82,7 +82,7 @@ DEFS = {
         "label": "Theme",
         "help": "Interface color scheme.",
         "options": ["light", "dark", "wireframe"],
-        "default": "wireframe",
+        "default": "light",
     },
 }
 

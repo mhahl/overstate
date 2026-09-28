@@ -2,12 +2,11 @@
 {% block title %}Users · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-3xl">
-  <div class="mb-5 flex items-end justify-between gap-4">
-    <div>
+  <div class="flex flex-wrap items-end gap-3 mb-5">
+    <div class="mr-auto">
       <h1 class="text-2xl font-bold tracking-tight">Users</h1>
       <p class="text-sm opacity-70 mt-0.5">Roles and access for local and SSO accounts.</p>
     </div>
-    <a class="btn btn-sm btn-error btn-outline" href="{{ url_for('users.rotation') }}">Rotate salt-api password</a>
   </div>
   {% import "_macros.html" as m %}
   <form method="get" action="{{ url_for('users.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
@@ -28,7 +27,7 @@
   </form>
   <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="overflow-x-auto">
-  <table class="table table-zebra w-full">
+  <table class="table table-sm table-zebra table-pin-rows w-full">
     <thead><tr>{{ m.sort_th_plain('users.index', 'username', 'Username', sort, direction, {'role': role}) }}{{ m.sort_th_plain('users.index', 'role', 'Role', sort, direction, {'role': role}) }}<th>Auth</th><th class="text-right">Actions</th></tr></thead>
     <tbody>
     {% for u in users %}
@@ -59,5 +58,12 @@
   </table>
   </div>
   </div>
+  <section class="card bg-base-100 border border-error/40 shadow-sm mt-4" aria-label="Danger zone">
+    <div class="card-body gap-1">
+      <h2 class="card-title text-base text-error">Danger zone</h2>
+      <p class="text-sm opacity-70">A halfway rotation locks the app out: every Salt call fails until the master and the app share the new password.</p>
+      <div class="mt-1"><a class="btn btn-sm btn-error btn-outline" href="{{ url_for('users.rotation') }}">Rotate salt-api password</a></div>
+    </div>
+  </section>
 </div>
 {% endblock %}

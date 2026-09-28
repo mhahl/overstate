@@ -28,7 +28,7 @@
       <span class="fieldset-legend">Search</span>
       <input type="search" name="q" value="{{ q }}" placeholder="Search id or fingerprint…" class="input input-sm">
     </label>
-    <button class="btn btn-sm mb-1">Filter</button>
+    <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('keys.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
@@ -41,7 +41,7 @@
 <div class="border-t border-base-300">
 {% if rows %}
 <div class="overflow-x-auto">
-<table class="table table-zebra">
+<table class="table table-sm table-zebra table-pin-rows w-full">
   <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q}) }}<th>Fingerprint</th><th>Pods</th><th class="w-48 text-right">Action</th></tr></thead>
   <tbody>
   {% for row in rows %}

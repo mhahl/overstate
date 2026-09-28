@@ -2,7 +2,7 @@
 <div id="conformity-table">
       {% if minions %}
       <div class="overflow-x-auto">
-      <table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {"status": status_filter}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {"status": status_filter}, '#conformity-table', false) }}<th>Checked</th><th>History</th><th>Source JID</th></tr></thead><tbody>
+      <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {"status": status_filter}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {"status": status_filter}, '#conformity-table', false) }}<th>Checked</th><th>History</th><th>Source JID</th></tr></thead><tbody>
       {% for m in minions %}
       {% set cstatus = (m.conformity or {}).get("status", "unknown") %}
       <tr><td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=m.id) }}">{{ m.id }}</a></td>

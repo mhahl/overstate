@@ -9,6 +9,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from . import (
     audit,
     auth,
+    console,
     dashboard,
     events,
     files,
@@ -73,6 +74,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     )
 
     app.register_blueprint(auth.bp)
+    app.register_blueprint(console.bp)
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(keys.bp)
     app.register_blueprint(masterconfig.bp)
@@ -113,7 +115,7 @@ def create_app(config: type[Config] = Config) -> Flask:
         try:
             theme = get_setting("theme")
         except Exception:  # noqa: BLE001 — DB may not exist yet
-            theme = "wireframe"
+            theme = "light"
         allowed = ("light", "dark", "wireframe")
         return {"app_theme": theme if theme in allowed else "wireframe"}
 

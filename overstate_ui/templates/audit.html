@@ -18,13 +18,13 @@
       <span class="fieldset-legend">Action</span>
       <input name="action" value="{{ action }}" placeholder="Search action…" class="input input-sm w-full" autocomplete="off">
     </label>
-    <button class="btn btn-sm mb-1">Filter</button>
+    <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if user or action %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="overflow-x-auto">
-    <table class="table table-zebra table-sm w-full">
+    <table class="table table-zebra table-sm table-pin-rows w-full">
       <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action}) }}<th>Job</th></tr></thead>
       <tbody>
         {% for e in events %}

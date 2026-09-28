@@ -265,6 +265,80 @@ PATCHES = [
     if ring.owns(key, node_id):
 """,
     ),
+    (
+        "salt/cluster/consensus/raft/node.py",
+        """\
+        if self.membership_sm is None:
+            return
+        voters = self.membership_sm.current_voters()
+        learners = self.membership_sm.current_learners()
+        if not voters and not learners:
+            # Nothing committed yet (e.g. fresh node before founding CONFIG).
+            return
+""",
+        """\
+        if self.membership_sm is None:
+            return
+        # Snapshot restore can predate the latest committed CONFIG
+        # entries: replay them so a rejoining node sees the committed
+        # view (same replay the cluster.members runner performs).
+        # Without this, a restart with an empty snapshot wedges
+        # reconcile as a no-op and on_change (cluster-ready) never
+        # fires, leaving the master deferring all traffic.
+        for entry in getattr(getattr(self, "log", None), "entries", None) or []:
+            if getattr(entry, "type", None) == LogEntryType.CONFIG:
+                self.membership_sm.apply(entry.cmd, index=entry.index)
+        voters = self.membership_sm.current_voters()
+        learners = self.membership_sm.current_learners()
+        if not voters and not learners:
+            # Nothing committed yet (e.g. fresh node before founding CONFIG).
+            return
+""",
+    ),
+    (
+        "salt/cluster/consensus/peer.py",
+        """\
+        client = _TCPPubServerPublisher(
+            pusher.pull_host, pusher.pull_port, getattr(pusher, "pull_path", None)
+        )
+        await client.connect()
+        # Stash on the pusher so the next send reuses the connection.
+        # The pusher's lifetime exceeds the master process; the kernel
+        # closes the fd at exit, so explicit teardown isn't required.
+        pusher._consensus_async_client = client
+    await client.send(raw)
+""",
+        """\
+        client = _TCPPubServerPublisher(
+            pusher.pull_host, pusher.pull_port, getattr(pusher, "pull_path", None)
+        )
+        await client.connect()
+        # Stash on the pusher so the next send reuses the connection.
+        # The pusher's lifetime exceeds the master process; the kernel
+        # closes the fd at exit, so explicit teardown isn't required.
+        pusher._consensus_async_client = client
+    try:
+        await client.send(raw)
+    except Exception:
+        # A dead cached stream (peer pod restarted, RST mid-handshake)
+        # must not poison this pusher for the life of the process:
+        # drop the cached client so the next send reconnects fresh
+        # (re-resolving the peer). The caller logs the dropped RPC.
+        # Deliberately no retry here: retrying a possibly-delivered
+        # fire-and-forget publish could duplicate Raft RPCs, and
+        # duplicate pre-vote replies poison candidacies (CandidacyError)
+        # and stall elections.
+        try:
+            client.close()
+        except Exception:
+            pass
+        try:
+            del pusher._consensus_async_client
+        except AttributeError:
+            pass
+        raise
+""",
+    ),
 ]
 
 

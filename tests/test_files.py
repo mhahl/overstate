@@ -631,7 +631,8 @@ def test_index_dir_survives_pagination(rooted, tmp_path):
             query_string={"dir": "big", "per_page": "25", "page": "2"},
         ).data.decode()
     assert "Page 2 of 2" in html
-    assert "dir=big" in html.split("Page 2 of 2")[1].split("</div>")[0]
+    pager = html.split('<div class="join ms-auto">')[1].split("</div>")[0]
+    assert "dir=big" in pager
     assert "big/keep-29.sls" in html
 
 

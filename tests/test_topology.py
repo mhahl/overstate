@@ -136,7 +136,7 @@ def test_ssh_forces_sync_mode(client):
         },
         follow_redirects=True,
     )
-    assert b"runs synchronously" in rv.data
+    assert b"salt-ssh runs in sync mode only." in rv.data
 
 
 def test_bad_via_falls_back_to_local(client):

@@ -10,7 +10,7 @@
 <div class="border-t border-base-300">
 {% if tab == "saved" %}
 {% if saved %}
-<table class="table table-zebra"><thead><tr><th>Name</th><th>Function</th><th>Target</th><th class="text-right"></th></tr></thead><tbody>
+<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Name</th><th>Function</th><th>Target</th><th class="text-right"></th></tr></thead><tbody>
 {% for s in saved %}
 <tr><td class="font-medium">{{ s.name }}</td><td class="font-mono text-xs">{{ s.fun }}</td><td class="font-mono text-xs">{{ s.tgt_type }}: {{ s.tgt }}</td>
 <td class="text-right"><span class="join join-horizontal">
@@ -29,7 +29,7 @@
 {% set rows = running if tab == "running" else history %}
 {% if rows %}
 <div class="overflow-x-auto">
-<table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('jobs.index', 'jid', 'JID', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'fun', 'Function', sort, direction, {'tab': tab, 'q': q}) }}<th>Target</th>{{ m.sort_th('jobs.index', 'user', 'User', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'started', 'Started', sort, direction, {'tab': tab, 'q': q}) }}</tr></thead><tbody>
+<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th('jobs.index', 'jid', 'JID', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'fun', 'Function', sort, direction, {'tab': tab, 'q': q}) }}<th>Target</th>{{ m.sort_th('jobs.index', 'user', 'User', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'started', 'Started', sort, direction, {'tab': tab, 'q': q}) }}</tr></thead><tbody>
 {% for j in rows %}
 <tr><td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=j.jid) }}">{{ j.jid }}</a></td>
 <td class="font-mono text-xs">{{ j.fun }}</td><td class="font-mono text-xs">{{ j.tgt_type }}: {{ j.tgt }}</td>
@@ -39,9 +39,14 @@
 </div>
 {% if tab == "history" and pages > 1 %}
 <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
-  {% if page > 1 %}{{ m.hx_link(url_for('jobs.index', tab=tab, q=q, sort=sort, dir=direction, page=page-1), '#jobs-region', '‹ Prev') }}{% endif %}
-  <span class="text-sm opacity-70">Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}{{ m.hx_link(url_for('jobs.index', tab=tab, q=q, sort=sort, dir=direction, page=page+1), '#jobs-region', 'Next ›') }}{% endif %}
+  <div class="join">
+    {% if page > 1 %}{{ m.hx_link(url_for('jobs.index', tab=tab, q=q, sort=sort, dir=direction, page=page-1), '#jobs-region', '‹ Prev', 'join-item btn btn-sm') }}{% endif %}
+    <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}{{ m.hx_link(url_for('jobs.index', tab=tab, q=q, sort=sort, dir=direction, page=page+1), '#jobs-region', 'Next ›', 'join-item btn btn-sm') }}{% endif %}
+  </div>
+  <span id="jobs-refreshing" class="hidden items-center gap-1.5 text-xs opacity-60 ml-auto" role="status">
+    <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>Refreshing…
+  </span>
 </div>
 {% endif %}
 {% else %}

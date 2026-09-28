@@ -37,9 +37,9 @@ def test_login_page_shows_logo(client):
     assert rv.data.lstrip().startswith(b"<?xml")
 
 
-def test_login_page_uses_local_wireframe_build(client):
+def test_login_page_uses_local_build(client):
     html = client.get("/login").data.decode()
-    assert 'data-theme="wireframe"' in html
+    assert 'data-theme="light"' in html
     assert "/static/app.css" in html
     assert "cdn.jsdelivr.net" not in html
 

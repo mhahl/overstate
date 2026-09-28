@@ -3,7 +3,7 @@
 # Used in local dev and production alike.
 # Pin :lts by digest so a retag cannot silently skip
 # salt-cluster-identity-patch.py anchors.
-FROM ghcr.io/cdalvaro/docker-salt-master:lts@sha256:4f226ed993df57488ceeb4a95cc9208ffc10ae79a2614a5a3fb39f342eb2aa52
+FROM ghcr.io/cdalvaro/docker-salt-master:lts@sha256:df5bb4555108f21655f97f5be11f5404a5596bd475cb8181ab2c88bd91adb12c
 
 RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
 

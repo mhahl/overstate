@@ -2,14 +2,14 @@
 {% block title %}Files · Overstate{% endblock %}
 {% block content %}
 <div class="w-full">
-  <div class="mb-5 flex flex-wrap items-start justify-between gap-2">
-    <div>
+  <div class="flex flex-wrap items-end gap-3 mb-5">
+    <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">State files</h1>
     <p class="text-sm opacity-70 mt-0.5">Browse and edit state files. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
     {% if has_top %}<p class="text-sm mt-1"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% else %}<p class="text-sm mt-1 text-warning">No top.sls at file roots — the master serves nothing until the states repo is cloned on the Repo tab.</p>{% endif %}
     </div>
     {% if current_user.role == "admin" %}
-    <a class="btn btn-sm btn-outline mt-1" title="Clone, repoint, and repair the file-roots checkout" href="{{ url_for('files.repo') }}">Repo settings</a>
+    <a class="btn btn-sm btn-outline" title="Clone, repoint, and repair the file-roots checkout" href="{{ url_for('files.repo') }}">Repo settings</a>
     {% endif %}
   </div>
   <section class="card bg-base-100 border border-base-300 shadow-sm mb-3" aria-label="Git checkout status">
@@ -25,7 +25,7 @@
         <span class="ms-auto flex gap-1 max-sm:w-full max-sm:mt-1">
           <form method="post" action="{{ url_for('files.fetch') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-ghost" title="Fetch the remote without changing files">Check for updates</button>
+            <button class="btn btn-sm btn-outline" title="Fetch the remote without changing files">Check for updates</button>
           </form>
           <form method="post" action="{{ url_for('files.sync') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -33,7 +33,7 @@
           </form>
           <form method="post" action="{{ url_for('files.sync_modules') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-ghost" title="Publish custom Salt modules (saltutil.sync_all) — distributes files, applies nothing">Sync modules</button>
+            <button class="btn btn-sm btn-outline" title="Publish custom Salt modules (saltutil.sync_all) — distributes files, applies nothing">Sync modules</button>
           </form>
           {% if current_user.role == "admin" %}
           <form method="post" action="{{ url_for('files.push') }}">
@@ -135,11 +135,12 @@
   </div>
   {% if pages > 1 %}
   <div class="flex items-center gap-2 mt-3 text-sm">
-    <span class="opacity-70">Page {{ page }} of {{ pages }} · {{ total }} files</span>
-    <span class="ms-auto flex gap-1">
-      {% if page > 1 %}<a class="btn btn-xs btn-outline" href="{{ url_for('files.index', q=q, dir=d, page=page - 1, per_page=per_page) }}">‹ Prev</a>{% endif %}
-      {% if page < pages %}<a class="btn btn-xs btn-outline" href="{{ url_for('files.index', q=q, dir=d, page=page + 1, per_page=per_page) }}">Next ›</a>{% endif %}
-    </span>
+    <span class="opacity-70">{{ total }} files</span>
+    <div class="join ms-auto">
+      {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('files.index', q=q, dir=d, page=page - 1, per_page=per_page) }}">‹ Prev</a>{% endif %}
+      <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('files.index', q=q, dir=d, page=page + 1, per_page=per_page) }}">Next ›</a>{% endif %}
+    </div>
   </div>
   {% elif total %}
   <p class="text-sm opacity-70 mt-3">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching "{{ q }}"{% endif %}{% if d %} under "{{ d }}"{% endif %}.</p>

@@ -133,19 +133,23 @@ spec:
             # (The returner drop-in arrives via the projected `config`
             # volume below — never a subPath file mount into this
             # read-only directory: these nodes reject that with ENOTDIR.)
-          # Ready means a Raft leader is visible AND salt-api is
-          # accepting: the watcher touches .cluster_ready only after
-          # cluster.members shows a leader this node belongs to, and
-          # deletes it at every wrapper start. Peer .pub files existing
-          # is not enough (that was true with voter_count 0). TCP 8000
-          # is the serving check (no curl in the image). Until both
-          # hold, the pod stays out of the MQ/API Services.
+          # Ready means this node may serve traffic: a Raft leader is
+          # visible (.cluster_ready, from persisted membership) AND
+          # Salt itself opened its request gate (health/ready, written
+          # by _signal_cluster_ready once this node is a committed
+          # voter). The second file is load-bearing: persisted
+          # membership can look healthy while the live gate never
+          # opened, in which case every publish fails with
+          # cluster_retry and salt-api 401s. TCP 8000 is the serving
+          # check (no curl in the image). Until all hold, the pod
+          # stays out of the MQ/API Services (the headless Service
+          # keeps publishNotReadyAddresses for peer discovery).
           readinessProbe:
             exec:
               command:
                 - bash
                 - -c
-                - test -f /home/salt/data/keys/.cluster_ready && exec 3<>/dev/tcp/127.0.0.1/8000 && exec 4<>/dev/tcp/$POD_IP/4507
+                - test -f /home/salt/data/keys/.cluster_ready && test -f /home/salt/data/keys/cache/health/ready && exec 3<>/dev/tcp/127.0.0.1/8000 && exec 4<>/dev/tcp/$POD_IP/4507
             initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 5

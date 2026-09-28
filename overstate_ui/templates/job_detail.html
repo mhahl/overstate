@@ -7,9 +7,10 @@
   <span class="badge badge-sm {{ 'badge-success' if job.complete else 'badge-info' }}">{{ "complete" if job.complete else "running" }}</span>
   <form method="post" action="{{ url_for('jobs.sync', jid=job.jid) }}" class="ml-auto">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-sm">Sync results</button>
+    <button class="btn btn-sm btn-primary">Sync results</button>
   </form>
   {% if killable and current_user.role in ["operator", "admin"] %}
+  <div class="divider divider-horizontal m-0" aria-hidden="true"></div>
   <form method="post" action="{{ url_for('jobs.kill', jid=job.jid) }}" data-confirm="Kill job {{ job.jid }}? Running minions stop where they are.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-error btn-outline">Kill job</button>

@@ -2,7 +2,7 @@
 <div id="minion-returns">
   {% if data.returns %}
   <div class="overflow-x-auto">
-  <table class="table table-sm table-zebra"><thead><tr>{{ m.sort_th('minions.detail', 'jid', 'JID', sort, direction, {'mid': mid, 'tab': 'jobs'}, '#minion-returns', false) }}{{ m.sort_th('minions.detail', 'status', 'Result', sort, direction, {'mid': mid, 'tab': 'jobs'}, '#minion-returns', false) }}</tr></thead><tbody>
+  <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th('minions.detail', 'jid', 'JID', sort, direction, {'mid': mid, 'tab': 'jobs'}, '#minion-returns', false) }}{{ m.sort_th('minions.detail', 'status', 'Result', sort, direction, {'mid': mid, 'tab': 'jobs'}, '#minion-returns', false) }}</tr></thead><tbody>
     {% for r in data.returns %}
     <tr>
       <td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=r.jid) }}">{{ r.jid }}</a></td>

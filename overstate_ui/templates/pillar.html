@@ -6,7 +6,7 @@
     <h1 class="text-2xl font-bold tracking-tight">Pillar</h1>
     <p class="text-sm opacity-70 mt-0.5">Rendered pillar per minion. Snapshots only on capture.</p>
   </div>
-  <a class="btn btn-sm btn-primary" href="{{ url_for('pillar.diff') }}">Compare two minions</a>
+  <a class="btn btn-sm btn-primary" href="{{ url_for('pillar.diff') }}">Compare</a>
 </div>
 {% import "_macros.html" as m %}
 <form method="get" action="{{ url_for('pillar.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
@@ -17,14 +17,14 @@
       <span class="fieldset-legend">Search</span>
       <input type="search" name="q" value="{{ q }}" placeholder="Search minion…" class="input input-sm">
     </label>
-    <button class="btn btn-sm mb-1">Filter</button>
+    <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('pillar.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
 {% if mids %}
 <div class="overflow-x-auto">
-<table class="table table-zebra"><thead><tr>{{ m.sort_th_plain('pillar.index', 'minion', 'Minion', sort, direction, {'q': q}) }}{{ m.sort_th_plain('pillar.index', 'snapshots', 'Snapshots', sort, direction, {'q': q}) }}<th class="text-right"></th></tr></thead><tbody>
+<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('pillar.index', 'minion', 'Minion', sort, direction, {'q': q}) }}{{ m.sort_th_plain('pillar.index', 'snapshots', 'Snapshots', sort, direction, {'q': q}) }}<th class="text-right"></th></tr></thead><tbody>
 {% for mid in mids %}
 <tr>
   <td><a class="link font-mono text-xs" href="{{ url_for('pillar.detail', mid=mid) }}">{{ mid }}</a></td>

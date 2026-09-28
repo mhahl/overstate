@@ -6,9 +6,9 @@
     <h1 class="text-2xl font-bold tracking-tight">Jobs</h1>
     <p class="text-sm opacity-70 mt-0.5">Dispatch commands and inspect returns.</p>
   </div>
-  <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists">Pause live updates</button>
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
   <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">Run job</a>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
+  <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists" aria-pressed="false">Pause live updates</button>
 </div>
 <form id="jobs-filter" method="get" action="{{ url_for('jobs.index') }}" hx-get="{{ url_for('jobs.index') }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <input type="hidden" name="tab" value="{{ tab }}">
@@ -23,7 +23,7 @@
       <span class="fieldset-legend">Jump to JID</span>
       <input type="search" name="jump" value="" placeholder="Exact JID…" class="input input-sm font-mono">
     </label>
-    <button class="btn btn-sm mb-1">Filter</button>
+    <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('jobs.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
@@ -37,7 +37,7 @@
     try { return localStorage.getItem(key) === "off"; }
     catch (e) { return false; }
   }
-  function paint() { if (btn) btn.textContent = paused() ? "Resume live updates" : "Pause live updates"; }
+  function paint() { if (btn) { btn.textContent = paused() ? "Resume live updates" : "Pause live updates"; btn.setAttribute("aria-pressed", paused() ? "true" : "false"); } }
   if (btn) btn.addEventListener("click", function () {
     try { localStorage.setItem(key, paused() ? "on" : "off"); } catch (e) {}
     paint();
@@ -46,8 +46,14 @@
   // The filter form lives outside #jobs-region so polling never wipes
   // in-progress text; a slow index never overlaps the next poll.
   var inflight = false;
-  document.addEventListener("htmx:afterSwap", function () { inflight = false; });
-  document.addEventListener("htmx:responseError", function () { inflight = false; });
+  function setRefreshing(on) {
+    var el = document.getElementById("jobs-refreshing");
+    if (!el) return;
+    el.classList.toggle("hidden", !on);
+    el.classList.toggle("inline-flex", on);
+  }
+  document.addEventListener("htmx:afterSwap", function () { inflight = false; setRefreshing(false); });
+  document.addEventListener("htmx:responseError", function () { inflight = false; setRefreshing(false); });
   document.addEventListener("htmx:afterSwap", function () {
     var params = new URLSearchParams(location.search);
     var form = document.getElementById("jobs-filter");
@@ -63,6 +69,7 @@
     if (!region || !region.getAttribute("data-poll-url")) return;
     if (region.querySelector("input:focus, select:focus, textarea:focus")) return;
     inflight = true;
+    setRefreshing(true);
     htmx.ajax("GET", region.getAttribute("data-poll-url"),
               {target: "#jobs-region", swap: "outerHTML"});
   }, 10000);

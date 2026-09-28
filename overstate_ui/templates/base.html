@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="{{ app_theme|default('wireframe') }}">
+<html lang="en" data-theme="{{ app_theme|default('light') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -111,6 +111,9 @@
           <li><a href="{{ url_for('jobs.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('jobs') }}">
             <span class="icon-[lucide--play] size-4.5" aria-hidden="true"></span>
             Jobs</a></li>
+          <li><a href="{{ url_for('console.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('console') }}">
+            <span class="icon-[lucide--terminal] size-4.5" aria-hidden="true"></span>
+            Console</a></li>
           <li class="menu-title mt-2">Configure</li>
           <li><a href="{{ url_for('states.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('states') }}">
             <span class="icon-[lucide--badge-check] size-4.5" aria-hidden="true"></span>

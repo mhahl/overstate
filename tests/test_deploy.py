@@ -267,6 +267,9 @@ def test_master_readiness_means_joined():
     # Joined marker plus a serving check: restarts must not go Ready
     # on the previous join marker before the new daemon boots.
     assert "/home/salt/data/keys/.cluster_ready" in text
+    # Salt's own serving gate: persisted membership can look healthy
+    # while the live request gate never opened (cluster_retry outage).
+    assert "/home/salt/data/keys/cache/health/ready" in text
     assert "8000" in text
     assert "4507" in text
     # Cluster TCP binds the pod IP, not loopback.

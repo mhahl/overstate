@@ -156,7 +156,7 @@
 {% if data.mine_fun and not error %}
 {% if data.mine_found %}
 <div class="overflow-x-auto rounded-box border border-base-300">
-<table class="table table-sm table-zebra"><thead><tr><th>Function</th><th>Stored value</th></tr></thead><tbody>
+<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Function</th><th>Stored value</th></tr></thead><tbody>
 <tr><td class="font-mono text-xs">{{ data.mine_fun }}</td>
 <td class="font-mono text-xs break-all whitespace-pre-wrap">{{ data.mine_value | tojson(indent=1) }}</td></tr>
 </tbody></table>
@@ -180,7 +180,7 @@
 {% elif tab == "states" %}
 {% macro state_chip_rows(rows) %}
 <div class="overflow-x-auto rounded-box border border-base-300">
-<table class="table table-sm table-zebra"><thead><tr><th>State</th><th>SLS</th><th>Result</th><th>Comment</th></tr></thead><tbody>
+<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>State</th><th>SLS</th><th>Result</th><th>Comment</th></tr></thead><tbody>
 {% for s in rows %}
 <tr><td class="font-mono text-xs break-all">{{ s.id }}</td>
 <td class="font-mono text-xs">{{ s.sls or "–" }}</td>
@@ -224,7 +224,7 @@
 <div class="p-4 flex flex-col gap-4">
 {% if data.beacon_entries %}
 <div class="overflow-x-auto rounded-box border border-base-300">
-<table class="table table-sm table-zebra"><thead><tr><th>Beacon</th><th>Configuration</th><th>Source</th><th class="text-right"></th></tr></thead><tbody>
+<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Beacon</th><th>Configuration</th><th>Source</th><th class="text-right"></th></tr></thead><tbody>
 {% for name, conf in data.beacon_entries.items() %}
 <tr><td class="font-mono text-xs">{{ name }}</td>
 <td class="font-mono text-xs break-all whitespace-pre-wrap">{{ conf | tojson(indent=1) }}</td>
@@ -258,7 +258,7 @@
 </div>
 {% if data.schedule_rows %}
 <div class="overflow-x-auto rounded-box border border-base-300">
-<table class="table table-sm table-zebra"><thead><tr><th>Job</th><th>Function</th><th>Runs</th><th>Arguments</th><th>Status</th></tr></thead><tbody>
+<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Job</th><th>Function</th><th>Runs</th><th>Arguments</th><th>Status</th></tr></thead><tbody>
 {% for row in data.schedule_rows %}
 <tr><td class="font-mono text-xs">{{ row.name }}</td>
 <td class="font-mono text-xs break-all">{{ row.function or "–" }}</td>
@@ -308,7 +308,7 @@
     <div class="collapse-content">
       {% if data.grains %}
       <div class="overflow-x-auto">
-      <table class="table table-sm table-zebra">
+      <table class="table table-sm table-zebra table-pin-rows w-full">
         <tbody>
         {% for k, v in data.grains.items()|sort %}
         <tr class="hover"><th class="w-48">{{ k }}</th><td class="font-mono text-xs break-all">{{ v }}</td></tr>

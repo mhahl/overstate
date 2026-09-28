@@ -96,7 +96,7 @@ def test_confirm_shows_sls_preview():
     assert "SLS preview" in html
     assert "/tmp/overstate-demo.txt" in html
     assert "fedora-db-01" in html  # first matched minion renders
-    assert "Run state.apply" in html  # Fire stays available
+    assert "Fire on 5 minions" in html  # Fire stays available
 
 
 def test_preview_denial_renders_note_fire_intact():
@@ -107,13 +107,13 @@ def test_preview_denial_renders_note_fire_intact():
     finally:
         DENY_SHOW_SLS = False
     assert "Preview unavailable" in html
-    assert "Run state.apply" in html
+    assert "Fire on 5 minions" in html
 
 
 def test_no_preview_for_other_functions():
     html = confirm(make_client(), fun="pkg.install", args="nginx").data.decode()
     assert "SLS preview" not in html
-    assert "Run pkg.install" in html
+    assert "Fire on 5 minions" in html
 
 
 def test_no_preview_for_test_mode():

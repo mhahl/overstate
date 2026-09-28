@@ -82,7 +82,7 @@ def client():
 
 def test_pillar_index_lists_minions(client):
     html = client.get("/pillar/").data.decode()
-    assert "web-01" in html and "Compare two minions" in html
+    assert "web-01" in html and ">Compare<" in html
 
 
 def test_pillar_index_search_and_snapshot_sort(client):
@@ -145,6 +145,26 @@ def test_diff_unit_include_same():
         {"path": "a", "kind": "same", "old": 1, "new": 1},
         {"path": "b.c", "kind": "changed", "old": 2, "new": 3},
     ]
+
+
+def test_diff_same_minion_compares_two_snapshots(client):
+    with client.app.app_context():
+        session = get_session()
+        session.add(PillarSnapshot(minion_id="web-01", payload={"role": "web"}))
+        session.add(PillarSnapshot(minion_id="web-01", payload={"role": "db"}))
+        session.commit()
+        ids = [
+            r.id
+            for r in session.query(PillarSnapshot)
+            .filter_by(minion_id="web-01")
+            .order_by(PillarSnapshot.id)
+            .all()
+        ]
+    html = client.get(
+        f"/pillar/diff?a=web-01&rev_a={ids[0]}&b=web-01&rev_b={ids[1]}"
+    ).data.decode()
+    assert "changed" in html
+    assert "same minion on both sides" in html
 
 
 def test_diff_full_view_shows_unchanged(client):

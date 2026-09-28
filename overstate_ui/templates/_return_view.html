@@ -19,10 +19,14 @@ in every variant. #}
         {% if s.failed %}<span class="status status-error shrink-0"></span>
         {% elif s.result is none %}<span class="status status-warning shrink-0"></span>
         {% else %}<span class="status status-success shrink-0"></span>{% endif %}
-        <span class="font-mono text-xs mr-auto">{{ s.label }}</span>
-        {% if s.changed and not s.failed %}<span class="badge badge-xs badge-warning shrink-0">changed</span>{% endif %}
-        {% if s.sls %}<span class="badge badge-xs badge-ghost shrink-0 font-mono">{{ s.sls }}</span>{% endif %}
-        {% if s.duration_text %}<span class="text-xs opacity-60 tabular-nums shrink-0">{{ s.duration_text }}</span>{% endif %}
+        <span class="font-mono text-xs">{{ s.label }}</span>
+        {% if s.changed or s.sls or s.duration_text %}
+        <span class="ml-auto grid shrink-0 grid-cols-[4rem_minmax(0,10rem)_6rem] items-center gap-x-2">
+          <span class="flex justify-end">{% if s.changed and not s.failed %}<span class="badge badge-xs badge-warning shrink-0">changed</span>{% endif %}</span>
+          <span class="min-w-0">{% if s.sls %}<span class="badge badge-xs badge-ghost font-mono max-w-full truncate" title="{{ s.sls }}">{{ s.sls }}</span>{% endif %}</span>
+          <span class="text-right text-xs opacity-60 tabular-nums">{{ s.duration_text or "" }}</span>
+        </span>
+        {% endif %}
       </summary>
       {% if s.comment_full %}<p class="text-xs mt-1 mb-1 whitespace-pre-line break-all {% if s.failed %}text-error{% else %}opacity-70{% endif %}">{{ s.comment_full }}</p>{% endif %}
       {% if s.changes %}<pre class="mockup-code text-xs overflow-x-auto"><code>{{ s.changes | tojson(indent=1) }}</code></pre>{% endif %}
@@ -31,9 +35,14 @@ in every variant. #}
     <div class="flex items-center gap-2 text-sm py-0.5 opacity-80">
       {% if s.result is none %}<span class="status status-warning shrink-0"></span>
       {% else %}<span class="status status-success shrink-0"></span>{% endif %}
-      <span class="font-mono text-xs mr-auto">{{ s.label }}</span>
-      {% if s.sls %}<span class="badge badge-xs badge-ghost shrink-0 font-mono">{{ s.sls }}</span>{% endif %}
-      {% if s.duration_text %}<span class="text-xs opacity-60 tabular-nums shrink-0">{{ s.duration_text }}</span>{% endif %}
+      <span class="font-mono text-xs">{{ s.label }}</span>
+      {% if s.sls or s.duration_text %}
+      <span class="ml-auto grid shrink-0 grid-cols-[4rem_minmax(0,10rem)_6rem] items-center gap-x-2">
+        <span></span>
+        <span class="min-w-0">{% if s.sls %}<span class="badge badge-xs badge-ghost font-mono max-w-full truncate" title="{{ s.sls }}">{{ s.sls }}</span>{% endif %}</span>
+        <span class="text-right text-xs opacity-60 tabular-nums">{{ s.duration_text or "" }}</span>
+      </span>
+      {% endif %}
     </div>
     {% if s.comment %}<p class="text-xs opacity-60 mt-0.5">{{ s.comment }}</p>{% endif %}
     {% endif %}

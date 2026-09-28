@@ -106,7 +106,7 @@ def test_users_and_states_forms_carry_confirm(client):
     html = client.get("/users/").data.decode()
     assert "data-confirm=\"Delete user 'op'?\"" in html
     states = client.get("/states/").data.decode()
-    assert "data-confirm=\"Stop watching 'baseline'? Conformity" in states
+    assert "data-confirm=\"Stop watching 'baseline'?\"" in states
 
 
 def test_highstate_with_typed_target_launches(client):
