@@ -34,12 +34,12 @@ OIDC_ENV_FALLBACK = {
 DEFS = {
     "master_host": {
         "label": "Master hostname",
-        "help": "Minion-facing Salt master hostname shown in the onboarding wizard. Empty resets to the detected default.",
+        "help": "Minion-facing Salt master hostname shown in the onboarding wizard. An empty value resets to the detected default.",
         "default": "",
     },
     "oidc_issuer": {
         "label": "OIDC issuer",
-        "help": "Single sign-on provider URL. Empty (and no env) disables SSO.",
+        "help": "Single sign-on provider URL. An empty value with no environment variable disables SSO.",
         "default": "",
     },
     "oidc_client_id": {
@@ -49,27 +49,27 @@ DEFS = {
     },
     "oidc_client_secret": {
         "label": "OIDC client secret",
-        "help": "Empty defers to OIDC_CLIENT_SECRET.",
+        "help": "An empty value defers to OIDC_CLIENT_SECRET.",
         "default": "",
     },
     "oidc_groups_claim": {
         "label": "OIDC groups claim",
-        "help": "Claim carrying group names for role mapping. Empty uses the default.",
+        "help": "Claim carrying group names for role mapping. An empty value uses the default.",
         "default": "",
     },
     "oidc_admin_groups": {
         "label": "OIDC admin groups",
-        "help": "Comma-separated provider groups mapped to the admin role.",
+        "help": "Enter comma-separated provider groups to map to the admin role.",
         "default": "",
     },
     "oidc_operator_groups": {
         "label": "OIDC operator groups",
-        "help": "Comma-separated provider groups mapped to the operator role.",
+        "help": "Enter comma-separated provider groups to map to the operator role.",
         "default": "",
     },
     "default_target": {
         "label": "Default target",
-        "help": "Prefilled in the run form when no preset or bulk selection sets one.",
+        "help": "The run form prefills this value when no preset or bulk selection sets one.",
         "default": "*",
     },
     "page_size": {
@@ -95,7 +95,7 @@ SECTIONS = [
     },
     {
         "title": "Single sign-on (OIDC)",
-        "desc": "Provider connection and role mapping. Values here override the environment; clearing defers back to it. The client secret may live here or in OIDC_CLIENT_SECRET.",
+        "desc": "Provider connection and role mapping. Values here override the environment. Clearing a value defers to the environment. You can store the client secret here or in OIDC_CLIENT_SECRET.",
         "keys": [
             "oidc_issuer",
             "oidc_client_id",
@@ -107,7 +107,7 @@ SECTIONS = [
     },
     {
         "title": "Run defaults",
-        "desc": "Prefills for the command forms.",
+        "desc": "Values the command forms prefill.",
         "keys": ["default_target"],
     },
     {
@@ -223,10 +223,10 @@ def rotation_verify():
     try:
         client.login(http_timeout=15.0)
     except (SaltApiError, httpx.HTTPError, KeyError) as exc:
-        flash(f"salt-api refused the candidate ({exc}). Nothing changed.", "error")
+        flash(f"Salt API refused the candidate ({exc}). Nothing changed.", "error")
         log_event(current_user.username, "rotation-verify:failed")
     else:
-        flash(f"Login as {user} works.", "success")
+        flash(f"Login as {user} succeeded.", "success")
         log_event(current_user.username, "rotation-verify:ok")
     return redirect(url_for("settings.index"))
 

@@ -144,6 +144,31 @@ def test_schedule_add_accepts_allowed_function():
     assert "did not confirm the add" in rv.data.decode()
 
 
+def test_schedule_act_rejects_glob_mid():
+    """A forged wildcard id must 404, not fan schedule.delete out to the
+    fleet. Every other single-minion call targets tgt_type list + exact
+    id; schedules.act was the outlier on both."""
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    assert client.post("/schedules/*/delete", data={"job": "daily"}).status_code == 404
+    assert client.post("/schedules/*/add").status_code == 404
+
+
+def test_schedule_act_without_minion_response_warns():
+    """No entry for the minion in the return means Salt did not confirm
+    anything: warn instead of flashing success."""
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/schedules/ghost-01/delete", data={"job": "daily"}, follow_redirects=True
+    )
+    html = rv.data.decode()
+    assert "no response" in html
+    assert "deleted." not in html
+
+
 def test_schedule_delete_disable_forms_have_data_confirm():
     app = _app()
     client = app.test_client()
@@ -232,7 +257,7 @@ def test_minion_raw_tab_is_own_panel():
     _login(client, "op")
     html = client.get("/minions/web-01", query_string={"tab": "raw"}).data.decode()
     assert 'tab-active">Raw' in html
-    assert "Advanced diagnostic dump" in html
+    assert "Diagnostic dump" in html
     assert "mystate" in html  # stored payload, uncollapsed
     assert "state.highstate" in html  # schedule payload, uncollapsed
     assert "Raw JSON (advanced)" not in html

@@ -19,15 +19,36 @@ GRAIN_COLUMNS = [
     "saltversion",
 ]
 
+SNAPSHOT_GRAINS = (
+    "os",
+    "osfinger",
+    "osrelease",
+    "fqdn",
+    "ipv4",
+    "cpuarch",
+    "num_cpus",
+    "mem_total",
+    "virtual",
+    "saltversion",
+    "proxytype",
+    "proxyid",
+)
+"""Grain keys worth snapshotting. The list, CSV, detail header, OS icon,
+and proxy badge read exactly these; full ``grains.items`` payloads
+carry dozens more (cpu_flags and friends) that multiply every
+fleet-wide refresh for data nothing renders. The detail page still
+pulls full live grains for a minion that answers, so "all grain facts"
+stays complete whenever the minion is up."""
+
 
 def refresh_inventory(client, key_statuses: dict[str, str]) -> int:
-    """Pull grains.items fleet-wide and upsert the snapshot cache.
+    """Pull the snapshot grains fleet-wide and upsert the cache.
 
     Structured so an RQ worker can call it by import path; the refresh
     button calls it synchronously (dev fleets are tiny).
     """
     now = dt.datetime.now(dt.UTC)
-    result = client.local("*", "grains.items", timeout=30)[0]
+    result = client.local("*", "grains.item", arg=list(SNAPSHOT_GRAINS), timeout=30)[0]
     session = get_session()
     count = 0
     for mid, grains in result.items():

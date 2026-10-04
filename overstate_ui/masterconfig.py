@@ -141,13 +141,13 @@ def _load_live(client: K8sClient, live_name: str) -> tuple[dict, str] | None:
         current = client.get_configmap(live_name)
     except K8sUnavailableError:
         flash(
-            "No cluster connection from here. "
-            f"Edit by hand instead: {_manual(client.config.namespace, live_name)}.",
+            "No cluster connection from this page. "
+            f"Edit with kubectl instead: {_manual(client.config.namespace, live_name)}.",
             "error",
         )
         return None
     except K8sError as exc:
-        flash(f"Could not read the live config: {exc}. Nothing changed.", "error")
+        flash(f"The app could not read the live config: {exc}. Nothing changed.", "error")
         return None
     return current["data"] or {}, current["resourceVersion"]
 
@@ -209,12 +209,12 @@ def checklist_refresh():
 
         out = mastercheck_now()
         write_mastercheck_cache(out)
-        flash("No worker answered. Checked inline.", "info")
+        flash("No worker answered. The app checked inline instead.", "info")
         log_event(current_user.username, "mastercheck:inline")
         return render_template(
             "masterconfig.html", checklist=out, **_index_context(K8sClient())
         )
-    flash("Checklist queued. Refresh for results.", "info")
+    flash("The app queued the checklist. Refresh for results.", "info")
     log_event(current_user.username, "mastercheck:queued")
     return redirect(url_for("masterconfig.index"))
 
@@ -279,14 +279,14 @@ def save():
         current = client.get_configmap(live_name)
     except K8sUnavailableError:
         flash(
-            "No cluster connection from here. "
-            f"Edit by hand instead: {_manual(client.config.namespace, live_name)}.",
+            "No cluster connection from this page. "
+            f"Edit with kubectl instead: {_manual(client.config.namespace, live_name)}.",
             "error",
         )
         log_event(current_user.username, f"masterconfig-save-refused:{key}:offline")
         return redirect(url_for("masterconfig.index"))
     except K8sError as exc:
-        flash(f"Could not read the live config: {exc}. Nothing changed.", "error")
+        flash(f"The app could not read the live config: {exc}. Nothing changed.", "error")
         log_event(current_user.username, f"masterconfig-save-refused:{key}:read")
         return redirect(url_for("masterconfig.index"))
     data, revision = current["data"] or {}, current["resourceVersion"]
@@ -295,14 +295,14 @@ def save():
     raw = text.encode("utf-8")
     if len(raw) > MAX_BYTES:
         flash(
-            f"Too large to save ({len(raw)} bytes; limit is {MAX_BYTES}). "
+            f"This file is too large to save ({len(raw)} bytes; limit is {MAX_BYTES}). "
             "Nothing changed.",
             "error",
         )
         log_event(current_user.username, f"masterconfig-save-refused:{key}:oversize")
         return redirect(url_for("masterconfig.view", key=key))
     if text == data[key]:
-        flash("No changes — nothing saved.", "info")
+        flash("No changes. Nothing saved.", "info")
         return redirect(url_for("masterconfig.view", key=key))
     problem = _yaml_error(key, text)
     if problem is not None:
@@ -319,7 +319,7 @@ def save():
     try:
         _snapshot(client, live_name, history_name, data, revision)
     except K8sError as exc:
-        flash(f"Could not snapshot history: {exc}. Nothing changed.", "error")
+        flash(f"The app could not snapshot history: {exc}. Nothing changed.", "error")
         log_event(current_user.username, f"masterconfig-save-refused:{key}:history")
         return redirect(url_for("masterconfig.view", key=key))
     updated = dict(data)
@@ -328,14 +328,14 @@ def save():
         new_rv = client.replace_configmap(live_name, updated, base_rv)
     except K8sConflictError:
         flash(
-            "That config changed underneath you. Reload the edit page and "
+            "That config changed since you opened it. Reload the edit page and "
             "re-apply your change. Nothing was written.",
             "error",
         )
         log_event(current_user.username, f"masterconfig-save-refused:{key}:stale")
         return redirect(url_for("masterconfig.edit", key=key))
     except K8sError as exc:
-        flash(f"Could not write the live config: {exc}. Nothing changed.", "error")
+        flash(f"The app could not write the live config: {exc}. Nothing changed.", "error")
         log_event(current_user.username, f"masterconfig-save-refused:{key}:write")
         return redirect(url_for("masterconfig.view", key=key))
     flash(
@@ -408,7 +408,7 @@ def restart():
     namespace = client.config.namespace
     if not client.config.available:
         flash(
-            "No cluster connection from here. Restart by hand: "
+            "No cluster connection from this page. Restart with kubectl: "
             f"kubectl -n {namespace} rollout restart statefulset/{sts_name}.",
             "error",
         )
@@ -417,8 +417,8 @@ def restart():
     healthy, reason = _roll_masters(client, sts_name)
     if not healthy:
         flash(
-            f"Master restart unhealthy: {reason}. The fleet may be unmanaged: "
-            "revert to the last snapshot and restart from this page.",
+            f"Master restart unhealthy: {reason}. The fleet may be unmanaged. "
+            "Revert to the last snapshot and restart from this page.",
             "error",
         )
         log_event(current_user.username, "master-restart:timeout")
@@ -441,7 +441,7 @@ def revert():
     sts_name = current_app.config["MASTER_STATEFULSET"]
     if not client.config.available:
         flash(
-            "No cluster connection from here. Revert by hand: "
+            "No cluster connection from this page. Revert with kubectl: "
             f"{_manual(client.config.namespace, live_name)}.",
             "error",
         )
@@ -450,24 +450,24 @@ def revert():
     try:
         revisions, _ = _read_history(client, history_name)
     except K8sError as exc:
-        flash(f"Could not read history: {exc}. Nothing changed.", "error")
+        flash(f"The app could not read history: {exc}. Nothing changed.", "error")
         log_event(current_user.username, "masterconfig-revert:refused-history")
         return redirect(url_for("masterconfig.index"))
     if not revisions:
-        flash("No snapshots yet — nothing to revert to.", "error")
+        flash("No snapshots yet. Nothing to revert to.", "error")
         log_event(current_user.username, "masterconfig-revert:refused-empty")
         return redirect(url_for("masterconfig.index"))
     try:
         current = client.get_configmap(live_name)
     except K8sError as exc:
-        flash(f"Could not read the live config: {exc}. Nothing changed.", "error")
+        flash(f"The app could not read the live config: {exc}. Nothing changed.", "error")
         log_event(current_user.username, "masterconfig-revert:refused-read")
         return redirect(url_for("masterconfig.index"))
     data, revision = current["data"] or {}, current["resourceVersion"]
     try:
         _snapshot(client, live_name, history_name, data, revision)
     except K8sError as exc:
-        flash(f"Could not snapshot history: {exc}. Nothing changed.", "error")
+        flash(f"The app could not snapshot history: {exc}. Nothing changed.", "error")
         log_event(current_user.username, "masterconfig-revert:refused-history")
         return redirect(url_for("masterconfig.index"))
     try:
@@ -477,25 +477,25 @@ def revert():
         )
     except K8sConflictError:
         flash(
-            "That config changed underneath you. Reload and revert again. "
+            "That config changed since you opened it. Reload and revert again. "
             "Nothing was written.",
             "error",
         )
         log_event(current_user.username, "masterconfig-revert:refused-stale")
         return redirect(url_for("masterconfig.index"))
     except K8sError as exc:
-        flash(f"Could not write the live config: {exc}. Nothing changed.", "error")
+        flash(f"The app could not write the live config: {exc}. Nothing changed.", "error")
         log_event(current_user.username, "masterconfig-revert:refused-write")
         return redirect(url_for("masterconfig.index"))
     healthy, reason = _roll_masters(client, sts_name)
     if not healthy:
         flash(
             f"Reverted to the previous snapshot (revision {new_rv}) but the "
-            f"restart is unhealthy: {reason}. Check the masters over kubectl.",
+            f"restart is unhealthy ({reason}). Check the masters over kubectl.",
             "error",
         )
         log_event(current_user.username, f"masterconfig-revert:{new_rv}:timeout")
         return redirect(url_for("masterconfig.index"))
-    flash(f"Reverted to revision {new_rv}. Masters restarted healthy.", "success")
+    flash(f"Reverted to revision {new_rv}. Masters restarted and are healthy.", "success")
     log_event(current_user.username, f"masterconfig-revert:{new_rv}")
     return redirect(url_for("masterconfig.index"))

@@ -66,7 +66,7 @@
   src.onopen = function () {
     setStatus("streaming", "badge-info");
     if (list.children.length === 0) {
-      note.textContent = "Connected. Waiting for events; run a job to see activity.";
+      note.textContent = "Connected. Waiting for events. Run a job to see events.";
     }
   };
   src.onmessage = function (ev) {
@@ -84,7 +84,7 @@
     list.prepend(li);
     while (list.children.length > 50) list.removeChild(list.lastChild);
     applyFilter();
-    note.textContent = "Streaming (newest first, server-filtered)…";
+    note.textContent = "Streaming newest first, filtered on the server.";
   };
   var finished = false;
   function finish(msg, bad) {
@@ -94,7 +94,7 @@
     setStatus(bad ? "error" : "ended", bad ? "badge-error" : "badge-neutral");
     src.close();
   }
-  src.addEventListener("done", function () { finish("Stream ended (cap reached). Re-watch to resume.", false); });
+  src.addEventListener("done", function () { finish("Stream ended. Re-watch to resume.", false); });
   src.addEventListener("error", function () { finish("Stream error or salt-api unreachable.", true); });
   src.onerror = function () {
     if (finished) return;

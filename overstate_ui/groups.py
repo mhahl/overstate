@@ -7,7 +7,7 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
-from .minions import PAGE_SIZES, live_roster
+from .minions import PAGE_SIZES, cached_roster
 from .models import Minion, MinionGroup
 
 bp = Blueprint("groups", __name__, url_prefix="/groups")
@@ -49,7 +49,7 @@ def index():
         all_groups.sort(key=lambda g: g.name, reverse=True)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(max(1, page), pages)
-    statuses, _, _ = live_roster(get_salt())
+    statuses, _, _ = cached_roster(get_salt())
     roster = sorted(row.id for row in get_session().query(Minion.id).all())
     return render_template(
         "groups.html",

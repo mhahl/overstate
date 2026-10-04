@@ -10,7 +10,7 @@ from overstate_ui import create_app
 from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
-from overstate_ui.models import AuditEvent, Job, User
+from overstate_ui.models import AuditEvent, Job, Minion, User
 from overstate_ui.salt_client import SaltClient
 
 KEY_LISTING = {
@@ -183,6 +183,33 @@ def test_key_list_and_accept(client):
     assert rv.status_code == 400
     rv = post_line(client, "salt-key -a ghost")
     assert rv.status_code == 400
+
+
+def test_console_key_delete_removes_snapshot_row(client):
+    """salt-key -d must clear the inventory snapshot too, like the Keys
+    page: the minion list unions snapshot with roster."""
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="m1", grains={}, conformity={}, key_status="accepted")
+        )
+        get_session().commit()
+    rv = post_line(client, "salt-key -d m1")
+    assert rv.status_code == 200
+    assert "Inventory row removed" in rv.get_json()["output"]
+    with client.app.app_context():
+        assert get_session().get(Minion, "m1") is None
+
+
+def test_console_key_accept_keeps_snapshot_row(client):
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="new1", grains={}, conformity={}, key_status="pending")
+        )
+        get_session().commit()
+    rv = post_line(client, "salt-key -a new1")
+    assert rv.status_code == 200
+    with client.app.app_context():
+        assert get_session().get(Minion, "new1") is not None
 
 
 def test_runner_allowlist(client):

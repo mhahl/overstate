@@ -44,9 +44,9 @@
             <p class="font-medium text-sm">Conformity</p>
           </div>
           <p class="text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-success">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-warning">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-error">unreachable</span>{% else %}<span class="badge badge-neutral">unknown</span>{% endif %}</p>
-          {% if conformity.get("status") == "drifted" %}<p class="text-xs">Last run reported changes — open Recent activity below, then re-run state.apply to converge.</p>
-          {% elif conformity.get("status") == "unreachable" %}<p class="text-xs">Last run could not reach this minion — check presence and key state above.</p>
-          {% elif (not conformity.get("status") or conformity.get("status") == "unknown") and not conformity.get("jid") %}<p class="text-xs">No highstate-style job has reported for this minion yet — run one to establish conformity.</p>{% endif %}
+          {% if conformity.get("status") == "drifted" %}<p class="text-xs">Last run reported changes. Open Recent activity below, then rerun state.apply to converge.</p>
+          {% elif conformity.get("status") == "unreachable" %}<p class="text-xs">Last run could not reach this minion. Check presence and key state above.</p>
+          {% elif (not conformity.get("status") or conformity.get("status") == "unknown") and not conformity.get("jid") %}<p class="text-xs">No highstate-style job has reported for this minion yet. Run one to establish conformity.</p>{% endif %}
           <p class="text-xs text-base-content/60">{% if conformity.get("jid") and conformity.get("status") != "unknown" %}Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% elif conformity.get("status") and (conformity.get("status") != "unknown" or conformity.get("jid")) %}No highstate-style job recorded{% endif %}</p>
         </div>
       </div>
@@ -77,7 +77,7 @@
           <div class="py-6 text-center">
             <p><span class="flex items-center justify-center size-8 rounded-full bg-base-200 mx-auto"><span class="icon-[lucide--inbox] size-4" aria-hidden="true"></span></span></p>
             <p class="font-medium mt-2">No grain data</p>
-            <p class="text-sm text-base-content/60">Run a refresh or check the minion.</p>
+            <p class="text-sm text-base-content/60">Refresh the inventory or inspect the minion.</p>
             {% if current_user.role in ["operator", "admin"] %}
             <p class="mt-3"><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}">Run a job</a></p>
             {% endif %}
@@ -102,7 +102,7 @@
             {% endfor %}
           </ul>
           {% else %}
-          <p class="text-sm text-base-content/60">Nothing has run against this minion yet.</p>
+          <p class="text-sm text-base-content/60">No jobs have run on this minion.</p>
           {% endif %}
           {% if current_user.role in ["operator", "admin"] %}
           <p><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}" data-loading-link data-loading-text="Loading…">Run job on this minion</a></p>
@@ -161,11 +161,11 @@
 <td class="font-mono text-xs break-all whitespace-pre-wrap">{{ data.mine_value | tojson(indent=1) }}</td></tr>
 </tbody></table>
 </div>
-<p class="text-xs opacity-70">Mine data is cached. This minion last reported it on its own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>.</p>
+<p class="text-xs opacity-70">Mine data is cached. The minion reported it on its schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>.</p>
 {% else %}
 <div class="py-8 text-center">
   <p class="font-medium">Mine has nothing stored for {{ data.mine_fun }}</p>
-  <p class="text-sm opacity-70">This minion never reported that function. Minions only report functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then look again.</p>
+  <p class="text-sm opacity-70">This minion did not report that function. Minions report only functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then retry the lookup.</p>
 </div>
 {% endif %}
 {% endif %}
@@ -174,7 +174,7 @@
 <div class="p-4 flex flex-col gap-4">
 <div class="py-8 text-center">
   <p class="font-medium">{% if tab == "schedule" %}No schedules on {{ mid }}{% else %}No pillar data for {{ mid }}{% endif %}</p>
-  <p class="text-sm opacity-70">{% if tab == "schedule" %}Recurring jobs live on the minion. <a class="link" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>{% else %}The master renders pillar per minion. <a class="link" href="https://docs.saltproject.io/en/3006/topics/pillar/index.html" target="_blank" rel="noopener">Salt pillar documentation</a>{% endif %}</p>
+  <p class="text-sm opacity-70">{% if tab == "schedule" %}The minion stores recurring jobs. <a class="link" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>{% else %}The master renders pillar per minion. <a class="link" href="https://docs.saltproject.io/en/3006/topics/pillar/index.html" target="_blank" rel="noopener">Salt pillar documentation</a>{% endif %}</p>
 </div>
 </div>
 {% elif tab == "states" %}
@@ -200,7 +200,7 @@
   </form>
   {% endif %}
 </div>
-<p class="text-xs opacity-70">Shows the last stored run. Press Refresh to ask the minion.</p>
+<p class="text-xs opacity-70">Shows the last stored run. Press Refresh to query the minion.</p>
 {% if data.live_note %}<div class="alert alert-warning text-sm" role="status">{{ data.live_note }}</div>{% endif %}
 {% if data.live %}
 <p class="font-medium text-sm">Live description <span class="badge badge-sm badge-info">not stored</span></p>
@@ -216,7 +216,7 @@
 {% else %}
 <div class="py-8 text-center">
   <p class="font-medium">No stored state run for {{ mid }}</p>
-  <p class="text-sm opacity-70">Run a highstate or state.apply, then come back — or press Refresh for a one-shot live description.</p>
+  <p class="text-sm opacity-70">Run a highstate or state.apply, then return. Or press Refresh for a one-shot live description.</p>
 </div>
 {% endif %}
 </div>
@@ -245,7 +245,7 @@
 {% else %}
 <div class="py-8 text-center">
   <p class="font-medium">No beacons on {{ mid }}</p>
-  <p class="text-sm opacity-70">Beacon definitions live in pillar. <a class="link" href="https://docs.saltproject.io/en/3006/topics/beacons/index.html" target="_blank" rel="noopener">Salt beacon documentation</a></p>
+  <p class="text-sm opacity-70">You define beacons in pillar. <a class="link" href="https://docs.saltproject.io/en/3006/topics/beacons/index.html" target="_blank" rel="noopener">Salt beacon documentation</a></p>
 </div>
 {% endif %}
 </div>
@@ -283,7 +283,7 @@
 </div>
 {% elif tab == "raw" %}
 <div class="p-4 flex flex-col gap-4">
-<p class="text-xs opacity-70">Advanced diagnostic dump: the exact payloads behind the States, Schedule, and Pillar tabs.</p>
+<p class="text-xs opacity-70">Diagnostic dump with the exact payloads behind the States, Schedule, and Pillar tabs.</p>
 <p class="font-medium text-sm">States — last stored return{% if data.stored %} · <span class="font-mono">{{ data.stored.fun }}</span> in <a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=data.stored.jid) }}">{{ data.stored.jid }}</a>{% endif %}</p>
 {% if data.stored %}<pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.stored.raw | tojson(indent=1) }}</code></pre>
 {% else %}<p class="text-sm opacity-70">No stored state run for {{ mid }}.</p>{% endif %}

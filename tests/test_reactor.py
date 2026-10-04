@@ -131,7 +131,7 @@ def test_add_roundtrip(tmp_path):
         data={"event": "salt/key", "sls": "salt://reactor/key.sls"},
         follow_redirects=True,
     )
-    assert "reactor added" in rv.data.decode()
+    assert "Reactor added" in rv.data.decode()
     assert [c for c in calls if c[0] == "reactor.add"]
 
 
@@ -145,7 +145,7 @@ def test_add_rejects_bad_event(tmp_path):
         data={"event": "salt/key; rm -rf /", "sls": "salt://reactor/key.sls"},
         follow_redirects=True,
     )
-    assert "Event pattern and SLS reference required" in rv.data.decode()
+    assert "Event pattern and SLS reference are required" in rv.data.decode()
     assert not [c for c in calls if c[0] == "reactor.add"]
 
 
@@ -160,7 +160,7 @@ def test_delete_flows_through_shared_dialog(tmp_path):
     rv = client.post(
         "/reactor/delete", data={"event": "salt/auth"}, follow_redirects=True
     )
-    assert "reactor deleted" in rv.data.decode()
+    assert "Reactor deleted" in rv.data.decode()
     assert [c for c in calls if c[0] == "reactor.delete"]
 
 
@@ -195,7 +195,7 @@ def test_list_failure_shows_error(tmp_path):
     _login(client, "op")
     rv = client.get("/reactor/")
     assert rv.status_code == 200
-    assert "salt-api error" in rv.data.decode()
+    assert "Salt API error" in rv.data.decode()
 
 
 def test_not_running_master_shows_empty_state(tmp_path):
@@ -310,7 +310,7 @@ def test_save_stale_refuses(tmp_path):
         data={"sls": "greet.sls", "content": "mine: 1\n", "base_hash": stale},
         follow_redirects=True,
     )
-    assert b"changed underneath you" in rv.data
+    assert b"changed since you opened it" in rv.data
     assert (tmp_path / "greet.sls").read_text() == "raced:\n  test.nop: []\n"
     with app.app_context():
         actions = [row.action for row in get_session().query(AuditEvent).all()]
@@ -435,7 +435,7 @@ def test_add_fans_out_to_all_pods(tmp_path, monkeypatch):
         data={"event": "salt/key", "sls": "salt://reactor/key.sls"},
         follow_redirects=True,
     )
-    assert "reactor added." in rv.data.decode()
+    assert "Reactor added." in rv.data.decode()
     for pod_calls in calls:
         assert [c for c in pod_calls if c[0] == "reactor.add"]
     assert "reactor-add:salt/key" in _actions(app)
@@ -454,7 +454,7 @@ def test_add_partial_when_pod_down(tmp_path, monkeypatch):
         follow_redirects=True,
     )
     html = rv.data.decode()
-    assert "reactor added on 1 of 2 pod(s)" in html
+    assert "Reactor added on 1 of 2 pods" in html
     assert "unreachable" in html
     assert [c for c in calls[0] if c[0] == "reactor.add"]
     assert not [c for c in calls[1] if c[0] == "reactor.add"]
@@ -470,7 +470,7 @@ def test_add_refuses_when_no_pod_reachable(tmp_path, monkeypatch):
         data={"event": "salt/key", "sls": "salt://reactor/key.sls"},
         follow_redirects=True,
     )
-    assert "no master reachable" in rv.data.decode()
+    assert "no master is reachable" in rv.data.decode()
     assert "reactor-add:salt/key" not in _actions(app)
 
 
@@ -520,7 +520,7 @@ def test_delete_partial_when_pod_down(tmp_path, monkeypatch):
         "/reactor/delete", data={"event": "salt/auth"}, follow_redirects=True
     )
     html = rv.data.decode()
-    assert "reactor deleted on 1 of 2 pod(s)" in html
+    assert "Reactor deleted on 1 of 2 pods" in html
     assert "reactor-delete:salt/auth:partial" in _actions(app)
 
 
@@ -685,7 +685,7 @@ def test_confirm_with_persist_offline_still_adds(tmp_path):
         follow_redirects=True,
     )
     html = rv.data.decode()
-    assert "reactor added." in html  # runner path unaffected
+    assert "Reactor added." in html  # runner path unaffected
     assert "No cluster connection" in html  # persist refused offline
     actions = _actions(app)
     assert "reactor-add:salt/key" in actions

@@ -7,7 +7,7 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .jobs_helpers import ALLOWED_FUNS, FUN_RE
-from .minions import live_roster
+from .minions import _exact_mid, cached_roster
 from .salt_client import SaltApiError
 
 bp = Blueprint("schedules", __name__, url_prefix="/schedules")
@@ -69,10 +69,14 @@ def parse_schedule_list(value) -> dict:
 def index():
     mid = request.args.get("minion", "")
     client = get_salt()
-    statuses, _, _ = live_roster(client)
+    statuses, _, _ = cached_roster(client)
     accepted = sorted(m for m, st in statuses.items() if st == "accepted")
     if not mid and accepted:
         mid = accepted[0]
+    if mid:
+        # A path/query minion id is one exact minion: glob characters
+        # would fan a single-minion call out to the fleet, so they 404.
+        mid = _exact_mid(mid)
     entries: dict = {}
     raw = ""
     error = None
@@ -117,6 +121,7 @@ def index():
 @bp.post("/<mid>/add")
 @roles_required("operator")
 def add(mid: str):
+    mid = _exact_mid(mid)
     name = request.form.get("name", "").strip()
     fun = request.form.get("function", "").strip()
     unit = request.form.get("unit", "seconds")
@@ -164,20 +169,28 @@ def add(mid: str):
 @bp.post("/<mid>/<action>")
 @roles_required("operator")
 def act(mid: str, action: str):
+    mid = _exact_mid(mid)
     if action not in SCHEDULE_ACTIONS:
         flash("Unknown schedule action.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     job_name = request.form.get("job", "").strip()
     if not job_name:
-        flash("Pick a scheduled job first: an empty selection never fires.", "error")
+        flash("Select a scheduled job first. An empty selection runs nothing.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     try:
-        payload = get_salt().local(mid, SCHEDULE_ACTIONS[action], arg=[job_name])
+        payload = get_salt().local(
+            mid, SCHEDULE_ACTIONS[action], arg=[job_name], tgt_type="list"
+        )
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
     else:
         data = payload[0].get(mid) if payload else None
-        if isinstance(data, dict) and data.get("result") is False:
+        if data is None:
+            flash(
+                f"{mid}: no response. The change may not have applied.",
+                "warning",
+            )
+        elif isinstance(data, dict) and data.get("result") is False:
             flash(
                 f"{mid}/{job_name}: {action} failed: {data.get('comment', 'no detail')}",
                 "error",

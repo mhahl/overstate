@@ -123,7 +123,7 @@ def test_kill_guards(app, admin):
         )
         get_session().commit()
     rv = admin.post("/jobs/done1/kill", follow_redirects=True)
-    assert "Only running Salt jobs" in rv.data.decode()
+    assert "You can only kill running Salt jobs" in rv.data.decode()
     rv = admin.post("/jobs/nope/kill", follow_redirects=True)
     assert "Unknown job." in rv.data.decode()
 

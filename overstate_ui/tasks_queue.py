@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -24,16 +25,45 @@ CAPABILITY_CACHE_KEY = "salt:capabilities"
 CAPABILITY_TTL = 300
 PRESENCE_CACHE_KEY = "minions:presence"
 PRESENCE_TTL = 15
+ROSTER_CACHE_KEY = "minions:roster"
+ROSTER_TTL = 30
+"""Cached ({minion_id: key_status}, [up ids]) from key.list_all +
+manage.status. The minion list and key pages render from this instead of
+paying two Salt round trips per view (and per filter keystroke); key
+mutations clear it so trust changes show up immediately."""
+KEYS_CACHE_KEY = "keys:roster"
+KEYS_TTL = 30
+"""Cached merged multi-pod key roster with fingerprints, same deal as
+the minion roster above."""
+
+_redis_clients: dict = {}
+_redis_lock = threading.Lock()
 
 
 def get_redis_client():
-    """Redis from app config. Raises redis RedisError when unreachable."""
+    """Redis from app config. Raises redis RedisError when unreachable.
+
+    Clients are cached per process per URL: a fresh client means a fresh
+    connection pool, so building one per call churns TCP connections on
+    every poll, presence write, and enqueue.
+    """
     import redis
     from flask import current_app
 
-    return redis.from_url(
-        current_app.config["REDIS_URL"], socket_connect_timeout=2, socket_timeout=5
-    )
+    url = current_app.config["REDIS_URL"]
+    client = _redis_clients.get(url)
+    if client is None:
+        with _redis_lock:
+            client = _redis_clients.get(url)
+            if client is None:
+                client = redis.from_url(url, socket_connect_timeout=2, socket_timeout=5)
+                _redis_clients[url] = client
+    return client
+
+
+def drop_redis_clients() -> None:
+    """Forget cached redis clients. Tests only."""
+    _redis_clients.clear()
 
 
 def queue_or_none(
@@ -224,5 +254,63 @@ def write_presence_cache(payload: dict) -> None:
 
     try:
         get_redis_client().set(PRESENCE_CACHE_KEY, json.dumps(payload), ex=PRESENCE_TTL)
+    except redis.exceptions.RedisError:
+        pass
+
+
+def read_roster_cache() -> dict | None:
+    """Cached {"statuses": {mid: key_status}, "up": [mid]} or None."""
+    import redis
+
+    try:
+        raw = get_redis_client().get(ROSTER_CACHE_KEY)
+        return json.loads(raw) if raw else None
+    except (redis.exceptions.RedisError, ValueError):
+        return None
+
+
+def write_roster_cache(statuses: dict, up: set | list) -> None:
+    import redis
+
+    try:
+        get_redis_client().set(
+            ROSTER_CACHE_KEY,
+            json.dumps({"statuses": statuses, "up": sorted(up)}),
+            ex=ROSTER_TTL,
+        )
+    except (redis.exceptions.RedisError, ValueError, TypeError):
+        pass
+
+
+def read_keys_cache() -> dict | None:
+    """Cached {"data": {tab: rows}, "failed": [pods]} or None."""
+    import redis
+
+    try:
+        raw = get_redis_client().get(KEYS_CACHE_KEY)
+        return json.loads(raw) if raw else None
+    except (redis.exceptions.RedisError, ValueError):
+        return None
+
+
+def write_keys_cache(data: dict, failed: list) -> None:
+    import redis
+
+    try:
+        get_redis_client().set(
+            KEYS_CACHE_KEY, json.dumps({"data": data, "failed": failed}), ex=KEYS_TTL
+        )
+    except (redis.exceptions.RedisError, ValueError, TypeError):
+        pass
+
+
+def clear_key_caches() -> None:
+    """Drop roster + keys caches after a key mutation (accept, reject,
+    delete, reconcile, remove-with-key) so trust changes render on the
+    next view instead of at TTL expiry. Never raises."""
+    import redis
+
+    try:
+        get_redis_client().delete(ROSTER_CACHE_KEY, KEYS_CACHE_KEY)
     except redis.exceptions.RedisError:
         pass

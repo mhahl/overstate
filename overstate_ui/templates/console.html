@@ -3,12 +3,12 @@
 {% block content %}
 <div class="mb-5">
   <h1 class="text-2xl font-bold tracking-tight">Master console</h1>
-  <p class="text-sm opacity-70 mt-0.5">Salt command lines in the browser. Same functions, same confirm gate, same audit as Run job — no shell, no SSH.</p>
+  <p class="text-sm opacity-70 mt-0.5">Salt command lines in the browser. Same functions, same confirm gate, same audit as Run job. No shell, no SSH.</p>
 </div>
 {% if current_user.role == 'viewer' %}
 <div class="alert alert-warning mb-4" role="alert">
   <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
-  <span>You are signed in as a viewer: the console answers <code>help</code>, but firing anything needs the operator role.</span>
+  <span>You are signed in as a viewer: the console answers <code>help</code>, but you need the operator role to fire commands.</span>
 </div>
 {% endif %}
 <div class="card bg-base-100 border border-base-300 shadow-sm">
@@ -24,7 +24,7 @@
     <button class="btn btn-sm btn-primary" type="submit">Run</button>
   </form>
 </div>
-<p class="mt-3 text-xs opacity-70">Confirming functions (state.apply, …) need <code>--confirm=&lt;target&gt;</code>. Every firing lands in the audit trail with its JID.</p>
+<p class="mt-3 text-xs opacity-70">Functions that need confirmation (state.apply, …) require <code>--confirm=&lt;target&gt;</code>. Each fired command appears in the audit trail with its JID.</p>
 <script>
 (function () {
   var term = document.getElementById("term");
@@ -88,12 +88,12 @@
       if (res.data && res.data.output) print(res.data.output);
       if (res.data && res.data.job_url) printLink(res.data.job_url, "open job " + (res.data.jid || "") + " →");
       if (!res.data || !res.data.ok) {
-        if (res.status === 403) print("forbidden: the operator role is required to fire.");
+        if (res.status === 403) print("forbidden: you need the operator role to fire.");
       }
       if (!res.data) print("request failed: HTTP " + res.status);
     }).catch(function () {
       pending.remove();
-      print("request failed: the server did not answer.");
+      print("request failed: no server response.");
     });
   });
   input.addEventListener("keydown", function (ev) {

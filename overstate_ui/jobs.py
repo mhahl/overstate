@@ -239,7 +239,7 @@ def new():
             saved = get_session().get(SavedJob, int(request.args["saved"]))
         except ValueError:
             # Garbage query args land back on a clean form, never a 500.
-            flash("Saved job reference is not valid.", "error")
+            flash("Invalid saved job reference.", "error")
             saved = None
     if request.args.get("bulk_run") and not request.args.getlist("bulk"):
         # The minion list submits here with no selection: say so instead
@@ -582,7 +582,7 @@ def cancel_batch(group: str):
         flash("Cancel requested: no new waves will start.", "info")
     else:
         flash(
-            "Cancel flag not stored (no queue); a running inline batch cannot stop.",
+            "No queue, so the cancel flag was not stored. A running inline batch cannot stop.",
             "warning",
         )
     return redirect(url_for("jobs.detail", jid=f"batch-{group}"))
@@ -709,7 +709,7 @@ def kill(jid: str):
         flash("Unknown job.", "error")
         return redirect(url_for("jobs.index", tab="history"))
     if not killable(job):
-        flash("Only running Salt jobs with minion targets can be killed.", "error")
+        flash("You can only kill running Salt jobs with minion targets.", "error")
         return redirect(url_for("jobs.detail", jid=jid))
     tgt, tgt_type = job.tgt, job.tgt_type
     if tgt_type == "group":
@@ -739,7 +739,7 @@ def kill(jid: str):
     )
     session.commit()
     log_event(current_user.username, f"kill:{jid}", jid=kill_jid)
-    flash(f"Kill published for {jid}: minions report back here.", "success")
+    flash(f"Kill published for {jid}. Minion reports appear on this page.", "success")
     return redirect(url_for("jobs.detail", jid=jid))
 
 

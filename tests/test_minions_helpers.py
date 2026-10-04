@@ -2,8 +2,59 @@
 
 import logging
 
-from overstate_ui.minions_helpers import live_roster, summarize_schedule
+import pytest
+
+from overstate_ui import create_app
+from overstate_ui.auth import seed_admin
+from overstate_ui.config import TestConfig
+from overstate_ui.db import create_all, get_session, init_db
+from overstate_ui.minions_helpers import (
+    hydrate_entries,
+    live_roster,
+    minion_entries,
+    minion_rows,
+    summarize_schedule,
+)
+from overstate_ui.models import Minion
 from overstate_ui.salt_client import SaltApiError
+
+
+@pytest.fixture()
+def app():
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    with app.app_context():
+        create_all()
+        seed_admin(password="pw")
+    return app
+
+
+def _seed(app):
+    with app.app_context():
+        get_session().add_all(
+            [
+                Minion(
+                    id="web-01",
+                    grains={"osfinger": "Fedora 41", "ipv4": ["10.0.0.1"]},
+                    conformity={},
+                    key_status="accepted",
+                ),
+                Minion(
+                    id="web-02",
+                    grains={"osfinger": "Debian 12", "ipv4": "10.0.0.2"},
+                    conformity={},
+                    key_status="accepted",
+                ),
+                Minion(
+                    id="new-01",
+                    grains={},
+                    conformity={},
+                    key_status="pending",
+                ),
+            ]
+        )
+        get_session().commit()
 
 
 class StubClient:
@@ -121,3 +172,42 @@ def test_summarize_schedule_cron_when_once_and_splay():
 def test_summarize_schedule_non_mapping_yields_empty():
     assert summarize_schedule("schedule: {}\n") == (None, [])
     assert summarize_schedule(None) == (None, [])
+
+
+def test_entries_plus_hydrate_matches_minion_rows(app):
+    """The split path must render exactly what minion_rows rendered:
+    same ids, order, flags, and grains — including a live-only id with
+    no snapshot row and a scalar-ipv4 snapshot."""
+    _seed(app)
+    statuses = {"web-01": "accepted", "web-02": "denied", "ghost-01": "pending"}
+    up = {"web-01"}
+    with app.app_context():
+        for sort in ("id", "key", "presence", "os"):
+            for direction in ("asc", "desc"):
+                for q, status_filter in (("", ""), ("web", ""), ("", "pending")):
+                    expected = minion_rows(
+                        statuses, up, q, status_filter, sort, direction
+                    )
+                    got = hydrate_entries(
+                        minion_entries(statuses, up, q, status_filter, sort, direction)
+                    )
+                    assert got == expected, (sort, direction, q, status_filter)
+
+
+def test_entries_carry_no_grains_until_hydrated(app):
+    """Only the os sort needs grains pre-hydration; every other sort
+    must leave entries light so a page hydrates a page, not the fleet."""
+    _seed(app)
+    with app.app_context():
+        plain = minion_entries({"web-01": "accepted"}, set(), "", "")
+        assert [e["id"] for e in plain] == ["new-01", "web-01", "web-02"]
+        assert all("grains" not in e for e in plain)
+        page = hydrate_entries(plain[:2])
+        assert [r["id"] for r in page] == ["new-01", "web-01"]
+        assert page[1]["grains"]["osfinger"] == "Fedora 41"
+        # Scalar ipv4 normalizes on hydration, exactly as before.
+        web2 = hydrate_entries([e for e in plain if e["id"] == "web-02"])
+        assert web2[0]["grains"]["ipv4"] == ["10.0.0.2"]
+        # Live-only ids hydrate to a bare {}.
+        ghost = hydrate_entries(minion_entries({"ghost-01": "pending"}, set(), "", ""))
+        assert ghost[0]["grains"] == {}

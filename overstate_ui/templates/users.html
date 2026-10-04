@@ -61,7 +61,7 @@
   <section class="card bg-base-100 border border-error/40 shadow-sm mt-4" aria-label="Danger zone">
     <div class="card-body gap-1">
       <h2 class="card-title text-base text-error">Danger zone</h2>
-      <p class="text-sm opacity-70">A halfway rotation locks the app out: every Salt call fails until the master and the app share the new password.</p>
+      <p class="text-sm opacity-70">A partial rotation locks out the app. Every Salt call fails until the master and the app share the new password.</p>
       <div class="mt-1"><a class="btn btn-sm btn-error btn-outline" href="{{ url_for('users.rotation') }}">Rotate salt-api password</a></div>
     </div>
   </section>

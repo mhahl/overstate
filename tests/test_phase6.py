@@ -186,7 +186,7 @@ def test_schedules_action_empty_job_rejected(client):
         )
     rv = client.post("/schedules/web-01/delete", data={"job": ""})
     assert rv.status_code == 302
-    assert "Pick a scheduled job" in client.get(rv.headers["Location"]).data.decode()
+    assert "Select a scheduled job" in client.get(rv.headers["Location"]).data.decode()
     with client.app.app_context():
         assert (
             get_session()

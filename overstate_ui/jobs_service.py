@@ -441,7 +441,7 @@ def launch(
 def _warn_missed(missed: list[str], fun: str, jid: str) -> None:
     """Name unreachable pods loudly: partial results are never silent."""
     for name in missed:
-        flash(f"{name} unreachable: results may be partial.", "warning")
+        flash(f"{name} is unreachable, so results may be partial.", "warning")
         log_event(current_user.username, f"run-partial:{fun}:{name}", jid=jid)
 
 

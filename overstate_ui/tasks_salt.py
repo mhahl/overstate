@@ -59,9 +59,12 @@ def refresh_now(client) -> int:
     """Fleet grains refresh. Shared by the view fallback and the task."""
     from .inventory import refresh_inventory
     from .minions import live_roster
+    from .tasks_queue import write_roster_cache
 
-    statuses, _, _ = live_roster(client)
-    return refresh_inventory(client, statuses)
+    statuses, up, _ = live_roster(client)
+    count = refresh_inventory(client, statuses)
+    write_roster_cache(statuses, up)
+    return count
 
 
 def refresh_inventory_task() -> dict:

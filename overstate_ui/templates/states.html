@@ -27,7 +27,7 @@
     {% endif %}
   </span>
   {% else %}
-  <span class="opacity-60">Nothing watched — verdicts cover the whole run.</span>
+  <span class="opacity-60">Nothing watched. Verdicts cover the whole run.</span>
   {% endfor %}
   {% if current_user.role in ["operator", "admin"] %}
   <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-1 ml-1">

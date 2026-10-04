@@ -3,12 +3,12 @@
 {% block content %}
 <div class="mb-5">
   <h1 class="text-2xl font-bold tracking-tight">Reconcile keys</h1>
-  <p class="text-sm opacity-70 mt-0.5">Accept keys one pod trusts, wherever they are pending with the same fingerprint.</p>
+  <p class="text-sm opacity-70 mt-0.5">Accept keys one pod trusts on each pod where they are pending with the same fingerprint.</p>
 </div>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
 <div class="card-body">
 {% if report.accepted %}
-<h2 class="font-semibold">Will accept ({{ report.accepted|length }})</h2>
+<h2 class="font-semibold">Keys to accept ({{ report.accepted|length }})</h2>
 <ul class="list-disc ml-5 text-sm mb-4">
   {% for pod, mid in report.accepted %}<li><span class="font-mono">{{ mid }}</span> on {{ pod }}</li>{% endfor %}
 </ul>
@@ -16,13 +16,13 @@
 <p class="text-sm mb-4">Nothing to accept.</p>
 {% endif %}
 {% if report.skipped %}
-<h2 class="font-semibold">Left for a human ({{ report.skipped|length }})</h2>
+<h2 class="font-semibold">Needs human review ({{ report.skipped|length }})</h2>
 <ul class="list-disc ml-5 text-sm mb-4">
   {% for mid, reason in report.skipped %}<li><span class="font-mono">{{ mid }}</span>: {{ reason }}</li>{% endfor %}
 </ul>
 {% endif %}
 {% if report.unreachable %}
-<p class="text-sm text-warning mb-4">Unreachable: {{ report.unreachable|join(", ") }} — their keys keep current state.</p>
+<p class="text-sm text-warning mb-4">Unreachable: {{ report.unreachable|join(", ") }}. Their keys keep the current state.</p>
 {% endif %}
 <div class="flex gap-2">
   {% if report.accepted %}

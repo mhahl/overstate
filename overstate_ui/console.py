@@ -28,7 +28,7 @@ from .jobs_helpers import (
 )
 from .jobs_service import launch
 from .keys import ACTIONS as KEY_ACTIONS
-from .models import JobReturn
+from .models import JobReturn, Minion
 from .salt_client import SaltApiError
 
 bp = Blueprint("console", __name__, url_prefix="/console")
@@ -251,7 +251,13 @@ def _cmd_key(argv: list[str]) -> dict:
             cli.wheel(KEY_ACTIONS[action], match=mid)
         except SaltApiError:
             failed.append(name)
+    from .tasks_queue import clear_key_caches
+
     if failed:
+        if len(failed) < len(pod_clients(get_salt())):
+            # Reachable masters applied it: drop the roster caches even
+            # though this reports as an error.
+            clear_key_caches()
         raise ConsoleError(
             f"salt-api error on {', '.join(failed)}: "
             + (
@@ -261,7 +267,21 @@ def _cmd_key(argv: list[str]) -> dict:
             ),
             status=502,
         )
+    clear_key_caches()
     log_event(current_user.username, f"console:key.{action}:{mid}")
+    if action == "delete":
+        # Same split-store trap as the Keys page: the minion list unions
+        # the snapshot cache with the live roster, so the snapshot row
+        # must go too. Job history is kept.
+        row = get_session().get(Minion, mid)
+        if row is not None:
+            get_session().delete(row)
+            get_session().commit()
+            log_event(current_user.username, f"minion-remove:{mid}")
+            return {
+                "output": f"{mid}: key.delete applied on every master. "
+                "Inventory row removed."
+            }
     return {"output": f"{mid}: key.{action} applied on every master."}
 
 

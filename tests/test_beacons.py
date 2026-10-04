@@ -163,7 +163,7 @@ def test_beacon_toggle_denied_flashes_error():
         follow_redirects=True,
     )
     assert rv.status_code == 200
-    assert "salt-api error" in rv.data.decode()
+    assert "Salt API error" in rv.data.decode()
     with c.app.app_context():
         assert (
             get_session()
@@ -186,6 +186,29 @@ def test_beacon_toggle_refusal_flashes_error_not_success():
     assert "it is configured in pillar" in html
     assert "alert-error" in html
     assert "disabled." not in html
+    with c.app.app_context():
+        assert (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action.like("beacon-%"))
+            .count()
+            == 0
+        )
+
+
+def test_beacon_toggle_without_minion_response_warns():
+    """Salt answered but not for this minion (e.g. it is attached to
+    another master): warn instead of flashing success, and audit nothing."""
+    c = make_client()
+    rv = c.post(
+        "/minions/bare-01/beacons/enable",
+        data={"beacon": "ps"},
+        follow_redirects=True,
+    )
+    html = rv.data.decode()
+    assert rv.status_code == 200
+    assert "no response" in html
+    assert "enabled." not in html
     with c.app.app_context():
         assert (
             get_session()

@@ -24,7 +24,7 @@ resolved renders drop those attributes so polling stops on its own. #}
 {% if worker_down %}
 <div class="alert alert-warning" role="alert">
   <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
-  <span>Background worker unreachable — showing snapshot data.</span>
+  <span>Background worker unreachable. Showing snapshot data.</span>
 </div>
 {# Reachability is unknown while probes are in flight: the spinner above
 already says so. Only claim "unreachable" once polling settled. #}
@@ -112,7 +112,7 @@ already says so. Only claim "unreachable" once polling settled. #}
           <span class="icon-[lucide--circle-check] size-5 text-success" aria-hidden="true"></span>
         </div>
         <p class="font-medium mt-2">No failures recorded</p>
-        <p class="text-sm opacity-70">Failed returns land here.</p>
+        <p class="text-sm opacity-70">Failed returns appear here.</p>
         <a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
       </div>
       {% endif %}
@@ -136,7 +136,7 @@ already says so. Only claim "unreachable" once polling settled. #}
         <dt class="opacity-70">Token age</dt><dd>{{ "%.0f"|format(health.token_age) if health.token_age >= 0 else "none" }}s</dd>
         <dt class="opacity-70">@wheel</dt><dd><span class="badge badge-sm {{ 'badge-success' if health.wheel_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.wheel_ok else ("checking" if probing else "failing") }}</span></dd>
         <dt class="opacity-70">@runner</dt><dd><span class="badge badge-sm {{ 'badge-success' if health.runner_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.runner_ok else ("checking" if probing else "failing") }}</span></dd>
-        <dt class="opacity-70">Returns</dt><dd>{% if stats.returns.age is none %}{% if stats.returns.stale %}<span class="badge badge-sm badge-error" title="Jobs completed but the returner stored nothing — check master_job_cache">none recorded</span>{% else %}<span class="opacity-70">none yet</span>{% endif %}{% else %}<span class="{{ 'text-error' if stats.returns.stale else '' }}" title="Newest stored return">{{ stats.returns.age }}</span>{% endif %}</dd>
+        <dt class="opacity-70">Returns</dt><dd>{% if stats.returns.age is none %}{% if stats.returns.stale %}<span class="badge badge-sm badge-error" title="Jobs completed but the returner stored nothing. Check master_job_cache.">none recorded</span>{% else %}<span class="opacity-70">none yet</span>{% endif %}{% else %}<span class="{{ 'text-error' if stats.returns.stale else '' }}" title="Newest stored return">{{ stats.returns.age }}</span>{% endif %}</dd>
       </dl>
       {% if health.error %}<p class="text-error text-sm mt-2">{{ health.error }}</p>{% endif %}
       <div class="divider my-1">Capabilities</div>
@@ -182,11 +182,11 @@ already says so. Only claim "unreachable" once polling settled. #}
         {% endfor %}
       </ul>
       {% if masters.images_differ %}
-      <p class="text-xs text-warning mt-2">Pods run different images — let the rollout finish, then check the StatefulSet.</p>
+      <p class="text-xs text-warning mt-2">Pods run different images. Let the rollout finish, then check the StatefulSet.</p>
       {% endif %}
       <p class="text-xs opacity-70 mt-2">Config rev <span class="font-mono">{{ masters.config_revision or "unknown" }}</span>{% if current_user.role == "admin" %} · <a class="link" href="{{ url_for('masterconfig.index') }}">Master Settings</a>{% endif %}</p>
       {% elif masters or not probing %}
-      <p class="text-sm opacity-70 mt-1">Master status unavailable — no cluster connection from here.</p>
+      <p class="text-sm opacity-70 mt-1">Master status unavailable. No cluster connection from here.</p>
       {% else %}
       <p class="text-sm opacity-70 mt-1">Probing masters…</p>
       {% endif %}

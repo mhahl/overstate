@@ -231,10 +231,10 @@ def check_now():
 
     job = queue_or_none(capabilities_task, ping_target())
     if job is None:
-        flash("Worker unreachable — showing the last cached check.", "warning")
+        flash("Worker unreachable. Showing the last cached check.", "warning")
         log_event(current_user.username, "capabilities-recheck:refused-offline")
     else:
-        flash("Capability check queued — the panel updates live.", "info")
+        flash("Capability check queued. The panel updates live.", "info")
         log_event(current_user.username, "capabilities-recheck:queued")
     return redirect(url_for("dashboard.index"))
 

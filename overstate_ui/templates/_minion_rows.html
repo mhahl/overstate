@@ -14,7 +14,7 @@
         {% elif r.key_status in ["rejected", "denied"] %}<span class="badge badge-sm badge-error">{{ r.key_status }}</span>
         {% else %}<span class="badge badge-sm badge-neutral">{{ r.key_status }}</span>{% endif %}
       </td>
-      <td><span class="inline-flex items-center gap-1.5 text-sm presence" data-mid="{{ r.id }}" {% if r.dead %}title="Key accepted but the minion is not responding — open its detail page to diagnose"{% endif %}>
+      <td><span class="inline-flex items-center gap-1.5 text-sm presence" data-mid="{{ r.id }}" {% if r.dead %}title="Key is accepted but the minion does not respond. Open its detail page to diagnose."{% endif %}>
         {% if r.up %}<span class="status status-success" aria-hidden="true"></span><span>up</span>
         {% elif r.dead %}<span class="status status-warning" aria-hidden="true"></span><span>accepted, dead</span>
         {% else %}<span class="status status-error" aria-hidden="true"></span><span>down</span>{% endif %}

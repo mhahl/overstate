@@ -23,7 +23,7 @@
   <div class="card bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body py-8 text-center">
       <p class="font-medium">Cannot display {{ rel }}</p>
-      <p class="text-sm opacity-70">This file is {{ reason }} ({{ size }} bytes{% if max_bytes and reason.startswith("too large") %}; display limit is {{ max_bytes }} bytes{% endif %}). It exists in the checkout — open it in git instead. No content was changed.</p>
+      <p class="text-sm opacity-70">This file is {{ reason }} ({{ size }} bytes{% if max_bytes and reason.startswith("too large") %}; display limit is {{ max_bytes }} bytes{% endif %}). It exists in the checkout; open it in git instead. No content was changed.</p>
       <p class="mt-3"><a class="btn btn-sm btn-outline" href="{{ url_for('files.index') }}">Back to files</a></p>
     </div>
   </div>

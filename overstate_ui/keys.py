@@ -22,7 +22,9 @@ from flask_login import current_user, login_required
 from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
+from .db import get_session
 from .fleet import pod_clients
+from .models import Minion
 from .salt_client import SaltApiError, SaltClient
 
 bp = Blueprint("keys", __name__, url_prefix="/keys")
@@ -36,6 +38,8 @@ TABS = [
 
 ACTIONS = {"accept": "key.accept", "reject": "key.reject", "delete": "key.delete"}
 
+PAST = {"accept": "accepted", "reject": "rejected", "delete": "deleted"}
+
 # key.finger section names per roster tab (when the return is sectioned).
 _FINGER_SECTIONS = {
     "accepted": "minions",
@@ -47,13 +51,13 @@ _FINGER_SECTIONS = {
 _FP_RE = re.compile(r"^([0-9a-fA-F]{2}:)+[0-9a-fA-F]{2}$")
 
 
-def _fingerprints(client) -> dict:
+def _fingerprints(client, http_timeout: float | None = 8.0) -> dict:
     """Merge key.finger output into {minion_id: fingerprint}."""
     fp_re = _FP_RE
     try:
         # match is required: key.finger with no match crashes server-side
         # (UnboundLocalError on Salt 3008).
-        result = client.wheel("key.finger", match="*")[0]
+        result = client.wheel("key.finger", match="*", http_timeout=http_timeout)[0]
     except (SaltApiError, KeyError, IndexError, TypeError):
         return {}
     node = result.get("data", {}).get("return", result)
@@ -88,20 +92,24 @@ def get_key_data(client) -> dict:
 
 def merged_key_data(
     clients: list[tuple[str, SaltClient]],
+    http_timeout: float | None = 8.0,
 ) -> tuple[dict, list[str]]:
     """(union roster, unreachable pod names).
 
     Each row carries per-pod states; a minion appears under a tab when ANY
     pod reports it there. Unreachable pods contribute nothing (their
-    absence is flashed by the caller).
+    absence is flashed by the caller). Reads carry a short HTTP backstop
+    so a sick master degrades the page fast instead of pinning a worker.
     """
     states: dict[str, dict] = {}
     order: list[str] = []
     failed: list[str] = []
     for name, client in clients:
         try:
-            listed = client.wheel("key.list_all")[0]["data"]["return"]
-            fingers = _fingerprints(client)
+            listed = client.wheel("key.list_all", http_timeout=http_timeout)[0]["data"][
+                "return"
+            ]
+            fingers = _fingerprints(client, http_timeout=http_timeout)
         except (SaltApiError, KeyError, IndexError, TypeError):
             failed.append(name)
             continue
@@ -185,13 +193,15 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
     unreachable: list[str] = []
     for name, cli in clients:
         try:
-            listed_raw = cli.wheel("key.list_all")[0]["data"]["return"]
+            listed_raw = cli.wheel("key.list_all", http_timeout=8.0)[0]["data"][
+                "return"
+            ]
             listed = {tab: set(listed_raw.get(field, []) or []) for tab, field in TABS}
         except (SaltApiError, KeyError, IndexError, TypeError):
             unreachable.append(name)
             continue
         try:
-            node = cli.wheel("key.finger", match="*")[0]
+            node = cli.wheel("key.finger", match="*", http_timeout=8.0)[0]
             node = node.get("data", {}).get("return", node)
         except (SaltApiError, KeyError, IndexError, TypeError):
             node = None
@@ -257,13 +267,27 @@ def index():
     tab = request.args.get("tab", "pending")
     if tab not in dict(TABS):
         tab = "pending"
+    from .tasks_queue import read_keys_cache, write_keys_cache
+
     clients = pod_clients(get_salt())
-    data, failed = merged_key_data(clients)
+    # Merged roster + fingerprints, cached briefly: rebuilding it costs
+    # two wheel calls per pod on every view. Mutations clear it below.
+    cached = read_keys_cache()
+    if (
+        isinstance(cached, dict)
+        and isinstance(cached.get("data"), dict)
+        and isinstance(cached.get("failed"), list)
+    ):
+        data, failed = cached["data"], cached["failed"]
+    else:
+        data, failed = merged_key_data(clients)
+        if len(failed) < len(clients):
+            write_keys_cache(data, failed)
     if len(failed) == len(clients):
-        flash("salt-api error: no master reachable.", "error")
+        flash("Salt API error: no master is reachable.", "error")
         data = {t: [] for t, _ in TABS}
     for name in failed:
-        flash(f"{name} unreachable: key states may be partial.", "warning")
+        flash(f"{name} is unreachable. Key states are partial.", "warning")
     counts = {t: len(data[t]) for t, _ in TABS}
     masters = [
         m.strip()
@@ -317,8 +341,11 @@ def reconcile():
     if request.form.get("confirm") == "1":
         report = reconcile_keys(clients)
         if len(report["unreachable"]) == len(clients):
-            flash("salt-api error: no master reachable. Nothing changed.", "error")
+            flash("Salt API error: no master is reachable. Nothing changed.", "error")
         else:
+            from .tasks_queue import clear_key_caches
+
+            clear_key_caches()
             n = len(report["accepted"])
             log_event(current_user.username, f"reconcile-keys:{n}")
             detail = "; ".join(
@@ -337,7 +364,7 @@ def reconcile():
         return redirect(url_for("keys.index"))
     report = reconcile_keys(clients, execute=False)
     if len(report["unreachable"]) == len(clients):
-        flash("salt-api error: no master reachable. Nothing changed.", "error")
+        flash("Salt API error: no master is reachable. Nothing changed.", "error")
         return redirect(url_for("keys.index"))
     return render_template("keys_reconcile.html", report=report)
 
@@ -355,19 +382,19 @@ def act(action: str):
         if request.form.get(f):
             keep[f] = request.form[f]
     if not mid:
-        flash("Select a minion first: an empty key selection never fires.", "error")
+        flash("Select a minion first. An empty key selection does nothing.", "error")
         return redirect(url_for("keys.index", **keep))
     # match= is a Salt glob: a forged "*" would accept or delete every
     # key, so only exact ids from the roster may pass.
     if any(c in mid for c in "*?[]"):
-        flash("Key ids with wildcards are never accepted.", "error")
+        flash("You cannot use wildcards in key ids.", "error")
         return redirect(url_for("keys.index", **keep))
     clients = pod_clients(get_salt())
     roster, _ = merged_key_data(clients)
     current_ids = {row["id"] for rows in roster.values() for row in rows}
     if mid not in current_ids:
         # An empty union means no master answered: say so plainly.
-        flash("Unknown key: it is not on the current list.", "error")
+        flash("That key is missing from the current list.", "error")
         return redirect(url_for("keys.index", **keep))
     failed = []
     for name, cli in clients:
@@ -376,11 +403,31 @@ def act(action: str):
         except SaltApiError:
             failed.append(name)
     if len(failed) == len(clients):
-        flash("salt-api error: no master reachable. Nothing changed.", "error")
-    elif failed:
+        flash("Salt API error: no master is reachable. Nothing changed.", "error")
+        return redirect(url_for("keys.index", **keep))
+    from .tasks_queue import clear_key_caches
+
+    clear_key_caches()
+    past = PAST[action]
+    # A delete must also clear the inventory snapshot: the minion list
+    # unions the snapshot cache with the live roster, so a key delete
+    # that leaves the snapshot behind never removes the minion. Job
+    # history is kept. Accept/reject only change trust, so the snapshot
+    # (grains, history) stays put.
+    removed = False
+    if action == "delete":
+        session = get_session()
+        row = session.get(Minion, mid)
+        if row is not None:
+            session.delete(row)
+            session.commit()
+            removed = True
+            log_event(current_user.username, f"minion-remove:{mid}")
+    suffix = " Inventory row removed." if removed else ""
+    if failed:
         flash(
-            f"{mid}: {action}ed on the reachable masters; "
-            f"{', '.join(failed)} unreachable — retry to converge.",
+            f"{mid}: {past} on the reachable masters. "
+            f"{', '.join(failed)} did not answer. Retry to converge.{suffix}",
             "warning",
         )
         log_event(
@@ -389,5 +436,5 @@ def act(action: str):
         )
     else:
         log_event(current_user.username, f"{action}-key")
-        flash(f"{mid}: {action}ed.", "success")
+        flash(f"{mid}: {past}.{suffix}", "success")
     return redirect(url_for("keys.index", **keep))

@@ -68,7 +68,7 @@ def fake_transport() -> httpx.MockTransport:
             )
         if body.get("client") == "local":
             fun = body.get("fun")
-            if fun == "grains.items":
+            if fun in ("grains.items", "grains.item"):
                 return httpx.Response(
                     200,
                     json={
@@ -140,6 +140,35 @@ def test_keys_sort_direction_flips(client):
     assert 'aria-sort="asc"' in asc and 'aria-sort="desc"' in desc
 
 
+def test_keys_index_serves_cached_roster(client, fake_redis, monkeypatch):
+    """The first view warms the keys cache; the second must render from
+    it without touching Salt at all."""
+    from overstate_ui.salt_client import SaltApiError
+
+    assert "web-01" in client.get("/keys/?tab=accepted").data.decode()
+    assert fake_redis.store
+
+    def _boom(fun, **kwargs):
+        raise SaltApiError("must not be called on a cache hit")
+
+    monkeypatch.setattr(client.app.extensions["salt_client"], "wheel", _boom)
+    html = client.get("/keys/?tab=accepted").data.decode()
+    assert "web-01" in html
+
+
+def test_keys_act_clears_caches(client, fake_redis):
+    """A key mutation must drop the roster caches so the next view
+    renders live trust instead of the pre-accept snapshot."""
+    from overstate_ui.tasks_queue import KEYS_CACHE_KEY, ROSTER_CACHE_KEY
+
+    client.get("/keys/?tab=pending")
+    client.get("/minions/")
+    assert KEYS_CACHE_KEY in fake_redis.store
+    assert ROSTER_CACHE_KEY in fake_redis.store
+    client.post("/keys/accept", data={"id": "new-01", "tab": "pending"})
+    assert fake_redis.store == {}
+
+
 def test_key_accept_writes_audit_row():
     init_db("sqlite://")
     app = create_app(TestConfig)
@@ -192,6 +221,17 @@ def test_minions_row_kebab_menu_for_operator(client):
     assert 'id="remove-modal-cancel"' in html
 
 
+def test_remove_dialog_lists_affected_items(client):
+    """The remove dialog names what the action touches: inventory row
+    gone, job history kept, Salt key handling. Readers should not have
+    to guess from two prose paragraphs."""
+    html = client.get("/minions/").data.decode()
+    dialog = html.split('id="remove-modal"', 1)[1].split("</dialog>", 1)[0]
+    assert "Delete the inventory row: grains, conformity verdict, last seen." in dialog
+    assert "Keep the job history." in dialog
+    assert "Leave the Salt key on the master" in dialog
+
+
 def test_minions_row_menu_hidden_for_viewer(client):
     from overstate_ui.auth import _ph
     from overstate_ui.models import User
@@ -242,7 +282,10 @@ def test_minion_list_forms_never_nest(client):
     assert 'action="/minions/web-01/refresh"' in html
     assert 'id="bulk-form"' in html
     assert 'name="bulk" value="web-01" form="bulk-form"' in html
-    assert 'form="bulk-form"' in html.split("Run job on selected")[0].rsplit("<button", 1)[1]
+    assert (
+        'form="bulk-form"'
+        in html.split("Run job on selected")[0].rsplit("<button", 1)[1]
+    )
 
 
 def test_key_act_empty_id_rejected(client):
@@ -411,7 +454,72 @@ def test_minion_row_remove_key_failure_keeps_snapshot(client, monkeypatch):
     assert rv.status_code == 302
     with client.app.app_context():
         assert get_session().get(Minion, "web-01") is not None
-    assert "salt-api error" in client.get(rv.headers["Location"]).data.decode()
+    assert "Salt API error" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_key_delete_removes_snapshot_row(client):
+    """Deleting a key must clear the inventory snapshot too. The minion
+    list unions the snapshot cache with the live roster, so a key delete
+    that leaves the snapshot behind never removes the minion."""
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        get_session().commit()
+    rv = client.post("/keys/delete", data={"id": "web-01", "tab": "accepted"})
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+
+
+def test_key_accept_keeps_snapshot_row(client):
+    """Accept/reject only change trust: the snapshot row stays so grains
+    and history remain visible."""
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="new-01", grains={}, conformity={}, key_status="pending")
+        )
+        get_session().commit()
+    rv = client.post("/keys/accept", data={"id": "new-01", "tab": "pending"})
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().get(Minion, "new-01") is not None
+
+
+def test_minion_remove_with_key_fans_out_to_all_pods(client, monkeypatch):
+    """Remove + delete-key must delete the key on every master pod, like
+    the Keys page does. A single-pod delete leaves the key (and the
+    minion) alive elsewhere."""
+    import overstate_ui.minions as minions_mod
+
+    calls: list[str] = []
+
+    class Pod:
+        def __init__(self, name: str):
+            self._name = name
+
+        def wheel(self, fun, **kwargs):
+            calls.append(self._name)
+            assert fun == "key.delete"
+            assert kwargs == {"match": "web-01"}
+            return [{"data": {"return": {}, "success": True}}]
+
+    monkeypatch.setattr(
+        minions_mod,
+        "pod_clients",
+        lambda default: [("pod-0", Pod("pod-0")), ("pod-1", Pod("pod-1"))],
+    )
+    with client.app.app_context():
+        get_session().add(
+            Minion(id="web-01", grains={}, conformity={}, key_status="accepted")
+        )
+        get_session().commit()
+    rv = client.post("/minions/web-01/remove", data={"delete_key": "yes"})
+    assert rv.status_code == 302
+    assert sorted(calls) == ["pod-0", "pod-1"]
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+    assert "Salt key deleted" in client.get(rv.headers["Location"]).data.decode()
 
 
 def test_minion_row_remove_unknown_minion(client):

@@ -134,7 +134,16 @@ def summarize_schedule(sched) -> tuple[bool | None, list[dict]]:
     return (bool(enabled) if isinstance(enabled, bool) else None), rows
 
 
-def live_roster(client) -> tuple[dict[str, str], set[str], bool]:
+ROSTER_HTTP_TIMEOUT = 8.0
+"""HTTP backstop for the roster reads behind the minion pages. Healthy
+masters answer in well under a second; a sick one must degrade to the
+snapshot cache fast instead of pinning a sync worker for the 30 s
+client default — on every filter keystroke, no less."""
+
+
+def live_roster(
+    client, http_timeout: float | None = ROSTER_HTTP_TIMEOUT
+) -> tuple[dict[str, str], set[str], bool]:
     """Return ({minion_id: key_status}, {up minion ids}, reachable).
 
     Offline-safe: each half fails independently and logs. Reachable is
@@ -148,7 +157,9 @@ def live_roster(client) -> tuple[dict[str, str], set[str], bool]:
     keys_ok = False
     presence_ok = False
     try:
-        listed = client.wheel("key.list_all")[0]["data"]["return"]
+        listed = client.wheel("key.list_all", http_timeout=http_timeout)[0]["data"][
+            "return"
+        ]
         for mid in listed.get("minions", []):
             statuses[mid] = "accepted"
         for mid in listed.get("minions_pre", []):
@@ -164,7 +175,9 @@ def live_roster(client) -> tuple[dict[str, str], set[str], bool]:
     else:
         keys_ok = True
     try:
-        up = set(client.runner("manage.status")[0].get("up", []))
+        up = set(
+            client.runner("manage.status", http_timeout=http_timeout)[0].get("up", [])
+        )
     except (SaltApiError, KeyError, IndexError, TypeError) as exc:
         logger.warning("live presence unavailable: %s", exc)
     else:
@@ -186,7 +199,7 @@ def normalize_grains(grains) -> dict:
     return grains
 
 
-def minion_rows(
+def minion_entries(
     statuses: dict,
     up: set,
     q: str,
@@ -194,19 +207,35 @@ def minion_rows(
     sort: str = "id",
     direction: str = "asc",
 ) -> list[dict]:
+    """Lightweight per-minion merge: id, key_status, up, dead, last_seen.
+
+    Same merge, filter, and sort semantics as :func:`minion_rows` but
+    loads no grains: one narrow column scan instead of full snapshot
+    JSON per minion. Callers hydrate only the ids they render (see
+    :func:`hydrate_entries`), so listing a fleet costs a page of grains,
+    not the whole table.
+    """
     from .db import get_session
     from .models import Minion
 
     session = get_session()
+    if sort == "os":
+        # osfinger ordering needs grains for the filtered set; every
+        # other sort orders from the narrow columns alone.
+        query = session.query(
+            Minion.id, Minion.key_status, Minion.last_seen, Minion.grains
+        )
+    else:
+        query = session.query(Minion.id, Minion.key_status, Minion.last_seen)
     by_id: dict[str, dict] = {}
-    for row in session.query(Minion).order_by(Minion.id).all():
-        by_id[row.id] = {
-            "id": row.id,
-            "key_status": row.key_status,
+    for row in query.order_by(Minion.id).all():
+        by_id[row[0]] = {
+            "id": row[0],
+            "key_status": row[1],
             "up": False,
             "dead": False,
-            "last_seen": row.last_seen,
-            "grains": normalize_grains(row.grains),
+            "last_seen": row[2],
+            "grains": row[3] if sort == "os" else {},
         }
     for mid, st in statuses.items():
         by_id.setdefault(
@@ -235,11 +264,98 @@ def minion_rows(
     elif sort == "presence":
         key = lambda r: (PRESENCE_ORDER[presence_of(r)], r["id"])
     elif sort == "os":
-        key = lambda r: (r["grains"].get("osfinger", ""), r["id"])
+        key = lambda r: (row_grains(r).get("osfinger", ""), r["id"])
     else:
         key = lambda r: r["id"]
     rows.sort(key=key, reverse=(direction == "desc"))
+    if sort != "os":
+        for row in rows:
+            row.pop("grains", None)
     return rows
+
+
+def row_grains(row: dict) -> dict:
+    """Raw snapshot grains for a lightweight entry ({} when absent)."""
+    grains = row.get("grains")
+    return grains if isinstance(grains, dict) else {}
+
+
+def hydrate_entries(entries: list[dict]) -> list[dict]:
+    """Attach normalized snapshot grains to lightweight entries.
+
+    One IN query for exactly the ids being rendered. Live-only ids
+    (keys never snapshotted) hydrate to {} like before.
+    """
+    if not entries:
+        return []
+    from .db import get_session
+    from .models import Minion
+
+    _missing = object()
+    ids = [e["id"] for e in entries]
+    grains_by_id = {
+        mid: grains
+        for mid, grains in get_session()
+        .query(Minion.id, Minion.grains)
+        .filter(Minion.id.in_(ids))
+        .all()
+    }
+    out = []
+    for entry in entries:
+        row = dict(entry)
+        row.pop("grains", None)
+        # Live-only ids (keys never snapshotted) historically hydrate
+        # to a bare {} — not normalized — so keep that exact shape.
+        raw = grains_by_id.get(row["id"], _missing)
+        row["grains"] = normalize_grains(raw) if raw is not _missing else {}
+        out.append(row)
+    return out
+
+
+def minion_rows(
+    statuses: dict,
+    up: set,
+    q: str,
+    status_filter: str,
+    sort: str = "id",
+    direction: str = "asc",
+) -> list[dict]:
+    """Full rows with the historical contract: filter, sort, hydrate all.
+
+    The CSV export uses this; paged views combine :func:`minion_entries`
+    with :func:`hydrate_entries` on the visible slice instead.
+    """
+    return hydrate_entries(
+        minion_entries(statuses, up, q, status_filter, sort, direction)
+    )
+
+
+def cached_roster(
+    client, http_timeout: float | None = ROSTER_HTTP_TIMEOUT
+) -> tuple[
+    dict[str, str],
+    set[str],
+    bool,
+]:
+    """(statuses, up, reachable) from the roster cache when warm.
+
+    Falls back to a live read and refreshes the cache when reachable.
+    Total outages are never cached, so recovery shows up on the next
+    view instead of at TTL expiry.
+    """
+    from .tasks_queue import read_roster_cache, write_roster_cache
+
+    cached = read_roster_cache()
+    if (
+        isinstance(cached, dict)
+        and isinstance(cached.get("statuses"), dict)
+        and isinstance(cached.get("up"), list)
+    ):
+        return dict(cached["statuses"]), set(cached["up"]), True
+    statuses, up, reachable = live_roster(client, http_timeout=http_timeout)
+    if reachable:
+        write_roster_cache(statuses, up)
+    return statuses, up, reachable
 
 
 def refresh_sync() -> None:
@@ -249,14 +365,18 @@ def refresh_sync() -> None:
     from .dashboard import get_salt
     from .inventory import refresh_inventory
     from .salt_client import SaltApiError
+    from .tasks_queue import write_roster_cache
 
     client = get_salt()
     try:
-        statuses, _, _ = live_roster(client)
+        # Always live: this is the explicit Refresh button, and its
+        # fresh statuses repopulate the roster cache for the views.
+        statuses, up, _ = live_roster(client)
         count = refresh_inventory(client, statuses)
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
     else:
+        write_roster_cache(statuses, up)
         flash(f"Inventory refreshed: {count} minions.", "success")
 
 

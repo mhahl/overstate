@@ -253,8 +253,8 @@ def yaml_advisory(target: Path, data: bytes) -> str | None:
         yaml.safe_load(data.decode("utf-8"))
     except Exception:  # noqa: BLE001 — any parse failure is advisory
         return (
-            "Warning: that YAML does not parse — saved anyway. "
-            "Salt is truth at apply time."
+            "Warning: that YAML does not parse. Saved anyway. "
+            "Salt parses it at apply time."
         )
     return None
 
@@ -487,7 +487,7 @@ def save():
         log_event(current_user.username, f"file-save-refused:{rel}:oversize")
         return redirect(url_for("files.view", path=rel))
     if data == current:
-        flash("No changes — nothing committed.", "info")
+        flash("No changes. Nothing committed.", "info")
         return redirect(url_for("files.view", path=rel))
     if not is_checkout():
         flash("Not a git checkout: files are read-only here. Nothing changed.", "error")
@@ -503,8 +503,8 @@ def save():
     ):
         short = head[:7] if head else "unknown"
         flash(
-            f"That file changed underneath you (now {short}). Reload and "
-            "re-apply. Nothing was written.",
+            f"That file changed (now {short}). Reload and "
+            "re-apply your edits. Nothing was written.",
             "error",
         )
         log_event(current_user.username, f"file-save-refused:{rel}:stale")
@@ -726,8 +726,8 @@ def repo_token_save():
     origin = git_origin()
     if not origin or not origin.startswith("https://"):
         flash(
-            "Save refused: clone or set an https remote first — "
-            "tokens are stored per host.",
+            "Save refused: clone or set an https remote first. "
+            "Tokens are stored per host.",
             "error",
         )
         return redirect(url_for("files.repo"))

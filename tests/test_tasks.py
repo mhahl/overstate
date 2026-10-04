@@ -29,7 +29,7 @@ def fake_transport() -> httpx.MockTransport:
             )
         if body.get("client") == "runner" and fun == "manage.status":
             return httpx.Response(200, json={"return": [{"up": ["m1"], "down": []}]})
-        if fun == "grains.items":
+        if fun in ("grains.items", "grains.item"):
             return httpx.Response(
                 200,
                 json={"return": [{"m1": {"osfinger": "TestOS", "ipv4": ["10.0.0.1"]}}]},
@@ -321,7 +321,7 @@ def rotation_store(monkeypatch):
 def test_rotation_page_and_verify(monkeypatch, admin, rotation_store):
     html = admin.get("/users/rotation").data.decode()
     assert "Rotate salt-api password" in html
-    assert "locks the app out" in html  # danger banner above the steps
+    assert "locks out the app" in html  # danger banner above the steps
 
     class LoginOk:
         def login(self):
@@ -341,7 +341,7 @@ def test_rotation_page_and_verify(monkeypatch, admin, rotation_store):
     rv = admin.post(
         "/users/rotation/verify", data={"password": "bad"}, follow_redirects=True
     )
-    assert "verification failed" in rv.data.decode()
+    assert "Verification failed" in rv.data.decode()
 
 
 def _rotation_password(client):
@@ -412,10 +412,10 @@ def test_rotation_verify_pops_server_password(monkeypatch, admin, rotation_store
 
 def test_rotation_refuses_without_cache(admin):
     html = admin.get("/users/rotation").data.decode()
-    assert "Rotation needs the cache." in html
+    assert "Rotation needs the cache, which is unreachable." in html
     assert 'id="rotation-password"' not in html
     rv = admin.post("/users/rotation/regenerate", follow_redirects=True)
-    assert "Rotation needs the cache." in rv.data.decode()
+    assert "Rotation needs the cache, which is unreachable." in rv.data.decode()
 
 
 def test_rotation_forbidden_for_operator(app):

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="mb-5">
   <h1 class="text-2xl font-bold tracking-tight">Settings</h1>
-  <p class="text-sm opacity-70 mt-0.5">App preferences. They live in the database.</p>
+  <p class="text-sm opacity-70 mt-0.5">App preferences stored in the database.</p>
 </div>
 {% set is_admin = current_user.role == "admin" %}
 {% with active="server" %}{% include "_settings_tabs.html" %}{% endwith %}
@@ -51,12 +51,12 @@
   <div class="card-body gap-3">
     <div>
       <h2 id="rotation" class="card-title text-base">salt-api password rotation</h2>
-      <p class="text-sm opacity-70 mt-0.5">The app never stores the password. Generate it here, paste it into the <code class="font-mono">overstate-secrets</code> Secret by hand, roll the masters, then verify below.</p>
+      <p class="text-sm opacity-70 mt-0.5">The app does not store the password. Generate it here, paste it into the <code class="font-mono">overstate-secrets</code> Secret, roll the masters, then verify below.</p>
     </div>
     <ol class="text-sm flex flex-col gap-1 list-decimal list-inside opacity-80">
-      <li>Generate a replacement below and copy it now — it is shown once, never stored or logged.</li>
+      <li>Generate a replacement below and copy it now. It appears once and the app does not store or log it.</li>
       <li>Set <code class="font-mono">SALT_API_USER_PASS</code> in <code class="font-mono">overstate-secrets</code> to the new value.</li>
-      <li>Roll the salt masters, then the app and worker, so every side reads the new Secret.</li>
+      <li>Roll the Salt masters, then the app and worker, so each reads the new Secret.</li>
       <li>Paste the new password into Verify and confirm salt-api accepts it.</li>
     </ol>
     <form method="post" action="{{ url_for('settings.rotation_generate') }}">
@@ -66,7 +66,7 @@
     {% if rotation_password %}
     <div class="alert alert-warning" role="note">
       <div class="flex flex-col gap-1">
-        <span class="text-sm font-medium">Copy now — this is the only time it appears:</span>
+        <span class="text-sm font-medium">Copy now. It appears once:</span>
         <code class="font-mono text-sm break-all">{{ rotation_password }}</code>
       </div>
     </div>

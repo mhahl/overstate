@@ -375,7 +375,7 @@ def test_admin_lists_keys(mui):
 def test_restart_button_confirms(mui):
     html = mui["login"]("admin").get("/settings/master/").data.decode()
     idx = html.index("/settings/master/restart")
-    assert 'data-confirm="Restart the salt masters?' in html[idx : idx + 300]
+    assert 'data-confirm="Restart the Salt masters?' in html[idx : idx + 300]
 
 
 def test_legacy_prefix_forwards(mui):
@@ -469,7 +469,7 @@ def test_stale_save_refuses_and_writes_nothing(mui):
         },
         follow_redirects=True,
     )
-    assert b"changed underneath you" in rv.data
+    assert b"changed since you opened it" in rv.data
     assert fake.live["data"]["master.conf"] == "# base\n"
     assert any(
         a == "masterconfig-save-refused:master.conf:stale" for a in _actions(client)
@@ -630,7 +630,7 @@ def test_restart_timeout_links_revert(m4):
     client = m4["login"]("admin")
     rv = client.post("/settings/master/restart", follow_redirects=True)
     assert b"did not finish in time" in rv.data
-    assert b"revert to the last snapshot" in rv.data
+    assert b"Revert to the last snapshot" in rv.data
     assert any(a == "master-restart:timeout" for a in _actions(client))
 
 
@@ -674,7 +674,7 @@ def test_revert_last_restores_snapshot_and_restarts(m4):
 def test_checklist_card_shows_never_checked(mui):
     html = mui["login"]("admin").get("/settings/master/").data.decode()
     assert "Observability checklist" in html
-    assert "Never checked" in html
+    assert "No check has run yet" in html
 
 
 def test_checklist_refresh_falls_back_inline_and_audits(mui, monkeypatch):
@@ -718,7 +718,7 @@ def test_oversize_save_refuses(mui):
         },
         follow_redirects=True,
     )
-    assert b"Too large to save" in rv.data
+    assert b"This file is too large to save" in rv.data
     assert fake.live["data"]["master.conf"] == "# base\n"
     assert any(
         a == "masterconfig-save-refused:master.conf:oversize" for a in _actions(client)

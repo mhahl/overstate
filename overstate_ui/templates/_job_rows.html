@@ -52,7 +52,7 @@
 {% else %}
 <div class="py-8 text-center">
   <p class="font-medium">No {{ tab }} jobs</p>
-  <p class="text-sm opacity-70">{% if q %}Nothing matches “{{ q }}”.{% elif tab == "running" %}Nothing is running right now.{% else %}No job history yet.{% endif %}</p>
+  <p class="text-sm opacity-70">{% if q %}Nothing matches “{{ q }}”.{% elif tab == "running" %}Nothing is running.{% else %}No job history yet.{% endif %}</p>
 </div>
 {% endif %}
 {% endif %}

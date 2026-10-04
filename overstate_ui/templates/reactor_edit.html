@@ -7,7 +7,7 @@
     <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
   </div>
   <div class="alert alert-warning mb-4 text-sm">
-    <span><strong>Admin-only:</strong> this code runs with master privileges and fires on matching events fleet-wide. Invalid YAML is blocked; a raced save refuses.</span>
+    <span><strong>Admin-only:</strong> this code runs with master privileges and fires on matching events fleet-wide. The app blocks invalid YAML and refuses raced saves.</span>
   </div>
   <form method="post" action="{{ url_for('reactor.save') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

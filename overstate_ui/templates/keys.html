@@ -8,13 +8,13 @@
 {% if syndic_masters %}
 <div class="alert alert-info mb-4" role="note">
   <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
-  <span>Syndic topology: this roster is the local master only. Upstream master(s): {{ syndic_masters|join(", ") }}. Key actions here stay local.</span>
+  <span>Syndic topology: this roster covers the local master only. Upstream master(s): {{ syndic_masters|join(", ") }}. Key actions here apply to the local master only.</span>
 </div>
 {% endif %}
 {% if completable and current_user.role in ["operator", "admin"] %}
 <div class="alert alert-warning mb-4" role="note">
   <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
-  <span>{{ completable }} key(s) pending on one pod but accepted on another — likely scale-up drift.</span>
+  <span>{{ completable }} key(s) are pending on one pod and accepted on another. This points to scale-up drift.</span>
   <form method="post" action="{{ url_for('keys.reconcile') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm">Review &amp; reconcile</button></form>
 </div>
 {% endif %}
@@ -67,7 +67,7 @@
 {% else %}
 <div class="py-8 text-center">
   <p class="font-medium">No {{ tab }} keys</p>
-  <p class="text-sm opacity-70">This queue is empty.</p>
+  <p class="text-sm opacity-70">This tab has no keys.</p>
   {% if tab == "pending" %}<a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('minions.onboard') }}">Onboard a minion</a>{% endif %}
 </div>
 {% endif %}

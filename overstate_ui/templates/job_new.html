@@ -11,7 +11,7 @@
   <span>Bulk selection ({{ bulk.ids|length }}): <span class="font-mono">{{ bulk.ids|join(", ") }}</span>.
     {% if bulk.glob %}Target prefilled as <span class="font-mono">{{ bulk.glob }}</span>, covering
     <span class="font-mono">{{ bulk.covered|join(", ") if bulk.covered else "nothing in cache" }}</span>.
-    {% else %}No single glob covers exactly this selection — set the target by hand.{% endif %}
+    {% else %}No single glob matches this selection. Set the target manually.{% endif %}
     Adjust before firing.</span>
 </div>
 {% endif %}

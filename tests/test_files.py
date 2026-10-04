@@ -425,7 +425,7 @@ def test_save_stale_base_refuses_without_writing(edit_checkout, tmp_path):
         follow_redirects=True,
     )
     assert rv.status_code == 200
-    assert b"changed underneath you" in rv.data
+    assert b"That file changed (now" in rv.data
     assert (tmp_path / "web.sls").read_text().endswith("# elsewhere\n")
     assert _commits(tmp_path) == before  # nothing committed
 

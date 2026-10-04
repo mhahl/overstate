@@ -23,11 +23,19 @@ def app():
 
 class StubClient:
     def __init__(self, grains):
+        from overstate_ui.inventory import SNAPSHOT_GRAINS
+
         self._grains = grains
+        self.calls = []
+        self._wanted = list(SNAPSHOT_GRAINS)
 
     def local(self, tgt, fun, **kwargs):
         assert tgt == "*"
-        assert fun == "grains.items"
+        assert fun == "grains.item"
+        # The fleet-wide refresh must ask for the snapshot subset only,
+        # not full grains.items payloads.
+        assert kwargs.get("arg") == self._wanted
+        self.calls.append(kwargs)
         return [self._grains]
 
 

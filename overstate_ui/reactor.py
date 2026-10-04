@@ -396,9 +396,9 @@ def index():
     entries, raw, failed, divergent = _live_mappings(clients)
     error = None
     if not entries and len(failed) == len(clients):
-        error = "salt-api error: no master reachable."
+        error = "Salt API error: no master is reachable."
     for name in failed:
-        flash(f"{name} unreachable: mapping may be partial.", "warning")
+        flash(f"{name} is unreachable, so the mapping may be partial.", "warning")
     # A master without reactor configured answers with "Reactor system
     # is not running" — an empty state with setup guidance, not an error.
     disabled = not entries and error is None
@@ -487,7 +487,7 @@ def add():
         or not EVENT_RE.match(event)
         or not SLS_RE.match(sls)
     ):
-        flash("Event pattern and SLS reference required.", "error")
+        flash("Event pattern and SLS reference are required.", "error")
         return redirect(url_for("reactor.index"))
     # Fan out to every pod: publish buses and reactor systems are
     # per-master, so a single-pod add would fire only for minions on
@@ -508,27 +508,27 @@ def add():
         else:
             ok.append(name)
     if not ok:
-        flash("salt-api error: no master reachable. Nothing changed.", "error")
+        flash("Salt API error: no master is reachable. Nothing changed.", "error")
         return redirect(url_for("reactor.index"))
     for name in failed:
         flash(
-            f"{name} unreachable: mapping may be partial. Re-run to converge.",
+            f"{name} is unreachable, so the mapping may be partial. Re-run to converge.",
             "warning",
         )
     if refused:
         flash(
-            f"{event}: salt did not confirm the add on {', '.join(refused)}.",
+            f"{event}: Salt did not confirm the add on {', '.join(refused)}.",
             "warning",
         )
     if failed or refused:
         log_event(current_user.username, f"reactor-add:{event}:partial")
         flash(
-            f"{event}: reactor added on {len(ok)} of {len(clients)} pod(s).",
+            f"{event}: Reactor added on {len(ok)} of {len(clients)} pods.",
             "warning",
         )
     else:
         log_event(current_user.username, f"reactor-add:{event}")
-        flash(f"{event}: reactor added.", "success")
+        flash(f"{event}: Reactor added.", "success")
     if request.form.get("persist", "") == "1" and current_user.role == "admin":
         pok, pmsg, ptag = _persist_to_master_conf(event, sls)
         log_event(current_user.username, ptag)
@@ -541,7 +541,7 @@ def add():
 def delete():
     event = request.form.get("event", "").strip()
     if not event:
-        flash("Pick a reactor first: an empty selection never fires.", "error")
+        flash("Pick a reactor first. An empty selection does not fire.", "error")
         return redirect(url_for("reactor.index"))
     # Fan out like add: a mapping deleted on one pod only keeps firing
     # for minions attached to the other pods.
@@ -555,22 +555,22 @@ def delete():
             continue
         ok.append(name)
     if not ok:
-        flash("salt-api error: no master reachable. Nothing changed.", "error")
+        flash("Salt API error: no master is reachable. Nothing changed.", "error")
         return redirect(url_for("reactor.index"))
     for name in failed:
         flash(
-            f"{name} unreachable: mapping may be partial. Re-run to converge.",
+            f"{name} is unreachable, so the mapping may be partial. Re-run to converge.",
             "warning",
         )
     if failed:
         log_event(current_user.username, f"reactor-delete:{event}:partial")
         flash(
-            f"{event}: reactor deleted on {len(ok)} of {len(clients)} pod(s).",
+            f"{event}: Reactor deleted on {len(ok)} of {len(clients)} pods.",
             "warning",
         )
     else:
         log_event(current_user.username, f"reactor-delete:{event}")
-        flash(f"{event}: reactor deleted.", "success")
+        flash(f"{event}: Reactor deleted.", "success")
     return redirect(url_for("reactor.index"))
 
 
@@ -715,18 +715,18 @@ def save():
     data = request.form.get("content", "").encode("utf-8")
     if len(data) > MAX_BYTES:
         flash(
-            f"Too large to save ({len(data)} bytes; limit is {MAX_BYTES}). "
+            f"This SLS is too large to save ({len(data)} bytes; limit is {MAX_BYTES}). "
             "Nothing changed.",
             "error",
         )
         log_event(current_user.username, f"reactor-save-refused:{rel}:oversize")
         return redirect(url_for("reactor.view", sls=rel))
     if data == current:
-        flash("No changes — nothing saved.", "info")
+        flash("No changes. Nothing saved.", "info")
         return redirect(url_for("reactor.view", sls=rel))
     if request.form.get("base_hash") != hashlib.sha256(current).hexdigest():
         flash(
-            "That SLS changed underneath you. Reload the edit page and "
+            "That SLS changed since you opened it. Reload the edit page and "
             "re-apply your change. Nothing was written.",
             "error",
         )
@@ -739,7 +739,7 @@ def save():
         log_event(current_user.username, f"reactor-save-refused:{rel}:invalid")
         return redirect(url_for("reactor.edit", sls=rel))
     if parsed is not None and not isinstance(parsed, dict):
-        flash("Reactor SLS must be a top-level mapping. Nothing written.", "error")
+        flash("Reactor SLS must be a top-level mapping. Nothing was written.", "error")
         log_event(current_user.username, f"reactor-save-refused:{rel}:invalid")
         return redirect(url_for("reactor.edit", sls=rel))
     try:
@@ -747,10 +747,10 @@ def save():
         tmp.write_bytes(data)
         os.replace(tmp, target)
     except OSError:
-        flash("Could not write the SLS. Nothing changed.", "error")
+        flash("The app could not write the SLS. Nothing changed.", "error")
         log_event(current_user.username, f"reactor-save-refused:{rel}:write-failed")
         return redirect(url_for("reactor.view", sls=rel))
-    flash(f"Saved {rel}. It fires on matching events from now on.", "success")
+    flash(f"Saved {rel}. It fires on matching events.", "success")
     log_event(current_user.username, f"reactor-save:{rel}")
     return redirect(url_for("reactor.view", sls=rel))
 
@@ -768,7 +768,7 @@ def export():
     entries, _, failed, _ = _live_mappings(clients)
     error = None
     if not entries and len(failed) == len(clients):
-        error = "salt-api error: no master reachable."
+        error = "Salt API error: no master is reachable."
     disabled = not entries and error is None
     body = render_export(entries) if entries else ""
     if request.args.get("download") == "1" and not error:

@@ -92,7 +92,7 @@ def rotation():
 
     store = _rotation_store()
     if store is None:
-        flash("Rotation needs the cache.", "error")
+        flash("Rotation needs the cache, which is unreachable.", "error")
         return render_template(
             "users_rotation.html",
             password=None,
@@ -118,10 +118,10 @@ def rotation_regenerate():
 
     store = _rotation_store()
     if store is None:
-        flash("Rotation needs the cache.", "error")
+        flash("Rotation needs the cache, which is unreachable.", "error")
         return redirect(url_for("users.rotation"))
     store.set(_rotation_key(), secrets.token_urlsafe(18), ex=ROTATION_TTL)
-    flash("New password generated. Previous discarded.", "info")
+    flash("You generated a new password. The app discarded the previous one.", "info")
     return redirect(url_for("users.rotation"))
 
 
@@ -139,14 +139,14 @@ def rotation_verify():
         return redirect(url_for("users.rotation"))
     store = _rotation_store()
     if store is None:
-        flash("Rotation needs the cache.", "error")
+        flash("Rotation needs the cache, which is unreachable.", "error")
         return redirect(url_for("users.rotation"))
     candidate = build_client()
     candidate.password = password
     try:
         candidate.login()
     except SaltApiError as exc:
-        flash(f"verification failed: {exc}", "error")
+        flash(f"Verification failed: {exc}", "error")
     else:
         store.delete(_rotation_key())
         log_event(current_user.username, "eauth-rotation-verified")

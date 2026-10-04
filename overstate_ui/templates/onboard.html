@@ -18,7 +18,7 @@
 </ul>
 {% if not reachable %}
 <div class="alert alert-error mb-4" role="alert">
-  <span>salt-api unreachable. The generator still works, but you cannot check key status right now.</span>
+  <span>Salt API is unreachable. You can still generate the script, but you cannot check key status now.</span>
 </div>
 {% endif %}
 <div class="flex flex-col gap-4 max-w-3xl">
@@ -40,7 +40,7 @@
         </label>
         <label class="fieldset flex-1 min-w-40">
           <span class="fieldset-legend">Master</span>
-          <input name="master" value="{{ request.args.get('master', master_host) }}" placeholder="salt master hostname" class="input input-sm font-mono" required>
+          <input name="master" value="{{ request.args.get('master', master_host) }}" placeholder="Salt master hostname" class="input input-sm font-mono" required>
         </label>
         <button class="btn btn-sm btn-primary">Generate script</button>
       </form>
@@ -68,16 +68,16 @@
         {% for mid in pending %}<li>{{ mid }}</li>{% endfor %}
       </ul>
       {% else %}
-      <p class="text-sm opacity-70">No pending keys right now. Start the minion and wait a minute.</p>
+      <p class="text-sm opacity-70">No pending keys. Start the minion and wait a minute.</p>
       {% endif %}
-      <p class="text-sm opacity-70">Compare the fingerprint on the machine (<span class="font-mono">salt-call key.finger</span>) with the Keys page, then accept.</p>
+      <p class="text-sm opacity-70">Compare the fingerprint from <span class="font-mono">salt-call key.finger</span> on the machine with the Keys page, then accept the key.</p>
       <a class="btn btn-sm btn-primary self-start" href="{{ url_for('keys.index', tab='pending') }}">Review pending keys</a>
     </div>
   </section>
   <section class="card bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body">
       <h2 class="card-title text-base">Verify</h2>
-      <p class="text-sm opacity-70">Run a first command and watch it land in history.</p>
+      <p class="text-sm opacity-70">Run a first command, then check history.</p>
       <div class="flex flex-wrap gap-2">
         <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
         <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">Browse inventory</a>

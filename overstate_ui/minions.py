@@ -28,7 +28,8 @@ from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
 from .files import highlight_json
-from .inventory import GRAIN_COLUMNS
+from .fleet import pod_clients
+from .inventory import GRAIN_COLUMNS, SNAPSHOT_GRAINS
 from .jobs_helpers import FUN_RE, _split_state_id, _state_label
 from .minions_helpers import (
     HOST_RE,
@@ -38,7 +39,10 @@ from .minions_helpers import (
     PRESENCE_ORDER,
     _beacon_refusal,
     build_onboard_script,
+    cached_roster,
+    hydrate_entries,
     live_roster,
+    minion_entries,
     minion_rows,
     normalize_grains,
     onboard_inputs,
@@ -93,7 +97,10 @@ __all__ = [
     "_exact_mid",
     "bp",
     "build_onboard_script",
+    "cached_roster",
+    "hydrate_entries",
     "live_roster",
+    "minion_entries",
     "minion_rows",
     "normalize_grains",
     "onboard_inputs",
@@ -191,13 +198,16 @@ def index():
     direction = request.args.get("dir", "asc")
     if direction not in ("asc", "desc"):
         direction = "asc"
-    statuses, up, reachable = live_roster(get_salt())
-    rows = minion_rows(statuses, up, q, status_filter, sort, direction)
-    total = len(rows)
+    # The roster comes from a short cache, so filtering never pays Salt
+    # round trips; grains hydrate only for the ids on this page, not the
+    # whole fleet.
+    statuses, up, reachable = cached_roster(get_salt())
+    entries = minion_entries(statuses, up, q, status_filter, sort, direction)
+    total = len(entries)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
     ctx = {
-        "rows": rows[(page - 1) * per_page : page * per_page],
+        "rows": hydrate_entries(entries[(page - 1) * per_page : page * per_page]),
         "q": q,
         "status": status_filter,
         "page": page,
@@ -237,9 +247,11 @@ def presence():
     cached = read_presence_cache()
     if isinstance(cached, dict):
         return jsonify(cached)
-    statuses, up, _ = live_roster(get_salt())
-    rows = minion_rows(statuses, up, "", "")
-    payload = {r["id"]: presence_of(r) for r in rows}
+    # Presence needs no grains: the lightweight merge carries everything
+    # presence_of reads, so a cache miss costs columns, not snapshots.
+    statuses, up, _ = cached_roster(get_salt())
+    entries = minion_entries(statuses, up, "", "", sort="id")
+    payload = {e["id"]: presence_of(e) for e in entries}
     write_presence_cache(payload)
     return jsonify(payload)
 
@@ -251,7 +263,7 @@ def export_csv():
     status_filter = request.args.get("status", "")
     if status_filter not in ("", "accepted", "pending", "rejected", "denied"):
         status_filter = ""
-    statuses, up, _ = live_roster(get_salt())
+    statuses, up, _ = cached_roster(get_salt())
     rows = minion_rows(statuses, up, q, status_filter)
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -307,9 +319,9 @@ def refresh():
         if status == "ready":
             flash(f"Inventory refreshed: {value['count']} minions.", "success")
         elif status == "pending":
-            flash("Refresh queued. Reload to see it.", "info")
+            flash("Refresh queued. Reload to see the result.", "info")
         else:
-            flash(f"refresh failed in the background: {value}", "error")
+            flash(f"Background refresh failed: {value}.", "error")
     return redirect(url_for("minions.index"))
 
 
@@ -323,9 +335,13 @@ def refresh_one(mid: str):
         flash(f"Unknown minion '{mid}'.", "error")
         return redirect(url_for("minions.index"))
     try:
-        grains = get_salt().local(mid, "grains.items", tgt_type="list")[0].get(mid)
+        grains = (
+            get_salt()
+            .local(mid, "grains.item", arg=list(SNAPSHOT_GRAINS), tgt_type="list")[0]
+            .get(mid)
+        )
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
+        flash(f"Salt API error: {exc}.", "error")
         return redirect(url_for("minions.index"))
     if not isinstance(grains, dict):
         flash(f"{mid} returned no grain data.", "error")
@@ -342,10 +358,11 @@ def refresh_one(mid: str):
 @roles_required("operator")
 def remove(mid: str):
     """Drop a minion's snapshot row from the database. Job history is
-    kept. The Salt key on the master is only deleted when the remove
-    dialog's checkbox asks for it — and then only when the wheel call
-    succeeds, so a failed key delete leaves the snapshot in place
-    instead of half-finishing."""
+    kept. The Salt key is only deleted when the remove dialog's checkbox
+    asks for it — on every reachable master pod, like the Keys page, so
+    the key (and the minion) cannot survive elsewhere. When no master
+    answers, a failed key delete leaves the snapshot in place instead
+    of half-finishing."""
     mid = _exact_mid(mid)
     session = get_session()
     row = session.get(Minion, mid)
@@ -353,18 +370,39 @@ def remove(mid: str):
         flash(f"Unknown minion '{mid}'.", "error")
         return redirect(url_for("minions.index"))
     delete_key = request.form.get("delete_key") == "yes"
+    partial: list[str] = []
     if delete_key:
-        try:
-            get_salt().wheel("key.delete", match=mid)
-        except SaltApiError as exc:
-            flash(f"salt-api error: {exc}", "error")
+        clients = pod_clients(get_salt())
+        for name, cli in clients:
+            try:
+                cli.wheel("key.delete", match=mid)
+            except SaltApiError:
+                partial.append(name)
+        if len(partial) == len(clients):
+            flash("Salt API error: no master is reachable. Nothing changed.", "error")
             return redirect(url_for("minions.index"))
-        log_event(current_user.username, f"delete-key:{mid}")
+        from .tasks_queue import clear_key_caches
+
+        clear_key_caches()
+        if partial:
+            log_event(
+                current_user.username,
+                f"delete-key-partial:{mid}:{','.join(partial)}"[:64],
+            )
+        else:
+            log_event(current_user.username, f"delete-key:{mid}")
     session.delete(row)
     session.commit()
     log_event(current_user.username, f"minion-remove:{mid}")
     if delete_key:
-        flash(f"{mid} removed; Salt key deleted.", "success")
+        if partial:
+            flash(
+                f"{mid} removed. Salt key deleted on the reachable masters. "
+                f"{', '.join(partial)} did not answer. Retry to converge.",
+                "warning",
+            )
+        else:
+            flash(f"{mid} removed. Salt key deleted.", "success")
     else:
         flash(f"{mid} removed from the inventory cache.", "success")
     return redirect(url_for("minions.index"))
@@ -392,16 +430,16 @@ def states_refresh(mid: str):
             if status == "ready" and isinstance(value, dict) and value:
                 live = value
             elif status == "pending":
-                note = "Refresh still running — showing stored data."
+                note = "Refresh still runs. You see stored data."
             else:
-                note = f"Refresh failed in the background: {value}"
+                note = f"Background refresh failed: {value}."
     except (SaltApiError, httpx.HTTPError) as exc:
-        note = f"Live refresh unavailable: salt-api error: {exc}"
+        note = f"Live refresh unavailable. Salt API error: {exc}."
     if live:
         log_event(current_user.username, f"states-refresh:{mid}")
         flash(f"{mid}: {len(live)} live states loaded.", "success")
     else:
-        note = note or "Live refresh returned nothing — showing stored data."
+        note = note or "Live refresh returned nothing. You see stored data."
         flash(note, "warning")
     row = get_session().get(Minion, mid)
     grains = normalize_grains(row.grains if row else {})
@@ -436,7 +474,7 @@ def onboard():
     itself stays on Keys."""
     from .settings import get_setting
 
-    statuses, _, reachable = live_roster(get_salt())
+    statuses, _, reachable = cached_roster(get_salt())
     pending = sorted(m for m, st in statuses.items() if st == "pending")
     master_host = get_setting("master_host")
     inputs = onboard_inputs(request.args)
@@ -649,7 +687,18 @@ def beacon_act(mid: str, action: str):
             mid, BEACON_ACTIONS[action], arg=[name], tgt_type="list"
         )
     except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
+        flash(f"Salt API error: {exc}.", "error")
+        return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
+    if (
+        isinstance(outcome, list)
+        and outcome
+        and isinstance(outcome[0], dict)
+        and mid not in outcome[0]
+    ):
+        flash(
+            f"{mid}/{name}: no response. The beacon change may not have applied.",
+            "warning",
+        )
         return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
     refusal = _beacon_refusal(outcome, mid)
     if refusal is not None:

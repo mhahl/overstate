@@ -192,7 +192,7 @@ def test_detail_recovery_links(client):
     assert "tgt=tw-minion-02" in html and "tgt_type=list" in html
     assert "Failed states:" in html
     assert "pkg_|-nginx_|-nginx_|-installed" in html
-    assert "check presence" in html
+    assert "Check presence" in html
 
 
 def test_detail_counts_real_state_payload(client):
@@ -842,5 +842,5 @@ def test_events_stream_settles_done_vs_error():
     ).read_text()
     assert "var finished = false" in text
     assert "if (finished) return;" in text
-    assert "Stream ended (cap reached). Re-watch to resume." in text
+    assert "Stream ended. Re-watch to resume." in text
     assert "Stream error or salt-api unreachable." in text

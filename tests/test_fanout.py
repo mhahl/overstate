@@ -175,7 +175,7 @@ def test_partial_publish_warns_and_audits(app_pair, monkeypatch):
         },
         follow_redirects=True,
     )
-    assert b"pod-1 unreachable" in rv.data
+    assert b"pod-1 is unreachable" in rv.data
     actions = [a for a, _ in _actions(client)]
     assert "run:test.ping" in actions
     assert "run-partial:test.ping:pod-1" in actions
@@ -239,7 +239,7 @@ def test_keys_partial_accept_warns(app_pair, monkeypatch):
     rv = client.post(
         "/keys/accept", data={"id": "m1", "tab": "pending"}, follow_redirects=True
     )
-    assert b"pod-1 unreachable" in rv.data
+    assert b"pod-1 is unreachable" in rv.data
     assert ("key.accept", "m1") in funs0
     actions = [a for a, _ in _actions(client)]
     assert "accept-key-partial:m1:pod-1" in actions
