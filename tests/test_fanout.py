@@ -118,14 +118,36 @@ def test_async_run_publishes_shared_jid_on_both_pods(app_pair, monkeypatch):
 
 
 def test_sync_run_merges_returns_under_one_jid(app_pair, monkeypatch):
-    def pod0(body):
-        return httpx.Response(200, json={"return": [{"m1": {"result": True}}]})
+    import datetime as dt
 
-    def pod1(body):
-        return httpx.Response(200, json={"return": [{"m2": {"result": True}}]})
+    from overstate_ui.models import SaltReturn
 
-    c0 = _pod_client([], pod0)
-    c1 = _pod_client([], pod1)
+    seen0, seen1 = [], []
+    jid = "202610040000000001"
+    # The returner rows the masters would have written. Seeded up front
+    # for a patched fixed jid: publish handlers run on pool threads with
+    # no Flask context, so they cannot touch the DB themselves.
+    monkeypatch.setattr(jobs_service_mod, "_new_jid", lambda: jid)
+    with app_pair["app"].app_context():
+        for mid in ("m1", "m2"):
+            get_session().add(
+                SaltReturn(
+                    fun="test.ping",
+                    jid=jid,
+                    minion_id=mid,
+                    success="True",
+                    payload={"result": True},
+                    full_ret={},
+                    alter_time=dt.datetime.now(dt.UTC),
+                )
+            )
+        get_session().commit()
+
+    def pod(body):
+        return httpx.Response(200, json={"return": [{"jid": body.get("jid")}]})
+
+    c0 = _pod_client(seen0, pod)
+    c1 = _pod_client(seen1, pod)
     monkeypatch.setattr(
         jobs_service_mod, "pod_clients", lambda default: [("pod-0", c0), ("pod-1", c1)]
     )
@@ -142,16 +164,52 @@ def test_sync_run_merges_returns_under_one_jid(app_pair, monkeypatch):
         follow_redirects=True,
     )
     assert rv.status_code == 200
+    jid0 = next(b["jid"] for b in seen0 if b.get("client") == "local_async")
+    jid1 = next(b["jid"] for b in seen1 if b.get("client") == "local_async")
+    assert jid0 == jid1
     with client.app.app_context():
         session = get_session()
         jobs = session.query(Job).filter_by(fun="test.ping").all()
         assert len(jobs) == 1
-        assert jobs[0].complete is True
+        assert jobs[0].jid == jid0
+        # Fresh returner rows: stored, but completion stays with sync_job.
+        assert jobs[0].complete is False
         mids = {
             r.minion_id
             for r in session.query(JobReturn).filter_by(jid=jobs[0].jid).all()
         }
         assert mids == {"m1", "m2"}
+
+
+def test_sync_publish_fans_out_in_parallel(app_pair, monkeypatch):
+    """Two pods publishing concurrently must not serialize: a barrier
+    both publishes must cross would deadlock a serial loop."""
+    import threading
+
+    barrier = threading.Barrier(2, timeout=10)
+
+    def pod(body):
+        barrier.wait()
+        return httpx.Response(200, json={"return": [{"jid": body.get("jid")}]})
+
+    c0 = _pod_client([], pod)
+    c1 = _pod_client([], pod)
+    monkeypatch.setattr(
+        jobs_service_mod, "pod_clients", lambda default: [("pod-0", c0), ("pod-1", c1)]
+    )
+    monkeypatch.setattr(jobs_service_mod, "SYNC_WAIT_SECONDS", 0)
+    client = app_pair["login"]()
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "*",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "args": "",
+            "mode": "sync",
+        },
+    )
+    assert rv.status_code == 302
 
 
 def test_partial_publish_warns_and_audits(app_pair, monkeypatch):

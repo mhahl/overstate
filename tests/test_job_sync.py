@@ -92,10 +92,43 @@ class _StubSalt:
         return self.result
 
 
+class _AsyncStub:
+    """local_async stub: publishes must be async, and the returner rows
+    the wait reads are seeded here, the way the pgjsonb returner would
+    write them (SaltReturn, success as text)."""
+
+    def __init__(self, returns=None, server_jid=None):
+        self.calls = []
+        self.returns = returns or {}
+        self.server_jid = server_jid
+
+    def local(self, tgt, fun, **kwargs):
+        self.calls.append((tgt, fun, kwargs))
+        assert kwargs.get("asynchronous") is True
+        assert "http_timeout" not in kwargs
+        jid = kwargs.get("jid")
+        if jid and self.returns:
+            session = get_session()
+            for mid, payload in self.returns.items():
+                session.add(
+                    SaltReturn(
+                        fun=fun,
+                        jid=jid,
+                        minion_id=mid,
+                        success="True",
+                        payload=payload,
+                        full_ret={},
+                        alter_time=dt.datetime.now(dt.UTC),
+                    )
+                )
+            session.commit()
+        return [{"jid": self.server_jid or jid}]
+
+
 def test_sync_launch_persists_returns(client, monkeypatch):
     from overstate_ui import jobs_service
 
-    stub = _StubSalt([{"web-01": True}])
+    stub = _AsyncStub({"web-01": {"result": True}})
     monkeypatch.setattr(jobs_service, "get_salt", lambda: stub)
     rv = client.post(
         "/jobs/run",
@@ -111,13 +144,16 @@ def test_sync_launch_persists_returns(client, monkeypatch):
     jid = rv.headers["Location"].rsplit("/", 1)[1]
     assert len(jid) == 20 and jid.isdigit()  # app-side shared JID (D12)
     assert stub.calls[0][2]["jid"] == jid
-    assert stub.calls[0][2]["http_timeout"] >= 60
+    assert stub.calls[0][2].get("asynchronous") is True
     with client.app.app_context():
         rows = get_session().query(JobReturn).filter_by(jid=jid).all()
         assert [r.minion_id for r in rows] == ["web-01"]
-        assert get_session().get(Job, jid).complete is True
+        # Fresh returns: the job runs until sync_job's quiet period
+        # completes it, like async jobs.
+        assert get_session().get(Job, jid).complete is False
     html = client.get(f"/jobs/{jid}").data.decode()
     assert "web-01" in html
+    assert "running" in html
     assert "No returns recorded" not in html
 
 
@@ -151,7 +187,7 @@ def test_ssh_launch_persists_returns(client, monkeypatch):
 def test_sync_launch_uses_app_jid(client, monkeypatch):
     from overstate_ui import jobs_service
 
-    stub = _StubSalt([{"jid": "202609150000000001", "web-01": True}])
+    stub = _AsyncStub({"web-01": {"result": True}}, server_jid="202609150000000001")
     monkeypatch.setattr(jobs_service, "get_salt", lambda: stub)
     rv = client.post(
         "/jobs/run",
@@ -171,9 +207,36 @@ def test_sync_launch_uses_app_jid(client, monkeypatch):
     assert stub.calls[0][2]["jid"] == jid
     with client.app.app_context():
         session = get_session()
-        assert session.get(Job, jid).complete is True
+        assert session.get(Job, jid).complete is False
         rows = session.query(JobReturn).filter_by(jid=jid).all()
         assert [r.minion_id for r in rows] == ["web-01"]
+
+
+def test_sync_launch_expiry_leaves_job_running(client, monkeypatch):
+    """No returner rows inside the budget: no hang, no rows, and the
+    job stays running for the background sync to complete later."""
+    from overstate_ui import jobs_service
+
+    stub = _AsyncStub()
+    monkeypatch.setattr(jobs_service, "get_salt", lambda: stub)
+    monkeypatch.setattr(jobs_service, "SYNC_WAIT_SECONDS", 0)
+    rv = client.post(
+        "/jobs/run",
+        data={
+            "tgt": "*",
+            "tgt_type": "glob",
+            "fun": "test.ping",
+            "mode": "sync",
+            "via": "local",
+        },
+    )
+    assert rv.status_code == 302
+    jid = rv.headers["Location"].rsplit("/", 1)[1]
+    with client.app.app_context():
+        assert get_session().query(JobReturn).filter_by(jid=jid).all() == []
+        assert get_session().get(Job, jid).complete is False
+    html = client.get(f"/jobs/{jid}").data.decode()
+    assert "No returns yet" in html
 
 
 def test_job_returns_unique_pair(client):

@@ -257,7 +257,12 @@ def resolve_group_target(name: str) -> tuple[list[str], int]:
     return targets, len(group.members or []) - len(targets)
 
 
-SYNC_SALT_TIMEOUT = 60
+SYNC_WAIT_SECONDS = 20
+"""Wall-clock budget for a sync run to wait on the returner. Publishes
+are instant (async under the hood); the wait covers minions answering
+inside one request while staying far under the 90 second worker
+timeout. Slow-but-alive minions report after the budget through the
+normal returner sync — same as async jobs today."""
 SSH_SALT_TIMEOUT = 180
 
 
@@ -298,6 +303,66 @@ def _split_sync_result(result) -> tuple[str | None, dict]:
 def _new_jid() -> str:
     """Salt-format job id, shared across the pair for one user action."""
     return dt.datetime.now(dt.UTC).strftime("%Y%m%d%H%M%S%f")
+
+
+def _publish_all_async(
+    clients, tgt: str, fun: str, args: list, tgt_type: str, jid: str
+) -> list[str]:
+    """Publish one local_async per pod under the shared jid.
+
+    Pods publish in parallel, capped at the pod count: one slow salt-api
+    must not delay the publish on the next pod. Only the bare publish
+    runs off-thread — clients are resolved and Flask state is read by
+    the caller, never in the pool. Returns missed pod names, raising
+    the last SaltApiError when every pod missed.
+    """
+    import concurrent.futures
+
+    failures: list[tuple[str, SaltApiError]] = []
+
+    def _one(pair) -> None:
+        name, cli = pair
+        try:
+            cli.local(
+                tgt,
+                fun,
+                arg=args,
+                tgt_type=tgt_type,
+                asynchronous=True,
+                jid=jid,
+            )
+        except SaltApiError as exc:
+            failures.append((name, exc))
+
+    if len(clients) < 2:
+        for pair in clients:
+            _one(pair)
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(clients)) as pool:
+            list(pool.map(_one, clients))
+    if failures and len(failures) == len(clients):
+        raise failures[-1][1]
+    return [name for name, _ in failures]
+
+
+def _await_returner(jid: str, budget: float = SYNC_WAIT_SECONDS) -> bool:
+    """Wait up to budget seconds for returner rows to land in the DB.
+
+    Each pass runs sync_job (which copies whatever salt_returns holds
+    so far — the same call the job page already makes per view) and
+    then checks for stored JobReturn rows. Returns True on the first
+    stored return, False on budget expiry. Completion is never forced
+    here: sync_job owns it on its 60-seconds-quiet terms.
+    """
+    session = get_session()
+    deadline = time.monotonic() + budget
+    while True:
+        sync_job(jid)
+        if session.query(JobReturn.jid).filter_by(jid=jid).first() is not None:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(1)
 
 
 def launch(
@@ -363,23 +428,7 @@ def launch(
     clients = pod_clients(client)
     if asynchronous:
         jid = _new_jid()
-        missed: list[str] = []
-        last_error: SaltApiError | None = None
-        for name, cli in clients:
-            try:
-                cli.local(
-                    tgt,
-                    fun,
-                    arg=args,
-                    tgt_type=tgt_type,
-                    asynchronous=True,
-                    jid=jid,
-                )
-            except SaltApiError as exc:
-                missed.append(name)
-                last_error = exc
-        if len(missed) == len(clients):
-            raise last_error or SaltApiError("no master reachable")
+        missed = _publish_all_async(clients, tgt, fun, args, tgt_type, jid)
         session = get_session()
         session.add(
             Job(
@@ -394,47 +443,20 @@ def launch(
         log_event(current_user.username, f"run:{fun}", jid=jid)
         _warn_missed(missed, fun, jid)
         return jid
+    # Sync rides the same async publish, then reads the returner: a
+    # synchronous local on a pod that does not own the minion waits out
+    # the whole Salt timeout, serially per pod — minutes against a 90
+    # second worker. Completion stays with sync_job; a sync click that
+    # outruns the budget simply leaves the job running like async does.
     jid = _new_jid()
-    mapping: dict = {}
-    missed = []
-    last_error = None
-    for name, cli in clients:
-        try:
-            result = cli.local(
-                tgt,
-                fun,
-                arg=args,
-                tgt_type=tgt_type,
-                timeout=SYNC_SALT_TIMEOUT,
-                http_timeout=SYNC_SALT_TIMEOUT + 5,
-                jid=jid,
-            )
-        except SaltApiError as exc:
-            missed.append(name)
-            last_error = exc
-            continue
-        _, one = _split_sync_result(result)
-        mapping.update(one)
-    if not mapping and len(missed) == len(clients):
-        raise last_error or SaltApiError("no master reachable")
+    missed = _publish_all_async(clients, tgt, fun, args, tgt_type, jid)
     session = get_session()
     job = Job(jid=jid, fun=fun, tgt=tgt, tgt_type=tgt_type, user=current_user.username)
     session.add(job)
-    for mid, payload in mapping.items():
-        session.add(
-            JobReturn(
-                jid=jid,
-                minion_id=str(mid),
-                success=_payload_success(payload),
-                retcode=0,
-                payload=payload,
-            )
-        )
-    if mapping:
-        job.complete = True
     session.commit()
     log_event(current_user.username, f"run:{fun}", jid=jid)
     _warn_missed(missed, fun, jid)
+    _await_returner(jid, SYNC_WAIT_SECONDS)
     return jid
 
 

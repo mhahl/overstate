@@ -171,6 +171,11 @@ def detail(mid: str):
 @roles_required("operator")
 def capture(mid: str):
     mid = _exact_mid(mid)
+    from .minions import minion_is_up
+
+    if minion_is_up(get_salt(), mid) is False:
+        flash(f"{mid} is not responding. Stored data is shown.", "warning")
+        return redirect(url_for("pillar.detail", mid=mid))
     try:
         capture_pillar(mid)
     except SaltApiError as exc:

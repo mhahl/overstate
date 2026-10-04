@@ -196,6 +196,23 @@ def test_schedule_days_rendered_instead_of_dash():
     assert ">2<" in html
 
 
+def test_schedules_index_skips_not_up_minion(monkeypatch, fake_redis):
+    from overstate_ui.salt_client import SaltApiError
+    from overstate_ui.tasks_queue import write_roster_cache
+
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    write_roster_cache({"web-01": "accepted"}, set())
+
+    def _boom(*args, **kwargs):
+        raise SaltApiError("live call must be skipped")
+
+    monkeypatch.setattr(app.extensions["salt_client"], "local", _boom)
+    html = client.get("/schedules/?minion=web-01").data.decode()
+    assert "not responding" in html
+
+
 def test_viewer_sees_no_action_buttons_states_and_schedules():
     app = _app()
     client = app.test_client()

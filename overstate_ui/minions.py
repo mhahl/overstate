@@ -43,6 +43,7 @@ from .minions_helpers import (
     hydrate_entries,
     live_roster,
     minion_entries,
+    minion_is_up,
     minion_rows,
     normalize_grains,
     onboard_inputs,
@@ -101,6 +102,7 @@ __all__ = [
     "hydrate_entries",
     "live_roster",
     "minion_entries",
+    "minion_is_up",
     "minion_rows",
     "normalize_grains",
     "onboard_inputs",
@@ -334,6 +336,9 @@ def refresh_one(mid: str):
     if row is None:
         flash(f"Unknown minion '{mid}'.", "error")
         return redirect(url_for("minions.index"))
+    if minion_is_up(get_salt(), mid) is False:
+        flash(f"{mid} is not responding. Stored data is shown.", "warning")
+        return redirect(url_for("minions.index"))
     try:
         grains = (
             get_salt()
@@ -514,11 +519,18 @@ def detail(mid: str):
     row = get_session().get(Minion, mid)
     data: dict = {"grains": normalize_grains(row.grains if row else {})}
     error = None
+    # A minion the roster says is not up cannot answer: skip every live
+    # call below and show stored data instead of waiting out Salt
+    # timeouts. An unreachable roster fails open to today's behavior.
+    skip_live = minion_is_up(client, mid) is False
+    if skip_live:
+        error = f"{mid} is not responding. Stored data is shown."
     try:
         if tab == "overview":
-            live = client.local(mid, "grains.items", tgt_type="list")[0].get(mid)
-            if isinstance(live, dict):
-                data["grains"] = normalize_grains(live)
+            if not skip_live:
+                live = client.local(mid, "grains.items", tgt_type="list")[0].get(mid)
+                if isinstance(live, dict):
+                    data["grains"] = normalize_grains(live)
         elif tab == "states":
             # Stored first: the last persisted state-style return. Live
             # data arrives only via the explicit Refresh action below,
@@ -530,19 +542,25 @@ def detail(mid: str):
             # return_yaml=False keeps this a real mapping: an empty
             # schedule arrives as {} so the empty state triggers,
             # not as the string "schedule: {}\n" (see schedules.index).
-            data["schedule"] = client.local(
-                mid,
-                "schedule.list",
-                tgt_type="list",
-                kwarg={"return_yaml": False},
-            )[0].get(mid, {})
+            if skip_live:
+                data["schedule"] = {}
+            else:
+                data["schedule"] = client.local(
+                    mid,
+                    "schedule.list",
+                    tgt_type="list",
+                    kwarg={"return_yaml": False},
+                )[0].get(mid, {})
             data["sched_enabled"], data["schedule_rows"] = summarize_schedule(
                 data["schedule"]
             )
         elif tab == "pillar":
-            data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[0].get(
-                mid
-            )
+            if skip_live:
+                data["pillar"] = None
+            else:
+                data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[
+                    0
+                ].get(mid)
             data["pillar_html"] = (
                 highlight_json(data["pillar"]) if data["pillar"] else None
             )
@@ -554,7 +572,7 @@ def detail(mid: str):
             data["mine_fun"] = mine_fun
             data["mine_found"] = False
             data["mine_value"] = None
-            if mine_fun and FUN_RE.match(mine_fun):
+            if mine_fun and FUN_RE.match(mine_fun) and not skip_live:
                 stored = client.local(
                     mid, "mine.get", arg=[mid, mine_fun], tgt_type="list"
                 )[0].get(mid, {})
@@ -567,12 +585,15 @@ def detail(mid: str):
             # schedules.index). A second pillar-excluded call
             # attributes the `pillar` source badge; when it fails
             # no badge is shown rather than a wrong one.
-            value = client.local(
-                mid,
-                "beacons.list",
-                tgt_type="list",
-                kwarg={"return_yaml": False},
-            )[0].get(mid, {})
+            if skip_live:
+                value = {}
+            else:
+                value = client.local(
+                    mid,
+                    "beacons.list",
+                    tgt_type="list",
+                    kwarg={"return_yaml": False},
+                )[0].get(mid, {})
             entries = parse_beacon_list(value)
             data["beacon_entries"] = entries
             data["beacon_pillar"] = set()
@@ -598,15 +619,19 @@ def detail(mid: str):
             # from the DB; schedule and pillar cost one live call each —
             # the price of opening this tab, never prefetched elsewhere.
             data["stored"] = _states_stored(mid)
-            data["schedule"] = client.local(
-                mid,
-                "schedule.list",
-                tgt_type="list",
-                kwarg={"return_yaml": False},
-            )[0].get(mid, {})
-            data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[0].get(
-                mid
-            )
+            if skip_live:
+                data["schedule"] = {}
+                data["pillar"] = None
+            else:
+                data["schedule"] = client.local(
+                    mid,
+                    "schedule.list",
+                    tgt_type="list",
+                    kwarg={"return_yaml": False},
+                )[0].get(mid, {})
+                data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[
+                    0
+                ].get(mid)
     except SaltApiError as exc:
         error = str(exc)
     sort = request.args.get("sort", "jid")

@@ -330,6 +330,19 @@ def minion_rows(
     )
 
 
+def minion_is_up(client, mid: str) -> bool | None:
+    """Whether mid is in the live up set.
+
+    None when the roster itself was unreachable — callers must fail
+    open (keep the live call) and never read absence-from-a-failed-read
+    as "down".
+    """
+    _, up, reachable = cached_roster(client)
+    if not reachable:
+        return None
+    return mid in up
+
+
 def cached_roster(
     client, http_timeout: float | None = ROSTER_HTTP_TIMEOUT
 ) -> tuple[

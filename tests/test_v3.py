@@ -50,8 +50,11 @@ def fake_transport() -> httpx.MockTransport:
                 },
             )
         if body.get("client") == "runner":
+            # Both minions answer: the capture tests need live pillar
+            # from each, and the roster gate skips minions that are
+            # not up.
             return httpx.Response(
-                200, json={"return": [{"up": ["web-01"], "down": []}]}
+                200, json={"return": [{"up": ["web-01", "web-02"], "down": []}]}
             )
         return httpx.Response(200, json={"return": [{}]})
 

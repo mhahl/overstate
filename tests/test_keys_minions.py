@@ -339,7 +339,13 @@ def test_minion_row_refresh_updates_snapshot(client):
     assert "refreshed" in client.get(rv.headers["Location"]).data.decode()
 
 
-def test_minion_row_refresh_without_grains_keeps_snapshot(client):
+def test_minion_row_refresh_without_grains_keeps_snapshot(client, fake_redis):
+    # The roster says up, so the refresh proceeds to Salt and finds no
+    # grain data; the snapshot stays put. (A not-up roster skips the
+    # call entirely — covered by test_refresh_one_skips_not_up_minion.)
+    from overstate_ui.tasks_queue import write_roster_cache
+
+    write_roster_cache({"ghost-01": "accepted"}, {"ghost-01"})
     with client.app.app_context():
         get_session().add(
             Minion(
@@ -522,6 +528,105 @@ def test_minion_remove_with_key_fans_out_to_all_pods(client, monkeypatch):
     assert "Salt key deleted" in client.get(rv.headers["Location"]).data.decode()
 
 
+def test_detail_skips_live_for_not_up_minion(client, fake_redis, monkeypatch):
+    """A roster that says the minion is not up must not cost a live
+    grains call: stored data renders with the not-responding note."""
+    from overstate_ui.salt_client import SaltApiError
+    from overstate_ui.tasks_queue import write_roster_cache
+
+    with client.app.app_context():
+        get_session().add(
+            Minion(
+                id="web-01",
+                grains={"osfinger": "Cached OS"},
+                conformity={},
+                key_status="accepted",
+            )
+        )
+        get_session().commit()
+    write_roster_cache({"web-01": "accepted"}, set())
+
+    def _boom(*args, **kwargs):
+        raise SaltApiError("live call must be skipped")
+
+    monkeypatch.setattr(client.app.extensions["salt_client"], "local", _boom)
+    html = client.get("/minions/web-01").data.decode()
+    assert "not responding" in html
+    assert "Cached OS" in html
+
+
+def test_detail_uses_live_for_up_minion(client, fake_redis, monkeypatch):
+    from overstate_ui.tasks_queue import write_roster_cache
+
+    write_roster_cache({"web-01": "accepted"}, {"web-01"})
+    salt = client.app.extensions["salt_client"]
+    orig = salt.local
+    calls = []
+
+    def rec(tgt, fun, **kwargs):
+        calls.append(fun)
+        return orig(tgt, fun, **kwargs)
+
+    monkeypatch.setattr(salt, "local", rec)
+    html = client.get("/minions/web-01").data.decode()
+    assert "grains.items" in calls
+    assert "Fedora Linux 41" in html
+    assert "not responding" not in html
+
+
+def test_refresh_one_skips_not_up_minion(client, fake_redis, monkeypatch):
+    from overstate_ui.salt_client import SaltApiError
+    from overstate_ui.tasks_queue import write_roster_cache
+
+    with client.app.app_context():
+        get_session().add(
+            Minion(
+                id="web-01", grains={"os": "X"}, conformity={}, key_status="accepted"
+            )
+        )
+        get_session().commit()
+    write_roster_cache({"web-01": "accepted"}, set())
+
+    def _boom(*args, **kwargs):
+        raise SaltApiError("live call must be skipped")
+
+    monkeypatch.setattr(client.app.extensions["salt_client"], "local", _boom)
+    rv = client.post("/minions/web-01/refresh")
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01").grains == {"os": "X"}
+    assert "not responding" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_pillar_capture_skips_not_up_minion(client, fake_redis, monkeypatch):
+    from overstate_ui.models import PillarSnapshot
+    from overstate_ui.salt_client import SaltApiError
+    from overstate_ui.tasks_queue import write_roster_cache
+
+    write_roster_cache({"web-01": "accepted"}, set())
+
+    def _boom(*args, **kwargs):
+        raise SaltApiError("live call must be skipped")
+
+    monkeypatch.setattr(client.app.extensions["salt_client"], "local", _boom)
+    rv = client.post("/pillar/web-01/capture")
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().query(PillarSnapshot).count() == 0
+    assert "not responding" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_pillar_capture_runs_for_up_minion(client, fake_redis):
+    from overstate_ui.models import PillarSnapshot
+    from overstate_ui.tasks_queue import write_roster_cache
+
+    write_roster_cache({"web-01": "accepted"}, {"web-01"})
+    rv = client.post("/pillar/web-01/capture")
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().query(PillarSnapshot).count() == 1
+
+
 def test_minion_row_remove_unknown_minion(client):
     rv = client.post("/minions/nope-01/remove")
     assert rv.status_code == 302
@@ -680,6 +785,28 @@ def test_schedule_renders_table_and_pillar_highlighted():
                 200, json={"return": [{"token": "tok", "expire": 99}]}
             )
         body = json.loads(request.content or b"{}")
+        if body.get("client") == "wheel" and body.get("fun") == "key.list_all":
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": ["web-01"],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
+        if body.get("client") == "runner" and body.get("fun") == "manage.status":
+            return httpx.Response(
+                200, json={"return": [{"up": ["web-01"], "down": []}]}
+            )
         return httpx.Response(200, json={"return": [payloads.get(body.get("fun"), {})]})
 
     init_db("sqlite://")

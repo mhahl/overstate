@@ -36,6 +36,22 @@ def _drop_caches():
     tasks_queue.drop_redis_clients()
 
 
+def test_minion_is_up_tristate(monkeypatch, fake_redis):
+    import overstate_ui.minions_helpers as helpers_mod
+    from overstate_ui.minions_helpers import minion_is_up
+    from overstate_ui.tasks_queue import write_roster_cache
+
+    write_roster_cache({"web-01": "accepted", "down-01": "accepted"}, {"web-01"})
+    assert minion_is_up(object(), "web-01") is True
+    assert minion_is_up(object(), "down-01") is False
+    assert minion_is_up(object(), "unknown-01") is False
+    # Unreachable roster fails open: None means "keep the live call".
+    monkeypatch.setattr(
+        helpers_mod, "cached_roster", lambda client, **kwargs: ({}, set(), False)
+    )
+    assert minion_is_up(object(), "web-01") is None
+
+
 def test_redis_client_reused_per_url(app):
     from overstate_ui.tasks_queue import drop_redis_clients, get_redis_client
 

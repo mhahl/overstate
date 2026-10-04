@@ -7,7 +7,7 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .jobs_helpers import ALLOWED_FUNS, FUN_RE
-from .minions import _exact_mid, cached_roster
+from .minions import _exact_mid, cached_roster, minion_is_up
 from .salt_client import SaltApiError
 
 bp = Blueprint("schedules", __name__, url_prefix="/schedules")
@@ -80,7 +80,9 @@ def index():
     entries: dict = {}
     raw = ""
     error = None
-    if mid:
+    if mid and minion_is_up(client, mid) is False:
+        error = f"{mid} is not responding. Stored data is shown."
+    elif mid:
         try:
             # return_yaml=False keeps this a real mapping: an empty
             # schedule arrives as {} (empty state), not blank YAML text

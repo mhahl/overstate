@@ -1,5 +1,6 @@
 """Console tests: salt-style lines in the browser, same guardrails as Run job."""
 
+import datetime as dt
 import json
 
 import httpx
@@ -10,7 +11,7 @@ from overstate_ui import create_app
 from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
-from overstate_ui.models import AuditEvent, Job, Minion, User
+from overstate_ui.models import AuditEvent, Job, Minion, SaltReturn, User
 from overstate_ui.salt_client import SaltClient
 
 KEY_LISTING = {
@@ -29,10 +30,23 @@ def fake_transport() -> httpx.MockTransport:
             )
         body = json.loads(request.content or b"{}")
         client = body.get("client")
-        if client == "local_async":
-            return httpx.Response(
-                200, json={"return": [{"jid": "1", "minions": ["m1"]}]}
+        if client == "local_async" and body.get("tgt") != "quiet-01":
+            # The sync wait reads the returner, so seed the return the
+            # master would have written, under the published jid.
+            # quiet-01 never reports: it exercises the wait expiry.
+            get_session().add(
+                SaltReturn(
+                    fun=body.get("fun", "test.ping"),
+                    jid=body.get("jid", "1"),
+                    minion_id="m1",
+                    success="True",
+                    payload={"result": True},
+                    full_ret={},
+                    alter_time=dt.datetime.now(dt.UTC),
+                )
             )
+            get_session().commit()
+            return httpx.Response(200, json={"return": [{"jid": body.get("jid", "1")}]})
         if client == "local":
             return httpx.Response(200, json={"return": [{"m1": True}]})
         if client == "wheel":
@@ -136,6 +150,19 @@ def test_salt_sync_prints_per_minion(client):
     assert "m1: ok" in data["output"]
 
 
+def test_salt_sync_expiry_prints_jid_and_job_link(client, monkeypatch):
+    from overstate_ui import jobs_service
+
+    monkeypatch.setattr(jobs_service, "SYNC_WAIT_SECONDS", 0)
+    rv = post_line(client, "salt quiet-01 test.ping --sync")
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data["ok"]
+    assert "No returns arrived within the wait" in data["output"]
+    assert "jid: " in data["output"]
+    assert "jobs" in data["job_url"]
+
+
 def test_blocked_function_rejected(client):
     rv = post_line(client, "salt '*' cmd.run ls")
     assert rv.status_code == 400
@@ -210,6 +237,45 @@ def test_console_key_accept_keeps_snapshot_row(client):
     assert rv.status_code == 200
     with client.app.app_context():
         assert get_session().get(Minion, "new1") is not None
+
+
+def test_runner_timeouts_bounded(client, monkeypatch):
+    """Console runners carry a short HTTP cap; the fleet-gathering ones
+    also bound the Salt-side wait. Asserted at the runner boundary:
+    httpx transports never observe timeouts."""
+    salt = client.app.extensions["salt_client"]
+    orig = salt.runner
+    seen = {}
+
+    def rec(fun, **kwargs):
+        seen.clear()
+        seen["fun"] = fun
+        seen.update(kwargs)
+        return orig(fun, **kwargs)
+
+    monkeypatch.setattr(salt, "runner", rec)
+    assert post_line(client, "salt-run manage.status").status_code == 200
+    assert seen["timeout"] == 5
+    assert seen["http_timeout"] == 8
+    assert post_line(client, "salt-run jobs.list_jobs").status_code == 200
+    assert "timeout" not in seen
+    assert seen["http_timeout"] == 8
+
+
+def test_runner_user_timeout_wins(client, monkeypatch):
+    salt = client.app.extensions["salt_client"]
+    orig = salt.runner
+    seen = {}
+
+    def rec(fun, **kwargs):
+        seen.clear()
+        seen.update(kwargs)
+        return orig(fun, **kwargs)
+
+    monkeypatch.setattr(salt, "runner", rec)
+    assert post_line(client, "salt-run manage.status timeout=2").status_code == 200
+    assert seen["timeout"] == "2"
+    assert seen["http_timeout"] == 8
 
 
 def test_runner_allowlist(client):

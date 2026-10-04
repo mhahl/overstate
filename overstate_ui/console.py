@@ -201,6 +201,11 @@ def _cmd_salt(argv: list[str]) -> dict:
             .order_by(JobReturn.minion_id)
             .all()
         )
+        if not rows:
+            lines.append(
+                "No returns arrived within the wait. They land on the job "
+                "page as minions report back."
+            )
         shown = rows[:50]
         for row in shown:
             mark = "ok" if row.success else "FAIL"
@@ -334,6 +339,17 @@ def _cmd_runner(argv: list[str]) -> dict:
         if not sep or not name:
             raise ConsoleError(f"Runner options are k=v pairs: bad token {tok}.")
         kwargs[name] = value
+    if fun in ("manage.status", "manage.versions"):
+        # Presence probes gather from the fleet: bound the Salt-side wait
+        # (an explicit user timeout still wins) and the HTTP round trip.
+        kwargs.setdefault("timeout", 5)
+    # An explicit user http_timeout still wins; runner() consumes it as
+    # the HTTP cap and never forwards it into the salt-api payload.
+    # Garbage falls back to the default instead of 500ing in httpx.
+    try:
+        kwargs["http_timeout"] = float(kwargs.get("http_timeout", 8))
+    except (TypeError, ValueError):
+        kwargs["http_timeout"] = 8
     try:
         result = get_salt().runner(fun, **kwargs)[0]
     except SaltApiError as exc:
