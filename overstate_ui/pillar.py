@@ -116,7 +116,15 @@ def render_value(value) -> str:
 @bp.route("/")
 @login_required
 def index():
+    from flask_login import current_user
+
+    from .authz import has_fleet, minions_with, rbac_mode, require
+
+    require("pillar.read")
     mids = minion_ids()
+    if rbac_mode() == "scoped" and not has_fleet(current_user, "pillar.read"):
+        allowed = minions_with(current_user, "pillar.read")
+        mids = [m for m in mids if m in allowed]
     counts = {
         mid: get_session().query(PillarSnapshot).filter_by(minion_id=mid).count()
         for mid in mids
@@ -149,7 +157,11 @@ def index():
 @bp.route("/<mid>")
 @login_required
 def detail(mid: str):
+    from .authz import rbac_mode, require
+
     mid = _exact_mid(mid)
+    if rbac_mode() == "scoped":
+        require("pillar.read", minion=mid)
     snaps = snapshots_for(mid)
     live = None
     error = None
@@ -170,7 +182,11 @@ def detail(mid: str):
 @bp.post("/<mid>/capture")
 @roles_required("operator")
 def capture(mid: str):
+    from .authz import rbac_mode, require
+
     mid = _exact_mid(mid)
+    if rbac_mode() == "scoped":
+        require("pillar.capture", minion=mid)
     from .minions import minion_is_up
 
     if minion_is_up(get_salt(), mid) is False:
@@ -181,6 +197,11 @@ def capture(mid: str):
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
     else:
+        from flask_login import current_user
+
+        from .audit import log_event
+
+        log_event(current_user.username, "pillar-capture", minion_id=mid)
         flash(f"Pillar snapshot captured for {mid}.", "success")
     return redirect(url_for("pillar.detail", mid=mid))
 
@@ -188,9 +209,32 @@ def capture(mid: str):
 @bp.route("/diff")
 @login_required
 def diff():
+    from flask import abort as _abort
+    from flask_login import current_user
+
+    from .authz import (
+        audit_deny,
+        authorize,
+        has_fleet,
+        minions_with,
+        rbac_mode,
+        require,
+    )
+
+    require("pillar.read")
     mids = minion_ids()
+    if rbac_mode() == "scoped" and not has_fleet(current_user, "pillar.read"):
+        allowed = minions_with(current_user, "pillar.read")
+        mids = [m for m in mids if m in allowed]
     mid_a = request.args.get("a", "")
     mid_b = request.args.get("b", "")
+    if rbac_mode() == "scoped":
+        for mid in (mid_a, mid_b):
+            if mid and not authorize(current_user, "pillar.read", minion=mid):
+                # Both ids required, including rev=live; missing either
+                # is 403 with no Salt call.
+                audit_deny("pillar.read", minion_id=mid, detail="out-of-scope")
+                _abort(403)
     rev_a = request.args.get("rev_a", "")
     rev_b = request.args.get("rev_b", "")
     left = _resolve(mid_a, rev_a) if mid_a else None

@@ -55,23 +55,49 @@ PING_SALT_TIMEOUT = 5
 fast at the master instead of waiting out the HTTP backstop."""
 
 
-def refresh_now(client) -> int:
+def refresh_now(client, only_ids: list[str] | None = None) -> int:
     """Fleet grains refresh. Shared by the view fallback and the task."""
     from .inventory import refresh_inventory
     from .minions import live_roster
     from .tasks_queue import write_roster_cache
 
     statuses, up, _ = live_roster(client)
-    count = refresh_inventory(client, statuses)
+    count = refresh_inventory(client, statuses, only_ids=only_ids)
     write_roster_cache(statuses, up)
     return count
 
 
-def refresh_inventory_task() -> dict:
+def refresh_inventory_task(
+    only_ids: list[str] | None = None, user: str | None = None
+) -> dict:
     from .tasks import build_client
 
     with isolated_app():
-        return {"count": refresh_now(build_client())}
+        from .audit import log_event
+        from .authz import has_fleet, minions_with, rbac_mode
+        from .db import get_session
+        from .models import User
+
+        if rbac_mode() == "scoped":
+            # The worker refuses a ``*`` publish unless the queuing user
+            # still holds fleet minion.refresh; a scoped list is
+            # re-intersected with their current scope.
+            actor = (
+                get_session().query(User).filter_by(username=user).first()
+                if user
+                else None
+            )
+            if actor is None:
+                log_event(user or "unknown", "refresh-denied-authz")
+                return {"count": 0, "error": "authorization revoked"}
+            if only_ids is None:
+                if not has_fleet(actor, "minion.refresh"):
+                    log_event(user, "refresh-denied-authz")
+                    return {"count": 0, "error": "fleet refresh revoked"}
+            else:
+                allowed = minions_with(actor, "minion.refresh")
+                only_ids = sorted(set(only_ids) & allowed)
+        return {"count": refresh_now(build_client(), only_ids=only_ids)}
 
 
 def fleet_keys_now(client) -> dict:
@@ -222,10 +248,24 @@ def show_highstate_now(client, minion: str, via: str = "local") -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
-def show_highstate_task(minion: str, via: str = "local") -> dict:
+def show_highstate_task(
+    minion: str, via: str = "local", user: str | None = None
+) -> dict:
     from .tasks import build_client
 
     with isolated_app():
+        from .authz import authorize, rbac_mode
+        from .db import get_session
+        from .models import User
+
+        if rbac_mode() == "scoped":
+            actor = (
+                get_session().query(User).filter_by(username=user).first()
+                if user
+                else None
+            )
+            if actor is None or not authorize(actor, "pillar.read", minion=minion):
+                return {}
         return show_highstate_now(build_client(), minion, via)
 
 

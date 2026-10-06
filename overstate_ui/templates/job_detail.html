@@ -9,7 +9,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-primary">Sync results</button>
   </form>
-  {% if killable and current_user.role in ["operator", "admin"] %}
+  {% if killable and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('job.kill'))) %}
   <div class="divider divider-horizontal m-0" aria-hidden="true"></div>
   <form method="post" action="{{ url_for('jobs.kill', jid=job.jid) }}" data-confirm="Kill job {{ job.jid }}? Running minions stop immediately.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -31,7 +31,7 @@
 {% endfor %}
 <div class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
-    <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ job.tgt }} <span class="opacity-60">, by {{ job.user }}</span></p>
+    <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ tgt_display.get(job.jid, job.tgt) }} <span class="opacity-60">, by {{ job.user }}</span></p>
     <p class="ml-auto" aria-live="polite"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
   </div>
 </div>
@@ -42,7 +42,7 @@
       <h2 class="card-title text-base">Batch</h2>
       <span class="badge badge-sm {{ 'badge-success' if batch_state.status == 'complete' else ('badge-error' if batch_state.status in ('stopped', 'cancelled') else 'badge-info') }}">{{ batch_state.status }}</span>
       <span class="text-sm opacity-70">{{ batch_state.waves_done | default(0) }}/{{ batch_state.waves }} waves · {{ batch_state.failures | default(0) }} failures{% if batch_state.missing %} ({{ batch_state.missing }} missing){% endif %} · stop after {{ batch_state.stop_after }}</span>
-      {% if batch_state.status == "running" and current_user.role in ["operator", "admin"] %}
+      {% if batch_state.status == "running" and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('job.batch'))) %}
       <form method="post" action="{{ url_for('jobs.cancel_batch', group=job.batch_group) }}" class="ml-auto" data-confirm="Stop batch {{ job.batch_group }}? Remaining waves will not run.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-sm btn-error btn-outline">Stop batch</button>
@@ -54,7 +54,7 @@
       <li class="flex items-center gap-2">
         <span class="badge badge-sm {{ 'badge-success' if w.complete else 'badge-info' }}">{{ "done" if w.complete else "running" }}</span>
         <a class="link link-primary font-mono text-xs" href="{{ url_for('jobs.detail', jid=w.jid) }}">{{ w.jid }}</a>
-        <span class="opacity-70 font-mono text-xs">{{ w.tgt }}</span>
+        <span class="opacity-70 font-mono text-xs">{{ tgt_display.get(w.jid, w.tgt) }}</span>
       </li>
       {% endfor %}
     </ul>

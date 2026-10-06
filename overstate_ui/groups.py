@@ -27,7 +27,31 @@ def index():
         page = int(request.args.get("page", 1))
     except ValueError:
         page = 1
+    from flask_login import current_user as _u
+
+    from .authz import has_fleet as _has_fleet
+    from .authz import minions_with as _minions_with
+    from .authz import own_group_ids as _own_ids
+    from .authz import rbac_mode as _mode
+    from .authz import require as _require
+
+    _require("group.read")
+    _scoped = _mode() == "scoped"
+    _fleet = not _scoped or _has_fleet(_u, "group.read")
+    _allowed: set[str] | None = None
+    _own: set[str] = set()
+    if _scoped and not _fleet:
+        _allowed = _minions_with(_u, "group.read")
+        _own = _own_ids(_u)
     all_groups = get_session().query(MinionGroup).order_by(MinionGroup.name).all()
+    if _scoped and not _fleet:
+        _roster = {row.id for row in get_session().query(Minion.id).all()}
+        all_groups = [
+            g
+            for g in all_groups
+            if str(g.id) in _own
+            or (set(g.members or []) & _roster) <= _allowed
+        ]
     if q:
         all_groups = [
             g
@@ -51,6 +75,9 @@ def index():
     page = min(max(1, page), pages)
     statuses, _, _ = cached_roster(get_salt())
     roster = sorted(row.id for row in get_session().query(Minion.id).all())
+    if _scoped and not _fleet:
+        # The member picker renders only in-scope ids.
+        roster = [m for m in roster if m in _allowed]
     return render_template(
         "groups.html",
         q=request.args.get("q", ""),
@@ -63,8 +90,63 @@ def index():
         groups=all_groups[(page - 1) * per_page : page * per_page],
         group_names=[g.name for g in all_groups],
         roster=roster,
-        presence=sorted(set(roster) | set(statuses)),
+        presence=sorted(set(roster) | set(statuses)) if _fleet or not _scoped else roster,
     )
+
+
+
+def _frozen_group_ids() -> set[str]:
+    """Group ids named as scope_value by a grant or IdP mapping."""
+    from .db import get_session
+    from .models import Grant, IdpRoleMapping
+
+    session = get_session()
+    refs = {
+        row[0]
+        for row in session.query(Grant.scope_value)
+        .filter_by(scope_kind="group")
+        .all()
+    }
+    refs |= {
+        row[0]
+        for row in session.query(IdpRoleMapping.scope_value)
+        .filter_by(scope_kind="group")
+        .all()
+    }
+    return refs
+
+
+def _require_group_write(members: list[str] | None = None) -> None:
+    """group.write, plus new members inside scope and the freeze rule."""
+    from flask import abort
+    from flask_login import current_user
+
+    from .authz import audit_deny, has_fleet, minions_with, rbac_mode, require
+
+    if rbac_mode() != "scoped":
+        return
+    require("group.write")
+    if members is not None and not has_fleet(current_user, "group.write"):
+        allowed = minions_with(current_user, "group.write")
+        outside = [m for m in members if m not in allowed]
+        if outside:
+            audit_deny("group.write", detail="out-of-scope")
+            abort(403)
+
+
+def _require_unfrozen(gid: int) -> None:
+    from flask import abort
+    from flask_login import current_user
+
+    from .authz import audit_deny, has_fleet, rbac_mode
+
+    if rbac_mode() != "scoped":
+        return
+    if str(gid) in _frozen_group_ids() and not has_fleet(
+        current_user, "grant.admin"
+    ):
+        audit_deny("group.write", detail="out-of-scope")
+        abort(403)
 
 
 def parse_member_ids(form) -> list[str]:
@@ -88,6 +170,7 @@ def parse_member_ids(form) -> list[str]:
 def create_group():
     name = request.form.get("name", "").strip()
     members = parse_member_ids(request.form)
+    _require_group_write(members)
     session = get_session()
     if not name:
         flash("Group needs a name.", "error")
@@ -104,6 +187,8 @@ def create_group():
 @bp.post("/<int:gid>/rename")
 @roles_required("operator")
 def rename_group(gid: int):
+    _require_group_write()
+    _require_unfrozen(gid)
     session = get_session()
     group = session.get(MinionGroup, gid)
     name = request.form.get("name", "").strip()
@@ -128,6 +213,8 @@ def rename_group(gid: int):
 @bp.post("/<int:gid>/members")
 @roles_required("operator")
 def edit_group_members(gid: int):
+    _require_group_write(parse_member_ids(request.form))
+    _require_unfrozen(gid)
     session = get_session()
     group = session.get(MinionGroup, gid)
     if group is None:
@@ -144,6 +231,8 @@ def edit_group_members(gid: int):
 @roles_required("operator")
 def edit_group(gid: int):
     """Combined rename plus member update from the group modal."""
+    _require_group_write(parse_member_ids(request.form))
+    _require_unfrozen(gid)
     session = get_session()
     group = session.get(MinionGroup, gid)
     name = request.form.get("name", "").strip()
@@ -173,6 +262,18 @@ def edit_group(gid: int):
 @bp.post("/<int:gid>/delete")
 @roles_required("operator")
 def delete_group(gid: int):
+    from flask import abort
+    from flask_login import current_user
+
+    from .authz import audit_deny, rbac_mode
+
+    _require_group_write()
+    if rbac_mode() == "scoped" and str(gid) in _frozen_group_ids():
+        # A referenced group is never deleted: no cascade drops the
+        # grant or the mapping. Rename keeps the id, so the grant
+        # keeps resolving.
+        audit_deny("group.write", detail="out-of-scope")
+        abort(403)
     session = get_session()
     group = session.get(MinionGroup, gid)
     if group is None:

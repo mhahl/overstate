@@ -60,6 +60,7 @@ def run_wave_batch(
     stop_after: int,
     user: str,
     wave_timeout: float = 600.0,
+    kwarg: dict | None = None,
 ) -> dict:
     """Run waves with a failure gate. Worker task or inline fallback."""
     import time
@@ -67,7 +68,7 @@ def run_wave_batch(
     from .audit import log_event
     from .db import get_session
     from .jobs import sync_job
-    from .models import Job, JobReturn
+    from .models import Job, JobReturn, User
     from .tasks import batch_cancelled, build_client
 
     session = get_session()
@@ -81,9 +82,31 @@ def run_wave_batch(
             log_event(user, f"batch-cancelled:{group}")
             break
         targets = sorted(wave)
+        from .authz import minions_with, publish_perm, rbac_mode
+
+        if rbac_mode() == "scoped":
+            # Defining user, at each wave: drop ids that fell out of
+            # scope since the batch started. A deleted user or a fully
+            # revoked permission stops the batch instead of publishing.
+            actor = session.query(User).filter_by(username=user).first()
+            perm = publish_perm(fun) or ""
+            allowed = minions_with(actor, perm) if actor is not None and perm else set()
+            if not allowed:
+                status = "stopped"
+                log_event(user, "batch-stopped-authz", detail=f"batch:{group}")
+                break
+            kept = [m for m in targets if m in allowed]
+            if not kept:
+                continue
+            targets = kept
         try:
             result = client.local(
-                targets, fun, arg=args, tgt_type="list", asynchronous=True
+                targets,
+                fun,
+                arg=args,
+                tgt_type="list",
+                asynchronous=True,
+                kwarg=kwarg,
             )
             jid = result[0]["jid"] if isinstance(result, list) else result["jid"]
         except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
@@ -165,9 +188,10 @@ def run_wave_batch_task(
     args: list[str],
     stop_after: int,
     user: str,
+    kwarg: dict | None = None,
 ) -> dict:
     with app_context():
-        return run_wave_batch(group, waves, fun, args, stop_after, user)
+        return run_wave_batch(group, waves, fun, args, stop_after, user, kwarg=kwarg)
 
 
 def _orch_success(payload: Any) -> bool:
@@ -209,6 +233,26 @@ def run_orchestrate_task(
     from .tasks import build_client
 
     with app_context():
+        from .authz import has_fleet, rbac_mode
+        from .db import get_session as _get_session
+        from .models import User as _User
+
+        if rbac_mode() == "scoped":
+            # Defining user, at start: the SLS is not re-scoped, which
+            # is why orchestrate is fleet-only. A revoked caller fails
+            # the job without touching the runner.
+            _session = _get_session()
+            actor = _session.query(_User).filter_by(username=user).first()
+            if actor is None or not has_fleet(actor, "job.run.orchestrate"):
+                _job = _session.get(Job, jid)
+                if _job is not None:
+                    _job.complete = True
+                _store_job_return(
+                    _session, jid, "master", False, {"output": "authorization revoked"}
+                )
+                _session.commit()
+                log_event(user, "orchestrate-denied-authz", jid=jid)
+                return {"jid": jid, "minions": 0, "error": "authorization revoked"}
         client = build_client()
         try:
             result = client.runner(

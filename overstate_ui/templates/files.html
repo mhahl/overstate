@@ -8,7 +8,7 @@
     <p class="text-sm opacity-70 mt-0.5">Browse and edit state files. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
     {% if has_top %}<p class="text-sm mt-1"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% else %}<p class="text-sm mt-1 text-warning">No top.sls at file roots. The master serves nothing until you clone the states repo on the Repo tab.</p>{% endif %}
     </div>
-    {% if current_user.role == "admin" %}
+    {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
     <a class="btn btn-sm btn-outline" title="Clone, repoint, and repair the file-roots checkout" href="{{ url_for('files.repo') }}">Repo settings</a>
     {% endif %}
   </div>
@@ -21,7 +21,7 @@
         <span class="font-mono">{{ git.sha }}</span>
         {% if git.clean %}<span class="badge badge-sm badge-success">clean</span>{% else %}<span class="badge badge-sm badge-warning">{{ git.dirty_count }} uncommitted</span>{% endif %}
         {% if git.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ git.upstream }}{% if git.ahead is not none %} · {{ git.ahead }} ahead, {{ git.behind }} behind{% endif %}</span>{% else %}<span class="opacity-70 text-xs">no upstream</span>{% endif %}
-        {% if current_user.role in ["operator", "admin"] %}
+        {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.sync')) %}
         <span class="ms-auto flex gap-1 max-sm:w-full max-sm:mt-1">
           <form method="post" action="{{ url_for('files.fetch') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -35,7 +35,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-outline" title="Publish custom Salt modules (saltutil.sync_all). Distributes files, applies nothing.">Sync modules</button>
           </form>
-          {% if current_user.role == "admin" %}
+          {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
           <form method="post" action="{{ url_for('files.push') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-primary" title="Push committed changes upstream">Push</button>

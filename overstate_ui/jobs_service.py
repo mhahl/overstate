@@ -55,7 +55,7 @@ def _master_minions(jid: str) -> set[str] | None:
     return set(data)
 
 
-def sync_job(jid: str) -> Job | None:
+def sync_job(jid: str, actor: str | None = None) -> Job | None:
     """Copy returner rows for jid into jobs/job_returns.
 
     Synthetic JIDs (batch-*, orch-*, ssh-*, sync-*) never appear in the
@@ -98,7 +98,12 @@ def sync_job(jid: str) -> Job | None:
             fun=first.fun,
             tgt="",
             tgt_type="glob",
-            user=current_user.username if current_user.is_authenticated else "unknown",
+            user=actor
+            or (
+                current_user.username
+                if current_user.is_authenticated
+                else "unknown"
+            ),
         )
         session.add(job)
     stored = {
@@ -305,8 +310,42 @@ def _new_jid() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y%m%d%H%M%S%f")
 
 
+def _force_beacon_kwargs(
+    fun: str, args: list, kwarg: dict | None
+) -> tuple[list, dict | None]:
+    """Strip ``include_pillar``/``include_opts`` from positional ``args``
+    (the job form and the console both publish them as tokens) and force
+    both false on the kwarg dict, so a ``beacons.list`` publish never
+    carries pillar-sourced config onto the wire. Other functions pass
+    through unchanged. The dict is non-empty afterwards, so
+    ``SaltClient.local``'s ``if kwarg:`` does not drop it."""
+    if fun != "beacons.list":
+        return args, kwarg
+    cleaned: list = []
+    for item in args or []:
+        if isinstance(item, dict):
+            item = {
+                k: v
+                for k, v in item.items()
+                if k not in ("include_pillar", "include_opts")
+            }
+            cleaned.append(item)
+        elif isinstance(item, str) and item.split("=")[0] in (
+            "include_pillar",
+            "include_opts",
+        ):
+            continue
+        else:
+            cleaned.append(item)
+    forced = dict(kwarg or {})
+    forced["include_pillar"] = False
+    forced["include_opts"] = False
+    return cleaned, forced
+
+
 def _publish_all_async(
-    clients, tgt: str, fun: str, args: list, tgt_type: str, jid: str
+    clients, tgt: str, fun: str, args: list, tgt_type: str, jid: str,
+    kwarg: dict | None = None,
 ) -> list[str]:
     """Publish one local_async per pod under the shared jid.
 
@@ -330,6 +369,7 @@ def _publish_all_async(
                 tgt_type=tgt_type,
                 asynchronous=True,
                 jid=jid,
+                kwarg=kwarg,
             )
         except SaltApiError as exc:
             failures.append((name, exc))
@@ -365,6 +405,20 @@ def _await_returner(jid: str, budget: float = SYNC_WAIT_SECONDS) -> bool:
         time.sleep(1)
 
 
+def _schedule_inner_fun(args: list, kwarg: dict | None) -> str | None:
+    """The ``function=`` argument of a ``schedule.add`` publish."""
+    if isinstance(kwarg, dict) and isinstance(kwarg.get("function"), str):
+        return kwarg["function"]
+    for item in args or []:
+        if isinstance(item, dict) and isinstance(item.get("function"), str):
+            return item["function"]
+        if isinstance(item, str):
+            name, sep, value = item.partition("=")
+            if sep and name == "function":
+                return value
+    return None
+
+
 def launch(
     tgt: str,
     tgt_type: str,
@@ -372,15 +426,87 @@ def launch(
     args: list,
     asynchronous: bool,
     via: str = "local",
+    kwarg: dict | None = None,
+    tgt_requested: str | None = None,
+    actor_user=None,
 ) -> str:
     """Fire a job via salt-api; record the Job row. Returns the jid.
+
+    ``actor_user`` is a service-account owner for token API fires: authz
+    evaluates as that user and audit rows carry its name. Cookie flows
+    leave it unset and evaluate as the logged-in user.
 
     Local publishes fan out to every master pod under one shared jid:
     publish buses are per-master, so a single-pod publish would miss
     minions attached to the other pod. Unreachable pods degrade to a
     warning (never a silent partial) and converge on the next action.
     salt-ssh stays single-pod: the roster executes from one master.
+
+    In scoped mode the target is intersected with the caller's scope
+    before any publish (``tgt=*`` never reaches salt-api for a scoped
+    caller), and ``beacons.list`` publishes with pillar-sourced config
+    forced off. ``jobs.tgt`` stores what Salt received;
+    ``jobs.tgt_requested`` stores what was typed.
     """
+    from .authz import (
+        AuthzDenied,
+        audit_deny,
+        constrain_target_verbose,
+        has_fleet,
+        may_define_schedule,
+        may_define_schedule_fleet,
+        publish_perm,
+        rbac_mode,
+    )
+
+    typed = tgt_requested if tgt_requested is not None else tgt
+    narrowed: set[str] = set()
+    perm = ""
+    scoped = rbac_mode() == "scoped"
+    who = actor_user if actor_user is not None else current_user
+    actor_name = getattr(who, "username", None) or "unknown"
+    # Browser warnings only for cookie flows; token fires name the actor
+    # in audit rows and skip flashes there is no browser to warn.
+    notice_actor = actor_name if actor_user is not None else None
+    if scoped:
+        perm = publish_perm(fun) or ""
+        if not perm:
+            denied = AuthzDenied(fun, "unknown function class")
+            audit_deny(fun, detail=denied.detail, actor=actor_name)
+            raise denied
+        if via == "ssh" and not has_fleet(who, perm):
+            # salt-ssh targets are often absent from the snapshot, so a
+            # scoped intersection would silently drop the intended roster.
+            denied = AuthzDenied(perm, "ssh needs a fleet grant", detail="needs-fleet")
+            audit_deny(perm, detail=denied.detail, actor=actor_name)
+            raise denied
+        args, kwarg = _force_beacon_kwargs(fun, args, kwarg)
+        try:
+            tgt, tgt_type, requested, hit = constrain_target_verbose(
+                who, perm, tgt, tgt_type
+            )
+        except AuthzDenied as exc:
+            audit_deny(exc.perm, detail=exc.detail, actor=actor_name)
+            raise
+        if requested is not None and hit is not None:
+            narrowed = requested - hit
+        if fun == "schedule.add":
+            inner = _schedule_inner_fun(args, kwarg)
+            if hit is None:
+                # Fleet grant: the target publishes unchanged; check the
+                # inner function fleet-wide instead of per snapshot id.
+                fleet_ok = may_define_schedule_fleet(who, inner)
+            else:
+                scheduled = hit
+                fleet_ok = (
+                    inner is not None
+                    and bool(scheduled)
+                    and all(may_define_schedule(who, mid, inner) for mid in scheduled)
+                )
+            if not fleet_ok:
+                denied = AuthzDenied(perm, "schedule not allowed here")
+                audit_deny(perm, detail="no-grant", actor=actor_name)
+                raise denied
     client = get_salt()
     if tgt_type == "group":
         targets, stale = resolve_group_target(tgt)
@@ -398,6 +524,7 @@ def launch(
             tgt_type=tgt_type,
             timeout=SSH_SALT_TIMEOUT,
             via="ssh",
+            kwarg=kwarg,
             http_timeout=SSH_SALT_TIMEOUT + 5,
         )
         real_jid, mapping = _split_sync_result(result)
@@ -408,7 +535,8 @@ def launch(
             fun=fun,
             tgt=tgt,
             tgt_type=tgt_type,
-            user=current_user.username,
+            tgt_requested=typed,
+            user=actor_name,
         )
         session.add(job)
         for mid, payload in mapping.items():
@@ -423,12 +551,20 @@ def launch(
             )
         job.complete = True
         session.commit()
-        log_event(current_user.username, f"run-ssh:{fun}", jid=jid)
+        ssh_ids = sorted(mapping)
+        log_event(
+            actor_name,
+            f"run-ssh:{fun}",
+            jid=jid,
+            minion_id=ssh_ids[0] if len(ssh_ids) == 1 else None,
+            detail=",".join(ssh_ids) if len(ssh_ids) > 1 else None,
+        )
+        _audit_narrowed(narrowed, perm if scoped else "", jid, notice_actor)
         return jid
     clients = pod_clients(client)
     if asynchronous:
         jid = _new_jid()
-        missed = _publish_all_async(clients, tgt, fun, args, tgt_type, jid)
+        missed = _publish_all_async(clients, tgt, fun, args, tgt_type, jid, kwarg)
         session = get_session()
         session.add(
             Job(
@@ -436,12 +572,17 @@ def launch(
                 fun=fun,
                 tgt=tgt,
                 tgt_type=tgt_type,
-                user=current_user.username,
+                tgt_requested=typed,
+                user=actor_name,
             )
         )
         session.commit()
-        log_event(current_user.username, f"run:{fun}", jid=jid)
-        _warn_missed(missed, fun, jid)
+        run_mid, run_detail = _run_audit_ids(tgt, tgt_type)
+        log_event(
+            actor_name, f"run:{fun}", jid=jid, minion_id=run_mid, detail=run_detail
+        )
+        _audit_narrowed(narrowed, perm if scoped else "", jid, notice_actor)
+        _warn_missed(missed, fun, jid, notice_actor)
         return jid
     # Sync rides the same async publish, then reads the returner: a
     # synchronous local on a pod that does not own the minion waits out
@@ -449,22 +590,77 @@ def launch(
     # second worker. Completion stays with sync_job; a sync click that
     # outruns the budget simply leaves the job running like async does.
     jid = _new_jid()
-    missed = _publish_all_async(clients, tgt, fun, args, tgt_type, jid)
+    missed = _publish_all_async(clients, tgt, fun, args, tgt_type, jid, kwarg)
     session = get_session()
-    job = Job(jid=jid, fun=fun, tgt=tgt, tgt_type=tgt_type, user=current_user.username)
+    job = Job(
+        jid=jid,
+        fun=fun,
+        tgt=tgt,
+        tgt_type=tgt_type,
+        tgt_requested=typed,
+        user=actor_name,
+    )
     session.add(job)
     session.commit()
-    log_event(current_user.username, f"run:{fun}", jid=jid)
-    _warn_missed(missed, fun, jid)
+    run_mid, run_detail = _run_audit_ids(tgt, tgt_type)
+    log_event(actor_name, f"run:{fun}", jid=jid, minion_id=run_mid, detail=run_detail)
+    _audit_narrowed(narrowed, perm if scoped else "", jid, notice_actor)
+    _warn_missed(missed, fun, jid, notice_actor)
     _await_returner(jid, SYNC_WAIT_SECONDS)
     return jid
 
 
-def _warn_missed(missed: list[str], fun: str, jid: str) -> None:
-    """Name unreachable pods loudly: partial results are never silent."""
+def _run_audit_ids(tgt: str, tgt_type: str) -> tuple[str | None, str | None]:
+    """(minion_id, detail) for a run row from the published target. One
+    snapshot id names it, so scoped audit readers in scope can see
+    another user's run; several ids stay null with the list in detail;
+    unevaluable targets stay null."""
+    from .authz import published_snapshot_ids
+
+    mids = published_snapshot_ids(tgt, tgt_type)
+    if not mids:
+        return None, None
+    if len(mids) == 1:
+        return next(iter(mids)), None
+    return None, ",".join(sorted(mids))
+
+
+def _audit_narrowed(
+    narrowed: set[str], perm: str, jid: str, actor: str | None = None
+) -> None:
+    """Record a ``job-constrained`` row when the intersection dropped
+    ids. The stored detail names them for fleet audit; the flash and the
+    confirm page stay anonymous counts. Token fires pass their actor name
+    and skip the flash: there is no browser to warn."""
+    if not narrowed or not perm:
+        return
+    dropped = ",".join(sorted(narrowed))
+    log_event(
+        actor or current_user.username,
+        "job-constrained",
+        jid=jid,
+        outcome="allow",
+        permission=perm,
+        detail=dropped,
+    )
+    if actor is not None:
+        return
+    flash(
+        f"{len(narrowed)} minions are outside your scope and will not be touched.",
+        "warning",
+    )
+
+
+def _warn_missed(
+    missed: list[str], fun: str, jid: str, actor: str | None = None
+) -> None:
+    """Name unreachable pods loudly: partial results are never silent.
+
+    Token fires skip the flash and carry the actor name in the row."""
     for name in missed:
-        flash(f"{name} is unreachable, so results may be partial.", "warning")
-        log_event(current_user.username, f"run-partial:{fun}:{name}", jid=jid)
+        if actor is None:
+            flash(f"{name} is unreachable, so results may be partial.", "warning")
+        log_event(actor or current_user.username, f"run-partial:{fun}:{name}", jid=jid)
 
 
 def resolve_batch_roster(tgt: str, tgt_type: str) -> list[str] | None:
@@ -489,20 +685,96 @@ def resolve_batch_roster(tgt: str, tgt_type: str) -> list[str] | None:
 
 
 def run_batched(
-    tgt: str, tgt_type: str, fun: str, args: list, batch: dict, save_as: str = ""
+    tgt: str,
+    tgt_type: str,
+    fun: str,
+    args: list,
+    batch: dict,
+    save_as: str = "",
+    actor_user=None,
 ):
-    """Start a gated wave batch: parent row, enqueue or run inline."""
+    """Start a gated wave batch: parent row, enqueue or run inline.
+
+    ``actor_user`` names a service-account owner for token API fires, as
+    in :func:`launch`; cookie flows leave it unset."""
     import uuid
 
+    from flask import abort
+
+    from .authz import (
+        AuthzDenied,
+        audit_deny,
+        constrain_target_verbose,
+        has_fleet,
+        minions_with,
+        publish_perm,
+        rbac_mode,
+        require,
+    )
     from .tasks import queue_or_none, run_wave_batch, run_wave_batch_task
 
-    roster = resolve_batch_roster(tgt, tgt_type)
-    if roster is None:
-        flash("Batch mode supports list, glob, and group targets.", "error")
-        return redirect(url_for("jobs.new"))
-    if not roster:
-        flash("No known minions match.", "error")
-        return redirect(url_for("jobs.new"))
+    narrowed: set[str] = set()
+    who = actor_user if actor_user is not None else current_user
+    actor_name = getattr(who, "username", None) or "unknown"
+    if rbac_mode() == "scoped":
+        # Own the scoped constrain: an unknown group or an empty
+        # intersection is 403 here, not a batch error page. Waves
+        # additionally need job.batch on the whole roster.
+        perm = publish_perm(fun) or ""
+        if not perm:
+            audit_deny(fun, detail="no-grant", actor=actor_name)
+            abort(403)
+        if actor_user is not None:
+            from .authz import authorize
+
+            try:
+                authorize(who, perm)
+                authorize(who, "job.batch")
+            except AuthzDenied as exc:
+                audit_deny(exc.perm, detail=exc.detail, actor=actor_name)
+                abort(403)
+        else:
+            require(perm)
+            require("job.batch")
+        try:
+            _, _, requested, hit = constrain_target_verbose(who, perm, tgt, tgt_type)
+        except AuthzDenied as exc:
+            audit_deny(exc.perm, detail=exc.detail, actor=actor_name)
+            abort(403)
+        if hit is None:
+            # Fleet grant: today's roster semantics, including group
+            # targets resolved against the masters.
+            roster = resolve_batch_roster(tgt, tgt_type)
+            if roster is None:
+                flash("Batch mode supports list, glob, and group targets.", "error")
+                return redirect(url_for("jobs.new"))
+            if not roster:
+                flash("No known minions match.", "error")
+                return redirect(url_for("jobs.new"))
+            narrowed = set()
+        else:
+            roster = sorted(hit)
+            narrowed = requested - hit
+        if not has_fleet(who, "job.batch") and not set(roster) <= minions_with(
+            who, "job.batch"
+        ):
+            audit_deny("job.batch", detail="out-of-scope", actor=actor_name)
+            abort(403)
+        if (
+            save_as
+            and not has_fleet(who, "job.save")
+            and not set(roster) <= minions_with(who, "job.save")
+        ):
+            audit_deny("job.save", detail="out-of-scope", actor=actor_name)
+            abort(403)
+    else:
+        roster = resolve_batch_roster(tgt, tgt_type)
+        if roster is None:
+            flash("Batch mode supports list, glob, and group targets.", "error")
+            return redirect(url_for("jobs.new"))
+        if not roster:
+            flash("No known minions match.", "error")
+            return redirect(url_for("jobs.new"))
     from .tasks import split_roster
 
     waves = split_roster(roster, batch["mode"], batch["size"])
@@ -514,7 +786,7 @@ def run_batched(
             fun=fun,
             tgt=tgt,
             tgt_type=tgt_type,
-            user=current_user.username,
+            user=actor_name,
             batch_group=group,
             batch_state={
                 "mode": batch["mode"],
@@ -528,7 +800,14 @@ def run_batched(
         )
     )
     session.commit()
-    log_event(current_user.username, f"batch-start:{group}")
+    log_event(actor_name, f"batch-start:{group}")
+    if rbac_mode() == "scoped":
+        _audit_narrowed(
+            narrowed,
+            publish_perm(fun) or "",
+            f"batch-{group}",
+            actor_name if actor_user is not None else None,
+        )
     if save_as:
         session.add(
             SavedJob(
@@ -541,18 +820,28 @@ def run_batched(
             )
         )
         session.commit()
+    # A batch of beacons.list carries the same forced kwargs as an
+    # interactive fire, or the positional token would skip the rule.
+    wave_args, wave_kwarg = _force_beacon_kwargs(fun, args, None)
     job = queue_or_none(
         run_wave_batch_task,
         group,
         waves,
         fun,
-        args,
+        wave_args,
         batch["stop_after"],
-        current_user.username,
+        actor_name,
+        wave_kwarg,
     )
     if job is None:
         result = run_wave_batch(
-            group, waves, fun, args, batch["stop_after"], current_user.username
+            group,
+            waves,
+            fun,
+            wave_args,
+            batch["stop_after"],
+            actor_name,
+            kwarg=wave_kwarg,
         )
         flash(
             f"Batch {result['status']}: "

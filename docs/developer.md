@@ -31,7 +31,9 @@ overstate_ui/        Flask package. One module per blueprint.
                      upstream push. Fixed git argv, no shell, bounded
                      timeouts, one-at-a-time lock, fixed failure words.
   events.py          Filtered event-bus viewer and stream.
-  users.py           Admin-only role management.
+  users.py           Users, grants, local groups, service accounts.
+  authz.py           Scoped RBAC evaluator: roles, scopes, constrain.
+  api.py             Bearer-token CI endpoint (POST /api/jobs/run).
   seed_mock.py       Mock-data seeder for UI work without Salt.
   tasks.py           RQ task functions, queue helper, capability probes.
   worker.py          RQ worker entrypoint (`python -m overstate_ui.worker`).
@@ -96,15 +98,39 @@ as a password field.
 
 `LEVELS = {"viewer": 0, "operator": 1, "admin": 2}`. `roles_required`
 takes role names, computes the minimum level, and aborts 403 below
-it. Read-only views take bare `login_required`. Local users carry an
-argon2 hash; SSO users carry `password_hash = None` plus the
-`(oidc_issuer, oidc_sub)` identity key, so the login form can never
-authenticate them.
+it; in scoped mode it checks a coarse permission floor instead, and
+each view additionally calls `require("<specific perm>")`. Read-only
+views take `read_required(perm)` in scoped mode, bare
+`login_required` in legacy. Local users carry an argon2 hash; SSO
+users carry `password_hash = None` plus the `(oidc_issuer, oidc_sub)`
+identity key, so the login form can never authenticate them. Service
+accounts (`kind=service`) authenticate only by Bearer token on
+`/api/jobs/run`, never by login.
 
+Scoped RBAC lives in `authz.py`: fourteen roles in `ROLE_PERMS`,
+scopes (fleet, minion group id, id list, id glob, snapshot grain,
+file prefix), and union evaluation with no denies. `constrain_target`
+rewrites non-fleet publishes to an explicit snapshot list before any
+Salt call; fleet grants keep Salt's own target semantics. Salt-ssh
+stays fleet-only, and compound/nodegroup targets 403 without one.
 `provision_oidc_user` finds or creates the account by identity key,
-sets the display name from claims, recomputes the role from groups,
-and commits. Group mapping wins over manual edits on every login.
-Keep it that way; split-brain authorization is worse than surprise.
+replaces the IdP group claim wholesale, and recomputes the `role`
+cache without minting a viewer grant. Group mapping wins over manual
+edits on every login. Keep it that way; split-brain authorization is
+worse than surprise. Manual grants are additive and survive login.
+
+Delegates (`grant.delegate`) write only inside the subset rule in
+`delegate_grant_error`: minion-matcher scope within their own,
+permissions they already hold there, no fleet, no `grant.admin`, no
+self-edit, no backfilled ladder rows.
+
+`rbac_mode` and `rbac_role_fallback` resolve DB row, else non-empty
+env, else `legacy` / `on`, and never insert on read. They are not in
+`OIDC_ENV_FALLBACK`. Only the exact strings `scoped` and `off` flip
+behavior, and `scoped` is inert while `ENFORCEMENT_COMPLETE` is false.
+`users.role` stays the legacy authority and the scoped compatibility
+cache (`admin`, `operator`, `viewer`, `scoped`, `none`); only
+`refresh_role_cache` writes it.
 
 ## Data model and migrations
 
@@ -124,7 +150,11 @@ for SQLite ALTER limitations.
 ## Conventions
 
 - Every mutating view calls `log_event` with the user, the action,
-  and the JID. No silent writes.
+  and the JID. No silent writes. Denied scoped attempts log a `deny`
+  row (`outcome=deny`, permission, minion id when the route has one)
+  and stop with 403; an id that exists but is out of scope is 403,
+  never 404, so auditors see the attempt. Responses and flashes name
+  only ids the caller supplied.
 - Every POST carries a CSRF token, including HTMX requests. If your
   new form 400s, you forgot the token.
 - HTMX swaps use `_rows.html` partials; full pages stay server

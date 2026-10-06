@@ -371,7 +371,7 @@ def cached_roster(
     return statuses, up, reachable
 
 
-def refresh_sync() -> None:
+def refresh_sync(only_ids: list[str] | None = None) -> None:
     """Synchronous refresh. Worker fallback and no-Redis path."""
     from flask import flash
 
@@ -385,7 +385,7 @@ def refresh_sync() -> None:
         # Always live: this is the explicit Refresh button, and its
         # fresh statuses repopulate the roster cache for the views.
         statuses, up, _ = live_roster(client)
-        count = refresh_inventory(client, statuses)
+        count = refresh_inventory(client, statuses, only_ids=only_ids)
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
     else:

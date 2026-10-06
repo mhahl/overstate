@@ -7,6 +7,7 @@ from flask_wtf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import (
+    api,
     audit,
     auth,
     console,
@@ -64,6 +65,10 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.teardown_appcontext(close_session)
 
     csrf.init_app(app)
+    # The token API authenticates with a Bearer header, not a browser
+    # session, so its single view is CSRF-exempt. Cookie sessions are
+    # ignored there, never accepted.
+    csrf.exempt(api.run_job)
     auth.login_manager.init_app(app)
     app.extensions["salt_client"] = SaltClient(
         config.SALT_API_URL,
@@ -92,6 +97,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.register_blueprint(audit.bp)
     app.register_blueprint(users.bp)
     app.register_blueprint(files.bp)
+    app.register_blueprint(api.bp)
 
     @app.after_request
     def _security_headers(resp):
@@ -118,5 +124,36 @@ def create_app(config: type[Config] = Config) -> Flask:
             theme = "light"
         allowed = ("light", "dark", "wireframe")
         return {"app_theme": theme if theme in allowed else "wireframe"}
+
+    @app.context_processor
+    def _rbac():
+        """Template globals for scoped mode. ``can`` is deny-by-default
+        in legacy mode; every use is inside an ``rbac_scoped`` branch."""
+
+        def can(perm: str, minion: str | None = None, prefix: str | None = None):
+            from flask_login import current_user
+
+            from .authz import authorize, rbac_mode
+
+            if not current_user.is_authenticated:
+                return False
+            if rbac_mode() != "scoped":
+                return False
+            try:
+                return bool(authorize(current_user, perm, minion=minion, prefix=prefix))
+            except Exception:  # noqa: BLE001 — DB may not exist yet
+                return False
+
+        def can_any(*perms: str):
+            return any(can(p) for p in perms)
+
+        from .authz import rbac_mode
+
+        try:
+            scoped = rbac_mode() == "scoped"
+        except Exception:  # noqa: BLE001 — DB may not exist yet
+            scoped = False
+
+        return {"can": can, "can_any": can_any, "rbac_scoped": scoped}
 
     return app

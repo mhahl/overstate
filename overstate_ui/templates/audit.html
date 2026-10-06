@@ -18,14 +18,26 @@
       <span class="fieldset-legend">Action</span>
       <input name="action" value="{{ action }}" placeholder="Search action…" class="input input-sm w-full" autocomplete="off">
     </label>
+    <label class="fieldset">
+      <span class="fieldset-legend">Outcome</span>
+      <select name="outcome" class="select select-sm">
+        <option value="">any</option>
+        <option value="allow"{% if outcome == "allow" %} selected{% endif %}>allow</option>
+        <option value="deny"{% if outcome == "deny" %} selected{% endif %}>deny</option>
+      </select>
+    </label>
+    <label class="fieldset flex-1 min-w-48">
+      <span class="fieldset-legend">Permission</span>
+      <input name="permission" value="{{ permission }}" placeholder="Search permission…" class="input input-sm w-full" autocomplete="off">
+    </label>
     <button class="btn btn-sm btn-primary mb-1">Filter</button>
-    {% if user or action %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
+    {% if user or action or outcome or permission %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="overflow-x-auto">
     <table class="table table-zebra table-sm table-pin-rows w-full">
-      <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action}) }}<th>Job</th></tr></thead>
+      <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}<th>Job</th></tr></thead>
       <tbody>
         {% for e in events %}
         <tr>

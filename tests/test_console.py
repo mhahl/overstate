@@ -206,6 +206,7 @@ def test_key_list_and_accept(client):
             .one()
         )
         assert audit is not None
+        assert audit.minion_id == "new1"
     rv = post_line(client, "salt-key -a '*'")
     assert rv.status_code == 400
     rv = post_line(client, "salt-key -a ghost")
@@ -225,6 +226,13 @@ def test_console_key_delete_removes_snapshot_row(client):
     assert "Inventory row removed" in rv.get_json()["output"]
     with client.app.app_context():
         assert get_session().get(Minion, "m1") is None
+        remove = (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action == "minion-remove:m1")
+            .one()
+        )
+        assert remove.minion_id == "m1"
 
 
 def test_console_key_accept_keeps_snapshot_row(client):

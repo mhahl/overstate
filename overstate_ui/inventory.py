@@ -41,14 +41,32 @@ pulls full live grains for a minion that answers, so "all grain facts"
 stays complete whenever the minion is up."""
 
 
-def refresh_inventory(client, key_statuses: dict[str, str]) -> int:
+def refresh_inventory(
+    client, key_statuses: dict[str, str], only_ids: list[str] | None = None
+) -> int:
     """Pull the snapshot grains fleet-wide and upsert the cache.
 
     Structured so an RQ worker can call it by import path; the refresh
-    button calls it synchronously (dev fleets are tiny).
+    button calls it synchronously (dev fleets are tiny). ``only_ids``
+    restricts the publish to a snapshot list for scoped callers: a
+    scoped refresh never publishes ``*`` and cannot discover ids
+    outside the caller's scope.
     """
     now = dt.datetime.now(dt.UTC)
-    result = client.local("*", "grains.item", arg=list(SNAPSHOT_GRAINS), timeout=30)[0]
+    if only_ids is not None:
+        if not only_ids:
+            return 0
+        result = client.local(
+            ",".join(sorted(only_ids)),
+            "grains.item",
+            arg=list(SNAPSHOT_GRAINS),
+            tgt_type="list",
+            timeout=30,
+        )[0]
+    else:
+        result = client.local(
+            "*", "grains.item", arg=list(SNAPSHOT_GRAINS), timeout=30
+        )[0]
     session = get_session()
     count = 0
     for mid, grains in result.items():

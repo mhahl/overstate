@@ -264,6 +264,11 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
 @bp.route("/")
 @login_required
 def index():
+    from flask_login import current_user
+
+    from .authz import has_fleet, minions_with, rbac_mode, require
+
+    require("key.read")
     tab = request.args.get("tab", "pending")
     if tab not in dict(TABS):
         tab = "pending"
@@ -286,6 +291,14 @@ def index():
     if len(failed) == len(clients):
         flash("Salt API error: no master is reachable.", "error")
         data = {t: [] for t, _ in TABS}
+    if rbac_mode() == "scoped" and not has_fleet(current_user, "key.read"):
+        # Accepted ids in scope only; the pending, rejected, and denied
+        # piles stay fleet key.read.
+        allowed = minions_with(current_user, "key.read")
+        data = {
+            t: [r for r in rows if r["id"] in allowed] if t == "accepted" else []
+            for t, rows in data.items()
+        }
     for name in failed:
         flash(f"{name} is unreachable. Key states are partial.", "warning")
     counts = {t: len(data[t]) for t, _ in TABS}
@@ -337,6 +350,12 @@ def index():
 @bp.post("/reconcile")
 @roles_required("operator")
 def reconcile():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        # Accept admits pending keys on every master: fleet-only, since
+        # a pending key has no trustworthy grain.
+        require("key.accept")
     clients = pod_clients(get_salt())
     if request.form.get("confirm") == "1":
         report = reconcile_keys(clients)
@@ -389,6 +408,15 @@ def act(action: str):
     if any(c in mid for c in "*?[]"):
         flash("You cannot use wildcards in key ids.", "error")
         return redirect(url_for("keys.index", **keep))
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        # Gate before the roster read: a denied caller publishes nothing.
+        # Unknown ids still redirect below, but only for gate-passers.
+        if action == "delete":
+            require("key.delete", minion=mid)
+        else:
+            require("key.accept")
     clients = pod_clients(get_salt())
     roster, _ = merged_key_data(clients)
     current_ids = {row["id"] for rows in roster.values() for row in rows}
@@ -422,7 +450,12 @@ def act(action: str):
             session.delete(row)
             session.commit()
             removed = True
-            log_event(current_user.username, f"minion-remove:{mid}")
+            log_event(
+                current_user.username,
+                f"minion-remove:{mid}",
+                permission="minion.remove",
+                minion_id=mid,
+            )
     suffix = " Inventory row removed." if removed else ""
     if failed:
         flash(
@@ -432,9 +465,16 @@ def act(action: str):
         )
         log_event(
             current_user.username,
-            f"{action}-key-partial:{mid}:{','.join(failed)}"[:64],
+            f"{action}-key-partial:{mid}:{','.join(failed)}",
+            permission="key.delete" if action == "delete" else "key.accept",
+            minion_id=mid,
         )
     else:
-        log_event(current_user.username, f"{action}-key")
+        log_event(
+            current_user.username,
+            f"{action}-key",
+            permission="key.delete" if action == "delete" else "key.accept",
+            minion_id=mid,
+        )
         flash(f"{mid}: {past}.{suffix}", "success")
     return redirect(url_for("keys.index", **keep))

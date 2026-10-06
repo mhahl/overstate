@@ -188,6 +188,10 @@ def _index_context(client: K8sClient) -> dict:
 @bp.route("/")
 @roles_required("admin")
 def index():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("master.read")
     client = K8sClient()
     return render_template(
         "masterconfig.html", checklist=_checklist(), **_index_context(client)
@@ -197,6 +201,10 @@ def index():
 @bp.post("/checklist/refresh")
 @roles_required("admin")
 def checklist_refresh():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("master.write")
     """Re-run the observability checklist: worker when one answers,
     inline fallback otherwise (D1+D5). The inline result renders
     immediately; the queued one lands in cache for the next load."""
@@ -222,6 +230,10 @@ def checklist_refresh():
 @bp.route("/view")
 @roles_required("admin")
 def view():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("master.read")
     key = request.args.get("key", "")
     client = K8sClient()
     live_name, _ = _names()
@@ -244,6 +256,10 @@ def view():
 @bp.route("/edit")
 @roles_required("admin")
 def edit():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("master.write")
     key = request.args.get("key", "")
     client = K8sClient()
     live_name, _ = _names()
@@ -270,6 +286,10 @@ def edit():
 @bp.post("/save")
 @roles_required("admin")
 def save():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("master.write")
     key = request.form.get("key", "")
     text = request.form.get("content", "")
     base_rv = request.form.get("base_resource_version", "")
@@ -402,6 +422,10 @@ def _history_count(client: K8sClient, history_name: str) -> int | None:
 @bp.post("/restart")
 @roles_required("admin")
 def restart():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("master.rollout")
     """Roll the masters one at a time and wait for health. Explicit only."""
     client = K8sClient()
     sts_name = current_app.config["MASTER_STATEFULSET"]
@@ -431,6 +455,10 @@ def restart():
 @bp.post("/revert")
 @roles_required("admin")
 def revert():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("master.write")
     """Re-patch the last snapshot (snapshotting current first), then roll.
 
     Revert is undoable: current state becomes the newest snapshot, so a

@@ -309,7 +309,7 @@ def test_oidc_client_secret_from_db_enables_sso():
     c = app.test_client()
     assert "Log in with SSO" not in c.get("/login").data.decode()
     c.post("/login", data={"username": "admin", "password": "pw"})
-    assert 'type="password"' in c.get("/settings/").data.decode()
+    assert 'type="password"' in c.get("/settings/sso").data.decode()
     c.post("/settings/", data={"oidc_client_secret": "db-secret"})
     with app.app_context():
         assert get_setting("oidc_client_secret") == "db-secret"
@@ -384,12 +384,16 @@ def test_settings_page_groups_every_setting_into_panels():
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
     html = c.get("/settings/").data.decode()
+    sso_html = c.get("/settings/sso").data.decode()
     for section in SECTIONS:
-        assert section["title"] in html
+        if "oidc_issuer" in section["keys"]:
+            assert section["title"] in sso_html
+        else:
+            assert section["title"] in html
     covered = [k for s in SECTIONS for k in s["keys"]]
     assert sorted(covered) == sorted(DEFS)
     for key in DEFS:
-        assert f'name="{key}"' in html
+        assert f'name="{key}"' in html or f'name="{key}"' in sso_html
 
 
 def test_callback_exchange_failure_redirects(monkeypatch):

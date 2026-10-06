@@ -385,6 +385,9 @@ def _live_mappings(clients):
 @bp.route("/")
 @login_required
 def index():
+    from .authz import require
+
+    require("reactor.read")
     q = request.args.get("q", "").strip().lower()
     sort = request.args.get("sort", "event")
     if sort not in ("event", "sls"):
@@ -436,6 +439,9 @@ def index():
 @bp.route("/view")
 @login_required
 def view():
+    from .authz import require
+
+    require("reactor.read")
     rel = request.args.get("sls", "")
     target = _safe_join(rel) if rel and sls_to_rel(rel) == rel else None
     if not target or not target.is_file():
@@ -477,6 +483,10 @@ def view():
 @bp.post("/add")
 @roles_required("operator")
 def add():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("reactor.write")
     event = request.form.get("event", "").strip()
     sls = request.form.get("sls", "").strip()
     if (
@@ -529,7 +539,15 @@ def add():
     else:
         log_event(current_user.username, f"reactor-add:{event}")
         flash(f"{event}: Reactor added.", "success")
-    if request.form.get("persist", "") == "1" and current_user.role == "admin":
+    from .authz import authorize as _authorize
+    from .authz import rbac_mode as _rbac_mode
+
+    _may_persist = (
+        _authorize(current_user, "reactor.persist")
+        if _rbac_mode() == "scoped"
+        else current_user.role == "admin"
+    )
+    if request.form.get("persist", "") == "1" and _may_persist:
         pok, pmsg, ptag = _persist_to_master_conf(event, sls)
         log_event(current_user.username, ptag)
         flash(pmsg, "success" if pok else "error")
@@ -539,6 +557,10 @@ def add():
 @bp.post("/delete")
 @roles_required("operator")
 def delete():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("reactor.write")
     event = request.form.get("event", "").strip()
     if not event:
         flash("Pick a reactor first. An empty selection does not fire.", "error")
@@ -577,6 +599,10 @@ def delete():
 @bp.get("/add")
 @roles_required("operator")
 def add_wizard():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("reactor.write")
     """Add-wizard step 1: event pattern with presets and recents."""
     return render_template(
         "reactor_add.html",
@@ -591,6 +617,10 @@ def add_wizard():
 @bp.post("/add/step2")
 @roles_required("operator")
 def add_step2():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("reactor.write")
     """Add-wizard step 2: SLS picker. Re-renders step 1 on bad event."""
     event = request.form.get("event", "").strip()
     if not _valid_event(event):
@@ -617,6 +647,12 @@ def add_step2():
 @bp.post("/add/review")
 @roles_required("operator")
 def add_review():
+    from .authz import authorize as _authorize
+    from .authz import rbac_mode as _rbac_mode
+    from .authz import require
+
+    if _rbac_mode() == "scoped":
+        require("reactor.write")
     """Add-wizard step 3: blast-radius review before confirm."""
     event = request.form.get("event", "").strip()
     if not _valid_event(event):
@@ -649,7 +685,11 @@ def add_review():
         pod_count=len(clients),
         down=down,
         unreachable=unreachable,
-        is_admin=(current_user.role == "admin"),
+        is_admin=(
+            _authorize(current_user, "reactor.persist")
+            if _rbac_mode() == "scoped"
+            else current_user.role == "admin"
+        ),
         error=None,
     )
 
@@ -657,6 +697,10 @@ def add_review():
 @bp.route("/edit")
 @roles_required("admin")
 def edit():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("reactor.persist")
     """Edit form for one reactor SLS body (admin-only).
 
     Reactor code runs with master privileges and fires on events, so
@@ -690,6 +734,10 @@ def edit():
 @bp.post("/save")
 @roles_required("admin")
 def save():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("reactor.persist")
     """Write one reactor SLS body (admin-only, edit-existing-only).
 
     Blocking YAML gate (bodies auto-fire on events), stale-hash refusal,
@@ -758,6 +806,9 @@ def save():
 @bp.route("/export")
 @login_required
 def export():
+    from .authz import require
+
+    require("reactor.read")
     """Render the live mapping as a YAML block for master.conf.
 
     Union across pods (same fan-out reason as add/delete); paste the

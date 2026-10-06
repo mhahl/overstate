@@ -6,7 +6,7 @@
     <h1 class="text-2xl font-bold tracking-tight">Minions <span class="badge badge-neutral align-middle">{{ total }}</span></h1>
     <p class="text-sm opacity-70 mt-0.5">Inventory snapshots with live presence.</p>
   </div>
-  {% if current_user.role in ["operator", "admin"] %}
+  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('minion.refresh')) %}
   <form method="post" action="{{ url_for('minions.refresh') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-primary">Refresh inventory</button>
@@ -66,7 +66,7 @@
   </div>
 </div>
 </noscript>
-{% if current_user.role in ["operator", "admin"] %}
+{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('minion.remove')) %}
 <dialog id="remove-modal" class="modal" aria-labelledby="remove-modal-title">
   <div class="modal-box">
     <h3 id="remove-modal-title" class="font-bold text-lg">Remove <span id="remove-modal-mid" class="font-mono"></span>?</h3>

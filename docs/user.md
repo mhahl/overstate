@@ -14,7 +14,9 @@ resets your counter.
 
 If your site uses single sign-on, the login page shows a second button,
 **Log in with SSO**. It takes you to your identity provider and back.
-SSO accounts start as viewers. Ask an admin for a higher role.
+SSO accounts start as viewers unless your site uses scoped access, in
+which case a new account starts with nothing until an admin or your
+team lead grants it. Ask them, not the login page.
 
 Log out with the logout button. It uses POST, so no prefetch or
 tab-restore logs you out by accident.
@@ -33,6 +35,18 @@ Three roles exist. Each higher role includes everything below it.
 
 Buttons for actions above your role do not appear, and the server
 rejects the request anyway if you craft one by hand.
+
+Some sites use scoped access instead of the ladder. Then your account
+carries team roles on a slice of the fleet: you see and touch only
+the minions in your scope, and a `*` target runs on those minions,
+never the whole fleet. State applies and pillar browsing are separate
+abilities — being allowed to apply a state does not open the pillar
+page, and team views never show another team's minions. If a page you
+expect is missing, your scope does not include it; ask your team lead
+or admin. Automation on such sites runs as service accounts with
+single-use tokens, never as a shared human login. Your admin's grant
+and scope summary, and what each team role allows, is in
+`docs/rbac.md`.
 
 ## Dashboard
 

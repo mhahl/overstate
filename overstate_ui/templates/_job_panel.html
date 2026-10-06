@@ -10,7 +10,7 @@ in both paths. #}
     {% if r.live|default(False) %}<span class="badge badge-xs badge-info">live</span>{% endif %}
     {% if view.summary %}<span class="text-xs opacity-70">{{ view.summary.succeeded }} succeeded, {{ view.summary.failed }} failed{% if view.failed_names %} · <span class="font-mono text-error">Failed: {{ view.failed_names|join(", ") }}</span>{% endif %}</span>
     {% elif view.text %}<span class="text-xs opacity-70">{{ view.text }}</span>{% endif %}
-    {% if not r.success and current_user.role in ["operator", "admin"] %}<a class="btn btn-xs" href="{{ url_for('jobs.new', tgt=r.minion_id, tgt_type='list', fun=job.fun) }}" onclick="event.stopPropagation()">Re-run</a>{% endif %}
+    {% if not r.success and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state'))) %}<a class="btn btn-xs" href="{{ url_for('jobs.new', tgt=r.minion_id, tgt_type='list', fun=job.fun) }}" onclick="event.stopPropagation()">Re-run</a>{% endif %}
   </summary>
   <div class="collapse-content">
     {% include "_return_view.html" %}

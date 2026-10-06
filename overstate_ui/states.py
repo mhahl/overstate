@@ -183,9 +183,17 @@ CONFORMITY_ORDER = {"ok": 0, "drifted": 1, "unreachable": 2, "unknown": 3}
 @bp.route("/")
 @login_required
 def index():
+    from flask_login import current_user
+
+    from .authz import has_fleet, minions_with, rbac_mode, require
+
+    require("state.read")
     session = get_session()
     watched = session.query(WatchedState).order_by(WatchedState.sls).all()
     minions = session.query(Minion).order_by(Minion.id).all()
+    if rbac_mode() == "scoped" and not has_fleet(current_user, "state.read"):
+        allowed = minions_with(current_user, "state.read")
+        minions = [m for m in minions if m.id in allowed]
     sort = request.args.get("sort", "id")
     if sort not in ("id", "status"):
         sort = "id"
@@ -237,6 +245,10 @@ def index():
 @bp.post("/watch")
 @roles_required("operator")
 def watch():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("state.watch")
     sls = request.form.get("sls", "").strip()
     session = get_session()
     if not sls:
@@ -254,6 +266,10 @@ def watch():
 @bp.post("/unwatch/<int:wid>")
 @roles_required("operator")
 def unwatch(wid: int):
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("state.watch")
     session = get_session()
     row = session.get(WatchedState, wid)
     if row is None:
@@ -269,6 +285,10 @@ def unwatch(wid: int):
 @bp.post("/recompute")
 @roles_required("operator")
 def recompute():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("state.watch")
     jid = recompute_conformity()
     log_event(current_user.username, f"states-recompute:{jid or 'none'}")
     flash(f"Conformity recomputed from {jid}." if jid else "No state jobs yet.", "info")

@@ -15,7 +15,7 @@
   </div>
   <div class="flex flex-wrap items-center gap-2 mb-4">
     <p class="text-sm opacity-70 mr-auto">Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
-    {% if content is not none and current_user.role in ["operator", "admin"] %}
+    {% if content is not none and (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.write')) %}
     <a class="btn btn-sm btn-outline" href="{{ url_for('files.edit', path=rel) }}">Edit</a>
     {% endif %}
   </div>

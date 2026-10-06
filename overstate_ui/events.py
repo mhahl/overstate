@@ -36,6 +36,10 @@ def match_prefixes(tag: str, prefixes: list[str]) -> bool:
 @bp.route("/")
 @login_required
 def index():
+    from .authz import require
+
+    # v1 does not filter the bus: scoped roles simply omit event.read.
+    require("event.read")
     prefixes = request.args.getlist("tag") or ["salt/job"]
     valid = [p for p in prefixes if p in TAG_CHOICES]
     if not valid:
@@ -47,6 +51,9 @@ def index():
 @bp.route("/stream")
 @login_required
 def stream():
+    from .authz import require
+
+    require("event.read")
     prefixes = [p for p in request.args.getlist("tag") if p in TAG_CHOICES]
     if not prefixes:
         prefixes = ["salt/job"]

@@ -1,0 +1,86 @@
+{# Grants dialog. One <dialog> per subject; the server re-validates
+   everything, so disabled inputs are cosmetic only. Scope value shares
+   one text field except group scopes, which post scope_value_group,
+   and grain scopes, which post grain_key/grain_value. #}
+{% macro grant_dialog(dialog_id, title, post_url, rows, groups, grain_keys, role_groups, delegate=False) %}
+<button class="btn btn-sm btn-outline" onclick="document.getElementById('{{ dialog_id }}').showModal()">Grants</button>
+<dialog id="{{ dialog_id }}" class="modal" aria-labelledby="{{ dialog_id }}-title">
+  <div class="modal-box max-w-2xl">
+    <h3 id="{{ dialog_id }}-title" class="font-bold text-lg">{{ title }}</h3>
+    {% if rows %}
+    <div class="overflow-x-auto mt-3">
+    <table class="table table-sm table-zebra w-full">
+      <thead><tr><th>Role</th><th>Scope</th><th>Source</th><th class="text-right">Actions</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.grant.role }}</td>
+          <td class="font-mono text-xs">{{ row.scope }}</td>
+          <td class="text-xs opacity-70">{{ row.grant.source }}{% if row.readonly %} · from IdP{% endif %}</td>
+          <td class="text-right">
+            {% if row.readonly %}
+            <span class="text-xs opacity-50">read-only</span>
+            {% else %}
+            <form method="post" action="{{ row.delete_url }}" data-confirm="Delete this grant?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-error btn-outline">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-sm opacity-70 mt-3">No grants. This account can sign in but sees nothing.</p>
+    {% endif %}
+    <form method="post" action="{{ post_url }}" class="flex flex-col gap-3 mt-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="fieldset"><span class="fieldset-legend">Role</span>
+      <select name="role" class="select select-sm w-full">
+        {% for label, roles in role_groups %}
+        <optgroup label="{{ label }}">
+          {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select></label>
+      {% if delegate %}<p class="text-xs opacity-70">Delegates grant team roles inside their own scope only. Fleet and file-prefix scopes stay with a fleet admin.</p>
+      {% else %}<p class="text-xs opacity-70">Global roles apply to the whole fleet, including pillar. Prefer a team role on a scope.</p>{% endif %}
+      <div class="flex flex-wrap gap-2">
+      <label class="fieldset flex-1 min-w-36"><span class="fieldset-legend">Scope kind</span>
+      <select name="scope_kind" class="select select-sm w-full">
+        <option value="glob" selected>glob</option>
+        <option value="group">group</option>
+        <option value="list">list</option>
+        <option value="grain">grain</option>
+        {% if not delegate %}<option value="prefix">prefix (file roles)</option>
+        <option value="fleet">fleet (global roles)</option>{% endif %}
+      </select></label>
+      <label class="fieldset flex-1 min-w-36"><span class="fieldset-legend">Scope value (pattern, ids, or path)</span>
+      <input name="scope_value" class="input input-sm w-full font-mono" autocomplete="off" placeholder="web-*"></label>
+      </div>
+      <div class="flex flex-wrap gap-2">
+      <label class="fieldset flex-1 min-w-36"><span class="fieldset-legend">Minion group (group scopes)</span>
+      <select name="scope_value_group" class="select select-sm w-full">
+        <option value="">—</option>
+        {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+      </select></label>
+      <label class="fieldset"><span class="fieldset-legend">Grain key</span>
+      <select name="grain_key" class="select select-sm">
+        <option value="">—</option>
+        {% for gk in grain_keys %}<option value="{{ gk }}">{{ gk }}</option>{% endfor %}
+      </select></label>
+      <label class="fieldset flex-1 min-w-36"><span class="fieldset-legend">Grain value</span>
+      <input name="grain_value" class="input input-sm w-full font-mono" autocomplete="off"></label>
+      </div>
+      <p class="text-xs opacity-70">Grain scopes use the inventory snapshot, not live grains.</p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('{{ dialog_id }}').close()">Cancel</button>
+        <button class="btn btn-primary">Add grant</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endmacro %}

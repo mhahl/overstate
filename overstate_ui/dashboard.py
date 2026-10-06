@@ -41,12 +41,18 @@ def get_salt() -> SaltClient:
     return current_app.extensions["salt_client"]
 
 
-def snapshot_versions() -> dict[str, int]:
+def snapshot_versions(allowed: set[str] | None = None) -> dict[str, int]:
     """{saltversion: count} from the grain snapshot cache. Fallback
-    when the master won't answer manage.versions."""
+    when the master won't answer manage.versions. ``allowed`` restricts
+    the count to in-scope minions (scoped RBAC)."""
     counts: dict[str, int] = {}
     # Grains column only: full rows would drag every minion's grains JSON.
-    for (grains,) in get_session().query(Minion.grains).all():
+    query = get_session().query(Minion.id, Minion.grains)
+    if allowed is not None:
+        if not allowed:
+            return counts
+        query = query.filter(Minion.id.in_(allowed))
+    for _mid, grains in query.all():
         version = (grains or {}).get("saltversion")
         if version:
             version = str(version)
@@ -95,10 +101,14 @@ def returns_health(now: dt.datetime | None = None) -> dict:
     return {"age": age, "stale": stale}
 
 
-def snapshot_stats() -> dict:
+def snapshot_stats(
+    allowed_minions: set[str] | None = None,
+    job_mids: set[str] | None = None,
+) -> dict:
     """Database-only dashboard numbers. No Salt I/O, so the shell and
     the poll endpoint serve it on every load while live panels resolve
-    in the background."""
+    in the background. ``allowed_minions``/``job_mids`` restrict the
+    counts to the caller's RBAC scope (None means the whole fleet)."""
     return {
         "reachable": False,
         "accepted": 0,
@@ -107,28 +117,58 @@ def snapshot_stats() -> dict:
         "up": 0,
         "down": 0,
         "presence_live": False,
-        "in_flight": in_flight_db_count(),
+        "in_flight": in_flight_db_count(job_mids),
         "in_flight_live": False,
-        "versions": snapshot_versions(),
+        "versions": snapshot_versions(allowed_minions),
         "versions_live": False,
-        "last_failures": last_failure_returns(limit=5),
+        "last_failures": last_failure_returns(limit=5, allowed=job_mids),
         "returns": returns_health(),
     }
 
 
-def in_flight_db_count() -> int:
-    return get_session().query(Job.jid).filter_by(complete=False).count()
+def empty_stats() -> dict:
+    """Zero-grant shell: the same keys as :func:`snapshot_stats`, all
+    zeroed. No counts, no probes, no polling."""
+    return {
+        "reachable": False,
+        "accepted": 0,
+        "pending": 0,
+        "keys_live": False,
+        "up": 0,
+        "down": 0,
+        "presence_live": False,
+        "in_flight": 0,
+        "in_flight_live": False,
+        "versions": {},
+        "versions_live": False,
+        "last_failures": [],
+        "returns": {"stale": False, "last_ingest": None, "recent_minions": 0},
+    }
 
 
-def last_failure_returns(limit: int = 5) -> list:
-    return (
-        get_session()
-        .query(JobReturn)
-        .filter_by(success=False)
-        .order_by(JobReturn.id.desc())
-        .limit(limit)
-        .all()
-    )
+def in_flight_db_count(job_mids: set[str] | None = None) -> int:
+    """Incomplete jobs. ``job_mids`` restricts to jobs published into
+    the caller's job.read scope (None means the whole fleet)."""
+    from .authz import published_snapshot_ids
+
+    query = get_session().query(Job).filter_by(complete=False)
+    if job_mids is None:
+        return query.count()
+    count = 0
+    for job in query.all():
+        mids = published_snapshot_ids(job.tgt, job.tgt_type)
+        if mids is None or mids & job_mids:
+            count += 1
+    return count
+
+
+def last_failure_returns(limit: int = 5, allowed: set[str] | None = None) -> list:
+    query = get_session().query(JobReturn).filter_by(success=False)
+    if allowed is not None:
+        if not allowed:
+            return []
+        query = query.filter(JobReturn.minion_id.in_(allowed))
+    return query.order_by(JobReturn.id.desc()).limit(limit).all()
 
 
 def collect_stats(
@@ -136,6 +176,8 @@ def collect_stats(
     keys: dict | None = None,
     presence: dict | None = None,
     versions: dict | None = None,
+    allowed_minions: set[str] | None = None,
+    job_mids: set[str] | None = None,
 ) -> dict:
     """Snapshot numbers plus any live results handed over (RQ job
     results or tests). Never calls Salt itself: live data arrives
@@ -144,7 +186,7 @@ def collect_stats(
     independently, so a dead minion stalling the fan-out panels
     (presence, versions) no longer blanks the master-local keys panel.
     """
-    stats = snapshot_stats()
+    stats = snapshot_stats(allowed_minions, job_mids)
     if keys is not None or presence is not None or versions is not None:
         stats["reachable"] = True
     incomplete = {
@@ -177,6 +219,7 @@ def index():
     resolves to live data, or keeps the snapshot fallback it already
     shows, which also terminates its polling.
     """
+    from .authz import has_any_access, has_fleet, rbac_mode
     from .tasks import (
         capabilities_task,
         fleet_keys_task,
@@ -187,14 +230,21 @@ def index():
         read_capability_cache,
     )
 
-    keys_job = queue_or_none(fleet_keys_task)
-    presence_job = queue_or_none(fleet_presence_task)
-    versions_job = queue_or_none(fleet_versions_task)
-    masters_job = queue_or_none(master_status_task)
+    scoped = rbac_mode() == "scoped"
+    # Zero-grant users get an empty shell: no probes, no polling, no
+    # counts. Everyone else sees at least their own scoped numbers.
+    empty = scoped and not has_any_access(current_user)
+    fleet_keys = not scoped or has_fleet(current_user, "key.read")
+    fleet_minions = not scoped or has_fleet(current_user, "minion.read")
+    probe = not scoped or has_fleet(current_user, "dashboard.probe")
+    keys_job = queue_or_none(fleet_keys_task) if fleet_keys and not empty else None
+    presence_job = queue_or_none(fleet_presence_task) if fleet_minions and not empty else None
+    versions_job = queue_or_none(fleet_versions_task) if fleet_minions and not empty else None
+    masters_job = queue_or_none(master_status_task) if probe and not empty else None
     # Always probe: wheel/runner/history doors are meaningful before any
     # minion exists to ping, and the ping door skips itself on None.
-    target = ping_target()
-    caps_job = queue_or_none(capabilities_task, target)
+    target = ping_target() if probe and not empty else None
+    caps_job = queue_or_none(capabilities_task, target) if probe and not empty else None
     panels = {
         "keys": keys_job.id if keys_job is not None else None,
         "presence": presence_job.id if presence_job is not None else None,
@@ -202,9 +252,19 @@ def index():
         "caps": caps_job.id if caps_job is not None else None,
         "masters": masters_job.id if masters_job is not None else None,
     }
+    from .authz import minions_with
+
     client = get_salt()
-    stats = collect_stats(client)
-    cached = read_capability_cache()
+    if empty:
+        stats = empty_stats()
+        cached = None
+    else:
+        allowed = job_mids = None
+        if scoped and not fleet_minions:
+            allowed = minions_with(current_user, "minion.read")
+            job_mids = minions_with(current_user, "job.read")
+        stats = collect_stats(client, allowed_minions=allowed, job_mids=job_mids)
+        cached = read_capability_cache() if probe else None
     health, checks = build_health(
         client, stats["reachable"], cached, probing=any(panels.values())
     )
@@ -227,8 +287,10 @@ def check_now():
     """Operator self-check: re-run the capability probes now. The panel
     picks the fresh result up through the normal poll path; when no
     worker answers, the cached check stays put and the page says so."""
+    from .authz import require
     from .tasks import capabilities_task, queue_or_none
 
+    require("dashboard.probe")
     job = queue_or_none(capabilities_task, ping_target())
     if job is None:
         flash("Worker unreachable. Showing the last cached check.", "warning")
@@ -246,13 +308,32 @@ def panels():
     and re-renders the live region; never touches Salt, so polling a
     sick master stays cheap. Panels whose jobs died, expired, or were
     never queued resolve to snapshot data, which stops their polling."""
+    from flask import abort
+
+    from .authz import audit_deny, has_any_access, has_fleet, minions_with, rbac_mode
     from .tasks import read_capability_cache
 
+    # Any grant admits the poll shell; zero-grant users get 403. Live
+    # fleet probes hydrate only for holders of the matching fleet grant,
+    # and capability results only for dashboard.probe holders.
+    scoped = rbac_mode() == "scoped"
+    if scoped and not has_any_access(current_user):
+        audit_deny("dashboard.panels", detail="no-grants")
+        abort(403)
     client = get_salt()
     jids = {
         key: request.args.get(key) or None
         for key in ("keys", "presence", "versions", "caps", "masters")
     }
+    probe = not scoped or has_fleet(current_user, "dashboard.probe")
+    fleet_keys = not scoped or has_fleet(current_user, "key.read")
+    fleet_minions = not scoped or has_fleet(current_user, "minion.read")
+    if scoped and not probe:
+        jids["caps"] = jids["masters"] = None
+    if scoped and not fleet_keys:
+        jids["keys"] = None
+    if scoped and not fleet_minions:
+        jids["presence"] = jids["versions"] = None
     live: dict[str, Any] = {}
     probing = False
     for key, jid in jids.items():
@@ -261,14 +342,20 @@ def panels():
             live[key] = value
         elif state == "waiting":
             probing = True
+    allowed = job_mids = None
+    if scoped and not fleet_minions:
+        allowed = minions_with(current_user, "minion.read")
+        job_mids = minions_with(current_user, "job.read")
     stats = collect_stats(
         client,
         keys=live.get("keys"),
         presence=live.get("presence"),
         versions=live.get("versions"),
+        allowed_minions=allowed,
+        job_mids=job_mids,
     )
     caps = live.get("caps")
-    if caps is None:
+    if caps is None and probe:
         caps = read_capability_cache()
     masters = live.get("masters")
     fingerprint = _fingerprint(live, caps, stats)

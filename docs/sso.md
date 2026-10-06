@@ -34,7 +34,8 @@ ID, and secret are all set from either source; otherwise the
 - Accounts are keyed on the issuer + subject pair. An SSO login never
   merges into a same-named local account: on a username collision the
   SSO account gets a short-subject suffix instead.
-- Everyone arrives as viewer. Group membership promotes at each login:
+- Legacy mode: everyone arrives as viewer. Group membership promotes
+  at each login:
 
 ```sh
 OIDC_GROUPS_CLAIM=groups            # claim carrying group names
@@ -46,6 +47,21 @@ No group match means viewer. The mapping is re-evaluated at every login
 and wins over manual edits on the Users page — remove someone from the
 group to demote them. Changing `OIDC_ISSUER` orphans existing SSO rows
 (they keep their old issuer key); delete the stale rows on Users.
+
+- Scoped mode: the two group lists seed IdP mapping rows (group name,
+  role, scope), edited on the Settings page afterward. Every matching
+  row applies — union, not first-match — so a user in two mapped
+  groups gains both roles, unlike the legacy if/else. A migrated fleet
+  ladder gains nothing extra from that: admin already included
+  operator. No match and no manual grant means no access, not viewer.
+  The claim is stored per user and replaced wholesale at each login,
+  so removal takes effect at the next login; deleting a mapping row
+  takes effect at once. Manual grants on the same user stay and add
+  up; they cannot narrow a mapped fleet role.
+
+If the provider sends the groups claim as one string instead of a
+list, scoped login stores that one group. Legacy login still treats
+a string claim as no match (viewer).
 
 ## Notes
 

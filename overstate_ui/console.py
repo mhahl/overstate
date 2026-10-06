@@ -185,8 +185,29 @@ def _cmd_salt(argv: list[str]) -> dict:
             f"{fun} changes the fleet: re-run with --confirm='{tgt}' "
             "to type-to-confirm, exactly like the Run job review."
         )
+    from .authz import (
+        AuthzDenied,
+        audit_deny,
+        can_see_return_body,
+        has_fleet,
+        minions_with,
+        publish_perm,
+        rbac_mode,
+        require,
+    )
+
+    scoped = rbac_mode() == "scoped"
+    if scoped:
+        perm = publish_perm(fun) or ""
+        if not perm:
+            audit_deny(fun, detail="no-grant")
+            raise ConsoleError(f"{fun} cannot run here.", status=403)
+        # Any-scope backstop; launch intersects the target itself.
+        require(perm)
     try:
         jid = launch(tgt, tgt_type, fun, args, asynchronous)
+    except AuthzDenied as exc:
+        raise ConsoleError(f"forbidden: {exc.reason}", status=403) from None
     except SaltApiError as exc:
         raise ConsoleError(f"salt-api error: {exc}", status=502) from None
     lines = [f"$ salt {tgt} {fun}{' ' if args else ''}{' '.join(args)}".rstrip()]
@@ -201,6 +222,10 @@ def _cmd_salt(argv: list[str]) -> dict:
             .order_by(JobReturn.minion_id)
             .all()
         )
+        if scoped and not has_fleet(current_user, "job.read"):
+            # Same minion set as the stored rows the job page would show.
+            allowed = minions_with(current_user, "job.read")
+            rows = [r for r in rows if r.minion_id in allowed]
         if not rows:
             lines.append(
                 "No returns arrived within the wait. They land on the job "
@@ -209,6 +234,11 @@ def _cmd_salt(argv: list[str]) -> dict:
         shown = rows[:50]
         for row in shown:
             mark = "ok" if row.success else "FAIL"
+            if scoped and not can_see_return_body(current_user, fun, row.minion_id):
+                # Metadata only, including when the payload is a YAML
+                # string: the job-page link does not replace this check.
+                lines.append(f"{row.minion_id}: {mark}")
+                continue
             payload = (
                 "" if isinstance(row.payload, dict) else f" {str(row.payload)[:160]}"
             )
@@ -227,6 +257,17 @@ def _cmd_key(argv: list[str]) -> dict:
     if not argv or argv[0] not in _KEY_FLAGS:
         raise ConsoleError("Usage: salt-key -L | salt-key -a|-r|-d <id>.")
     action = _KEY_FLAGS[argv[0]]
+    from .authz import audit_deny, has_fleet, rbac_mode, require
+
+    # Pending, rejected, and denied ids have no trustworthy grain:
+    # listing them stays fleet key.read.
+    if (
+        rbac_mode() == "scoped"
+        and action == "list"
+        and not has_fleet(current_user, "key.read")
+    ):
+        audit_deny("key.read", detail="needs-fleet")
+        raise ConsoleError("salt-key -L needs fleet key access.", status=403)
     if action == "list":
         roster, unreachable = _key_roster()
         lines = []
@@ -246,6 +287,13 @@ def _cmd_key(argv: list[str]) -> dict:
     mid = argv[1]
     if any(c in mid for c in "*?[]"):
         raise ConsoleError("Key ids with wildcards are never accepted here.")
+    if rbac_mode() == "scoped":
+        # Gate before the roster read: a denied caller publishes nothing.
+        if action == "delete":
+            require("key.delete", minion=mid)
+        else:
+            # Accept and reject admit the key on every master: fleet-only.
+            require("key.accept")
     roster, _ = _key_roster()
     known = {i for ids in roster.values() for i in ids}
     if mid not in known:
@@ -273,7 +321,7 @@ def _cmd_key(argv: list[str]) -> dict:
             status=502,
         )
     clear_key_caches()
-    log_event(current_user.username, f"console:key.{action}:{mid}")
+    log_event(current_user.username, f"console:key.{action}:{mid}", minion_id=mid)
     if action == "delete":
         # Same split-store trap as the Keys page: the minion list unions
         # the snapshot cache with the live roster, so the snapshot row
@@ -282,7 +330,7 @@ def _cmd_key(argv: list[str]) -> dict:
         if row is not None:
             get_session().delete(row)
             get_session().commit()
-            log_event(current_user.username, f"minion-remove:{mid}")
+            log_event(current_user.username, f"minion-remove:{mid}", minion_id=mid)
             return {
                 "output": f"{mid}: key.delete applied on every master. "
                 "Inventory row removed."
@@ -346,10 +394,15 @@ def _cmd_runner(argv: list[str]) -> dict:
     # An explicit user http_timeout still wins; runner() consumes it as
     # the HTTP cap and never forwards it into the salt-api payload.
     # Garbage falls back to the default instead of 500ing in httpx.
+    from .authz import rbac_mode, require
+
     try:
         kwargs["http_timeout"] = float(kwargs.get("http_timeout", 8))
     except (TypeError, ValueError):
         kwargs["http_timeout"] = 8
+    if rbac_mode() == "scoped":
+        # jobs.list_jobs and manage.status are fleet-wide.
+        require("console.runner")
     try:
         result = get_salt().runner(fun, **kwargs)[0]
     except SaltApiError as exc:

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% import "_grant_dialog.html" as gd %}
+{% block title %}Groups · Overstate{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex flex-wrap items-end gap-3 mb-5">
+    <div class="mr-auto">
+      <h1 class="text-2xl font-bold tracking-tight">Groups</h1>
+      <p class="text-sm opacity-70 mt-0.5">Who belongs together: hand-built local groups and IdP-claim membership.</p>
+    </div>
+  </div>
+  <section class="card bg-base-100 border border-base-300 shadow-sm" aria-label="Local groups">
+    <div class="card-body gap-3">
+      <h2 class="card-title text-base">Local groups</h2>
+      <p class="text-sm opacity-70">Membership lists for local accounts, created by hand. Grants on a group apply to every member.</p>
+      {% for g in local_groups %}
+      <div class="border border-base-300 rounded-lg p-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-medium">{{ g.name }}</span>
+          <span class="badge badge-sm badge-ghost">{{ member_ids.get(g.id, [])|length }} members</span>
+          {% for grant in group_grants.get(g.id, []) %}
+          <span class="badge badge-sm badge-outline">{{ grant.role }} · {% if grant.scope_kind == "fleet" %}fleet{% elif grant.scope_kind == "group" %}group {{ group_names.get(grant.scope_value, grant.scope_value) }}{% else %}{{ grant.scope_kind }}:{{ grant.scope_value }}{% endif %}</span>
+          {% endfor %}
+          <span class="ml-auto flex flex-wrap gap-1">
+            {{ gd.grant_dialog(
+              "grants-localgroup-%d" % g.id,
+              "Grants for group %s" % g.name,
+              url_for("users.create_local_group_grant", gid=g.id),
+              group_grant_rows.get(g.id, []),
+              local_groups, grain_keys, role_groups, delegate_view) }}
+            {% if not delegate_view or g.id in local_group_manageable %}
+            <form method="post" action="{{ url_for('users.delete_local_group', gid=g.id) }}" data-confirm="Delete local group '{{ g.name }}'?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-error btn-outline">Delete</button>
+            </form>
+            {% endif %}
+          </span>
+        </div>
+        <div class="flex flex-wrap items-end gap-2 mt-2">
+          {% if not delegate_view or g.id in local_group_manageable %}
+          <form method="post" action="{{ url_for('users.edit_local_group_members', gid=g.id) }}" class="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="fieldset"><span class="fieldset-legend">Members</span>
+            <select name="user_ids" multiple class="select select-sm min-h-24">
+              {% for au in all_users %}
+              <option value="{{ au.id }}"{% if au.id in member_ids.get(g.id, []) %} selected{% endif %}>{{ au.username }}</option>
+              {% endfor %}
+            </select></label>
+            <button class="btn btn-sm">Save members</button>
+          </form>
+          {% endif %}
+          {% if not delegate_view or g.id in local_group_manageable %}
+          <form method="post" action="{{ url_for('users.rename_local_group', gid=g.id) }}" class="flex items-end gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="fieldset"><span class="fieldset-legend">Rename</span>
+            <input name="name" value="{{ g.name }}" class="input input-sm" autocomplete="off"></label>
+            <button class="btn btn-sm">Rename</button>
+          </form>
+          {% endif %}
+        </div>
+        {% for grant in group_grants.get(g.id, []) %}
+        <form method="post" action="{{ url_for('users.delete_local_group_grant', gid=g.id, grant_id=grant.id) }}" class="inline" data-confirm="Delete this grant?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <span class="text-xs opacity-70">{{ grant.role }} · {{ grant.scope_kind }}:{{ grant.scope_value }}</span>
+          <button class="btn btn-xs btn-error btn-outline ml-1">Remove grant</button>
+        </form>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% if not local_groups %}
+      <p class="text-sm opacity-70">No local groups yet.</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('users.create_local_group') }}" class="flex flex-wrap items-end gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="fieldset"><span class="fieldset-legend">New group name</span>
+        <input name="name" class="input input-sm" autocomplete="off" required></label>
+        <button class="btn btn-sm btn-primary">Create group</button>
+      </form>
+    </div>
+  </section>
+  {% if not delegate_view %}
+  <section class="card bg-base-100 border border-base-300 shadow-sm mt-4" aria-label="IdP groups">
+    <div class="card-body gap-3">
+      <h2 class="card-title text-base">IdP groups</h2>
+      <p class="text-sm opacity-70">Provider groups from the OIDC groups claim, recorded automatically at each login. Read-only: membership is owned by the provider, access by the mappings below and on Settings.</p>
+      {% if idp_groups %}
+      <div class="overflow-x-auto">
+      <table class="table table-sm table-zebra w-full">
+        <thead><tr><th>IdP group</th><th class="text-right">Members</th><th>People</th><th>Mapped access</th></tr></thead>
+        <tbody>
+        {% for g in idp_groups %}
+          <tr>
+            <td class="font-mono text-xs">{{ g.name }}</td>
+            <td class="text-right">{{ g.members|length }}</td>
+            <td class="text-xs opacity-70">{{ g.members|join(", ") }}</td>
+            <td class="text-xs">
+              {% for m in g.mappings %}
+              <div>{{ m.role }} · {% if m.scope_kind == "fleet" %}fleet{% else %}{{ m.scope_kind }}:{{ m.scope_value }}{% endif %} <span class="opacity-70">({{ m.origin }})</span></div>
+              {% else %}
+              <span class="opacity-50">no mapping — members get nothing from this group</span>
+              {% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="text-sm opacity-70">No IdP memberships recorded yet. SSO logins record them here.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

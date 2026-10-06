@@ -51,14 +51,28 @@ def role_level(role: str | None) -> int:
 
 
 def roles_required(*roles: str):
-    """Require one of ``roles``; higher levels imply lower ones."""
+    """Require one of ``roles``; higher levels imply lower ones.
+
+    In scoped mode this is only a backstop so a forgotten ``require``
+    still denies a zero-grant user: the floor maps to coarse permission
+    sets, and each mutating view additionally calls ``require`` for its
+    specific permission. The floor alone is not proof a view is safe.
+    """
     minimum = min(LEVELS[r] for r in roles)
 
     def decorator(view):
         @functools.wraps(view)
         @login_required
         def guarded(*args, **kwargs):
-            if role_level(getattr(current_user, "role", None)) < minimum:
+            from .authz import LEGACY_FLOOR_PERMS, audit_deny, authorize, rbac_mode
+
+            if rbac_mode() != "scoped":
+                if role_level(getattr(current_user, "role", None)) < minimum:
+                    abort(403)
+                return view(*args, **kwargs)
+            needed = LEGACY_FLOOR_PERMS[minimum]
+            if not any(authorize(current_user, p) for p in needed):
+                audit_deny(next(iter(needed)))
                 abort(403)
             return view(*args, **kwargs)
 
@@ -171,7 +185,41 @@ def provision_oidc_user(userinfo: dict, issuer: str) -> User:
     from .settings import get_setting
 
     claim = get_setting("oidc_groups_claim") or "groups"
+    from .authz import rbac_mode
+    from .models import UserIdpGroup as _UserIdpGroup
+
+    def _record_claim_groups() -> None:
+        """Mirror the groups claim into membership rows in every mode.
+
+        Scoped mode reads them for mappings; legacy mode ignores them
+        for authorization. Both modes show them on the Groups page, so
+        recording is unconditional."""
+        raw_claim = userinfo.get(claim)
+        if isinstance(raw_claim, str):
+            groups = [raw_claim] if raw_claim else []
+        elif isinstance(raw_claim, (list, tuple)):
+            groups = [str(g) for g in raw_claim if g]
+        else:
+            groups = []
+        session.query(_UserIdpGroup).filter_by(user_id=user.id).delete(
+            synchronize_session=False
+        )
+        for name in groups:
+            session.add(_UserIdpGroup(user_id=user.id, group_name=name[:255]))
+
+    if rbac_mode() == "scoped":
+        # Scoped provisioning: the claim is membership, not a role. No
+        # viewer grant is minted; unmatched users cache to 'none' and
+        # see nothing. Manual grants survive login (additive).
+        from .authz import refresh_role_cache
+
+        _record_claim_groups()
+        session.flush()
+        refresh_role_cache(user)
+        session.commit()
+        return user
     user.role = role_for_groups(userinfo.get(claim))
+    _record_claim_groups()
     session.commit()
     return user
 
@@ -259,9 +307,27 @@ def seed_admin(username: str = "admin", password: str | None = None) -> bool:
         )
     import secrets
 
+    from .models import Grant
+
     password = password or secrets.token_urlsafe(16)
-    session.add(User(username=username, password_hash=_ph.hash(password), role="admin"))
+    admin = User(username=username, password_hash=_ph.hash(password), role="admin")
+    session.add(admin)
     try:
+        session.flush()
+        # Same transaction: the installer is an admin under the new model
+        # immediately, so flipping rbac_mode later cannot lock them out.
+        session.add(
+            Grant(
+                subject_kind="user",
+                subject_user_id=admin.id,
+                subject_group_id=None,
+                role="admin",
+                scope_kind="fleet",
+                scope_value="*",
+                source="backfill",
+                created_by=None,
+            )
+        )
         session.commit()
     except IntegrityError:
         # Lost a seeding race with another instance (two replicas booting

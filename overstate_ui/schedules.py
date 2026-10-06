@@ -67,16 +67,26 @@ def parse_schedule_list(value) -> dict:
 @bp.route("/")
 @login_required
 def index():
+    from flask_login import current_user
+
+    from .authz import has_fleet, minions_with, rbac_mode, require
+
+    require("schedule.read")
     mid = request.args.get("minion", "")
     client = get_salt()
     statuses, _, _ = cached_roster(client)
     accepted = sorted(m for m, st in statuses.items() if st == "accepted")
+    if rbac_mode() == "scoped" and not has_fleet(current_user, "schedule.read"):
+        allowed = minions_with(current_user, "schedule.read")
+        accepted = [m for m in accepted if m in allowed]
     if not mid and accepted:
         mid = accepted[0]
     if mid:
         # A path/query minion id is one exact minion: glob characters
         # would fan a single-minion call out to the fleet, so they 404.
         mid = _exact_mid(mid)
+        if rbac_mode() == "scoped":
+            require("schedule.read", minion=mid)
     entries: dict = {}
     raw = ""
     error = None
@@ -138,6 +148,19 @@ def add(mid: str):
     if not FUN_RE.match(fun) or fun not in ALLOWED_FUNS:
         flash("That function cannot run here.", "error")
         return redirect(url_for("schedules.index", minion=mid))
+    from .authz import rbac_mode
+
+    if rbac_mode() == "scoped":
+        from flask import abort
+
+        from .authz import audit_deny, may_define_schedule
+
+        # Define time only: schedule.write plus the job-run class or the
+        # matching schedule.allow.*. A scheduler can add state.apply and
+        # still cannot POST /jobs/run for it.
+        if not may_define_schedule(current_user, mid, fun):
+            audit_deny("schedule.write", minion_id=mid, detail="no-grant")
+            abort(403)
     client = get_salt()
     try:
         entries = parse_schedule_list(
@@ -161,7 +184,7 @@ def add(mid: str):
         flash(f"salt-api error: {exc}", "error")
     else:
         if add_succeeded(result, mid):
-            log_event(current_user.username, f"schedule-add:{name}")
+            log_event(current_user.username, f"schedule-add:{name}", minion_id=mid)
             flash(f"{mid}/{name}: added.", "success")
         else:
             flash(f"{mid}/{name}: salt did not confirm the add.", "warning")
@@ -171,7 +194,11 @@ def add(mid: str):
 @bp.post("/<mid>/<action>")
 @roles_required("operator")
 def act(mid: str, action: str):
+    from .authz import rbac_mode, require
+
     mid = _exact_mid(mid)
+    if rbac_mode() == "scoped":
+        require("schedule.write", minion=mid)
     if action not in SCHEDULE_ACTIONS:
         flash("Unknown schedule action.", "error")
         return redirect(url_for("schedules.index", minion=mid))
@@ -198,6 +225,6 @@ def act(mid: str, action: str):
                 "error",
             )
         else:
-            log_event(current_user.username, f"schedule-{action}:{job_name}")
+            log_event(current_user.username, f"schedule-{action}:{job_name}", minion_id=mid)
             flash(f"{mid}/{job_name}: {action}d.", "success")
     return redirect(url_for("schedules.index", minion=mid))

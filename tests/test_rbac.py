@@ -124,7 +124,7 @@ def test_settings_hide_oidc_secret_from_everyone(client):
     assert "s3cr3t-top" not in viewer_html
     assert "Single sign-on" not in viewer_html
     login_as(client, "admin")
-    admin_html = client.get("/settings/").data.decode()
+    admin_html = client.get("/settings/sso").data.decode()
     assert "s3cr3t-top" not in admin_html
     assert 'placeholder="Unchanged"' in admin_html
 
@@ -212,8 +212,12 @@ def _rotation_settings_keys(client):
 def test_rotation_card_visible_to_admin_only(client):
     login_as(client, "vwr")
     assert "salt-api password rotation" not in client.get("/settings/").data.decode()
+    assert (
+        "salt-api password rotation"
+        not in client.get("/settings/rotation").data.decode()
+    )
     login_as(client, "admin")
-    html = client.get("/settings/").data.decode()
+    html = client.get("/settings/rotation").data.decode()
     assert "salt-api password rotation" in html
     assert "overstate" in html  # eauth user shown, never a password
 
@@ -298,3 +302,37 @@ def test_rotation_operator_blocked_and_no_get(client):
     login_as(client, "admin")
     assert client.get("/settings/rotation/generate").status_code == 405
     assert client.get("/settings/rotation/verify").status_code == 405
+
+
+def test_settings_section_pages_render(client):
+    login_as(client, "admin")
+    for path in (
+        "/settings/",
+        "/settings/sso",
+        "/settings/access",
+        "/settings/rotation",
+    ):
+        assert client.get(path).status_code == 200, path
+    access = client.get("/settings/access").data.decode()
+    assert "Scoped RBAC" in access
+    assert "IdP group mappings" in access
+    assert (
+        "salt-api password rotation" in client.get("/settings/rotation").data.decode()
+    )
+    general = client.get("/settings/").data.decode()
+    assert "Scoped RBAC" not in general
+    assert "salt-api password rotation" not in general
+    assert "oidc_issuer" in client.get("/settings/sso").data.decode()
+
+
+def test_settings_save_touches_only_posted_keys(client):
+    from overstate_ui.models import Setting
+    from overstate_ui.settings import get_setting
+
+    login_as(client, "admin")
+    client.post("/settings/", data={"theme": "dark", "default_target": "web-*"})
+    client.post("/settings/", data={"section": "general", "default_target": "db-*"})
+    with client.app.app_context():
+        assert get_setting("theme") == "dark"
+        assert get_setting("default_target") == "db-*"
+        assert get_session().get(Setting, "oidc_issuer") is None

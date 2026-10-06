@@ -148,6 +148,45 @@ def _summarize_state_run(payload: dict) -> list[dict]:
     return rows
 
 
+def _redacted_stored(mid: str) -> dict | None:
+    """Newest persisted state-style return, redacted by the return
+    visibility table in scoped mode: without the body permission for
+    the stored fun, the caller keeps metadata (jid, fun, success) and
+    loses states and raw."""
+    stored = _states_stored(mid)
+    if stored is None:
+        return None
+    from flask_login import current_user
+
+    from .authz import can_see_return_body, rbac_mode
+
+    if rbac_mode() == "scoped" and not can_see_return_body(
+        current_user, stored.get("fun", ""), mid
+    ):
+        return {
+            "jid": stored["jid"],
+            "fun": stored.get("fun", ""),
+            "success": stored.get("success"),
+            "states": [],
+            "raw": None,
+        }
+    return stored
+
+
+def _scoped_ids_or_none(perm: str = "minion.read") -> set[str] | None:
+    """Snapshot ids the caller may see for ``perm``, or None when the
+    caller holds it on fleet (or mode is legacy): no filtering needed."""
+    from flask_login import current_user
+
+    from .authz import has_fleet, minions_with, rbac_mode
+
+    if rbac_mode() != "scoped":
+        return None
+    if has_fleet(current_user, perm):
+        return None
+    return minions_with(current_user, perm)
+
+
 def _states_stored(mid: str) -> dict | None:
     """Newest persisted state-style return for a minion, if any."""
     session = get_session()
@@ -174,6 +213,10 @@ def _states_stored(mid: str) -> dict | None:
 @bp.route("/")
 @login_required
 def index():
+    from .authz import require
+
+    require("minion.read")
+    allowed = _scoped_ids_or_none("minion.read")
     q = request.args.get("q", "").strip()
     status_filter = request.args.get("status", "")
     try:
@@ -205,6 +248,8 @@ def index():
     # whole fleet.
     statuses, up, reachable = cached_roster(get_salt())
     entries = minion_entries(statuses, up, q, status_filter, sort, direction)
+    if allowed is not None:
+        entries = [e for e in entries if e["id"] in allowed]
     total = len(entries)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
@@ -230,10 +275,16 @@ def index():
 @login_required
 def search():
     """Minion id lookup for the command palette. Snapshot cache only."""
+    from .authz import require
+
+    require("minion.read")
+    allowed = _scoped_ids_or_none("minion.read")
     q = request.args.get("q", "").strip()
     query = get_session().query(Minion.id)
     if q:
         query = query.filter(Minion.id.contains(q))
+    if allowed is not None:
+        query = query.filter(Minion.id.in_(allowed))
     return jsonify([row[0] for row in query.order_by(Minion.id).limit(20).all()])
 
 
@@ -244,29 +295,45 @@ def presence():
     the table, so bulk checkbox selections survive polling. Served from
     a short Redis cache shared by every gunicorn worker, so an open tab
     costs one Salt round-trip per TTL, not one per worker per poll."""
+    from .authz import require
     from .tasks_queue import read_presence_cache, write_presence_cache
 
+    require("minion.read")
+    allowed = _scoped_ids_or_none("minion.read")
     cached = read_presence_cache()
     if isinstance(cached, dict):
+        if allowed is not None:
+            cached = {k: v for k, v in cached.items() if k in allowed}
         return jsonify(cached)
     # Presence needs no grains: the lightweight merge carries everything
     # presence_of reads, so a cache miss costs columns, not snapshots.
     statuses, up, _ = cached_roster(get_salt())
     entries = minion_entries(statuses, up, "", "", sort="id")
+    if allowed is not None:
+        entries = [e for e in entries if e["id"] in allowed]
     payload = {e["id"]: presence_of(e) for e in entries}
-    write_presence_cache(payload)
+    if allowed is None:
+        # A scoped payload must never land in the shared cache, or the
+        # next fleet reader would see a filtered roster.
+        write_presence_cache(payload)
     return jsonify(payload)
 
 
 @bp.route("/export.csv")
 @login_required
 def export_csv():
+    from .authz import require
+
+    require("minion.read")
+    allowed = _scoped_ids_or_none("minion.read")
     q = request.args.get("q", "").strip()
     status_filter = request.args.get("status", "")
     if status_filter not in ("", "accepted", "pending", "rejected", "denied"):
         status_filter = ""
     statuses, up, _ = cached_roster(get_salt())
     rows = minion_rows(statuses, up, q, status_filter)
+    if allowed is not None:
+        rows = [r for r in rows if r["id"] in allowed]
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(
@@ -311,11 +378,21 @@ def export_csv():
 @bp.post("/refresh")
 @roles_required("operator")
 def refresh():
+    from flask_login import current_user as _user
+
+    from .authz import has_fleet, minions_with, rbac_mode, require
     from .tasks import queue_or_none, refresh_inventory_task, wait_for
 
-    job = queue_or_none(refresh_inventory_task)
+    # Fleet refresh publishes grains.item on *; a scoped caller refreshes
+    # the allowed id list and can never use it to discover other ids.
+    only_ids: list[str] | None = None
+    if rbac_mode() == "scoped":
+        require("minion.refresh")
+        if not has_fleet(_user, "minion.refresh"):
+            only_ids = sorted(minions_with(_user, "minion.refresh"))
+    job = queue_or_none(refresh_inventory_task, only_ids, _user.username)
     if job is None:
-        refresh_sync()
+        refresh_sync(only_ids)
     else:
         status, value = wait_for(job, wait=10.0)
         if status == "ready":
@@ -331,7 +408,11 @@ def refresh():
 @roles_required("operator")
 def refresh_one(mid: str):
     """Re-pull grains for a single minion into the snapshot cache."""
+    from .authz import rbac_mode, require
+
     mid = _exact_mid(mid)
+    if rbac_mode() == "scoped":
+        require("minion.refresh", minion=mid)
     row = get_session().get(Minion, mid)
     if row is None:
         flash(f"Unknown minion '{mid}'.", "error")
@@ -354,7 +435,7 @@ def refresh_one(mid: str):
     row.grains = normalize_grains(grains)
     row.last_seen = dt.datetime.now(dt.UTC)
     get_session().commit()
-    log_event(current_user.username, f"minion-refresh:{mid}")
+    log_event(current_user.username, f"minion-refresh:{mid}", minion_id=mid)
     flash(f"{mid} refreshed.", "success")
     return redirect(url_for("minions.index"))
 
@@ -369,6 +450,12 @@ def remove(mid: str):
     answers, a failed key delete leaves the snapshot in place instead
     of half-finishing."""
     mid = _exact_mid(mid)
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("minion.remove", minion=mid)
+        if request.form.get("delete_key") == "yes":
+            require("key.delete", minion=mid)
     session = get_session()
     row = session.get(Minion, mid)
     if row is None:
@@ -392,13 +479,22 @@ def remove(mid: str):
         if partial:
             log_event(
                 current_user.username,
-                f"delete-key-partial:{mid}:{','.join(partial)}"[:64],
+                f"delete-key-partial:{mid}:{','.join(partial)}",
+                permission="key.delete",
+                minion_id=mid,
             )
         else:
-            log_event(current_user.username, f"delete-key:{mid}")
+            log_event(
+                current_user.username, f"delete-key:{mid}", minion_id=mid
+            )
     session.delete(row)
     session.commit()
-    log_event(current_user.username, f"minion-remove:{mid}")
+    log_event(
+        current_user.username,
+        f"minion-remove:{mid}",
+        permission="minion.remove",
+        minion_id=mid,
+    )
     if delete_key:
         if partial:
             flash(
@@ -422,12 +518,21 @@ def states_refresh(mid: str):
     and never written into job history. Any failure degrades to the
     stored view plus an advisory note."""
     mid = _exact_mid(mid)
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        # Rendered highstate is a pillar document, not job.run.read.
+        # team-operator is 403 here with no Salt call.
+        require("pillar.read", minion=mid)
     from .tasks import queue_or_none, show_highstate_now, show_highstate_task, wait_for
 
     live: dict | None = None
     note: str | None = None
     try:
-        queued = queue_or_none(show_highstate_task, mid)
+        # The username is the actor lookup, not the transport: pass it
+        # as user, or the worker treats the actor as missing and
+        # returns nothing without calling Salt.
+        queued = queue_or_none(show_highstate_task, mid, user=current_user.username)
         if queued is None:
             live = show_highstate_now(get_salt(), mid)
         else:
@@ -441,7 +546,12 @@ def states_refresh(mid: str):
     except (SaltApiError, httpx.HTTPError) as exc:
         note = f"Live refresh unavailable. Salt API error: {exc}."
     if live:
-        log_event(current_user.username, f"states-refresh:{mid}")
+        log_event(
+            current_user.username,
+            f"states-refresh:{mid}",
+            permission="pillar.read",
+            minion_id=mid,
+        )
         flash(f"{mid}: {len(live)} live states loaded.", "success")
     else:
         note = note or "Live refresh returned nothing. You see stored data."
@@ -455,7 +565,7 @@ def states_refresh(mid: str):
         tabs=DETAIL_TABS,
         data={
             "grains": grains,
-            "stored": _states_stored(mid),
+            "stored": _redacted_stored(mid),
             "live": _summarize_state_run(live) if live else None,
             "live_note": note,
         },
@@ -477,6 +587,9 @@ def onboard():
     """Guided enrollment for a new minion: describe it in the form to
     get a join script, then accept the key and verify. Acceptance
     itself stays on Keys."""
+    from .authz import require
+
+    require("minion.onboard")
     from .settings import get_setting
 
     statuses, _, reachable = cached_roster(get_salt())
@@ -497,6 +610,9 @@ def onboard():
 @login_required
 def onboard_script():
     """Download the generated join script. Same validation as the form."""
+    from .authz import require
+
+    require("minion.onboard")
     inputs = onboard_inputs(request.args)
     if inputs is None:
         return redirect(url_for("minions.onboard"))
@@ -511,12 +627,38 @@ def onboard_script():
 @bp.route("/<mid>")
 @login_required
 def detail(mid: str):
+    from flask import abort
+
+    from .authz import authorize, rbac_mode, require
+
     mid = _exact_mid(mid)
     tab = request.args.get("tab", "overview")
     if tab not in DETAIL_TABS:
         tab = "overview"
     client = get_salt()
     row = get_session().get(Minion, mid)
+    scoped = rbac_mode() == "scoped"
+    can_pillar = True
+    if scoped:
+        # Unknown id: 404 with no audit. A real id outside scope is 403
+        # with a deny row, so auditors see the attempt.
+        if row is None:
+            abort(404)
+        require("minion.read", minion=mid)
+        can_pillar = authorize(current_user, "pillar.read", minion=mid)
+        if tab == "pillar" and not can_pillar:
+            from .authz import audit_deny
+
+            audit_deny("pillar.read", minion_id=mid, detail="out-of-scope")
+            abort(403)
+        if tab == "schedule":
+            require("schedule.read", minion=mid)
+        elif tab == "mine":
+            require("mine.read", minion=mid)
+        elif tab == "beacons":
+            require("beacon.read", minion=mid)
+        elif tab == "jobs":
+            require("job.read", minion=mid)
     data: dict = {"grains": normalize_grains(row.grains if row else {})}
     error = None
     # A minion the roster says is not up cannot answer: skip every live
@@ -527,7 +669,10 @@ def detail(mid: str):
         error = f"{mid} is not responding. Stored data is shown."
     try:
         if tab == "overview":
-            if not skip_live:
+            # Full live grains are a pillar document: the snapshot
+            # columns above stay minion.read, grains.items needs
+            # pillar.read and authz itself never reads live grains.
+            if not skip_live and (not scoped or can_pillar):
                 live = client.local(mid, "grains.items", tgt_type="list")[0].get(mid)
                 if isinstance(live, dict):
                     data["grains"] = normalize_grains(live)
@@ -535,7 +680,7 @@ def detail(mid: str):
             # Stored first: the last persisted state-style return. Live
             # data arrives only via the explicit Refresh action below,
             # so a down minion never hangs this page.
-            data["stored"] = _states_stored(mid)
+            data["stored"] = _redacted_stored(mid)
             data["live"] = None
             data["live_note"] = None
         elif tab == "schedule":
@@ -557,10 +702,12 @@ def detail(mid: str):
         elif tab == "pillar":
             if skip_live:
                 data["pillar"] = None
-            else:
+            elif not scoped or can_pillar:
                 data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[
                     0
                 ].get(mid)
+            else:
+                data["pillar"] = None
             data["pillar_html"] = (
                 highlight_json(data["pillar"]) if data["pillar"] else None
             )
@@ -587,6 +734,23 @@ def detail(mid: str):
             # no badge is shown rather than a wrong one.
             if skip_live:
                 value = {}
+            elif scoped and not can_pillar:
+                # No pillar.read: the only payload this caller may see
+                # already excludes pillar config — including a YAML
+                # string return, which never renders raw otherwise.
+                try:
+                    value = client.local(
+                        mid,
+                        "beacons.list",
+                        tgt_type="list",
+                        kwarg={
+                            "return_yaml": False,
+                            "include_pillar": False,
+                            "include_opts": False,
+                        },
+                    )[0].get(mid, {})
+                except SaltApiError:
+                    value = {}
             else:
                 value = client.local(
                     mid,
@@ -599,7 +763,7 @@ def detail(mid: str):
             data["beacon_pillar"] = set()
             if not entries and isinstance(value, str) and value.strip():
                 data["beacon_raw"] = value
-            elif entries:
+            elif entries and (not scoped or can_pillar):
                 try:
                     local_value = client.local(
                         mid,
@@ -618,17 +782,37 @@ def detail(mid: str):
             # accordions used to show, in one panel. Stored states come
             # from the DB; schedule and pillar cost one live call each —
             # the price of opening this tab, never prefetched elsewhere.
-            data["stored"] = _states_stored(mid)
+            data["stored"] = _redacted_stored(mid)
             if skip_live:
                 data["schedule"] = {}
                 data["pillar"] = None
+            elif scoped and not can_pillar:
+                data["schedule"] = (
+                    client.local(
+                        mid,
+                        "schedule.list",
+                        tgt_type="list",
+                        kwarg={"return_yaml": False},
+                    )[0].get(mid, {})
+                    if authorize(current_user, "schedule.read", minion=mid)
+                    else {}
+                )
+                data["pillar"] = None
             else:
-                data["schedule"] = client.local(
-                    mid,
-                    "schedule.list",
-                    tgt_type="list",
-                    kwarg={"return_yaml": False},
-                )[0].get(mid, {})
+                # schedule.list needs schedule.read even when the
+                # caller holds pillar.read: secrets-reader sees no
+                # schedules here, matching the schedule tab.
+                data["schedule"] = (
+                    client.local(
+                        mid,
+                        "schedule.list",
+                        tgt_type="list",
+                        kwarg={"return_yaml": False},
+                    )[0].get(mid, {})
+                    if not scoped
+                    or authorize(current_user, "schedule.read", minion=mid)
+                    else {}
+                )
                 data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[
                     0
                 ].get(mid)
@@ -700,6 +884,10 @@ def beacon_act(mid: str, action: str):
     mid = _exact_mid(mid)
     """Enable/disable one beacon (runtime state only; definitions live
     in pillar and are never edited here)."""
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("beacon.write", minion=mid)
     if action not in BEACON_ACTIONS:
         flash("Unknown beacon action.", "error")
         return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
@@ -729,6 +917,11 @@ def beacon_act(mid: str, action: str):
     if refusal is not None:
         flash(f"{mid}/{name}: {refusal}", "error")
         return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
-    log_event(current_user.username, f"beacon-{action}:{name}")
+    log_event(
+        current_user.username,
+        f"beacon-{action}:{name}",
+        permission="beacon.write",
+        minion_id=mid,
+    )
     flash(f"{mid}/{name}: {action}d.", "success")
     return redirect(url_for("minions.detail", mid=mid, tab="beacons"))

@@ -7,7 +7,7 @@
     <p class="text-sm opacity-70 mt-0.5">Live event → SLS mapping. SLS files are read-only.</p>
   </div>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.export') }}">Export for git</a>
-  {% if current_user.role in ["operator", "admin"] %}
+  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}
   <a class="btn btn-sm btn-primary" href="{{ url_for('reactor.add_wizard') }}">Add reactor</a>
   {% endif %}
 </div>
@@ -18,12 +18,12 @@
 <div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
   <p class="font-medium">Reactor disabled</p>
   <p class="text-sm opacity-70">No mappings until the master runs a reactor.</p>
-  {% if current_user.role in ["operator", "admin"] %}
-  <p class="mt-4"><a class="btn btn-sm btn-primary" href="{{ url_for('reactor.add_wizard') }}">Add reactor</a></p>
+  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}
+  <p> class="mt-4"><a class="btn btn-sm btn-primary" href="{{ url_for('reactor.add_wizard') }}">Add reactor</a></p>
   {% endif %}
 </div></div>
 {% else %}
-<div class="alert alert-info mb-4" role="status"><span>Live mapping from {{ pod_count }} master pod{{ "s" if pod_count != 1 }}. Restarts restore the <code>master.conf</code> <code>reactor:</code> stanza, so record mappings you want to keep there{% if current_user.role == "admin" %} (<a class="link" href="{{ url_for('masterconfig.index') }}">Master Config</a>){% endif %}. <a class="link" href="{{ url_for('reactor.export') }}">Export</a> renders the stanza.</span></div>
+<div class="alert alert-info mb-4" role="status"><span>Live mapping from {{ pod_count }} master pod{{ "s" if pod_count != 1 }}. Restarts restore the <code>master.conf</code> <code>reactor:</code> stanza, so record mappings you want to keep there{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %} (<a class="link" href="{{ url_for('masterconfig.index') }}">Master Config</a>){% endif %}. <a class="link" href="{{ url_for('reactor.export') }}">Export</a> renders the stanza.</span></div>
 <form method="get" action="{{ url_for('reactor.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
@@ -40,12 +40,12 @@
 <div class="card bg-base-100 border border-base-300 shadow-sm">
 <div class="overflow-x-auto">
 {% import "_macros.html" as m %}
-<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('reactor.index', 'event', 'Event', sort, direction, {'q': q}) }}{{ m.sort_th_plain('reactor.index', 'sls', 'SLS', sort, direction, {'q': q}) }}<th>Watch</th>{% if current_user.role in ["operator", "admin"] %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
+<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('reactor.index', 'event', 'Event', sort, direction, {'q': q}) }}{{ m.sort_th_plain('reactor.index', 'sls', 'SLS', sort, direction, {'q': q}) }}<th>Watch</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for r in rows %}
 <tr><td class="font-mono text-xs">{{ r.event }}</td>
 <td class="font-mono text-xs">{% for ref in r.refs %}{% set rel = r.rels[loop.index0] %}{% if rel %}<a class="link" href="{{ url_for('reactor.view', sls=rel) }}">{{ ref }}</a>{% else %}{{ ref }}{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
 <td><a class="link text-xs" href="{{ url_for('events.index', tag=r.tag) }}">events</a></td>
-{% if current_user.role in ["operator", "admin"] %}<td class="text-right"><form method="post" action="{{ url_for('reactor.delete') }}" class="inline" data-confirm="Delete reactor '{{ r.event }}'? {{ r.refs|length }} SLS file(s) stay on disk."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="event" value="{{ r.event }}"><button class="btn btn-sm btn-error btn-outline">Delete</button></form></td>{% endif %}</tr>
+{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}<td class="text-right"><form method="post" action="{{ url_for('reactor.delete') }}" class="inline" data-confirm="Delete reactor '{{ r.event }}'? {{ r.refs|length }} SLS file(s) stay on disk."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="event" value="{{ r.event }}"><button class="btn btn-sm btn-error btn-outline">Delete</button></form></td>{% endif %}</tr>
 {% endfor %}
 </tbody></table>
 </div>

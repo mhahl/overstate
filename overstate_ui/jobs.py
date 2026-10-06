@@ -30,6 +30,18 @@ from sqlalchemy.exc import IntegrityError
 
 from .audit import log_event
 from .auth import roles_required
+from .authz import (
+    AuthzDenied,
+    audit_deny,
+    authorize,
+    can_see_return_body,
+    constrain_target_verbose,
+    has_fleet,
+    minions_with,
+    publish_perm,
+    rbac_mode,
+    require,
+)
 from .dashboard import get_salt, ping_target
 from .db import get_session
 from .jobs_helpers import (
@@ -98,6 +110,63 @@ __all__ = [
 ]
 
 
+def _published_ids(tgt: str | None, tgt_type: str | None) -> set[str] | None:
+    """Snapshot ids a stored target names, or None when the type cannot
+    be evaluated locally (compound, nodegroup, runner, unknown)."""
+    from .authz import published_snapshot_ids
+
+    return published_snapshot_ids(tgt, tgt_type)
+
+
+def _job_allowed_ids(job) -> set[str] | None:
+    """Published ids of ``job`` the caller may see, or None for fleet
+    ``job.read`` (the stored target renders unchanged)."""
+    if has_fleet(current_user, "job.read"):
+        return None
+    ids = _published_ids(job.tgt, job.tgt_type)
+    if ids is None:
+        return set()
+    return ids & minions_with(current_user, "job.read")
+
+
+def _display_tgt(tgt: str, allowed: set[str] | None) -> str:
+    if allowed is None:
+        return tgt
+    return ",".join(sorted(allowed))
+
+
+def _redacted_rows(rows, fun_of) -> list:
+    """Filter returns to the caller's job.read scope and blank bodies
+    the return-visibility table withholds. ORM rows are never mutated:
+    the session commits on teardown and would persist a blanking."""
+    from types import SimpleNamespace
+
+    from .authz import can_see_return_body
+
+    if rbac_mode() != "scoped":
+        return list(rows)
+    fleet = has_fleet(current_user, "job.read")
+    allowed = None if fleet else minions_with(current_user, "job.read")
+    out = []
+    for row in rows:
+        mid = row.minion_id
+        if allowed is not None and mid not in allowed:
+            continue
+        payload = row.payload
+        if not can_see_return_body(current_user, fun_of(row), mid):
+            payload = {}
+        out.append(
+            SimpleNamespace(
+                minion_id=mid,
+                success=row.success,
+                retcode=row.retcode,
+                payload=payload,
+                live=getattr(row, "live", False),
+            )
+        )
+    return out
+
+
 @bp.route("/")
 @login_required
 def index():
@@ -105,6 +174,18 @@ def index():
     if tab not in ("running", "history", "saved"):
         tab = "running"
     session = get_session()
+    scoped = rbac_mode() == "scoped"
+    if scoped:
+        require("job.read")
+    fleet_read = not scoped or has_fleet(current_user, "job.read")
+    allowed_read = None if fleet_read else minions_with(current_user, "job.read")
+
+    def _visible(job) -> bool:
+        if fleet_read:
+            return True
+        ids = _published_ids(job.tgt, job.tgt_type)
+        return bool(ids and ids & allowed_read)
+
     # Opportunistic sync so finished jobs land in history without opening
     # every detail page. Bounded to the 10 most recent running jobs.
     for job in (
@@ -114,6 +195,8 @@ def index():
         .limit(10)
         .all()
     ):
+        if scoped and not _visible(job):
+            continue
         try:
             sync_job(job.jid)
         except (SaltApiError, ValueError) as exc:
@@ -158,7 +241,7 @@ def index():
             .filter_by(complete=False)
             .order_by(Job.started_at.desc())
             .all()
-            if matches(j)
+            if matches(j) and (not scoped or _visible(j))
         ],
         sort,
         direction,
@@ -180,14 +263,28 @@ def index():
     pages = max(1, -(-total // per_page))
     page = min(page, pages)
     history = sort_jobs(
-        hist_query.order_by(Job.started_at.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all(),
+        [
+            j
+            for j in hist_query.order_by(Job.started_at.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+            if not scoped or _visible(j)
+        ],
         sort,
         direction,
     )
     saved = session.query(SavedJob).order_by(SavedJob.name).all()
+    if scoped and not fleet_read:
+        # Same subset rule as delete_saved: overlap is not enough, and
+        # unevaluable targets stay hidden. Stale targets (no snapshot
+        # ids left) still list, matching the deletable rule.
+        listed = []
+        for s in saved:
+            mids = _published_ids(s.tgt, s.tgt_type)
+            if mids is not None and mids <= allowed_read:
+                listed.append(s)
+        saved = listed
     if ql:
         saved = [
             s
@@ -196,6 +293,14 @@ def index():
             or ql in (s.fun or "").lower()
             or ql in (s.tgt or "").lower()
         ]
+    tgt_display = {}
+    if scoped and not fleet_read:
+        for j in list(running) + list(history):
+            ids = _published_ids(j.tgt, j.tgt_type) or set()
+            tgt_display[j.jid] = _display_tgt(j.tgt, ids & allowed_read)
+        for s in saved:
+            ids = _published_ids(s.tgt, s.tgt_type) or set()
+            tgt_display[f"saved:{s.id}"] = _display_tgt(s.tgt, ids & allowed_read)
     ctx = {
         "tab": tab,
         "running": running,
@@ -206,6 +311,7 @@ def index():
         "q": q,
         "page": page,
         "pages": pages,
+        "tgt_display": tgt_display,
     }
     if request.headers.get("HX-Request") == "true":
         return render_template("_job_rows.html", **ctx)
@@ -233,6 +339,20 @@ def new():
         "apply": {"tgt": "*", "tgt_type": "glob", "fun": "state.apply", "args": ""},
         **FLEET_PRESETS,
     }
+    from .authz import has_fleet as _has_fleet
+    from .authz import rbac_mode as _rbac_mode
+    from .authz import require as _require
+    from .authz import runnable_ids as _runnable_ids
+    from .authz import single_group_scope as _single_group_scope
+
+    _scoped = _rbac_mode() == "scoped"
+    if _scoped:
+        _require("job.read")
+    _fleet_run = not _scoped or _has_fleet(
+        current_user, "job.run.read"
+    ) or _has_fleet(current_user, "job.run.change") or _has_fleet(
+        current_user, "job.run.state"
+    )
     saved = None
     if request.args.get("saved"):
         try:
@@ -240,6 +360,14 @@ def new():
         except ValueError:
             # Garbage query args land back on a clean form, never a 500.
             flash("Invalid saved job reference.", "error")
+            saved = None
+        if (
+            _scoped
+            and saved is not None
+            and not _fleet_run
+            and not _job_allowed_ids(saved)
+        ):
+            flash("Saved job is outside your scope.", "error")
             saved = None
     if request.args.get("bulk_run") and not request.args.getlist("bulk"):
         # The minion list submits here with no selection: say so instead
@@ -254,6 +382,12 @@ def new():
         from .models import Minion
 
         roster = [row.id for row in get_session().query(Minion.id).all()]
+        if _scoped and not _fleet_run:
+            # "Select all" on a filtered page must not compute a fleet *:
+            # suggest_glob sees only the caller's runnable ids.
+            runnable = _runnable_ids(current_user)
+            roster = [m for m in roster if m in runnable]
+            raw_bulk = [m for m in raw_bulk if m in runnable]
         glob, selected, covered = suggest_glob(raw_bulk, roster)
         preset = {"tgt": glob, "tgt_type": "glob"}
         bulk = {"ids": selected, "glob": glob, "covered": covered}
@@ -288,11 +422,32 @@ def new():
             if value.isdigit():
                 preset[key] = value
     if not saved and "tgt" not in preset:
-        from .settings import get_setting
+        if _scoped and not _fleet_run:
+            # Never prefill * for a caller without fleet run scope: one
+            # group scope prefills as a group target, else empty.
+            group_name = _single_group_scope(
+                current_user, ("job.run.read", "job.run.change", "job.run.state")
+            )
+            if group_name is not None:
+                preset["tgt"] = group_name
+                preset["tgt_type"] = "group"
+            else:
+                preset["tgt"] = ""
+                preset["tgt_type"] = "list"
+        else:
+            from .settings import get_setting
 
-        preset["tgt"] = get_setting("default_target")
+            preset["tgt"] = get_setting("default_target")
     op_functions = OP_FUNCTIONS
     doc_minion = ping_target()
+    # Do not probe list_functions on an out-of-scope reader.
+    if (
+        _scoped
+        and doc_minion is not None
+        and not _fleet_run
+        and doc_minion not in _runnable_ids(current_user)
+    ):
+        doc_minion = None
     if doc_minion:
         from .tasks import fun_index_task, list_functions_now, queue_or_none, wait_for
 
@@ -329,6 +484,11 @@ def fun_doc():
     """sys.doc fragment for one function, read from one minion."""
     fun = request.args.get("fun", "").strip()
     minion = request.args.get("minion", "").strip()
+    from .authz import rbac_mode as _mode
+    from .authz import require as _req
+
+    if _mode() == "scoped":
+        _req("job.read", minion=minion)
     if not FUN_RE.match(fun) or not minion or any(c in minion for c in "*?[]"):
         return "Invalid function name.", 400
     from .tasks import fun_doc_now
@@ -402,12 +562,69 @@ def run():
             ):
                 flash("That function cannot run here.", "error")
                 return redirect(_new_url())
+    scoped = rbac_mode() == "scoped"
+    perm = publish_perm(fun) or "" if scoped else ""
+    if scoped:
+        # Backstop before the confirm page: a caller with no grant for
+        # this function class never sees the matched-minion preview.
+        require(perm)
     if fun in CONFIRM_FUNS and not is_test_mode(fun, args):
         batch_preview = parse_batch_fields(request.form) or {}
         matched = resolve_batch_roster(tgt, tgt_type)
-        preview, preview_minion, preview_note = build_sls_preview(
-            fun, args, matched, via
-        )
+        if scoped:
+            try:
+                _, _, requested, hit = constrain_target_verbose(
+                    current_user, perm, tgt, tgt_type
+                )
+            except AuthzDenied as exc:
+                # Do not render the confirm template: it would list
+                # matched ids the caller must not see.
+                audit_deny(exc.perm, detail=exc.detail)
+                abort(403)
+            if hit is None:
+                # Fleet grant: the target publishes unchanged, so there
+                # is no narrowing to flash; the preview renders the
+                # snapshot roster, as the legacy path does.
+                dropped = set()
+            else:
+                matched = sorted(hit)
+                dropped = requested - hit
+            if dropped:
+                flash(
+                    f"{len(dropped)} minions are outside your scope and "
+                    "will not be touched.",
+                    "warning",
+                )
+            preview_ids = list(hit) if hit is not None else list(matched or [])
+            if not preview_ids:
+                # Unevaluable fleet target (compound, nodegroup): the
+                # preview renders against the snapshot head, so that id
+                # is what the pillar check covers.
+                head = ping_target()
+                if head is not None:
+                    preview_ids = [head]
+            if (
+                fun == "state.apply"
+                and args
+                and preview_ids
+                and not all(
+                    authorize(current_user, "pillar.read", minion=m)
+                    for m in preview_ids
+                )
+            ):
+                preview, preview_minion, preview_note = (
+                    [],
+                    None,
+                    "SLS render hidden: outside your pillar scope.",
+                )
+            else:
+                preview, preview_minion, preview_note = build_sls_preview(
+                    fun, args, matched, via
+                )
+        else:
+            preview, preview_minion, preview_note = build_sls_preview(
+                fun, args, matched, via
+            )
         confirmed = request.form.get("confirmed", "") == "yes"
         typed_ok = request.form.get("confirm_tgt", "") == tgt
         preview_ok = matched is not None or request.form.get("no_preview_ok") == "on"
@@ -435,14 +652,43 @@ def run():
             )
     batch = parse_batch_fields(request.form)
     if batch is not None:
+        # run_batched owns the scoped constrain (unknown group and empty
+        # intersection are 403 there) plus the job.batch roster check.
         return run_batched(
             tgt, tgt_type, fun, args, batch, save_as=request.form.get("save_as", "")
         )
-    try:
-        jid = launch(tgt, tgt_type, fun, args, asynchronous, via=via)
-    except SaltApiError as exc:
-        flash(f"salt-api error: {exc}", "error")
-        return redirect(_new_url())
+    if scoped:
+        # Resolve the save scope before publish; launch owns the single
+        # authoritative constrain (and its job-constrained audit), so the
+        # original target is what Salt sees constrained.
+        try:
+            _, _, _, hit = constrain_target_verbose(
+                current_user, perm, tgt, tgt_type
+            )
+        except AuthzDenied as exc:
+            audit_deny(exc.perm, detail=exc.detail)
+            abort(403)
+        if (
+            request.form.get("save_as")
+            and not has_fleet(current_user, "job.save")
+            and not set(hit) <= minions_with(current_user, "job.save")
+        ):
+            audit_deny("job.save", detail="out-of-scope")
+            abort(403)
+        try:
+            jid = launch(tgt, tgt_type, fun, args, asynchronous, via=via)
+        except AuthzDenied as exc:
+            audit_deny(exc.perm, detail=exc.detail)
+            abort(403)
+        except SaltApiError as exc:
+            flash(f"salt-api error: {exc}", "error")
+            return redirect(_new_url())
+    else:
+        try:
+            jid = launch(tgt, tgt_type, fun, args, asynchronous, via=via)
+        except SaltApiError as exc:
+            flash(f"salt-api error: {exc}", "error")
+            return redirect(_new_url())
     if request.form.get("save_as"):
         session = get_session()
         session.add(
@@ -466,12 +712,18 @@ def run():
 @bp.route("/orchestrate")
 @login_required
 def orchestrate():
+    if rbac_mode() == "scoped":
+        # The runner can target anything inside the SLS; a minion
+        # scope cannot contain it, so this stays fleet-only.
+        require("job.run.orchestrate")
     return render_template("jobs_orchestrate.html")
 
 
 @bp.post("/orchestrate/run")
 @roles_required("operator")
 def orchestrate_run():
+    if rbac_mode() == "scoped":
+        require("job.run.orchestrate")
     import json as _json
     import time as _time
 
@@ -578,6 +830,26 @@ def orchestrate_run():
 def cancel_batch(group: str):
     from .tasks import request_batch_cancel
 
+    if rbac_mode() == "scoped":
+        # Cancel only if the caller started the batch and still holds
+        # job.batch on the remaining pinned ids, or holds it on fleet.
+        parent = get_session().get(Job, f"batch-{group}")
+        if (
+            parent is not None
+            and current_user.username != parent.user
+            and not has_fleet(current_user, "job.batch")
+        ):
+            audit_deny("job.batch", detail="out-of-scope")
+            abort(403)
+        if parent is not None and not has_fleet(current_user, "job.batch"):
+            from .jobs_service import resolve_batch_roster
+
+            remaining = set(resolve_batch_roster(parent.tgt, parent.tgt_type) or [])
+            if not remaining or not remaining <= minions_with(
+                current_user, "job.batch"
+            ):
+                audit_deny("job.batch", detail="out-of-scope")
+                abort(403)
     if request_batch_cancel(group):
         flash("Cancel requested: no new waves will start.", "info")
     else:
@@ -596,6 +868,13 @@ def detail(jid: str):
     if job is None:
         flash("Unknown job.", "error")
         return redirect(url_for("jobs.index", tab="history"))
+    if rbac_mode() == "scoped":
+        require("job.read")
+        if not has_fleet(current_user, "job.read") and not _job_allowed_ids(job):
+            # Render only jobs whose published ids intersect job.read;
+            # the rendered tgt is the published ids the caller may see.
+            audit_deny("job.read", detail="out-of-scope")
+            abort(403)
     waves: list = []
     batch_state: dict | None = None
     if job.batch_group and jid == f"batch-{job.batch_group}":
@@ -645,6 +924,24 @@ def detail(jid: str):
                 kill_reports.append(
                     (event.jid, session.query(JobReturn).filter_by(jid=event.jid).all())
                 )
+    tgt_display: dict = {}
+    if rbac_mode() == "scoped" and not has_fleet(current_user, "job.read"):
+        fun_of = {job.jid: job.fun}
+        fun_of.update({w.jid: w.fun for w in waves})
+        returns = _redacted_rows(
+            returns, lambda r: fun_of.get(getattr(r, "jid", jid), job.fun)
+        )
+        kill_reports = [
+            (kill_jid, _redacted_rows(rows, lambda r: "saltutil.kill_job"))
+            for kill_jid, rows in kill_reports
+        ]
+        allowed = _job_allowed_ids(job)
+        tgt_display[job.jid] = _display_tgt(job.tgt, allowed)
+        for w in waves:
+            wids = _published_ids(w.tgt, w.tgt_type) or set()
+            tgt_display[w.jid] = _display_tgt(
+                w.tgt, wids & allowed if allowed is not None else None
+            )
     return render_template(
         "job_detail.html",
         job=job,
@@ -655,6 +952,7 @@ def detail(jid: str):
         kill_reports=kill_reports,
         state_summary=summarize_state_return,
         describe_return=describe_return,
+        tgt_display=tgt_display,
     )
 
 
@@ -671,6 +969,10 @@ def panel(jid: str, mid: str):
     job = session.get(Job, jid)
     if job is None:
         abort(404)
+    if rbac_mode() == "scoped":
+        # One minion's panel: the minion id is the scope check, and the
+        # body follows the return-visibility table from job.fun.
+        require("job.read", minion=mid)
     row = None
     if job.batch_group and jid == f"batch-{job.batch_group}":
         wave_jids = [
@@ -694,6 +996,18 @@ def panel(jid: str, mid: str):
         row = live[0] if live else None
     if row is None:
         abort(404)
+    if rbac_mode() == "scoped" and not can_see_return_body(
+        current_user, job.fun, mid
+    ):
+        from types import SimpleNamespace
+
+        row = SimpleNamespace(
+            minion_id=row.minion_id,
+            success=row.success,
+            retcode=row.retcode,
+            payload={},
+            live=getattr(row, "live", False),
+        )
     return render_template(
         "_job_panel.html", r=row, job=job, view=describe_return(row.payload)
     )
@@ -712,7 +1026,17 @@ def kill(jid: str):
         flash("You can only kill running Salt jobs with minion targets.", "error")
         return redirect(url_for("jobs.detail", jid=jid))
     tgt, tgt_type = job.tgt, job.tgt_type
-    if tgt_type == "group":
+    if rbac_mode() == "scoped":
+        from .authz import constrain_kill
+
+        try:
+            tgt, tgt_type = constrain_kill(current_user, tgt, tgt_type)
+        except AuthzDenied as exc:
+            # Never kill a subset of someone else's compound: an id
+            # outside scope denies the whole kill.
+            audit_deny(exc.perm, detail=exc.detail)
+            abort(403)
+    elif tgt_type == "group":
         try:
             targets, _ = resolve_group_target(tgt)
         except SaltApiError as exc:
@@ -738,7 +1062,15 @@ def kill(jid: str):
         )
     )
     session.commit()
-    log_event(current_user.username, f"kill:{jid}", jid=kill_jid)
+    kill_ids = [m.strip() for m in tgt.split(",") if m.strip()]
+    log_event(
+        current_user.username,
+        f"kill:{jid}",
+        jid=kill_jid,
+        permission="job.kill",
+        minion_id=kill_ids[0] if len(kill_ids) == 1 else None,
+        detail=",".join(kill_ids) if len(kill_ids) != 1 else None,
+    )
     flash(f"Kill published for {jid}. Minion reports appear on this page.", "success")
     return redirect(url_for("jobs.detail", jid=jid))
 
@@ -746,6 +1078,9 @@ def kill(jid: str):
 @bp.post("/<jid>/sync")
 @roles_required("operator")
 def sync(jid: str):
+    if rbac_mode() == "scoped":
+        # Treated as job.read so the POST matches the GET.
+        require("job.read")
     try:
         sync_job(jid)
     except (SaltApiError, ValueError) as exc:
@@ -756,24 +1091,58 @@ def sync(jid: str):
 @bp.post("/saved/<int:saved_id>/delete")
 @roles_required("operator")
 def delete_saved(saved_id: int):
+    from flask import abort
+
+    from .models import ApiToken
+
     session = get_session()
     saved = session.get(SavedJob, saved_id)
     if saved is None:
         flash("No such saved job.", "error")
-    else:
-        session.delete(saved)
-        session.commit()
-        flash(f"Deleted saved job '{saved.name}'.", "success")
+        return redirect(url_for("jobs.index", tab="saved"))
+    if rbac_mode() == "scoped":
+        # Readers resolve a saved job only through publishable targets:
+        # 403 for a real-but-out-of-scope id (unknown ids 404 above).
+        # Stale targets (nothing left in the snapshot) stay deletable.
+        require("job.save")
+        if not has_fleet(current_user, "job.save"):
+            mids = _published_ids(saved.tgt, saved.tgt_type)
+            allowed = minions_with(current_user, "job.save")
+            if mids is None or not mids <= allowed:
+                audit_deny("job.save", detail="out-of-scope")
+                abort(403)
+    pinned = session.query(ApiToken.id).filter_by(saved_job_id=saved.id).first()
+    if pinned is not None:
+        # The FK is ON DELETE RESTRICT: refuse with 409 instead of a 500.
+        session.rollback()
+        abort(409, description="Unpin the service account token first.")
+    session.delete(saved)
+    session.commit()
+    flash(f"Deleted saved job '{saved.name}'.", "success")
     return redirect(url_for("jobs.index", tab="saved"))
 
 
 @bp.route("/<jid>/stream")
 @login_required
 def stream(jid: str):
+    if rbac_mode() == "scoped":
+        require("job.read")
+        job = get_session().get(Job, jid)
+        if (
+            job is not None
+            and not has_fleet(current_user, "job.read")
+            and not _job_allowed_ids(job)
+        ):
+            audit_deny("job.read", detail="out-of-scope")
+            abort(403)
     try:
         interval = max(0.05, min(5.0, float(request.args.get("interval", 2.0))))
     except ValueError:
         interval = 2.0
+
+    scoped = rbac_mode() == "scoped"
+    fleet = not scoped or has_fleet(current_user, "job.read")
+    allowed = None if fleet else minions_with(current_user, "job.read")
 
     def events():
         for _ in range(30):
@@ -794,6 +1163,8 @@ def stream(jid: str):
             returns = (
                 get_session().query(JobReturn).filter(JobReturn.jid.in_(jids)).all()
             )
+            if allowed is not None:
+                returns = [r for r in returns if r.minion_id in allowed]
             stored_ids = {r.minion_id for r in returns}
             stored_failed = sum(1 for r in returns if not r.success)
             mids = set(stored_ids)
@@ -811,6 +1182,8 @@ def stream(jid: str):
                         live_rows += live_returns_now(get_salt(), wave_jid)
                 else:
                     live_rows = live_returns_now(get_salt(), jid)
+                if allowed is not None:
+                    live_rows = [r for r in live_rows if r.minion_id in allowed]
                 mids |= {r.minion_id for r in live_rows}
             live_only = [r for r in live_rows if r.minion_id not in stored_ids]
             payload = {

@@ -12,10 +12,10 @@
 {% if saved %}
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Name</th><th>Function</th><th>Target</th><th class="text-right"></th></tr></thead><tbody>
 {% for s in saved %}
-<tr><td class="font-medium">{{ s.name }}</td><td class="font-mono text-xs">{{ s.fun }}</td><td class="font-mono text-xs">{{ s.tgt_type }}: {{ s.tgt }}</td>
+<tr><td class="font-medium">{{ s.name }}</td><td class="font-mono text-xs">{{ s.fun }}</td><td class="font-mono text-xs">{{ s.tgt_type }}: {{ tgt_display.get('saved:' ~ s.id, s.tgt) }}</td>
 <td class="text-right"><span class="join join-horizontal">
 <a class="btn btn-sm btn-primary join-item" href="{{ url_for('jobs.new', saved=s.id) }}">Run</a>
-{% if current_user.role in ["operator", "admin"] %}<form method="post" action="{{ url_for('jobs.delete_saved', saved_id=s.id) }}" data-confirm="Delete saved job '{{ s.name }}'? Past runs are unaffected."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-ghost join-item">Delete</button></form>{% endif %}
+{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('job.save')) %}<form method="post" action="{{ url_for('jobs.delete_saved', saved_id=s.id) }}" data-confirm="Delete saved job '{{ s.name }}'? Past runs are unaffected."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-ghost join-item">Delete</button></form>{% endif %}
 </span></td></tr>
 {% endfor %}
 </tbody></table>
@@ -32,7 +32,7 @@
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th('jobs.index', 'jid', 'JID', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'fun', 'Function', sort, direction, {'tab': tab, 'q': q}) }}<th>Target</th>{{ m.sort_th('jobs.index', 'user', 'User', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'started', 'Started', sort, direction, {'tab': tab, 'q': q}) }}</tr></thead><tbody>
 {% for j in rows %}
 <tr><td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=j.jid) }}">{{ j.jid }}</a></td>
-<td class="font-mono text-xs">{{ j.fun }}</td><td class="font-mono text-xs">{{ j.tgt_type }}: {{ j.tgt }}</td>
+<td class="font-mono text-xs">{{ j.fun }}</td><td class="font-mono text-xs">{{ j.tgt_type }}: {{ tgt_display.get(j.jid, j.tgt) }}</td>
 <td>{{ j.user }}</td><td class="text-sm">{{ j.started_at }}</td></tr>
 {% endfor %}
 </tbody></table>

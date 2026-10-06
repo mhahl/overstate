@@ -85,8 +85,10 @@ def test_dashboard_heading_matches_page_headings():
 def test_destructive_actions_sit_outside_primary_headers():
     c = make_client()
     users = c.get("/users/").data.decode()
-    assert "Danger zone" in users
-    assert "Rotate salt-api password" in users
+    assert "Danger zone" not in users
+    assert "Rotate salt-api password" not in users
+    rotation = c.get("/settings/rotation").data.decode()
+    assert "salt-api password rotation" in rotation
     detail = c.get("/jobs/hist-000").data.decode()
     assert 'btn-primary">Sync results' in detail
 

@@ -145,13 +145,28 @@ def get_setting(key: str) -> str:
     return DEFS.get(key, {}).get("default", "")
 
 
+#: Keys a scoped settings.read holder may see. OIDC issuer, client id,
+#: group lists, and the client secret are grant.admin; the rotation card
+#: is settings.rotate_eauth.
+READ_DISPLAY_KEYS = ("page_size", "theme", "master_host")
+
+
 def _settings_context():
-    is_admin = current_user.role == "admin"
+    from .authz import authorize, rbac_mode
+
+    scoped = rbac_mode() == "scoped"
+    if scoped:
+        # Server checks are authorize, not the role string: writers edit,
+        # grant.admin sees OIDC fields, settings.read sees display keys.
+        is_admin = authorize(current_user, "settings.write")
+        show_oidc = authorize(current_user, "grant.admin")
+    else:
+        is_admin = show_oidc = current_user.role == "admin"
     values = {key: get_setting(key) for key in DEFS}
     # The stored secret is never echoed: the form posts it back only
     # when the admin types a new one, and viewers see no OIDC values.
     values["oidc_client_secret"] = ""
-    if not is_admin:
+    if not show_oidc:
         for key in OIDC_ENV_FALLBACK:
             values[key] = ""
         sections = [
@@ -163,45 +178,254 @@ def _settings_context():
         sections = [
             {**s, "fields": [(k, DEFS[k]) for k in s["keys"]]} for s in SECTIONS
         ]
-    return sections, values, is_admin
+    if scoped and not is_admin:
+        values = {k: (v if k in READ_DISPLAY_KEYS else "") for k, v in values.items()}
+        sections = [
+            {**s, "fields": [(k, DEFS[k]) for k in s["keys"] if k in READ_DISPLAY_KEYS]}
+            for s in sections
+        ]
+        sections = [s for s in sections if s["fields"]]
+    return sections, values, is_admin, show_oidc
+
+
+SECTION_PAGES = ("general", "sso", "access", "rotation")
+
+
+def _render_section(section: str, rotation_password=None):
+    """Render one settings subsection. Sections share one context; each
+    form posts only its own keys and ``save`` touches nothing else, so
+    sub-pages stay independent."""
+    sections, values, is_admin, show_oidc = _settings_context()
+    general = [s for s in sections if "oidc_issuer" not in s["keys"]]
+    sso = [s for s in sections if "oidc_issuer" in s["keys"]]
+    return render_template(
+        "settings.html",
+        section=section,
+        general_sections=general,
+        sso_sections=sso,
+        values=values,
+        is_admin=is_admin,
+        show_oidc=show_oidc,
+        idp_mappings=_idp_mapping_rows() if show_oidc else [],
+        minion_groups=_minion_group_options() if show_oidc else [],
+        role_groups=_role_group_options() if show_oidc else [],
+        grain_keys=_grain_key_options(),
+        rotation_user=current_app.config["SALT_EAUTH_USER"],
+        rotation_password=rotation_password,
+        can_rotate=_rotation_allowed(),
+        **_rbac_card_values(),
+    )
 
 
 @bp.route("/")
 @login_required
 def index():
-    sections, values, is_admin = _settings_context()
-    return render_template(
-        "settings.html",
-        sections=sections,
-        values=values,
-        is_admin=is_admin,
-        rotation_user=current_app.config["SALT_EAUTH_USER"],
-        rotation_password=None,
+    from .authz import require
+
+    require("settings.read")
+    return _render_section("general")
+
+
+@bp.route("/sso")
+@login_required
+def sso():
+    from .authz import require
+
+    require("settings.read")
+    return _render_section("sso")
+
+
+@bp.route("/access")
+@login_required
+def access():
+    from .authz import require
+
+    require("settings.read")
+    return _render_section("access")
+
+
+@bp.route("/rotation")
+@login_required
+def rotation():
+    from .authz import require
+
+    require("settings.read")
+    return _render_section("rotation")
+
+
+def _idp_mapping_rows():
+    from .models import IdpRoleMapping
+
+    return get_session().query(IdpRoleMapping).order_by(IdpRoleMapping.idp_group).all()
+
+
+def _minion_group_options():
+    from .models import MinionGroup
+
+    return get_session().query(MinionGroup).order_by(MinionGroup.name).all()
+
+
+def _role_group_options():
+    from .users import ROLE_GROUPS
+
+    return ROLE_GROUPS
+
+
+def _grain_key_options():
+    from .inventory import SNAPSHOT_GRAINS
+
+    return list(SNAPSHOT_GRAINS)
+
+
+def _rbac_card_values() -> dict:
+    from .authz import rbac_flag
+
+    return {
+        "rbac_mode_value": rbac_flag("rbac_mode", "RBAC_MODE", "legacy"),
+        "rbac_fallback_value": rbac_flag(
+            "rbac_role_fallback", "RBAC_ROLE_FALLBACK", "on"
+        ),
+    }
+
+
+def _rotation_allowed() -> bool:
+    from .authz import authorize, rbac_mode
+
+    if rbac_mode() == "scoped":
+        return authorize(current_user, "settings.rotate_eauth")
+    return current_user.role == "admin"
+
+
+@bp.post("/idp-mappings")
+@roles_required("admin")
+def create_idp_mapping():
+    """IdP mapping editor. Fleet grant.admin in scoped mode."""
+    from .audit import log_event
+    from .models import IdpRoleMapping
+
+    _require_grant_admin()
+    session = get_session()
+    idp_group = request.form.get("idp_group", "").strip()
+    role = request.form.get("role", "").strip()
+    scope_kind = request.form.get("scope_kind", "").strip()
+    if not idp_group:
+        flash("Group name is required.", "error")
+        return redirect(url_for("settings.access"))
+    from .users import _validate_grant_scope
+
+    error, scope_value = _validate_grant_scope(role, scope_kind, request.form)
+    if error is not None:
+        flash(error, "error")
+        return redirect(url_for("settings.access"))
+    existing = (
+        session.query(IdpRoleMapping)
+        .filter_by(
+            idp_group=idp_group,
+            role=role,
+            scope_kind=scope_kind,
+            scope_value=scope_value,
+        )
+        .first()
     )
+    if existing is not None:
+        flash("That mapping already exists.", "error")
+        return redirect(url_for("settings.access"))
+    session.add(
+        IdpRoleMapping(
+            idp_group=idp_group,
+            role=role,
+            scope_kind=scope_kind,
+            scope_value=scope_value,
+            origin="manual",
+        )
+    )
+    session.commit()
+    from .authz import refresh_role_cache
+
+    for user in _users_in_idp_group(session, idp_group):
+        refresh_role_cache(user)
+    log_event(
+        current_user.username,
+        "mapping-create",
+        permission="grant.admin",
+        detail=f"{idp_group} {role} {scope_kind} {scope_value}",
+    )
+    flash(f"Mapped IdP group '{idp_group}'.", "success")
+    return redirect(url_for("settings.access"))
+
+
+def _require_grant_admin():
+    from flask import abort
+
+    from .authz import audit_deny, has_fleet, rbac_mode
+
+    if rbac_mode() == "scoped" and not has_fleet(current_user, "grant.admin"):
+        audit_deny("grant.admin")
+        abort(403)
+
+
+def _users_in_idp_group(session, idp_group):
+    from .models import User, UserIdpGroup
+
+    ids = [
+        row.user_id
+        for row in session.query(UserIdpGroup).filter_by(group_name=idp_group).all()
+    ]
+    return session.query(User).filter(User.id.in_(ids)).all() if ids else []
+
+
+@bp.post("/idp-mappings/<int:mid>/delete")
+@roles_required("admin")
+def delete_idp_mapping(mid: int):
+    from .audit import log_event
+    from .models import IdpRoleMapping
+
+    _require_grant_admin()
+    session = get_session()
+    mapping = session.get(IdpRoleMapping, mid)
+    if mapping is None:
+        flash("Unknown mapping.", "error")
+        return redirect(url_for("settings.access"))
+    detail = (
+        f"{mapping.idp_group} {mapping.role} "
+        f"{mapping.scope_kind} {mapping.scope_value}"
+    )
+    affected = _users_in_idp_group(session, mapping.idp_group)
+    session.delete(mapping)
+    session.commit()
+    from .authz import refresh_role_cache
+
+    for user in affected:
+        refresh_role_cache(user)
+    log_event(
+        current_user.username, "mapping-delete", permission="grant.admin", detail=detail
+    )
+    flash("Mapping deleted.", "success")
+    return redirect(url_for("settings.access"))
 
 
 @bp.post("/rotation/generate")
 @roles_required("admin")
 def rotation_generate():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("settings.rotate_eauth")
     """Mint a replacement salt-api password and show it exactly once.
     Nothing is stored anywhere — the audit row records the act, never
     the secret, and the admin pastes it into the Secret by hand."""
     password = secrets.token_urlsafe(24)
     log_event(current_user.username, "rotation-password-generated")
-    sections, values, is_admin = _settings_context()
-    return render_template(
-        "settings.html",
-        sections=sections,
-        values=values,
-        is_admin=is_admin,
-        rotation_user=current_app.config["SALT_EAUTH_USER"],
-        rotation_password=password,
-    )
+    return _render_section("rotation", rotation_password=password)
 
 
 @bp.post("/rotation/verify")
 @roles_required("admin")
 def rotation_verify():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("settings.rotate_eauth")
     """Try a candidate password against salt-api with an ephemeral
     client. Proves a hand-applied rotation took; stores nothing."""
     import httpx
@@ -212,7 +436,7 @@ def rotation_verify():
     user = current_app.config["SALT_EAUTH_USER"]
     if not candidate:
         flash("Paste the candidate password first.", "error")
-        return redirect(url_for("settings.index"))
+        return redirect(url_for("settings.rotation"))
     client = SaltClient(
         current_app.config["SALT_API_URL"],
         user,
@@ -228,14 +452,31 @@ def rotation_verify():
     else:
         flash(f"Login as {user} succeeded.", "success")
         log_event(current_user.username, "rotation-verify:ok")
-    return redirect(url_for("settings.index"))
+    return redirect(url_for("settings.rotation"))
 
 
 @bp.post("/")
 @roles_required("admin")
 def save():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("settings.write")
+    from .authz import rbac_mode as _rbac_mode
+
+    _mirror = _rbac_mode() == "scoped"
     session = get_session()
+    posted = set(request.form)
     for key, meta in DEFS.items():
+        if key not in posted:
+            # Section forms post only their own keys: anything absent
+            # was not on the page, so leave the stored row alone.
+            continue
+        if _mirror and key in ("oidc_admin_groups", "oidc_operator_groups"):
+            # Read-only mirror while scoped: the mapping editor owns
+            # these. The disabled inputs do not post; do not treat
+            # their absence as a clear.
+            continue
         value = request.form.get(key, "").strip()
         if key == "oidc_client_secret":
             if request.form.get("clear_oidc_client_secret") == "on":
@@ -262,6 +503,95 @@ def save():
             session.add(Setting(key=key, value=value))
         else:
             row.value = value
+    # One transaction for values, flags, and the mapping rebuild: a
+    # failed rebuild must not leave rbac_mode=scoped behind on its own.
+    _save_rbac_control(session)
     session.commit()
     flash("Settings saved.", "success")
-    return redirect(url_for("settings.index"))
+    section = request.form.get("section", "")
+    if section not in SECTION_PAGES or section == "general":
+        return redirect(url_for("settings.index"))
+    return redirect(url_for(f"settings.{section}"))
+
+
+def _save_rbac_control(session) -> None:
+    """RBAC mode and fallback control. Entering scoped mode rebuilds
+    ``origin=backfill`` fleet ladder mappings from the current OIDC
+    group settings; manual mappings stay. Every user's role cache is
+    recomputed so the badge agrees with the grants."""
+    import logging
+
+    from .authz import rbac_mode, refresh_role_cache
+    from .models import IdpRoleMapping, User
+
+    mode = request.form.get("rbac_mode", "").strip()
+    fallback = request.form.get("rbac_role_fallback", "").strip()
+    entering = False
+    if mode in ("legacy", "scoped"):
+        before = rbac_mode()
+        _store_flag(session, "rbac_mode", mode)
+        entering = mode == "scoped" and before != "scoped"
+    if fallback in ("on", "off"):
+        _store_flag(session, "rbac_role_fallback", fallback)
+    if entering:
+        deleted = (
+            session.query(IdpRoleMapping)
+            .filter_by(origin="backfill")
+            .delete(synchronize_session=False)
+        )
+        admin_groups = {
+            g.strip()
+            for g in (get_setting("oidc_admin_groups") or "").split(",")
+            if g.strip()
+        }
+        operator_groups = {
+            g.strip()
+            for g in (get_setting("oidc_operator_groups") or "").split(",")
+            if g.strip()
+        }
+        # The unique key does not include origin: a kept manual row for
+        # the same tuple would collide, so only insert what is absent.
+        # A manual row already grants it, which is the better outcome.
+        present = {
+            (row.idp_group, row.role, row.scope_kind, row.scope_value)
+            for row in session.query(IdpRoleMapping).all()
+        }
+        for name in sorted(admin_groups):
+            key = (name, "admin", "fleet", "*")
+            if key not in present:
+                session.add(
+                    IdpRoleMapping(
+                        idp_group=name,
+                        role="admin",
+                        scope_kind="fleet",
+                        scope_value="*",
+                        origin="backfill",
+                    )
+                )
+                present.add(key)
+        for name in sorted(operator_groups):
+            key = (name, "operator", "fleet", "*")
+            if key not in present:
+                session.add(
+                    IdpRoleMapping(
+                        idp_group=name,
+                        role="operator",
+                        scope_kind="fleet",
+                        scope_value="*",
+                        origin="backfill",
+                    )
+                )
+                present.add(key)
+        for user in session.query(User).all():
+            refresh_role_cache(user)
+        logging.getLogger("overstate_ui.authz").info(
+            "rbac_mode entering scoped: rebuilt %d backfill mappings", deleted
+        )
+
+
+def _store_flag(session, key: str, value: str) -> None:
+    row = session.get(Setting, key)
+    if row is None:
+        session.add(Setting(key=key, value=value))
+    else:
+        row.value = value

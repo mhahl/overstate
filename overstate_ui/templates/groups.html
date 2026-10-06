@@ -5,11 +5,11 @@
   <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Groups <span class="badge badge-neutral align-middle">{{ total }}</span></h1>
     <p class="text-sm opacity-70 mt-0.5">Saved member lists for group targets. Unknown IDs are skipped when you run a job.</p>
-    {% if current_user.role not in ["operator", "admin"] %}
+    {% if not (((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) and not rbac_scoped) or (rbac_scoped and can('group.write'))) %}
     <p class="text-sm opacity-70 mt-0.5">Operators only. Saved groups appear as the “group” target on the <a class="link" href="{{ url_for('jobs.new') }}">New job</a> form.</p>
     {% endif %}
   </div>
-  {% if current_user.role in ["operator", "admin"] %}
+  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
   <button type="button" class="btn btn-sm btn-primary" onclick="openGroupModal()">New group</button>
   {% endif %}
 </div>
@@ -27,7 +27,7 @@
 <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="overflow-x-auto">
     <table class="table table-sm table-zebra table-pin-rows w-full">
-      <thead><tr>{{ m.sort_th_plain('groups.index', 'name', 'Name', sort, direction, {'q': q}) }}{{ m.sort_th_plain('groups.index', 'members', 'Members', sort, direction, {'q': q}) }}<th>IDs</th><th class="text-right">Use</th>{% if current_user.role in ["operator", "admin"] %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
+      <thead><tr>{{ m.sort_th_plain('groups.index', 'name', 'Name', sort, direction, {'q': q}) }}{{ m.sort_th_plain('groups.index', 'members', 'Members', sort, direction, {'q': q}) }}<th>IDs</th><th class="text-right">Use</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
       <tbody>
         {% for g in groups %}
         <tr>
@@ -35,7 +35,7 @@
           <td class="text-right">{{ g.members|length }}</td>
           <td class="font-mono text-xs opacity-70 max-w-72 truncate" title="{{ g.members|join(', ') }}">{{ g.members|join(", ") }}</td>
           <td class="text-right whitespace-nowrap"><a class="btn btn-xs btn-ghost" href="{{ url_for('jobs.new', tgt_type='group', tgt=g.name) }}">Use in new job</a></td>
-          {% if current_user.role in ["operator", "admin"] %}
+          {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
           <td class="text-right whitespace-nowrap">
             <button type="button" class="btn btn-xs" onclick='openGroupModal({{ g.id }}, {{ g.name|tojson }}, {{ g.members|tojson }})'>Edit</button>
             <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline" data-confirm="Delete group '{{ g.name }}' ({{ g.members|length }} members)?">
@@ -60,7 +60,7 @@
     </div>
   </div>
 </div>
-{% if current_user.role in ["operator", "admin"] %}
+{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
 <dialog id="group-modal" class="modal" aria-labelledby="group-modal-title">
   <div class="modal-box">
     <h3 id="group-modal-title" class="font-bold text-lg">New group</h3>

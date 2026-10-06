@@ -284,6 +284,14 @@ def sync_revision() -> str | None:
 @bp.route("/")
 @login_required
 def index():
+    from flask_login import current_user
+
+    from .authz import prefix_visible, rbac_mode, require, visible_prefixes
+
+    require("file.read")
+    prefixes = (
+        visible_prefixes(current_user) if rbac_mode() == "scoped" else None
+    )
     q = request.args.get("q", "").strip().lower()
     try:
         page = max(1, int(request.args.get("page", 1)))
@@ -297,6 +305,9 @@ def index():
         per_page = DEFAULT_PAGE_SIZE
     d = normalize_dir(request.args.get("dir", ""))
     entries = list_tree(limit=LIST_LIMIT + 1)
+    if prefixes is not None:
+        # Listing drops entries outside every granted prefix.
+        entries = [e for e in entries if prefix_visible(prefixes, e["rel"])]
     truncated = len(entries) > LIST_LIMIT
     entries = entries[:LIST_LIMIT]
     tree_nodes = build_tree(entries, active_dir=d)
@@ -346,6 +357,10 @@ def _refresh_fileserver() -> str | None:
 @bp.post("/sync")
 @roles_required("operator")
 def sync():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.sync")
     """Pull --ff-only; on a changed pull, refresh the master fileserver."""
     result = git_sync_now()
     if result["ok"]:
@@ -379,6 +394,10 @@ def sync():
 @bp.post("/sync-modules")
 @roles_required("operator")
 def sync_modules():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.sync")
     """Publish custom modules fleet-wide: ``saltutil.sync_all`` on the
     master. Operator+. Salt stays the arbiter — this only distributes
     files, it applies nothing."""
@@ -396,6 +415,10 @@ def sync_modules():
 @bp.post("/fetch")
 @roles_required("operator")
 def fetch():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.sync")
     """Check the remote for updates without touching the working tree.
 
     Refreshes behind/ahead counts so the status card answers against
@@ -431,6 +454,10 @@ def edit():
     target = safe_join(rel)
     if not target or not target.is_file():
         abort(404)
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.write", prefix=rel)
     content = read_text(target)
     if content is None:
         flash("That file cannot be edited here (too large or not text).", "error")
@@ -464,6 +491,10 @@ def save():
     target = safe_join(rel)
     if not target or not target.is_file():
         abort(404)
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.write", prefix=rel)
     try:
         current = target.read_bytes()
     except OSError:
@@ -552,6 +583,10 @@ def save():
 @bp.post("/push")
 @roles_required("admin")
 def push():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.git")
     """Push local commits upstream. Admin-only; refusals change nothing."""
     result = git_push_now()
     if result["ok"]:
@@ -599,6 +634,10 @@ def _note_refreshed(verb, sha):
 @bp.get("/repo")
 @roles_required("admin")
 def repo():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.git")
     """Repo tab: bootstrap, repoint, and repair the shared-states checkout."""
     return render_template("repo.html", **_repo_context())
 
@@ -614,6 +653,10 @@ def _short_list(names: list[str], limit: int = 12) -> str:
 @bp.post("/repo/clone")
 @roles_required("admin")
 def repo_clone():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.git")
     """Clone the canonical states repo at the srv roots. Admin-only."""
     url = request.form.get("url", "")
     branch = request.form.get("branch", "")
@@ -659,6 +702,10 @@ def repo_clone():
 @bp.post("/repo/set-remote")
 @roles_required("admin")
 def repo_set_remote():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.git")
     """Repoint origin at a moved canonical repo. Admin-only."""
     result = set_remote_origin(request.form.get("url", ""))
     if result["ok"]:
@@ -673,6 +720,10 @@ def repo_set_remote():
 @bp.post("/repo/reset")
 @roles_required("admin")
 def repo_reset():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.git")
     """Two-step reset to the tracked upstream: preview, then confirm."""
     if request.form.get("confirm") != "1":
         preview = reset_preview()
@@ -697,6 +748,10 @@ def repo_reset():
 @bp.post("/repo/reclone")
 @roles_required("admin")
 def repo_reclone():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.git")
     """Two-step full re-clone: preview the destruction, then confirm."""
     url = request.form.get("url", "") or (git_origin() or "")
     branch = request.form.get("branch", "")
@@ -722,6 +777,10 @@ def repo_reclone():
 @bp.post("/repo/token-save")
 @roles_required("admin")
 def repo_token_save():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.git")
     """Store an https token for the current origin's host (0600)."""
     origin = git_origin()
     if not origin or not origin.startswith("https://"):
@@ -744,6 +803,10 @@ def repo_token_save():
 @bp.post("/repo/token-clear")
 @roles_required("admin")
 def repo_token_clear():
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("file.git")
     """Forget the stored token. Future remote calls prompt nothing —
     they fail with missing credentials instead."""
     result = clear_token()
@@ -758,10 +821,14 @@ def repo_token_clear():
 @bp.route("/view")
 @login_required
 def view():
+    from .authz import rbac_mode, require
+
     rel = request.args.get("path", "")
     target = safe_join(rel)
     if not target or not target.is_file():
         abort(404)
+    if rbac_mode() == "scoped":
+        require("file.read", prefix=rel)
     parent = rel.rpartition("/")[0] if "/" in rel else ""
     crumbs = dir_crumbs(parent)
     content = read_text(target)

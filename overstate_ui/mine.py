@@ -27,13 +27,46 @@ def index():
     direction = request.args.get("dir", "asc")
     if direction not in ("asc", "desc"):
         direction = "asc"
+    from flask import abort
+    from flask_login import current_user
+
+    from .authz import (
+        AuthzDenied,
+        audit_deny,
+        constrain_target_verbose,
+        rbac_mode,
+        require,
+    )
+
+    scoped = rbac_mode() == "scoped"
     entries: dict = {}
     error = None
     if fun and not FUN_RE.match(fun):
         error = "Invalid function name."
     if tgt and fun and error is None:
         query_tgt, query_type = tgt, tgt_type
-        if tgt_type == "group":
+        hit: set[str] | None = None
+        if scoped:
+            # Intersect before queue and before the inline fallback; the
+            # worker receives the already-constrained target and the
+            # reader is an in-scope id, never ping_target().
+            require("mine.read")
+            try:
+                query_tgt, query_type, _, hit = constrain_target_verbose(
+                    current_user, "mine.read", tgt, tgt_type
+                )
+            except AuthzDenied as exc:
+                audit_deny(exc.perm, detail=exc.detail)
+                abort(403)
+            if hit is None:
+                # Fleet grant: the target publishes unchanged; read
+                # through the snapshot head, as the legacy path does.
+                reader = ping_target()
+                if reader is None:
+                    error = "No minions in the snapshot cache."
+            else:
+                reader = min(hit)
+        elif tgt_type == "group":
             try:
                 targets, _stale = resolve_group_target(tgt)
             except SaltApiError as exc:
@@ -43,7 +76,7 @@ def index():
         if error is None:
             if not query_tgt:
                 error = f"group '{tgt}' matches no known minions"
-            else:
+            elif not scoped:
                 reader = ping_target()
                 if reader is None:
                     error = "No minions in the snapshot cache."
@@ -70,6 +103,9 @@ def index():
                         error = f"Mine query failed: {value}"
             except (SaltApiError, httpx.HTTPError) as exc:
                 error = f"salt-api error: {exc}"
+        if scoped and isinstance(entries, dict) and hit is not None:
+            # A stale worker argument cannot add db-01 back.
+            entries = {k: v for k, v in entries.items() if k in hit}
     return render_template(
         "mine.html",
         tgt=tgt,

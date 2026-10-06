@@ -7,7 +7,7 @@
     <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
   </div>
   <p class="text-sm opacity-70 mb-4">Admins edit reactor SLS bodies. This code runs with master privileges and fires on matching events.</p>
-  {% if content is not none and current_user.is_authenticated and current_user.role == 'admin' %}
+  {% if content is not none and current_user.is_authenticated and ((current_user.role == 'admin' and not rbac_scoped) or (rbac_scoped and can('reactor.persist'))) %}
   <div class="mb-4"><a class="btn btn-sm btn-primary" href="{{ url_for('reactor.edit', sls=rel) }}">Edit</a></div>
   {% endif %}
   {% if content is none %}

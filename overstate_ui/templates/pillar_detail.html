@@ -4,7 +4,7 @@
 <div class="flex flex-wrap items-center gap-2 mb-4">
   <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.index') }}">‹ Pillar</a>
   <h1 class="text-2xl font-bold tracking-tight font-mono">{{ mid }}</h1>
-  {% if current_user.role in ["operator", "admin"] %}
+  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('pillar.capture', minion=mid)) %}
   <form method="post" action="{{ url_for('pillar.capture', mid=mid) }}" class="ml-auto">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-primary">Capture snapshot</button>

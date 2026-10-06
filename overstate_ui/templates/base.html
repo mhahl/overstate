@@ -118,36 +118,53 @@
           <li><a href="{{ url_for('states.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('states') }}">
             <span class="icon-[lucide--badge-check] size-4.5" aria-hidden="true"></span>
             States</a></li>
+          {% if not rbac_scoped or can('file.read') %}
           <li><a href="{{ url_for('files.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('files') }}">
             <span class="icon-[lucide--file-text] size-4.5" aria-hidden="true"></span>
             Files</a></li>
+          {% endif %}
+          {% if not rbac_scoped or can('reactor.read') %}
           <li><a href="{{ url_for('reactor.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('reactor') }}">
             <span class="icon-[lucide--workflow] size-4.5" aria-hidden="true"></span>
             Reactor</a></li>
+          {% endif %}
           <li><a href="{{ url_for('schedules.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('schedules') }}">
             <span class="icon-[lucide--clock] size-4.5" aria-hidden="true"></span>
             Schedules</a></li>
           <li class="menu-title mt-2">Observe</li>
+          {% if not rbac_scoped or can('event.read') %}
           <li><a href="{{ url_for('events.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('events') }}">
             <span class="icon-[lucide--zap] size-4.5" aria-hidden="true"></span>
             Events</a></li>
+          {% endif %}
+          {% if not rbac_scoped or can('pillar.read') %}
           <li><a href="{{ url_for('pillar.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('pillar') }}">
             <span class="icon-[lucide--tag] size-4.5" aria-hidden="true"></span>
             Pillar</a></li>
+          {% endif %}
+          {% if not rbac_scoped or can('mine.read') %}
           <li><a href="{{ url_for('mine.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('mine') }}">
             <span class="icon-[lucide--database] size-4.5" aria-hidden="true"></span>
             Mine</a></li>
+          {% endif %}
+          {% if not rbac_scoped or can('audit.read') %}
           <li><a href="{{ url_for('audit.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('audit') }}">
             <span class="icon-[lucide--scroll-text] size-4.5" aria-hidden="true"></span>
             Audit</a></li>
+          {% endif %}
           <li class="menu-title mt-2">System</li>
+          {% if not rbac_scoped or can('settings.read') %}
           <li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith(('settings', 'masterconfig')) }}">
             <span class="icon-[lucide--settings] size-4.5" aria-hidden="true"></span>
             Settings</a></li>
-          {% if current_user.is_authenticated and current_user.role == 'admin' %}
-          <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('users') }}">
+          {% endif %}
+          {% if current_user.is_authenticated and (current_user.role == 'admin' or (rbac_scoped and can('user.read'))) %}
+          <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint == 'users.index' }}">
             <span class="icon-[lucide--users] size-4.5" aria-hidden="true"></span>
             Users</a></li>
+          <li><a href="{{ url_for('users.groups') }}" class="{{ 'menu-active' if request.endpoint == 'users.groups' }}">
+            <span class="icon-[lucide--users-round] size-4.5" aria-hidden="true"></span>
+            Groups</a></li>
           {% endif %}
         </ul>
       </nav>
@@ -259,8 +276,10 @@
         ("Refresh pillar", "preset", url_for('jobs.new', preset='refresh-pillar')),
         ("Sync all", "preset", url_for('jobs.new', preset='sync-all'))
       ] %}
-      {% if current_user.is_authenticated and current_user.role == 'admin' %}
+      {% if current_user.is_authenticated and (current_user.role == 'admin' or (rbac_scoped and can('user.read'))) %}
       {% set _ = palette_entries.append(("Users", "page", url_for('users.index'))) %}
+      {% endif %}
+      {% if current_user.is_authenticated and (current_user.role == 'admin' or (rbac_scoped and can('master.read'))) %}
       {% set _ = palette_entries.append(("Master config", "page", url_for('masterconfig.index'))) %}
       {% endif %}
       {% for label, hint, href in palette_entries %}

@@ -11,6 +11,11 @@ web
 Operators running routine planned work against a Salt-managed fleet: ad-hoc
 function runs, state applies, and highstates. Admins share the same flows
 plus user/settings management. Viewers see everything and change nothing.
+Enterprise fleets scope that down: team roles on a minion slice
+(team-viewer, team-operator, team-state, secrets-reader, scheduler,
+team-lead), duty roles (security-reader, auditor, key-custodian,
+file-reader, file-editor), and service accounts with Bearer tokens for
+CI. A scoped `*` runs on the caller's minions only, never the fleet.
 
 ## Product Purpose
 
@@ -30,11 +35,13 @@ type-to-confirm. No multi-master abstraction; one Overstate per master.
 
 Routine ops usage: planned runs, repeat jobs, saved jobs and presets
 (test.ping, state.apply, highstate, dry-run). Roles gate actions
-(viewer < operator < admin); buttons above the user's role do not render
-and the server rejects forged requests. Local password login plus OIDC
-SSO (new OIDC users land as viewers until an admin promotes them).
-Targets: glob, list, grain, compound, nodegroup, saved group.
-Transports: local (async default) and salt-ssh (sync only, 180s timeout,
+(viewer < operator < admin, or scoped grants of fourteen built-in roles
+on fleet/minion/file slices); buttons above the user's grant do not
+render and the server rejects forged requests. Local password login
+plus OIDC SSO (new OIDC users land as viewers in legacy, with nothing
+in scoped mode until mapped or granted). Targets: glob, list, grain,
+compound, nodegroup, saved group. Transports: local (async default)
+and salt-ssh (sync only, fleet-only under scoped RBAC, 180s timeout,
 synthetic JID).
 
 ## Capabilities and Constraints
@@ -50,6 +57,12 @@ synthetic JID).
 - Keys accept/reject, saved minion groups as first-class targets,
   mine browser, pillar and SLS file browsers, schedules, state
   conformity watch, live event stream, audit trail.
+- Scoped RBAC (rbac_mode): grants union with no denies; state results
+  vs pillar documents are separate permissions; schedules/reactors
+  authorize at define time; batches, orchestrate, and refresh
+  re-check at fire; rollback is rbac_mode=legacy.
+- CI endpoint: POST /api/jobs/run with a Bearer [REDACTED] pinned saved job
+  (or unpinned read-class calls), per-token rate limit, no cookies.
 - Saved minion groups are first-class targets, managed on /groups/.
 - Fleet-wide or slow Salt calls run on an RQ worker (Redis transport)
   with a synchronous inline fallback; the stack works without the
@@ -70,8 +83,9 @@ No logo, custom font, or marketing voice to preserve.
 - `docs/install-kubernetes.md`: production install walkthrough.
 - `docs/architecture-kubernetes.md`: design, assumptions, risks.
 - `docs/developer.md`: conventions, tests, lint, coverage, deps.
-- Full pytest suite (266 tests) covering job flows, batches,
-  auth/RBAC, inventory, and deploy artifacts.
+- Full pytest suite (976 tests) covering job flows, batches,
+  auth/RBAC (legacy ladder plus scoped grants), inventory, and deploy
+  artifacts.
 
 ## Product Principles
 

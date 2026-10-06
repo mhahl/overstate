@@ -124,7 +124,7 @@ already says so. Only claim "unreachable" once polling settled. #}
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base">salt-api health</h2>
         <span class="badge badge-sm ms-auto {{ 'badge-success' if stats.reachable else ('badge-neutral' if probing else 'badge-error') }}">{{ "reachable" if stats.reachable else ("checking" if probing else "unreachable") }}</span>
-        {% if current_user.role in ("admin", "operator") %}
+        {% if (current_user.role in ("admin", "operator") and not rbac_scoped) or (rbac_scoped and can('dashboard.probe')) %}
         <form method="post" action="{{ url_for('dashboard.check_now') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-xs btn-ghost" title="Re-run the capability probes now">Check now</button>
@@ -184,7 +184,7 @@ already says so. Only claim "unreachable" once polling settled. #}
       {% if masters.images_differ %}
       <p class="text-xs text-warning mt-2">Pods run different images. Let the rollout finish, then check the StatefulSet.</p>
       {% endif %}
-      <p class="text-xs opacity-70 mt-2">Config rev <span class="font-mono">{{ masters.config_revision or "unknown" }}</span>{% if current_user.role == "admin" %} · <a class="link" href="{{ url_for('masterconfig.index') }}">Master Settings</a>{% endif %}</p>
+      <p class="text-xs opacity-70 mt-2">Config rev <span class="font-mono">{{ masters.config_revision or "unknown" }}</span>{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %} · <a class="link" href="{{ url_for('masterconfig.index') }}">Master Settings</a>{% endif %}</p>
       {% elif masters or not probing %}
       <p class="text-sm opacity-70 mt-1">Master status unavailable. No cluster connection from here.</p>
       {% else %}

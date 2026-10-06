@@ -78,7 +78,7 @@
             <p><span class="flex items-center justify-center size-8 rounded-full bg-base-200 mx-auto"><span class="icon-[lucide--inbox] size-4" aria-hidden="true"></span></span></p>
             <p class="font-medium mt-2">No grain data</p>
             <p class="text-sm text-base-content/60">Refresh the inventory or inspect the minion.</p>
-            {% if current_user.role in ["operator", "admin"] %}
+            {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}
             <p class="mt-3"><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}">Run a job</a></p>
             {% endif %}
           </div>
@@ -104,7 +104,7 @@
           {% else %}
           <p class="text-sm text-base-content/60">No jobs have run on this minion.</p>
           {% endif %}
-          {% if current_user.role in ["operator", "admin"] %}
+          {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}
           <p><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}" data-loading-link data-loading-text="Loading…">Run job on this minion</a></p>
           {% endif %}
         </div>
@@ -193,7 +193,7 @@
 <div class="p-4 flex flex-col gap-4">
 <div class="flex flex-wrap items-center gap-2">
   <p class="font-semibold me-auto">States</p>
-  {% if current_user.role in ["operator", "admin"] %}
+  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('pillar.read', minion=mid)) %}
   <form method="post" action="{{ url_for('minions.states_refresh', mid=mid) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-outline">Refresh from minion</button>
@@ -230,7 +230,7 @@
 <td class="font-mono text-xs break-all whitespace-pre-wrap">{{ conf | tojson(indent=1) }}</td>
 <td>{% if name in data.beacon_pillar %}<span class="badge badge-sm badge-outline">pillar</span>{% else %}<span class="badge badge-sm badge-ghost">minion</span>{% endif %}</td>
 <td class="text-right">
-  {% if current_user.role in ["operator", "admin"] %}
+  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('beacon.write', minion=mid)) %}
   <span class="join join-horizontal">
   <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
   <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='disable') }}" data-confirm="Disable beacon '{{ name }}' on {{ mid }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
