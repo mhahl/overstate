@@ -262,8 +262,8 @@ built.
    systems would otherwise diverge); export renders the union for
    pasting into the stanza. Tests: missing-roots bootstrap, admin
    gate, operator v4 flows untouched.
-6. **Docs + audit polish.** Create the missing `docs/guides/install-kubernetes.md`
-   (secret creation, apply, restore runbook); `docs/guides/user.md` Master Config
+6. **Docs + audit polish.** `docs/guides/install-kubernetes.md` (secret
+   creation, apply, restore runbook); `docs/guides/user.md` Master Config
    section (scope, blocking validation, stale flow, restart semantics);
    verify every new mutation logs by grepping audit rows in tests.
 7. **Cluster-trio manifests (built).** `salt-master.yaml` at `replicas: 3`
@@ -301,8 +301,10 @@ built.
 9. **Accept-on-all-three + publish fan-out + trio drill (built, drill
    pending).** Keys page fans acceptance to all three pods with per-pod
    state and audit; every Jobs publish fans out to all three pods
-   (per-pod salt-api DNS through the headless service,
-   `overstate_ui/fleet.py`) under one shared JID with results merged into
+   (per-pod salt-api DNS through the headless service;
+   `overstate_ui/fleet.py` builds the per-pod client list and
+   `overstate_ui/jobs_service.py` `_publish_all_async` publishes the one
+   shared JID through each client) under one shared JID with results merged into
    one view. An unreachable pod degrades, never silently splits.
    Convergence help: hourly `key-reconcile` CronJob plus the Keys-page
    **Review & reconcile** button (same-fingerprint accept-only rule).

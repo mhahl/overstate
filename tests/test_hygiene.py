@@ -125,7 +125,7 @@ def test_index_sync_failure_logged(monkeypatch, caplog):
 
 
 def test_deployment_docs_match_writable_app_mount():
-    text = (REPO / "docs" / "install-kubernetes.md").read_text()
+    text = (REPO / "docs" / "guides" / "install-kubernetes.md").read_text()
     assert "srv-data" in text
     assert "masters read-only" in text
 
