@@ -32,8 +32,8 @@ services:
       - ./salt-srv:/srv/states:rw
       - ./salt-config/tls:/srv/tls:ro
       # Push over SSH in dev (optional): place a deploy key plus
-      # known_hosts in ./salt-config/ssh/ and uncomment the next line,
-      # then export the same GIT_SSH_COMMAND docs/deployment.md shows.
+      # known_hosts in ./salt-config/ssh/ and uncomment the next line.
+      # Deploy-key setup is operator-owned and not documented in-repo.
       # - ./salt-config/ssh:/srv/ssh:ro
     depends_on:
       - postgres

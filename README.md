@@ -1,6 +1,6 @@
 # Overstate
 
-Overstate is a web UI in front of one Salt master. You accept keys,
+Overstate is a web UI in front of Salt. You accept keys,
 fire jobs, apply states, and read the results here. Salt still does
 the work. Every button maps to a real Salt call, and the UI shows the
 JID so you can trace each action.
@@ -15,7 +15,7 @@ before they fire.
 Flask and Jinja on the server, daisyUI in the browser, Postgres for
 state, Redis and RQ for background Salt calls. Long queries run on a
 worker; the app runs them inline when the worker is down. Salt stays
-outside the containers and talks to the app through salt-api.
+behind salt-api; the app never embeds a master.
 
 ## Run it locally
 
@@ -58,10 +58,19 @@ and applies with one command:
 kubectl apply -k deploy/kubernetes
 ```
 
-Read `docs/install-kubernetes.md` for the setup walkthrough
+Read `docs/guides/install-kubernetes.md` for the setup walkthrough
 (secrets first, then apply, then verify) and
-`docs/architecture-kubernetes.md` for the design, assumptions, and
-risks behind the manifests.
+`docs/reference/architecture-kubernetes.md` for the design, assumptions, and
+risks behind the manifests. There is no supported bare-metal install yet:
+the compose stack above is for local development only.
+
+## Documentation
+
+[`docs/README.md`](docs/README.md) is the index. It covers the how-tos in
+`docs/guides/` (user guide, admin guide, Kubernetes install,
+developer guide), the design notes in `docs/reference/` (RBAC, SSO,
+TLS, returner, topology, upstream Salt patches, the Kubernetes
+architecture), plus `docs/plans/` and `docs/history/`.
 
 ## Layout
 
@@ -70,7 +79,7 @@ risks behind the manifests.
 - `tests/` holds the pytest suite, one file per area.
 - `deploy/kubernetes/` holds the production manifests (Kustomize).
 - `scripts/` holds dev helpers (`dev-up.sh`, `seed-mock.sh`, …).
-- `docs/` holds operator, deployment, and developer guides.
+- `docs/` holds the documentation tree described above.
 
 ## License
 

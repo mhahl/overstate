@@ -10,8 +10,18 @@ reports what Salt returned for that JID.
 ```
 overstate_ui/        Flask package. One module per blueprint.
   __init__.py        App factory (create_app), theme plumbing.
+  config.py          Environment-only configuration; secrets never go
+                     in the DB.
   auth.py            Local login, OIDC, roles, seed_admin.
+  authz.py           Scoped RBAC evaluator: roles, scopes, constrain.
+  api.py             Bearer-token CI endpoint (POST /api/jobs/run).
   salt_client.py     salt-api wrapper: wheel, local, runner, events.
+  fleet.py           Per-pod salt-api clients across the master pods
+                     (headless DNS). Same-JID publish fan-out lives in
+                     jobs_service.py (`_publish_all_async`).
+  k8s.py             Minimal in-cluster Kubernetes client (stdlib only):
+                     ConfigMap read/replace, StatefulSet restart, pod
+                     listing.
   db.py              Engine, session, create_all.
   models.py          SQLAlchemy models.
   inventory.py       Grains snapshot refresh (RQ-safe import path).
@@ -19,26 +29,53 @@ overstate_ui/        Flask package. One module per blueprint.
   settings.py        DEFS, SECTIONS, env fallback, settings routes.
   dashboard.py       Live stats + Postgres history.
   minions.py         List, detail, presence, CSV, onboard wizard.
-  keys.py            Key tabs and wheel actions.
+  minions_helpers.py Roster merge, grains, onboarding, beacons: pure
+                     helpers behind the minions routes.
+  groups.py          Saved minion groups for the group job target.
+  keys.py            Key tabs and wheel actions fanned out to every
+                     reachable master pod.
   jobs.py            Run form, presets, history, detail, SSE stream.
+  jobs_helpers.py    Job-runner constants and pure helpers (no routes,
+                     no Salt calls).
+  jobs_service.py    Job service layer: returner sync, live cache,
+                     launch, batches. Called by routes and workers.
+  console.py         Browser salt-master CLI console: salt-style
+                     commands mapped onto the same guardrails as the
+                     job runner (allowlist, confirm gate, audit row).
   states.py          Conformity, watched SLS list, recompute.
   schedules.py       Per-minion schedule CRUD through salt-api.
   pillar.py          Live pillar, snapshots, diff.
+  mine.py            Mine browser: read mine data by target and
+                     function (read-only).
   files.py           File-roots browser: operator edit/save (one commit
                      per save) plus admin push; listing/view stay
                      viewer-visible.
   git_sync.py        Checkout status, ff-only sync, single-file commit,
                      upstream push. Fixed git argv, no shell, bounded
                      timeouts, one-at-a-time lock, fixed failure words.
+  masterconfig.py    Master Config: own the salt-master ConfigMap from
+                     the browser (admin-only; snapshot to history, then
+                     PUT-replace through the in-cluster client).
+  reactor.py         Master reactor mapping: list, inspect SLS,
+                     add/delete, export to file. Mapping writes go
+                     through the owned ConfigMap, live changes through
+                     the reactor runner fanned out to every pod.
   events.py          Filtered event-bus viewer and stream.
   users.py           Users, grants, local groups, service accounts.
-  authz.py           Scoped RBAC evaluator: roles, scopes, constrain.
-  api.py             Bearer-token CI endpoint (POST /api/jobs/run).
+  tasks.py           Background Salt queries over RQ: compatibility
+                     facade re-exporting the task modules below.
+  tasks_queue.py     RQ plumbing: queue access, short waits, app
+                     contexts, capability cache.
+  tasks_salt.py      Per-domain Salt wrappers, inline or on RQ workers.
+  tasks_k8s.py       Kubernetes status probes, inline or on RQ workers.
+  tasks_batch.py     Gated wave batches and orchestration runs over RQ.
+  reconcile_cli.py   Hourly key-reconcile CronJob entrypoint
+                     (`python -m overstate_ui.reconcile_cli`).
   seed_mock.py       Mock-data seeder for UI work without Salt.
-  tasks.py           RQ task functions, queue helper, capability probes.
   worker.py          RQ worker entrypoint (`python -m overstate_ui.worker`).
   wsgi.py            gunicorn entrypoint.
-  templates/         Jinja pages plus _rows partials for HTMX.
+  templates/         50 templates: Jinja pages plus _rows partials for
+                     HTMX.
 alembic/             Migrations. The entrypoint runs upgrade head.
 tests/               pytest suite, one file per area.
 salt-config/         Dev master config: api.conf, dev.conf,

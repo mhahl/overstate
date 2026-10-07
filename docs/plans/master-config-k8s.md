@@ -90,8 +90,7 @@ auto-restart) carry over unchanged.
   `/srv/states/reactor` in-cluster (`app.yaml:86-87`), but nothing seeds that
   directory — the seed initContainer only creates `/srv/states/salt`
   (`app.yaml:26-34`).
-- Gaps found this run: `docs/guides/install-kubernetes.md` is referenced by the
-  kustomization header but does not exist; `tests/test_deploy.py` asserts only
+- Gaps found this run: `tests/test_deploy.py` asserts only
   Caddyfile/Quadlet artifacts, nothing under `deploy/kubernetes/`; the app
   runs 2 replicas, so any in-process single-flight lock does not exclude
   cross-replica races on shared state.

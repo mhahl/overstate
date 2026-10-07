@@ -32,8 +32,8 @@ before the Fire button is touched.
   shows function, target, matched minions, mode (`job_confirm.html:7-34`)
   and posts back with `confirmed=yes`. `test=True` state runs
   skip review entirely (`jobs.py:85-88`).
-- `state.show_sls` is granted (`salt-config/api.conf:18`,
-  mirrored in `docs/deployment.md:93`) and nothing calls it.
+- `state.show_sls` is granted in `salt-config/api.conf` (the
+  `state.*` grant lines) and nothing calls it.
 - Live contract, verified on the dev master this run:
   `state.show_sls <sls>` renders against the targeted minion
   (default saltenv `base`, no topfiles); return shape is

@@ -1,5 +1,12 @@
 # Overstate
 
+> **Status: historical.** This is the original v1 product plan, kept for
+> context only. Its v1 goals shipped, and several "non-goals" below
+> (master config editing, SLS/pillar editor, multi-user ACL, OIDC, git
+> backends) are now implemented — see `docs/guides/` and
+> `docs/reference/` for current behavior. Do not treat this document as
+> live scope; the container counts and examples describe the v1 era.
+
 A Salt GUI for managing minions, keys, jobs, schedules, and state application on Linux fleets (openSUSE, Fedora, and friends).
 
 Named after Salt’s old orchestration layer that sat *above* highstate. The GUI is the thing that thinks it is in charge of the run.

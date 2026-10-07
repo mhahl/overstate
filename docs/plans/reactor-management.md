@@ -72,8 +72,9 @@ Viewers get read-only access.
   mappings outside it still list with "source not browsable here".
 - Known divergence (documented, not hidden): `reactor.add/delete`
   writes master reactor config, not the git checkout — unlike
-  file-roots, the mapping is master-config state. The page and
-  `docs/deployment.md` will say so.
+  file-roots, the mapping is master-config state. The page says
+  so, and `docs/guides/user.md` (Reactor: two truths — "The app
+  never writes your repo.") documents the same.
 
 ## Work Plan (staged on D1)
 1. Read path: `overstate_ui/reactor.py` (`GET /reactor/`, `GET

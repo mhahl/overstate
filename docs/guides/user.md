@@ -46,7 +46,7 @@ expect is missing, your scope does not include it; ask your team lead
 or admin. Automation on such sites runs as service accounts with
 single-use tokens, never as a shared human login. Your admin's grant
 and scope summary, and what each team role allows, is in
-`docs/rbac.md`.
+`docs/reference/rbac.md`.
 
 ## Dashboard
 
@@ -63,7 +63,7 @@ The dashboard answers one question: is the fleet healthy right now.
   service account may call wheel and runner endpoints. If this panel
   shows unreachable, every other number on the page is suspect. Tell
   your admin.
-- **Salt masters.** The two master pods: rollout state (complete or
+- **Salt masters.** The three master pods: rollout state (complete or
   progressing with updated/ready counts), each pod's readiness, image,
   and restart count, plus the live config revision. A different image
   across pods means a rollout is mid-flight — or stuck.
@@ -158,7 +158,7 @@ minions that still run reappear as pending, which is normal.
 
 Each row also shows which master pod holds which state. After a master
 scale-up or outage, a minion can sit pending on one pod while accepted
-on the other — finish it with **Review & reconcile**, which accepts a
+on another pod — finish it with **Review & reconcile**, which accepts a
 key on a pod only if another pod already trusts the identical
 fingerprint. Keys nobody trusts, mismatched fingerprints, and anything
 rejected stay for you to decide by hand. An hourly job runs the same

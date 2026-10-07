@@ -110,7 +110,7 @@ spec:
               mountPath: /home/salt/data/keys
             # Shared master identity: the same keypair on all three pods, from
             # the owner-held `salt-master-keys` Secret (see
-            # docs/install-kubernetes.md). subPath file mounts leave the
+            # docs/guides/install-kubernetes.md). subPath file mounts leave the
             # rest of the keys dir (accepted minions) on the PVC.
             - name: master-keypair
               mountPath: /home/salt/data/keys/master.pem
@@ -120,7 +120,7 @@ spec:
               mountPath: /home/salt/data/keys/master.pub
               subPath: master.pub
               readOnly: true
-            # Pinned cluster identity (docs/install-kubernetes.md §6):
+            # Pinned cluster identity (docs/guides/install-kubernetes.md §6):
             # owner-held Secret salt-master-cluster-keys with keys
             # cluster.pem and cluster.pub. The entrypoint copies them
             # onto the PVC before salt-master starts so a pod cannot

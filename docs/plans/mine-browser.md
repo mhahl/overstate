@@ -55,8 +55,9 @@ staleness story and a one-click refresh path.
   (cache-destructive) are excluded on purpose; no new
   mutations, no new tables or migrations.
 - Grant change ships with the code: add `mine.*` to
-  `salt-config/api.conf` and the `docs/deployment.md` mirror
-  (grill M2). Delete/flush stay UI-less in v1.
+  `salt-config/api.conf` — the only place `mine.*` is granted;
+  there is no deployment-guide mirror (grill M2). Delete/flush
+  stay UI-less in v1.
 - Non-goals: mine-function discovery UI (no index call
   exists), per-value history or diffing, `mine.send` from the
   UI, presence subscriptions.
@@ -98,8 +99,9 @@ two docs lines. No sequencing boundary inside it is worth a
 split.
 
 ## Work Plan
-1. **Grant.** Add `- mine.*` to `salt-config/api.conf` and
-   the `docs/deployment.md` grant block (grill M2).
+1. **Grant.** Add `- mine.*` to `salt-config/api.conf` — the
+   only grant file; there is no deployment-guide mirror (grill
+   M2).
 2. **Blueprint.** New `overstate_ui/mine.py` + registration
    in `__init__.py`: `GET /mine` (login_required) reads
    target/tgt_type/fun from the query string, resolves saved
@@ -115,7 +117,7 @@ split.
    table renders, empty explains, denial flashes, viewer
    reads; group target resolves to list).
 5. **Docs.** `docs/guides/user.md` short Mine section (the
-   `docs/deployment.md` grant block is covered by step 1).
+   grant itself is covered by step 1).
 
 ## Validation Plan
 - `.venv/bin/pytest -q` green; new `tests/test_mine.py`; no

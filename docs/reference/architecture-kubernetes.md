@@ -1,7 +1,6 @@
 # Kubernetes architecture: Overstate + Salt master trio
 
-How-to lives in `install-kubernetes.md`; the non-Kubernetes path lives in
-`deployment.md`. This document explains **what** runs on the cluster,
+How-to lives in `docs/guides/install-kubernetes.md`. This document explains **what** runs on the cluster,
 **why** it is shaped this way, what it assumes, where it can break, and
 whether Kubernetes is the right home for it at all.
 
@@ -41,11 +40,11 @@ Non-goals:
                     └──────────────┬─────────────────────────────┘
                                    │ ClusterIP
                     ┌──────────────▼─────────────────────────────┐
-                    │ app Deployment ×2 (Django + gunicorn)      │
+                    │ app Deployment ×2 (Flask + gunicorn)       │
                     │  UI, salt-api fan-out, ConfigMap edits     │
                     └──────┬───────────────┬─────────────┬───────┘
                            │               │             │
-              per-pod salt-api ×2    Redis ×1      CNPG Postgres ×1
+              per-pod salt-api ×3    Redis ×1      CNPG Postgres ×1
               (headless DNS)     (sessions,   (app DB `overstate`
               publish + keys      cache,       + job cache `salt`)
               fan-out             queues)
@@ -79,7 +78,7 @@ Component inventory (all in `deploy/kubernetes/`):
 | `key-reconcile` | CronJob, hourly | One Job at a time (`Forbid`) | Completes same-fingerprint key trust across pods; read-only on the cluster |
 | `salt-master-db` | Secret (owner-held) | — | `returner.conf` drop-in (PG password) |
 | `salt-master-keys` | Secret (owner-held) | — | Shared master keypair (fleet identity) |
-| `overstate-secrets` | Secret (owner-held) | — | Django, admin, Redis, salt-api passwords |
+| `overstate-secrets` | Secret (owner-held) | — | Flask, admin, Redis, salt-api passwords |
 | IngressRoute + Certificate | Traefik / cert-manager | — | Public HTTPS for the UI |
 
 ## 3. The three decisions that shape everything
@@ -87,25 +86,29 @@ Component inventory (all in `deploy/kubernetes/`):
 **3.1 Publish buses are per-master, so the UI fans out every publish.**
 A ZeroMQ publish on pod-0 only reaches minions whose long-lived
 connection currently terminates on pod-0. There is no shared bus. So
-`overstate_ui/fleet.py` publishes every job to **both** pods with the
-**same JID**. Each single-homed minion therefore receives the job exactly
-once (from whichever pod it is attached to), executes once, and returns
-once — to that same pod. This is the load-bearing invariant of the whole
-cluster; section 7 lists what breaks if it is violated.
+the UI publishes every job to **all three** pods with the **same
+JID**: `overstate_ui/fleet.py` builds the per-pod client list
+(`pod_clients`), and `overstate_ui/jobs_service.py`'s
+`_publish_all_async` publishes that one JID through each client.
+Each single-homed minion therefore receives the job
+exactly once (from whichever pod it is attached to), executes once, and
+returns once — to that same pod. This is the load-bearing invariant of
+the whole cluster; section 7 lists what breaks if it is violated.
 
 **3.2 Master identity is shared, accepted keys are not.**
 All three pods mount the same `master.pem`/`master.pub` from the owner-held
 `salt-master-keys` Secret, so from a minion's perspective there is one
-master identity: either pod authenticates, and a pod reschedule never
+master identity: any pod authenticates, and a pod reschedule never
 forces re-enrollment. But Salt stores accepted minion keys as files in
-the local PKI dir, and two masters must never share one PKI dir
+the local PKI dir, and no two masters may share one PKI dir
 concurrently (no locking — shared writes corrupt it). Hence accepted
 keys live on **per-pod PVCs** that survive reschedules, and every key
 mutation (accept, reject, delete) is fanned out to all three pods by
-`overstate_ui/keys.py` (`accept-on-both`). The Keys roster shown in the
+`overstate_ui/keys.py` (idempotent wheel calls on every reachable pod).
+The Keys roster shown in the
 UI is the **union** of all three pods with per-pod state chips.
 
-**3.3 Job history lives in Postgres, not on either master.**
+**3.3 Job history lives in Postgres, not on any master.**
 Salt's default local job cache dies with its pod. All three masters run
 the stock `pgjsonb` returner (`master_job_cache: pgjsonb`, flat
 `returner.pgjsonb.*` keys) against the shared `overstate` database on
@@ -128,9 +131,9 @@ the one store the UI renders. The returner credentials arrive as the
   StatefulSet rolls one pod at a time → health poll per pod.
   Bad-edit recovery is UI-first (**Revert to last snapshot**); if the UI
   itself is locked out, the kubectl fallback is in
-  `install-kubernetes.md` §3.
+  `docs/guides/install-kubernetes.md` §3.
 - **File roots:** the app holds the single writer (git checkout onto
-  `srv-data`, RWX); both masters mount it read-only and serve states
+  `srv-data`, RWX); the masters mount it read-only and serve states
   from it. No master ever writes states.
 - **Reactor:** reactor SLS bodies are admin-gated in the UI and seeded
   via `salt-seed.yaml`. Each master runs its own reactor on its own
@@ -145,14 +148,15 @@ the one store the UI renders. The returner credentials arrive as the
 
 | Secret | Held by | Contains | Rotation cost |
 |---|---|---|---|
-| `overstate-secrets` | Owner | Django, admin, Redis, salt-api passwords | Regenerate + restart all workloads |
+| `overstate-secrets` | Owner | Flask, admin, Redis, salt-api passwords | Regenerate + restart all workloads |
 | `salt-master-keys` | Owner | Shared master keypair | **Fleet-wide identity change** (roll pods one at a time, every minion must trust the new key before the last old pod leaves) |
 | `salt-master-cluster-keys` | Owner | Pinned `cluster.pem` / `cluster.pub` | **Fleet-wide cluster identity** (entrypoint copies onto each PVC before the daemon can mint; minions cache this as `minion_master.pub`) |
 | `salt-master-db` | Owner | Returner PG password | Replace Secret, roll pods one at a time |
 | `overstate-db-app`, `-superuser` | CNPG | App/superuser PG passwords | CNPG-managed |
 
-Rules: secrets are created by hand (`install-kubernetes.md` §1, §4,
-§5), never committed, never mounted where the UI could echo them. The
+Rules: secrets are created by hand (`docs/guides/install-kubernetes.md` §1, §4,
+§5, and §6 — §6 is the cluster key), never committed, never mounted where the
+UI could echo them. The
 app's Kubernetes RBAC is a namespace-scoped Role (no ClusterRole):
 it may PUT-replace exactly the two config ConfigMaps and restart
 exactly the master StatefulSet.
@@ -173,15 +177,15 @@ exactly the master StatefulSet.
 ## 7. Assumptions (explicit)
 
 1. **Minions are single-homed.** Each minion holds exactly one master
-   connection (via the MQ VIP). A minion ever connected to both pods
-   (e.g. a multi-master `master:` list) would receive fanned-out jobs
+   connection (via the MQ VIP). A minion ever connected to more than one
+   pod (e.g. a multi-master `master:` list) would receive fanned-out jobs
    twice and execute twice.
 2. **Fan-out availability beats consistency.** A publish or key action
    that reaches only one pod (other down) is accepted as done on one
    pod; no distributed transaction, no retry queue. Divergence is
    reconciled by re-running the action, not by automation.
 3. **Key state converges within the hour, not instantly.**
-   Accept-on-both replicates what the UI does; the hourly reconcile
+   The key fan-out replicates what the UI does; the hourly reconcile
    (plus the one-click button) completes same-fingerprint trust after
    scale-ups and outages. Anything rejected/denied, globally pending,
    or fingerprint-mismatched still needs a human, surfaced via the
@@ -190,7 +194,7 @@ exactly the master StatefulSet.
    accepted before a later pod joined (e.g. pod-2) are unknown there
    until re-accepted or reconciled; minions that land on the new pod
    show as pending there.
-5. **Clocks and DNS are trustworthy.** Same-JID fan-out assumes both
+5. **Clocks and DNS are trustworthy.** Same-JID fan-out assumes all
    pods agree on time; per-pod fan-out assumes headless DNS resolves.
 6. **The out-of-repo halves exist.** Traefik 4505/4506 entrypoints, DNS,
    and the storage class are managed elsewhere; the in-repo MQ routes
@@ -218,9 +222,9 @@ exactly the master StatefulSet.
   reconcile** on the Keys page. Both apply one rule only: accept on a
   pod what another pod already trusts with the identical fingerprint.
   Residual gap: quarantine by single-pod delete (instead of reject)
-  gets re-completed on next minion contact — documented in `user.md`.
+  gets re-completed on next minion contact — documented in `docs/guides/user.md`.
 - **8.3 Postgres is instances: 1.** The shared job cache — the one
-  component both masters depend on for consistent history — is a
+  component all masters depend on for consistent history — is a
   single instance. CNPG will recover it, but during the outage returns
   are lost, not queued. The HA story for masters is stronger than the
   HA story for the thing that makes them look like one master.
@@ -275,7 +279,7 @@ exactly the master StatefulSet.
   first preflight always sees peers. `cluster_peers` is the other
   members (self only for a solo replica). Sibling churn restamps that
   file and does not restart the daemon. Scale one step at a time with
-  the §7 runbook in `install-kubernetes.md`; the entrypoint discovers
+  the §7 runbook in `docs/guides/install-kubernetes.md`; the entrypoint discovers
   members via the API (dedicated read-only ServiceAccount), prunes
   dead peer keys and bounces stalled joins only on a complete replica
   view — constructed-name fallback keeps stamp-only behavior.
@@ -332,8 +336,8 @@ What it costs:
 
 Alternatives considered:
 
-- **Single master on a VM + Overstate beside it** (`deployment.md`
-  path): simplest possible, fewest moving parts. Right if the fleet
+- **Single master on a VM + Overstate beside it:** simplest possible,
+  fewest moving parts. Right if the fleet
   tolerates a maintenance window for master restarts and the owner
   prefers pets over cattle. Loses browser config editing, versioned
   restarts, and cheap failover.
@@ -356,5 +360,5 @@ the simple topology.
 
 - Pod-kill failover drill (minion reconnect, publish during outage,
   merged history) — owner-scheduled.
-- Second-minion join against the trio (validates accept-on-both on a
+- Second-minion join against the trio (validates the key fan-out on a
   fresh key, and the reconcile path for pre-pair keys).

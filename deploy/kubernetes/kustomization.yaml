@@ -6,7 +6,7 @@
 #   kubectl apply -k deploy/kubernetes
 #
 # Secrets are NOT committed. Create them before the first apply
-# (docs/install-kubernetes.md §1, §4, §6) or salt-master pods stay
+# (docs/guides/install-kubernetes.md §1, §4, §6) or salt-master pods stay
 # CreateContainerConfigError:
 #
 #   overstate-secrets
