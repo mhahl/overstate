@@ -114,7 +114,7 @@ split.
 4. **Tests.** New `tests/test_mine.py` (stubbed `mine.get`:
    table renders, empty explains, denial flashes, viewer
    reads; group target resolves to list).
-5. **Docs.** `docs/user.md` short Mine section (the
+5. **Docs.** `docs/guides/user.md` short Mine section (the
    `docs/deployment.md` grant block is covered by step 1).
 
 ## Validation Plan

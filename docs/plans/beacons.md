@@ -25,7 +25,7 @@ never edited from the UI.
   POSTs are rejected server-side.
 - A down or denying minion produces an inline error, never a fake
   success.
-- `.venv/bin/pytest -q` stays green; `docs/user.md` describes the
+- `.venv/bin/pytest -q` stays green; `docs/guides/user.md` describes the
   new controls.
 
 ## Context And Current Facts
@@ -48,7 +48,7 @@ never edited from the UI.
 - `tests/test_keys_minions.py:46-48` stubs `beacons.list`
   returning `{}`; no test exercises beacon toggles, parsing, or
   gating.
-- `docs/user.md:99` documents "Beacons. Beacon configuration,
+- `docs/guides/user.md:99` documents "Beacons. Beacon configuration,
   read-only." — that line must be updated to list-plus-toggle.
 - Salt 3006 `salt.modules.beacons` (inspected 2026-09-13,
   https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.beacons.html):
@@ -103,7 +103,7 @@ never edited from the UI.
 5. Tests: new `tests/test_beacons.py` (stubbed client: list
    renders entries, toggles publish correct fun/args plus audit
    rows, viewer POSTs get 403, denial path flashes).
-6. Docs: `docs/user.md` Beacons bullet and section; grant note
+6. Docs: `docs/guides/user.md` Beacons bullet and section; grant note
    in deploy docs.
 
 ## Validation Plan

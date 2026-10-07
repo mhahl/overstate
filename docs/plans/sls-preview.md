@@ -110,7 +110,7 @@ docs line. No sequencing boundary inside it is worth a split.
    `state.show_sls`): preview renders state IDs with minion
    label; denial renders the note with Fire intact; `test.ping`
    and `test=True` flows show no preview section.
-5. **Docs.** One paragraph in `docs/user.md` Jobs/confirm
+5. **Docs.** One paragraph in `docs/guides/user.md` Jobs/confirm
    area: what the preview shows, which minion renders it,
    base saltenv, advisory-only.
 

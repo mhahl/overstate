@@ -1,6 +1,6 @@
 # Install Overstate on Kubernetes
 
-Design rationale, assumptions, and risks: `architecture-kubernetes.md`.
+Design rationale, assumptions, and risks: `docs/reference/architecture-kubernetes.md`.
 This page is the how-to.
 
 Production target: a cluster with Traefik (443 ingress plus the

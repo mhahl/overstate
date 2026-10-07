@@ -38,5 +38,5 @@ our certs over the image's paths and restarts salt-api; `dev-up.sh` and
 - Master pods mint their own self-signed salt-api cert at boot and the
   app currently reaches them with `SALT_API_VERIFY_CA=false`
   (in-cluster only). Pinning the CA is an open TODO in the manifests
-  (see `docs/architecture-kubernetes.md` §8.5).
+  (see `docs/reference/architecture-kubernetes.md` §8.5).
 - Never set `SALT_API_VERIFY_CA=false` outside the cluster.

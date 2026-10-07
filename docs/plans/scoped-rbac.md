@@ -38,7 +38,7 @@ def roles_required(*roles: str):
 
 `User.role` is a single `String(16)` column (`overstate_ui/models.py`). `seed_admin` inserts an `admin` only when `users` is empty. Local passwords are argon2. Login is rate-limited (`RATE_LIMIT = 10`, `RATE_WINDOW = 60`) in Redis with a process-memory fallback.
 
-OIDC (`provision_oidc_user`, `role_for_groups`) JIT-creates a user keyed on `(oidc_issuer, oidc_sub)` and never merges into a local account. Each login overwrites `user.role` from the groups claim (`oidc_groups_claim`, default `groups`): intersection with `oidc_admin_groups`, else `oidc_operator_groups`, else `viewer`. Manual edits on the Users page do not survive the next login. `docs/developer.md` states that this overwrite is intentional: one column must not be split-brained. `docs/admin.md` and `docs/sso.md` document the same rule.
+OIDC (`provision_oidc_user`, `role_for_groups`) JIT-creates a user keyed on `(oidc_issuer, oidc_sub)` and never merges into a local account. Each login overwrites `user.role` from the groups claim (`oidc_groups_claim`, default `groups`): intersection with `oidc_admin_groups`, else `oidc_operator_groups`, else `viewer`. Manual edits on the Users page do not survive the next login. `docs/guides/developer.md` states that this overwrite is intentional: one column must not be split-brained. `docs/guides/admin.md` and `docs/reference/sso.md` document the same rule.
 
 `MinionGroup` (`minion_groups`) is a named JSON member list. Operators CRUD it (`overstate_ui/groups.py`). Job target types are `glob`, `list`, `grain`, `compound`, `nodegroup`, and `group` (`jobs_helpers.TGT_TYPES`). `resolve_group_target` and `resolve_batch_roster` already pin list, glob, and group targets to the `minions` snapshot locally. Grain, compound, and nodegroup return `None` from `resolve_batch_roster` and are forwarded to Salt unchanged. `settings.default_target` defaults to `*`. `suggest_glob` returns `*` when the selection covers the roster it was given (`jobs_helpers.py`).
 
@@ -65,7 +65,7 @@ An enterprise IdP already has the teams. Overstate can see those group names onl
 | Page-render authz budget | ≤ 30 ms p99, excluding Salt, template render, and password hashing | One grant query + at most one `SELECT id, grains FROM minions`, memoized on `flask.g`. |
 | Job-submit authz budget | ≤ 50 ms p99 before publish | Same work, then build a list target. Publish, salt-api, and argon2 token verify are outside this budget. |
 
-A 3,000-id snapshot load is about 1–2 MB of the small `SNAPSHOT_GRAINS` documents (not full `grains.items`) and stays inside that budget in process. Grain matching is Python on that list, not a Postgres `->>` predicate: `->>` is not valid SQLite, and the test suite plus the tripwire run on SQLite (`docs/developer.md`). A comma-separated list target of a few thousand ids is a ~50–100 KB salt-api body, acceptable at this size and not a design point beyond it. Glob matching 3,000 ids in Python (`fnmatch.fnmatchcase`, the same function `resolve_batch_roster` uses) is under a millisecond.
+A 3,000-id snapshot load is about 1–2 MB of the small `SNAPSHOT_GRAINS` documents (not full `grains.items`) and stays inside that budget in process. Grain matching is Python on that list, not a Postgres `->>` predicate: `->>` is not valid SQLite, and the test suite plus the tripwire run on SQLite (`docs/guides/developer.md`). A comma-separated list target of a few thousand ids is a ~50–100 KB salt-api body, acceptable at this size and not a design point beyond it. Glob matching 3,000 ids in Python (`fnmatch.fnmatchcase`, the same function `resolve_batch_roster` uses) is under a millisecond.
 
 ## Goals & Non-Goals
 
@@ -500,7 +500,7 @@ Local-group membership edits use the same rule: a lead may add or remove users i
 
 #### OIDC reconciliation
 
-Today one column is overwritten because two writers on one field cannot be reasoned about (`docs/developer.md`). Scoped mode does not put two writers on one field.
+Today one column is overwritten because two writers on one field cannot be reasoned about (`docs/guides/developer.md`). Scoped mode does not put two writers on one field.
 
 On `provision_oidc_user`, when `rbac_mode=scoped`:
 
@@ -515,7 +515,7 @@ Manual grants on an SSO user are **additive** and survive login. They cannot sub
 
 While `rbac_mode()` is legacy, including while `ENFORCEMENT_COMPLETE` is false, `provision_oidc_user` is unchanged: `role_for_groups`, unmatched means `viewer`, login overwrites `users.role`. `tests/test_rbac.py::test_provision_oidc_user_defaults_to_viewer` stays green. Do not stop minting `viewer` in an image that can already flip the flag. The Settings control that writes `rbac_mode=scoped` ships in the same change as this scoped login path, or in the same image, and only after `ENFORCEMENT_COMPLETE` is true.
 
-`role_for_groups` today is if/else: admin groups, else operator groups, else `viewer`. It is not a union. The scoped model unions every matching `idp_role_mappings` row. A principal in two mapped groups gains both roles. For a migrated fleet ladder that is not a privilege increase: admin already included operator. The behavior change is a second mapping at a different scope. Both apply, whereas the old function stopped at admin. Say that next to the backfill in `docs/sso.md`. Do not change `role_for_groups` to union; that would change legacy logins.
+`role_for_groups` today is if/else: admin groups, else operator groups, else `viewer`. It is not a union. The scoped model unions every matching `idp_role_mappings` row. A principal in two mapped groups gains both roles. For a migrated fleet ladder that is not a privilege increase: admin already included operator. The behavior change is a second mapping at a different scope. Both apply, whereas the old function stopped at admin. Say that next to the backfill in `docs/reference/sso.md`. Do not change `role_for_groups` to union; that would change legacy logins.
 
 Migration of the two comma-separated settings: backfill inserts `idp_role_mappings` rows, role `admin` or `operator`, scope fleet, `origin=backfill`, one row per group name. Unmapped groups grant nothing. "Insert if missing" is not the rule used when an operator enters scoped mode. The settings save that sets `rbac_mode=scoped` deletes `origin=backfill` fleet ladder mappings and reinserts them from the **current** `oidc_admin_groups` and `oidc_operator_groups`. Rows with `origin=manual` are kept. Editing those settings while mode is still legacy, then flipping, must not authorize a group list that Settings no longer contains. After the flip, those two fields become a read-only mirror of the fleet ladder mappings until the mapping editor replaces them. The editor writes `origin=manual`.
 
@@ -639,7 +639,7 @@ Job-form default target: fleet callers keep `default_target` (default `*`). A ca
 
 Alembic head today is `e8f0a1b2c3d4_job_returns_unique` (revises `d5e6f7a8b9c0`). `users.role` was added in `c7d2e41a90b4` (down_revision `95ffc8849775`). The new revision revises `e8f0a1b2c3d4`, uses batch mode for ALTER, and stays valid on SQLite (the test suite) and Postgres. Follow the existing pattern: models in `overstate_ui/models.py`, revision under `alembic/versions/`.
 
-`scripts/docker-entrypoint.sh` runs `alembic upgrade head`. On any alembic stderr containing `already exists` it stamps `95ffc8849775` — an old revision, not head — and upgrades again. A grants migration that emits that string rewinds `alembic_version` and replays later alters. `create_all` in wsgi runs after migrate, but a retried or hand-run boot can create the tables first. Revisions use `inspector.has_table` and `inspector.has_column` before `create_table` / `add_column`. They must not emit `already exists`. They must not depend on the stamp. `docs/developer.md` already says a revision must tolerate a database that already has tables; this is that rule, and the stamp is not the mechanism.
+`scripts/docker-entrypoint.sh` runs `alembic upgrade head`. On any alembic stderr containing `already exists` it stamps `95ffc8849775` — an old revision, not head — and upgrades again. A grants migration that emits that string rewinds `alembic_version` and replays later alters. `create_all` in wsgi runs after migrate, but a retried or hand-run boot can create the tables first. Revisions use `inspector.has_table` and `inspector.has_column` before `create_table` / `add_column`. They must not emit `already exists`. They must not depend on the stamp. `docs/guides/developer.md` already says a revision must tolerate a database that already has tables; this is that rule, and the stamp is not the mechanism.
 
 Most tests call `create_all` from models and never run alembic, so a model/revision drift is a production-only failure unless `tests/test_rbac_schema.py` runs `upgrade` and `downgrade` on SQLite and asserts the models match. That test is part of the schema PR. Other tests stay on `create_all`.
 
@@ -952,7 +952,7 @@ File roots and reactor SLS can embed secrets. `security-reader` may read those b
 
 **Tokens.** Shown once, stored as argon2, prefix only in the UI and in audit. Verify every prefix match. Do not weaken argon2 to meet the 50 ms budget. Pinned tokens cannot free-form outside `API_READ_FUNS`. Deleting the saved job does not cascade-delete the token. Session auth and bearer auth do not cross routes. CSRF stays on cookie POSTs; only `POST /api/jobs/run` is exempt.
 
-**IdP.** Issuer must stay `https://` (`_oauth_client` already rejects anything else). Identity key stays `(issuer, sub)`. Group claim is not a role. Manual grants cannot shrink an IdP fleet role; shrinking is an IdP or mapping change, which is the "IdP wins" rule that `docs/developer.md` wants, applied to mapping rows instead of to `users.role`.
+**IdP.** Issuer must stay `https://` (`_oauth_client` already rejects anything else). Identity key stays `(issuer, sub)`. Group claim is not a role. Manual grants cannot shrink an IdP fleet role; shrinking is an IdP or mapping change, which is the "IdP wins" rule that `docs/guides/developer.md` wants, applied to mapping rows instead of to `users.role`.
 
 **Self-protection and login.** Self-demote and self-delete stay. Login rate limit stays. CSRF stays on every cookie POST, including the new grant forms. Type-to-confirm stays for `CONFIRM_FUNS`; the preview is the intersection so the typed target cannot hide a wider publish.
 
@@ -982,7 +982,7 @@ File roots and reactor SLS can embed secrets. `security-reader` may read those b
 
 **Logs.** `authz` logger at INFO for mode flips (read at startup and when the setting changes; the settings save path can log it). WARN for a grant that fails the fleet-only invariant and is ignored, including its id. DEBUG for per-request allows would be a pillar-adjacent flood at 3,000 minions; do not log allows. Denies go to `audit_events`, not to the application log, except a single WARN when a worker stops a batch or refuses an orchestrate.
 
-**Audit page.** This is the compliance surface `docs/admin.md` already points at. New filters: outcome, permission. Existing user and action filters stay. JID links stay.
+**Audit page.** This is the compliance surface `docs/guides/admin.md` already points at. New filters: outcome, permission. Existing user and action filters stay. JID links stay.
 
 **Metrics.** No new metrics service. If the process already exposes nothing, do not add Prometheus for v1. The latency budget is enforced by the shape of the queries (no Salt, no per-minion query) and by a unit test that runs `constrain_target` against 3,000 sqlite rows and asserts it finishes under 100 ms on the developer machine. That is a tripwire, not a production SLO. Production p99 targets remain 30 ms for a page's authz and 50 ms for submit authz, measured by reading Postgres if a page is slow, not by a dashboard in this PR.
 
@@ -1038,7 +1038,7 @@ Feature flag summary. Resolution for both keys: non-empty DB row, else non-empty
 - `overstate_ui/files.py` `safe_join` — prefix checks compose with this, they do not replace it.
 - `salt-config/api.conf` — shared `overstate` eauth user, `@wheel`, `@runner`, `@jobs`.
 - `deploy/kubernetes/rbac.yaml` — app ServiceAccount. Non-goal.
-- `docs/user.md`, `docs/admin.md`, `docs/sso.md`, `docs/developer.md`, `PRODUCT.md` — current three-role voice and the "IdP overwrites manual role edits" rule.
+- `docs/guides/user.md`, `docs/guides/admin.md`, `docs/reference/sso.md`, `docs/guides/developer.md`, `PRODUCT.md` — current three-role voice and the "IdP overwrites manual role edits" rule.
 - `tests/test_rbac.py`, `tests/test_role_gates.py` — legacy matrix that must stay green.
 - Alembic head `e8f0a1b2c3d4`; role column added in `c7d2e41a90b4_user_roles.py`.
 
@@ -1135,6 +1135,6 @@ Each PR is mergeable on its own. After each one, `tests/test_rbac.py` and `tests
 ### PR 10 — Document the roles
 
 - **Title:** Document scoped RBAC in the admin and SSO guides.
-- **Files:** `docs/admin.md`, `docs/sso.md`, `docs/user.md`, `docs/developer.md`, `PRODUCT.md` role paragraph.
+- **Files:** `docs/guides/admin.md`, `docs/reference/sso.md`, `docs/guides/user.md`, `docs/guides/developer.md`, `PRODUCT.md` role paragraph.
 - **Depends on:** PR 7 and PR 9, so the docs match the behavior that actually shipped.
 - **Changes:** Legacy three-role section kept and marked as the mode when the flag is legacy. Scoped section: fourteen roles, state results versus pillar documents, default deny versus backfilled viewers, IdP mappings versus manual grants, union versus today's if/else, schedules as define-time via `schedule.allow.*`, `*` intersection, glob growth, salt-ssh fleet-only, rollback restores fleet secret reads. Developer page: `authz.py`, `ENFORCEMENT_COMPLETE`, `rbac_flag` is not `OIDC_ENV_FALLBACK`, revisions must not emit `already exists`, `roles_required` is the legacy gate, and the suite stays on `create_all` except `tests/test_rbac_schema.py`.

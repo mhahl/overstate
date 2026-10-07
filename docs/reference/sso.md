@@ -1,6 +1,6 @@
 # Overstate SSO (OIDC)
 
-Status: per `docs/v3.9.md` (Final).
+Status: per `docs/history/v3.9.md` (Final).
 
 Local password login always works. Setting the three OIDC variables below
 adds a "Log in with SSO" button on the login page.

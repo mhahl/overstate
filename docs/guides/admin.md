@@ -16,7 +16,7 @@ and a kill are intersected with the caller's scope before anything
 publishes, so a scoped `*` only ever reaches the minions in scope.
 Which model applies is the `rbac_mode` setting below; flipping it back
 to `legacy` restores the ladder on the next request. The full model,
-recipes, and defaults live in `docs/rbac.md`.
+recipes, and defaults live in `docs/reference/rbac.md`.
 
 Three guards protect you from yourself on the Users page. You cannot
 demote your own account, and you cannot delete it. To leave the admin
@@ -164,7 +164,7 @@ user are additive and survive login; they cannot subtract a mapped
 fleet role. To narrow mapped access, change the mapping, not the
 user row.
 
-See `docs/sso.md` for the provider-side checklist: redirect URIs, the
+See `docs/reference/sso.md` for the provider-side checklist: redirect URIs, the
 discovery URL, and claim names.
 
 ## Settings reference

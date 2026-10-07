@@ -79,10 +79,10 @@ No logo, custom font, or marketing voice to preserve.
 
 ## Evidence on Hand
 
-- `docs/user.md`: operator guide and role model.
-- `docs/install-kubernetes.md`: production install walkthrough.
-- `docs/architecture-kubernetes.md`: design, assumptions, risks.
-- `docs/developer.md`: conventions, tests, lint, coverage, deps.
+- `docs/guides/user.md`: operator guide and role model.
+- `docs/guides/install-kubernetes.md`: production install walkthrough.
+- `docs/reference/architecture-kubernetes.md`: design, assumptions, risks.
+- `docs/guides/developer.md`: conventions, tests, lint, coverage, deps.
 - Full pytest suite (976 tests) covering job flows, batches,
   auth/RBAC (legacy ladder plus scoped grants), inventory, and deploy
   artifacts.

@@ -202,7 +202,8 @@ after pytest is green.
      tag. Leave `newName` as `quay.io/sigaint/overstate`.
    - Commit the code and the tag bump only. Subject:
      `App: bound sync gathers to the returner`. Do not commit
-     unrelated dirty files. Do not commit `PLAN_REMEDIATE.md`.
+     unrelated dirty files. Do not commit scratch files (the
+     referenced `PLAN_REMEDIATE.md` never existed in the repo).
    - Push to `origin` `main` only when the owner has asked for
      commit and push. Unset `HTTPS_PROXY` before the push.
    - Apply only the app and the worker:

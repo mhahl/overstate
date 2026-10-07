@@ -98,7 +98,7 @@ fleet-wide, fanned out to every master pod) before anything runs.
    `masterconfig` snapshot machinery, restart-required note,
    `masterconfig-save` audit row; restart link, never auto.
 6. Cutover + docs: replace inline form with entry button, update
-   `docs/user.md`, tests per slice below.
+   `docs/guides/user.md`, tests per slice below.
 
 ## Validation Plan
 - New tests in `tests/test_reactor.py` (stubbed runner, fake k8s

@@ -19,7 +19,8 @@ The masters run as a three-node Salt cluster (isolated filesystem, Raft
 over 4507) sharing one keypair and one Postgres job cache: Overstate
 manages all three masters' shared ConfigMap, rolls them one at a time,
 and accepts minion keys on all three.
-This plan supersedes `docs/plans/master-config-management.md`, whose SSH and
+This plan supersedes `docs/plans/master-config-management.md` (deleted;
+recoverable from git history), whose SSH and
 host-file mechanism does not apply to the k8s topology; its safety invariants
 (admin-only, blocking validation, refusal-first, audit-everything, no
 auto-restart) carry over unchanged.
@@ -89,7 +90,7 @@ auto-restart) carry over unchanged.
   `/srv/states/reactor` in-cluster (`app.yaml:86-87`), but nothing seeds that
   directory — the seed initContainer only creates `/srv/states/salt`
   (`app.yaml:26-34`).
-- Gaps found this run: `docs/install-kubernetes.md` is referenced by the
+- Gaps found this run: `docs/guides/install-kubernetes.md` is referenced by the
   kustomization header but does not exist; `tests/test_deploy.py` asserts only
   Caddyfile/Quadlet artifacts, nothing under `deploy/kubernetes/`; the app
   runs 2 replicas, so any in-process single-flight lock does not exclude
@@ -262,8 +263,8 @@ built.
    systems would otherwise diverge); export renders the union for
    pasting into the stanza. Tests: missing-roots bootstrap, admin
    gate, operator v4 flows untouched.
-6. **Docs + audit polish.** Create the missing `docs/install-kubernetes.md`
-   (secret creation, apply, restore runbook); `docs/user.md` Master Config
+6. **Docs + audit polish.** Create the missing `docs/guides/install-kubernetes.md`
+   (secret creation, apply, restore runbook); `docs/guides/user.md` Master Config
    section (scope, blocking validation, stale flow, restart semantics);
    verify every new mutation logs by grepping audit rows in tests.
 7. **Cluster-trio manifests (built).** `salt-master.yaml` at `replicas: 3`
@@ -293,7 +294,7 @@ built.
    nodes; ConfigMaps never hold passwords — enforced by test). A legacy
    `postgres_local_cache` block, or an empty `master_job_cache` value,
    leaves the masters on local disk: jobs run but complete with no output
-   in the UI. `docs/install-kubernetes.md` §§4–6 carry the
+   in the UI. `docs/guides/install-kubernetes.md` §§4–6 carry the
    keypair/cluster-key/returner procedures, Secret-creation commands, and
    the rotation runbooks (replace Secret + roll the pods one at a time).
    Tests: ConfigMap renders without embedding secrets; Secrets absent
@@ -437,7 +438,7 @@ gate, is closed — the custom image ships `psycopg2-binary`.)
   (no HA, one master per minion).
 - **D8 (Built): owner-provisioned keypair plus cluster Secrets,
   generation documented.** The owner generates the Salt RSA keypair once
-  (procedure in `docs/install-kubernetes.md` §4), stores it in a plain
+  (procedure in `docs/guides/install-kubernetes.md` §4), stores it in a plain
   non-expiring `salt-master-keys` Secret, and all three masters mount it
   read-only; the app gets no Secret access. Same treatment for the
   cluster join secret (`salt-master-cluster`) and the pinned cluster

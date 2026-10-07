@@ -48,7 +48,7 @@ Viewers get read-only access.
 - Reactor SLS files live in a reactor directory (e.g.
   `/srv/reactor`), separate from `FILE_ROOTS`; the UI needs a new
   `REACTOR_ROOTS` env-backed config for reading bodies.
-- `docs/developer.md`: the UI never invents success — a mutating
+- `docs/guides/developer.md`: the UI never invents success — a mutating
   click reports what Salt returned.
 
 ## Constraints And Non-goals
