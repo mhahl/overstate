@@ -40,20 +40,20 @@
           {% if not delegate_view or g.id in local_group_manageable %}
           <form method="post" action="{{ url_for('users.edit_local_group_members', gid=g.id) }}" class="flex flex-wrap items-end gap-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label class="fieldset"><span class="fieldset-legend">Members</span>
+            <fieldset class="fieldset"><legend class="fieldset-legend">Members</legend>
             <select name="user_ids" multiple class="select select-sm min-h-24">
               {% for au in all_users %}
               <option value="{{ au.id }}"{% if au.id in member_ids.get(g.id, []) %} selected{% endif %}>{{ au.username }}</option>
               {% endfor %}
-            </select></label>
+            </select></fieldset>
             <button class="btn btn-sm">Save members</button>
           </form>
           {% endif %}
           {% if not delegate_view or g.id in local_group_manageable %}
           <form method="post" action="{{ url_for('users.rename_local_group', gid=g.id) }}" class="flex items-end gap-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label class="fieldset"><span class="fieldset-legend">Rename</span>
-            <input name="name" value="{{ g.name }}" class="input input-sm" autocomplete="off"></label>
+            <fieldset class="fieldset"><legend class="fieldset-legend">Rename</legend>
+            <input name="name" value="{{ g.name }}" class="input input-sm" autocomplete="off"></fieldset>
             <button class="btn btn-sm">Rename</button>
           </form>
           {% endif %}
@@ -72,8 +72,8 @@
       {% endif %}
       <form method="post" action="{{ url_for('users.create_local_group') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label class="fieldset"><span class="fieldset-legend">New group name</span>
-        <input name="name" class="input input-sm" autocomplete="off" required></label>
+        <fieldset class="fieldset"><legend class="fieldset-legend">New group name</legend>
+        <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
         <button class="btn btn-sm btn-primary">Create group</button>
       </form>
     </div>

@@ -37,18 +37,18 @@
     {% endif %}
     <form method="post" action="{{ post_url }}" class="flex flex-col gap-3 mt-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="fieldset"><span class="fieldset-legend">Role</span>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Role</legend>
       <select name="role" class="select select-sm w-full">
         {% for label, roles in role_groups %}
         <optgroup label="{{ label }}">
           {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
         </optgroup>
         {% endfor %}
-      </select></label>
+      </select></fieldset>
       {% if delegate %}<p class="text-xs opacity-70">Delegates grant team roles inside their own scope only. Fleet and file-prefix scopes stay with a fleet admin.</p>
       {% else %}<p class="text-xs opacity-70">Global roles apply to the whole fleet, including pillar. Prefer a team role on a scope.</p>{% endif %}
       <div class="flex flex-wrap gap-2">
-      <label class="fieldset flex-1 min-w-36"><span class="fieldset-legend">Scope kind</span>
+      <fieldset class="fieldset flex-1 min-w-36"><legend class="fieldset-legend">Scope kind</legend>
       <select name="scope_kind" class="select select-sm w-full">
         <option value="glob" selected>glob</option>
         <option value="group">group</option>
@@ -56,28 +56,28 @@
         <option value="grain">grain</option>
         {% if not delegate %}<option value="prefix">prefix (file roles)</option>
         <option value="fleet">fleet (global roles)</option>{% endif %}
-      </select></label>
-      <label class="fieldset flex-1 min-w-36"><span class="fieldset-legend">Scope value (pattern, ids, or path)</span>
-      <input name="scope_value" class="input input-sm w-full font-mono" autocomplete="off" placeholder="web-*"></label>
+      </select></fieldset>
+      <fieldset class="fieldset flex-1 min-w-36"><legend class="fieldset-legend">Scope value (pattern, ids, or path)</legend>
+      <input name="scope_value" class="input input-sm w-full font-mono" autocomplete="off" placeholder="web-*"></fieldset>
       </div>
       <div class="flex flex-wrap gap-2">
-      <label class="fieldset flex-1 min-w-36"><span class="fieldset-legend">Minion group (group scopes)</span>
+      <fieldset class="fieldset flex-1 min-w-36"><legend class="fieldset-legend">Minion group (group scopes)</legend>
       <select name="scope_value_group" class="select select-sm w-full">
         <option value="">—</option>
         {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
-      </select></label>
-      <label class="fieldset"><span class="fieldset-legend">Grain key</span>
+      </select></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Grain key</legend>
       <select name="grain_key" class="select select-sm">
         <option value="">—</option>
         {% for gk in grain_keys %}<option value="{{ gk }}">{{ gk }}</option>{% endfor %}
-      </select></label>
-      <label class="fieldset flex-1 min-w-36"><span class="fieldset-legend">Grain value</span>
-      <input name="grain_value" class="input input-sm w-full font-mono" autocomplete="off"></label>
+      </select></fieldset>
+      <fieldset class="fieldset flex-1 min-w-36"><legend class="fieldset-legend">Grain value</legend>
+      <input name="grain_value" class="input input-sm w-full font-mono" autocomplete="off"></fieldset>
       </div>
       <p class="text-xs opacity-70">Grain scopes use the inventory snapshot, not live grains.</p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" onclick="document.getElementById('{{ dialog_id }}').close()">Cancel</button>
-        <button class="btn btn-primary">Add grant</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('{{ dialog_id }}').close()">Cancel</button>
+        <button class="btn btn-sm btn-primary">Add grant</button>
       </div>
     </form>
   </div>

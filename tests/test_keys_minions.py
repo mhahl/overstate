@@ -1,6 +1,9 @@
 """Phase 4 tests: keys tabs/actions + audit, minions list/detail/refresh."""
 
 import json
+import re
+import subprocess
+from html import unescape
 
 import httpx
 import pytest
@@ -659,52 +662,98 @@ def test_onboard_renders_form_and_pending(client):
     html = client.get("/minions/onboard").data.decode()
     assert "Onboard a minion" in html
     assert 'name="mid"' in html and 'name="distro"' in html
-    assert 'name="master"' in html
+    assert 'name="masters"' in html
+    assert 'name="topology"' in html
     assert "new-01" in html  # pending key from the fixture roster
     assert "Run this on the new machine" not in html
     assert "Onboard minion" in client.get("/minions/").data.decode()
 
 
 def test_onboard_generates_script(client):
+    client.app.config["PUBLIC_URL"] = "https://overstate.example.com/"
     html = client.get(
-        "/minions/onboard?mid=db-02&distro=fedora&master=salt.example.com"
+        "/minions/onboard?mid=db-02&distro=fedora&topology=single&masters=salt.example.com"
     ).data.decode()
     assert "Run this on the new machine" in html
-    assert "dnf" in html and "zypper" not in html
-    assert "master: salt.example.com" in html
-    assert "id: db-02" in html
-    assert "onboard/script" in html and "Download" in html
-    assert 'data-copy="onboard-script"' in html
-    assert 'id="onboard-script"' in html
+    assert "curl -fsSL" in html and "sudo sh" in html
+    assert "Download .sh" not in html
+    assert 'data-copy="onboard-command"' in html
+    assert 'id="onboard-command"' in html
+    command = unescape(
+        re.search(r'<code id="onboard-command">(.*?)</code>', html).group(1)
+    )
+    assert "https://overstate.example.com/minions/onboard/script/" in command
+    script_url = re.search(r"curl -fsSL ('[^']+'|[^ )]+)", command).group(1).strip("'")
+    rv = client.app.test_client().get(script_url)
+    assert rv.status_code == 200
+    assert "attachment" not in rv.headers.get("Content-Disposition", "")
+    assert rv.headers["Cache-Control"] == "no-store"
+    script = rv.data.decode()
+    assert "dnf" in script and "zypper" not in script
+    assert "[overstate-saltproject]" in script
+    assert 'master: "salt.example.com"' in script
+    assert 'id: "db-02"' in script
 
 
 def test_onboard_rejects_bad_input(client):
     html = client.get(
-        "/minions/onboard?mid=bad+id%21&distro=fedora&master=salt.example.com"
+        "/minions/onboard?mid=bad+id%21&distro=fedora&masters=salt.example.com"
     ).data.decode()
     assert "valid hostnames" in html
     assert "Run this on the new machine" not in html
 
 
-def test_onboard_script_download(client):
-    rv = client.get(
-        "/minions/onboard/script?mid=db-02&distro=opensuse&master=salt.example.com"
+def test_onboard_failover_and_rejects_invalid_script_token(client):
+    html = client.get(
+        "/minions/onboard?mid=db-02&distro=suse&topology=failover&masters=salt-a.example.com%0Asalt-b.example.com"
+    ).data.decode()
+    command = unescape(
+        re.search(r'<code id="onboard-command">(.*?)</code>', html).group(1)
     )
-    assert rv.status_code == 200
-    assert "attachment" in rv.headers["Content-Disposition"]
-    assert "onboard-db-02.sh" in rv.headers["Content-Disposition"]
-    text = rv.data.decode()
-    assert text.startswith("#!/bin/sh")
-    assert "zypper" in text and "systemctl enable --now salt-minion" in text
-    rv = client.get("/minions/onboard/script?mid=nope%21")
-    assert rv.status_code == 302
+    script_url = re.search(r"curl -fsSL ('[^']+'|[^ )]+)", command).group(1).strip("'")
+    script = client.get(script_url).data.decode()
+    assert "zypper" in script
+    assert 'master:\n  - "salt-a.example.com"\n  - "salt-b.example.com"' in script
+    assert "master_type: failover" in script
+    assert "master_alive_interval: 30" in script
+    assert client.get("/minions/onboard/script/forged-token").status_code == 404
+
+
+def test_onboard_script_url_expires(client, monkeypatch):
+    import itsdangerous.timed
+    from itsdangerous import URLSafeTimedSerializer
+
+    token = URLSafeTimedSerializer(client.app.secret_key, salt="minion-onboard").dumps(
+        ["fedora", "single", ["salt.example.com"], "db-02"]
+    )
+    real_time = itsdangerous.timed.time.time
+    monkeypatch.setattr(itsdangerous.timed.time, "time", lambda: real_time() + 1801)
+    assert (
+        client.app.test_client().get(f"/minions/onboard/script/{token}").status_code
+        == 410
+    )
+
+
+def test_onboard_rejects_invalid_master_topology(client):
+    html = client.get(
+        "/minions/onboard?mid=db-02&distro=fedora&topology=failover&masters=salt.example.com"
+    ).data.decode()
+    assert "valid hostnames" in html
+    assert "Run this on the new machine" not in html
 
 
 def test_build_onboard_script_distros():
     from overstate_ui.minions import build_onboard_script
 
-    assert "zypper" in build_onboard_script("opensuse", "m", "h")
-    assert "dnf" in build_onboard_script("fedora", "m", "h")
+    scripts = (
+        build_onboard_script("rhel", "single", ("m",), "h"),
+        build_onboard_script("fedora", "single", ("m",), "h"),
+        build_onboard_script("suse", "failover", ("m", "n"), "h"),
+    )
+    assert "dnf" in scripts[0] and "dnf" in scripts[1]
+    assert "zypper" in scripts[2]
+    for script in scripts:
+        subprocess.run(["sh", "-n"], input=script, text=True, check=True)
 
 
 def test_master_host_setting_saved_and_used():

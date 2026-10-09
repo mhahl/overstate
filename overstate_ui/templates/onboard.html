@@ -5,14 +5,14 @@
   <div class="flex flex-wrap items-end gap-3">
     <div class="mr-auto">
       <h1 class="text-2xl font-bold tracking-tight">Onboard a minion</h1>
-      <p class="text-sm opacity-70 mt-0.5">Describe the machine, get a join script, accept its key.</p>
+      <p class="text-sm opacity-70 mt-0.5">Describe the machine, run its install command, accept its key.</p>
     </div>
     <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">‹ Minions</a>
   </div>
 </div>
 <ul class="steps w-full mb-6" aria-label="Progress">
   <li class="step step-primary">Describe</li>
-  <li class="step {{ 'step-primary' if script else '' }}">Install</li>
+  <li class="step {{ 'step-primary' if script_url else '' }}">Install</li>
   <li class="step {{ 'step-primary' if pending else '' }}">Accept key</li>
   <li class="step">Verify</li>
 </ul>
@@ -26,36 +26,42 @@
     <div class="card-body">
       <h2 class="card-title text-base">Describe the new minion</h2>
       <form method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-wrap items-end gap-2">
-        <label class="fieldset flex-1 min-w-40">
-          <span class="fieldset-legend">Minion id</span>
+        <fieldset class="fieldset flex-1 min-w-40">
+          <legend class="fieldset-legend">Minion id</legend>
           <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm font-mono" required>
-        </label>
-        <label class="fieldset">
-          <span class="fieldset-legend">Distribution</span>
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Distribution</legend>
           <select name="distro" class="select select-sm">
-            {% for d in ["opensuse", "fedora"] %}
-            <option value="{{ d }}"{% if request.args.get('distro', 'opensuse') == d %} selected{% endif %}>{{ d|capitalize }}</option>
+            {% for d in ["rhel", "fedora", "suse"] %}
+            <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE"}[d] }}</option>
             {% endfor %}
           </select>
-        </label>
-        <label class="fieldset flex-1 min-w-40">
-          <span class="fieldset-legend">Master</span>
-          <input name="master" value="{{ request.args.get('master', master_host) }}" placeholder="Salt master hostname" class="input input-sm font-mono" required>
-        </label>
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Setup</legend>
+          <select name="topology" class="select select-sm">
+            <option value="single"{% if request.args.get('topology', 'single') == 'single' %} selected{% endif %}>Single master</option>
+            <option value="failover"{% if request.args.get('topology') == 'failover' %} selected{% endif %}>Failover masters</option>
+          </select>
+        </fieldset>
+        <fieldset class="fieldset flex-1 min-w-40">
+          <legend class="fieldset-legend">Master host(s)</legend>
+          <textarea name="masters" placeholder="Salt master hostname(s), one per line" class="textarea textarea-sm font-mono" required>{{ request.args.get('masters', request.args.get('master', master_host)) }}</textarea>
+        </fieldset>
         <button class="btn btn-sm btn-primary">Generate script</button>
       </form>
-      <p class="text-sm opacity-70">Master defaults to <span class="font-mono">{{ master_host or "—" }}</span>. <a class="link" href="{{ url_for('settings.index') }}">Change it in Settings</a>.</p>
+      <p class="text-sm opacity-70">Enter one master for single-master, or at least two for failover. Defaults to <span class="font-mono">{{ master_host or "—" }}</span>. <a class="link" href="{{ url_for('settings.index') }}">Change it in Settings</a>.</p>
     </div>
   </section>
-  {% if script %}
+  {% if script_url %}
   <section class="card bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base mr-auto">Run this on the new machine as root</h2>
-        <a class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.onboard_script', mid=request.args.get('mid', ''), distro=request.args.get('distro', 'opensuse'), master=request.args.get('master', master_host)) }}">Download .sh</a>
-        <button type="button" class="btn btn-sm btn-ghost" data-copy="onboard-script">Copy</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-copy="onboard-command">Copy</button>
       </div>
-      <pre class="mockup-code text-xs overflow-x-auto p-4"><code id="onboard-script">{{ script }}</code></pre>
+      <pre class="mockup-code text-xs overflow-x-auto p-4"><code id="onboard-command">{{ script_command }}</code></pre>
     </div>
   </section>
   {% endif %}

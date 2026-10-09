@@ -14,8 +14,8 @@
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
     <div class="card-body flex-row flex-wrap items-end gap-2">
-      <label class="fieldset">
-        <span class="fieldset-legend">Role</span>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Role</legend>
         <select name="role" class="select select-sm" onchange="this.form.requestSubmit()">
           <option value="">All roles</option>
           {% for r in roles %}
@@ -27,7 +27,7 @@
           {% endfor %}
           {% endif %}
         </select>
-      </label>
+      </fieldset>
       {% if role %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('users.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
     </div>
   </form>
@@ -117,23 +117,23 @@
         {% endfor %}
         <form method="post" action="{{ url_for('users.create_token', uid=entry.user.id) }}" class="flex flex-wrap items-end gap-2 mt-2">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <label class="fieldset"><span class="fieldset-legend">Token name</span>
-          <input name="name" class="input input-sm" autocomplete="off" required></label>
-          <label class="fieldset"><span class="fieldset-legend">Pin to saved job</span>
+          <fieldset class="fieldset"><legend class="fieldset-legend">Token name</legend>
+          <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
+          <fieldset class="fieldset"><legend class="fieldset-legend">Pin to saved job</legend>
           <select name="saved_job_id" class="select select-sm">
             <option value="">Unpinned (read class only)</option>
             {% for job in saved_jobs %}<option value="{{ job.id }}">{{ job.name }} · {{ job.fun }}</option>{% endfor %}
-          </select></label>
-          <label class="fieldset"><span class="fieldset-legend">Expires in days</span>
-          <input name="expires_days" type="number" min="1" max="3650" class="input input-sm w-24" placeholder="never"></label>
+          </select></fieldset>
+          <fieldset class="fieldset"><legend class="fieldset-legend">Expires in days</legend>
+          <input name="expires_days" type="number" min="1" max="3650" class="input input-sm w-24" placeholder="never"></fieldset>
           <button class="btn btn-sm btn-primary">Mint token</button>
         </form>
       </div>
       {% endfor %}
       <form method="post" action="{{ url_for('users.create_service_account') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label class="fieldset"><span class="fieldset-legend">New service account</span>
-        <input name="name" class="input input-sm" autocomplete="off" required></label>
+        <fieldset class="fieldset"><legend class="fieldset-legend">New service account</legend>
+        <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
         <button class="btn btn-sm btn-primary">Create account</button>
       </form>
     </div>

@@ -26,10 +26,10 @@
   <input id="op-library-toggle" type="checkbox" aria-label="Toggle operation library"{% if request.args.get('preset') %} checked{% endif %}>
   <div class="collapse-title font-bold text-lg tracking-tight">Operation library</div>
   <div class="collapse-content">
-    <label class="fieldset w-full mb-3">
+    <fieldset class="fieldset w-full mb-3">
       <span class="sr-only">Search operations</span>
       <input id="op-search" type="search" placeholder="Search operations…" autocomplete="off" class="input input-sm w-full" oninput="filterOperations()">
-    </label>
+    </fieldset>
   {% for group, ops in op_groups %}
   <div data-op-group class="mb-2">
     <h3 class="text-sm font-semibold mb-1">{{ group }}</h3>
@@ -58,22 +58,22 @@
   <div class="card-body gap-0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid md:grid-cols-[minmax(0,1fr)_13rem] gap-x-4 pb-4">
-      <label class="fieldset min-w-0">
-        <span class="fieldset-legend">Target</span>
+      <fieldset class="fieldset min-w-0">
+        <legend class="fieldset-legend">Target</legend>
         <input id="job-tgt" name="tgt" value="{{ saved.tgt if saved else preset.get('tgt', '*') }}" class="input w-full" required>
-      </label>
-      <label class="fieldset min-w-0">
-        <span class="fieldset-legend">Target type</span>
+      </fieldset>
+      <fieldset class="fieldset min-w-0">
+        <legend class="fieldset-legend">Target type</legend>
         <select id="job-tgt-type" name="tgt_type" class="select w-full">
           {% for t in tgt_types %}
           <option value="{{ t }}"{% if (saved.tgt_type if saved else preset.get('tgt_type')) == t %} selected{% endif %}>{{ t }}</option>
           {% endfor %}
         </select>
-      </label>
+      </fieldset>
       <p class="md:col-span-2 text-xs opacity-70">glob <span class="font-mono">web-*</span> · list <span class="font-mono">web-01,web-02</span> · grain <span class="font-mono">os:Debian</span> · compound <span class="font-mono">G@os:Debian and web-*</span> · group (<a class="link" href="{{ url_for('groups.index') }}">manage groups</a>)</p>
     </div>
-    <div class="border-t border-base-300 py-4 fieldset relative">
-      <span class="fieldset-legend">Function</span>
+    <fieldset class="border-t border-base-300 py-4 fieldset relative">
+      <legend class="fieldset-legend">Function</legend>
       <input id="job-fun" name="fun" value="{{ saved.fun if saved else preset.get('fun', '') }}" class="input font-mono w-full" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="fun-list" aria-autocomplete="list" required>
       <ul id="fun-list" role="listbox" aria-label="Known functions" class="hidden absolute z-10 top-full mt-1 w-full menu bg-base-100 border border-base-300 rounded-lg shadow-md max-h-56 overflow-auto p-1">
         {% for f in op_functions %}
@@ -86,51 +86,51 @@
         {% endfor %}
       </ul>
       <span class="fieldset-label">Pick a known function or type any other.</span>
-    </div>
-    <label class="fieldset pb-4">
-      <span class="fieldset-legend">Args (space-separated)</span>
+    </fieldset>
+    <fieldset class="fieldset pb-4">
+      <legend class="fieldset-legend">Args (space-separated)</legend>
       <input name="args" value="{{ (saved.args|join(' ')) if saved else preset.get('args', '') }}" class="input font-mono w-full">
-    </label>
+    </fieldset>
     <div class="grid sm:grid-cols-3 gap-4 border-t border-base-300 py-4">
-      <label class="fieldset">
-        <span class="fieldset-legend">Mode</span>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Mode</legend>
         <select id="job-mode" name="mode" class="select w-full" x-model="mode" :disabled="via === 'ssh'">
           <option value="async"{% if preset.get('mode', 'async') == 'async' %} selected{% endif %}>async (returns JID)</option>
           <option value="sync"{% if preset.get('mode') == 'sync' %} selected{% endif %}>sync (wait up to 60s)</option>
         </select>
-      </label>
-      <label class="fieldset">
-        <span class="fieldset-legend">Transport</span>
+      </fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Transport</legend>
         <select id="job-via" name="via" class="select w-full" x-model="via" @change="if (via === 'ssh') mode = 'sync'">
           <option value="local"{% if preset.get('via', 'local') == 'local' %} selected{% endif %}>ZeroMQ (minions)</option>
           <option value="ssh"{% if preset.get('via') == 'ssh' %} selected{% endif %}>salt-ssh (roster, sync only)</option>
         </select>
-      </label>
-      <label class="fieldset">
-        <span class="fieldset-legend">Save as (optional)</span>
+      </fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Save as (optional)</legend>
         <input name="save_as" placeholder="Saved job name" value="{{ preset.get('save_as', '') }}" class="input w-full">
-      </label>
+      </fieldset>
     </div>
     <details open class="collapse collapse-arrow border-t border-base-300">
       <summary class="collapse-title text-sm font-medium">Rolling batches (advanced)</summary>
       <div class="collapse-content">
       <div class="grid sm:grid-cols-[1fr_7rem_8rem] gap-4">
-      <label class="fieldset">
-        <span class="fieldset-legend">Batch mode</span>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Batch mode</legend>
         <select name="batch_mode" class="select w-full" x-model="batch">
           <option value="off"{% if batch_mode == 'off' %} selected{% endif %}>off (whole target at once)</option>
           <option value="count"{% if batch_mode == 'count' %} selected{% endif %}>rolling: minions per wave</option>
           <option value="percent"{% if batch_mode == 'percent' %} selected{% endif %}>rolling: percent per wave</option>
         </select>
-      </label>
-      <label class="fieldset">
-        <span class="fieldset-legend">Wave size</span>
+      </fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Wave size</legend>
         <input name="batch_size" value="{{ batch_size }}" class="input w-full" type="number" min="1" :disabled="batch === 'off'">
-      </label>
-      <label class="fieldset">
-        <span class="fieldset-legend">Stop after failures</span>
+      </fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Stop after failures</legend>
         <input name="stop_after" value="{{ batch_stop }}" class="input w-full" type="number" min="1" :disabled="batch === 'off'">
-      </label>
+      </fieldset>
     </div>
     <p class="text-xs opacity-70 pt-3">Rolling batches run list and glob targets wave by wave. They stop at the failure limit.</p>
       </div>

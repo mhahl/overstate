@@ -15,10 +15,10 @@
 </div>
 <form method="get" action="{{ url_for('groups.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
-    <label class="fieldset flex-1 min-w-48">
-      <span class="fieldset-legend">Search</span>
+    <fieldset class="fieldset flex-1 min-w-48">
+      <legend class="fieldset-legend">Search</legend>
       <input type="search" name="q" value="{{ q }}" placeholder="Search name or member…" class="input input-sm">
-    </label>
+    </fieldset>
     <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
@@ -66,12 +66,12 @@
     <h3 id="group-modal-title" class="font-bold text-lg">New group</h3>
     <form id="group-modal-form" method="post" action="{{ url_for('groups.create_group') }}" class="flex flex-col gap-3 mt-3">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="fieldset">
-        <span class="fieldset-legend">Name</span>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Name</legend>
         <input id="group-modal-name" name="name" class="input w-full" autocomplete="off" required>
-      </label>
-      <div class="fieldset">
-        <span class="fieldset-legend">Members <span id="group-modal-count" class="badge badge-neutral badge-sm ml-1">0</span></span>
+      </fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Members <span id="group-modal-count" class="badge badge-neutral badge-sm ml-1">0</span></legend>
         <input id="group-modal-search" type="search" placeholder="Filter minions…" autocomplete="off" class="input input-sm w-full" oninput="filterGroupMembers()">
         <div class="mt-1 max-h-56 overflow-auto rounded-lg border border-base-300">
           <table class="table table-sm table-zebra table-pin-rows w-full">
@@ -87,12 +87,12 @@
           </table>
         </div>
         <span class="fieldset-label">Unknown IDs are skipped when you run a job.</span>
-      </div>
+      </fieldset>
       <p id="group-modal-error" class="text-sm text-error hidden" role="alert"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" onclick="document.getElementById('group-modal').close()">Cancel</button>
-        <button type="button" class="btn btn-ghost" onclick="clearGroupMembers()">Clear</button>
-        <button class="btn btn-primary">Save group</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('group-modal').close()">Cancel</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="clearGroupMembers()">Clear</button>
+        <button class="btn btn-sm btn-primary">Save group</button>
       </div>
     </form>
   </div>

@@ -11,45 +11,50 @@
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <div class="card-body flex-row flex-wrap items-end gap-2">
-    <label class="fieldset">
-      <span class="fieldset-legend">Minion</span>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Minion</legend>
       <select name="minion" class="select select-sm" onchange="this.form.submit()">
         {% for m in minions %}
         <option value="{{ m }}"{% if m == mid %} selected{% endif %}>{{ m }}</option>
         {% endfor %}
       </select>
-    </label>
+    </fieldset>
   </div>
 </form>
-{% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
+{% if error %}
+<div class="alert alert-error mb-4" role="alert">
+  <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
 {% if mid and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write'))) %}
 <form method="post" action="{{ url_for('schedules.add', mid=mid) }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="fieldset">
-      <span class="fieldset-legend">Name</span>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Name</legend>
       <input name="name" placeholder="e.g. hourly-ping" class="input input-sm" required>
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">Function</span>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Function</legend>
       <input name="function" placeholder="test.ping" class="input input-sm font-mono" required>
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">Every</span>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Every</legend>
       <input name="value" type="number" min="1" value="60" class="input input-sm w-24" required>
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">Unit</span>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Unit</legend>
       <select name="unit" class="select select-sm">
         {% for u in ["seconds", "minutes", "hours", "days"] %}
         <option value="{{ u }}">{{ u }}</option>
         {% endfor %}
       </select>
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">Enabled</span>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Enabled</legend>
       <input type="checkbox" name="enabled" checked class="checkbox checkbox-sm mt-2">
-    </label>
+    </fieldset>
     <button class="btn btn-sm btn-primary mb-1">Add schedule</button>
   </div>
 </form>

@@ -50,20 +50,20 @@
   <input type="hidden" name="confirm" value="1">
   <input type="hidden" name="url" value="{{ replace_pending.url }}">
   <input type="hidden" name="branch" value="{{ replace_pending.branch }}">
-  <label class="fieldset"><span class="fieldset-legend">Token (re-enter it; never displayed)</span>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy the salt/ tree and clone?">Confirm replace and clone</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
 </form>
 {% else %}
 <form method="post" action="{{ url_for('files.repo_clone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="fieldset"><span class="fieldset-legend">Repo URL (https or SSH)</span>
-  <input type="text" name="url" class="input input-sm" placeholder="https://git.example.com/salt/states.git"></label>
-  <label class="fieldset"><span class="fieldset-legend">Branch (blank = remote default)</span>
-  <input type="text" name="branch" class="input input-sm"></label>
-  <label class="fieldset"><span class="fieldset-legend">Token, https only (stored 0600 at the shared roots, one slot)</span>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL (https or SSH)</legend>
+  <input type="text" name="url" class="input input-sm" placeholder="https://git.example.com/salt/states.git"></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Branch (blank = remote default)</legend>
+  <input type="text" name="branch" class="input input-sm"></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Token, https only (stored 0600 at the shared roots, one slot)</legend>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
   <div><button class="btn btn-sm btn-primary" data-confirm="Clone this repo at the shared roots?">Clone</button></div>
 </form>
 {% endif %}
@@ -81,20 +81,20 @@
   <input type="hidden" name="confirm" value="1">
   <input type="hidden" name="url" value="{{ pending.url }}">
   <input type="hidden" name="branch" value="{{ pending.branch }}">
-  <label class="fieldset"><span class="fieldset-legend">Token (re-enter it; never displayed)</span>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy these files and re-clone?">Confirm re-clone</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
 </form>
 {% else %}
 <form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="fieldset"><span class="fieldset-legend">Repo URL</span>
-  <input type="text" name="url" class="input input-sm"></label>
-  <label class="fieldset"><span class="fieldset-legend">Branch (blank = remote default)</span>
-  <input type="text" name="branch" class="input input-sm"></label>
-  <label class="fieldset"><span class="fieldset-legend">Token, https only (stored, never shown)</span>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL</legend>
+  <input type="text" name="url" class="input input-sm"></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Branch (blank = remote default)</legend>
+  <input type="text" name="branch" class="input input-sm"></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Token, https only (stored, never shown)</legend>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
   <div><button class="btn btn-sm btn-outline">Preview re-clone…</button></div>
 </form>
 {% endif %}
@@ -108,8 +108,8 @@
 <p class="text-sm opacity-70 mb-2">Refuses on dirty trees and unpushed commits. Repointing under either orphans work onto the wrong remote.</p>
 <form method="post" action="{{ url_for('files.repo_set_remote') }}" class="flex flex-wrap items-end gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="fieldset flex-1"><span class="fieldset-legend">New origin URL</span>
-  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm"></label>
+  <fieldset class="fieldset flex-1"><legend class="fieldset-legend">New origin URL</legend>
+  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm"></fieldset>
   <button class="btn btn-sm mb-1" data-confirm="Repoint origin at this URL?">Repoint</button>
 </form>
 </div>
@@ -148,20 +148,20 @@
   <input type="hidden" name="confirm" value="1">
   <input type="hidden" name="url" value="{{ pending.url }}">
   <input type="hidden" name="branch" value="{{ pending.branch }}">
-  <label class="fieldset"><span class="fieldset-legend">Token (re-enter it; never displayed)</span>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy the checkout and re-clone?">Confirm re-clone</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
 </form>
 {% else %}
 <form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="fieldset"><span class="fieldset-legend">Repo URL</span>
-  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm"></label>
-  <label class="fieldset"><span class="fieldset-legend">Branch (blank = remote default)</span>
-  <input type="text" name="branch" value="{{ status.branch if status and status.branch != 'detached' else '' }}" class="input input-sm"></label>
-  <label class="fieldset"><span class="fieldset-legend">Token, only if changing it (stored, never shown)</span>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL</legend>
+  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm"></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Branch (blank = remote default)</legend>
+  <input type="text" name="branch" value="{{ status.branch if status and status.branch != 'detached' else '' }}" class="input input-sm"></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Token, only if changing it (stored, never shown)</legend>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
   <div><button class="btn btn-sm btn-outline">Preview re-clone…</button></div>
 </form>
 {% endif %}
@@ -175,8 +175,8 @@
 <div class="flex flex-wrap gap-2">
 <form method="post" action="{{ url_for('files.repo_token_save') }}" class="flex flex-wrap items-end gap-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="fieldset"><span class="fieldset-legend">Token for the current origin host</span>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></label>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Token for the current origin host</legend>
+  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
   <button class="btn btn-sm mb-1">Save token</button>
 </form>
 <form method="post" action="{{ url_for('files.repo_token_clear') }}">

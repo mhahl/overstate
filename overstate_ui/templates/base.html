@@ -24,20 +24,20 @@
         <button id="palette-btn" class="btn btn-ghost btn-sm gap-2 inline-flex" aria-label="Command palette">
           <span class="icon-[lucide--search] size-4 opacity-70" aria-hidden="true"></span>
           <span class="opacity-70 font-normal">Jump to…</span>
-          <span class="kbd kbd-xs">Ctrl K</span>
+          <kbd class="kbd kbd-xs">Ctrl K</kbd>
         </button>
         <a class="btn btn-primary btn-sm" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">
           <span class="icon-[lucide--plus] size-4" aria-hidden="true"></span>
           Run job
         </a>
         {% if current_user.is_authenticated %}
-        <div class="dropdown dropdown-end">
-          <button tabindex="0" class="btn btn-ghost btn-sm gap-2" aria-label="Account">
+        <details class="dropdown dropdown-end">
+          <summary class="btn btn-ghost btn-sm gap-2 list-none cursor-pointer" aria-label="Account">
             <span class="avatar avatar-placeholder"><span class="bg-neutral text-neutral-content rounded-full w-7 text-xs font-semibold">{{ current_user.username[0]|upper }}</span></span>
             <span class="hidden sm:inline font-medium">{{ current_user.username }}</span>
             <span class="badge badge-sm badge-outline hidden md:inline-flex">{{ current_user.role }}</span>
-          </button>
-          <div tabindex="0" class="dropdown-content card card-sm bg-base-100 border border-base-300 shadow-md w-56">
+          </summary>
+          <div class="dropdown-content card card-sm bg-base-100 border border-base-300 shadow-md w-56 z-50">
             <div class="card-body gap-1">
               <p class="font-semibold text-sm">{{ current_user.username }}</p>
               <p class="text-xs opacity-70 mb-1">Role: {{ current_user.role }}</p>
@@ -47,7 +47,7 @@
               </form>
             </div>
           </div>
-        </div>
+        </details>
         {% endif %}
       </div>
     </header>
@@ -164,7 +164,7 @@
             Users</a></li>
           <li><a href="{{ url_for('users.groups') }}" class="{{ 'menu-active' if request.endpoint == 'users.groups' }}">
             <span class="icon-[lucide--users-round] size-4.5" aria-hidden="true"></span>
-            Groups</a></li>
+            Access groups</a></li>
           {% endif %}
         </ul>
       </nav>

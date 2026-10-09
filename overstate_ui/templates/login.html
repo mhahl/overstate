@@ -9,7 +9,7 @@
 <body class="bg-base-200 min-h-screen">
 <div class="min-h-screen grid place-items-center px-4 py-10">
   <div class="card bg-base-100 card-border shadow-xl w-full max-w-3xl overflow-hidden md:grid md:grid-cols-5">
-    <div class="bg-slate-900 text-slate-100 p-8 md:col-span-2 flex flex-col justify-center gap-5">
+    <div class="bg-neutral text-neutral-content p-8 md:col-span-2 flex flex-col justify-center gap-5">
       <div class="flex items-center gap-3">
         <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-11 h-11">
         <div>
@@ -31,14 +31,14 @@
           {% for category, m in messages %}<div class="alert {{ 'alert-error' if category == 'error' else 'alert-info' }} mb-2" role="alert">{{ m }}</div>{% endfor %}
         {% endif %}
       {% endwith %}
-      <label class="fieldset">
-        <span class="fieldset-legend">Username</span>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Username</legend>
         {{ form.username(class_="input w-full", autocomplete="username") }}
-      </label>
-      <label class="fieldset">
-        <span class="fieldset-legend">Password</span>
+      </fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Password</legend>
         {{ form.password(class_="input w-full", autocomplete="current-password") }}
-      </label>
+      </fieldset>
       <div class="card-actions flex-col mt-1">
         <button class="btn btn-primary btn-block">Log in</button>
         {% if sso %}

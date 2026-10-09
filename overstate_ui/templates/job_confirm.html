@@ -77,15 +77,15 @@
       {% endif %}
       <input type="hidden" name="confirmed" value="yes">
       {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}
-      <label class="fieldset">
-        <span class="fieldset-legend">Type <code>{{ tgt }}</code> to confirm</span>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Type <code>{{ tgt }}</code> to confirm</legend>
         <input name="confirm_tgt" class="input w-full font-mono" placeholder="{{ tgt }}" autocomplete="off" required>
-      </label>
+      </fieldset>
       {% if matched is none %}
-      <label class="fieldset flex-row items-center gap-2">
+      <fieldset class="fieldset flex-row items-center gap-2">
         <input name="no_preview_ok" type="checkbox" class="checkbox">
         <span class="text-sm">Fire without a match preview</span>
-      </label>
+      </fieldset>
       {% endif %}
       {% endif %}
       <div class="card-actions justify-end">

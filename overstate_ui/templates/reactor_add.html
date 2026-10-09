@@ -11,13 +11,18 @@
   <li class="step {{ 'step-primary' if step >= 2 }}">SLS file</li>
   <li class="step {{ 'step-primary' if step >= 3 }}">Review</li>
 </ul>
-{% if error %}<div class="alert alert-error mb-4" role="alert">{{ error }}</div>{% endif %}
+{% if error %}
+<div class="alert alert-error mb-4" role="alert">
+  <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
 {% if step == 1 %}
 <form method="post" action="{{ url_for('reactor.add_step2') }}" class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="card-body gap-3">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="fieldset">
-      <span class="fieldset-legend">Event pattern</span>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Event pattern</legend>
       <input name="event" value="{{ event }}" list="reactor-event-presets" placeholder="salt/minion/*/start" class="input font-mono" required autocomplete="off">
       <datalist id="reactor-event-presets">
         <optgroup label="Common patterns">
@@ -28,9 +33,9 @@
         </optgroup>{% endif %}
       </datalist>
       <span class="text-xs opacity-70">Pick a pattern or type your own. You can use globs (<code class="font-mono">* ? [ ]</code>).</span>
-    </label>
+    </fieldset>
     <div class="card-actions justify-end">
-      <button class="btn btn-primary">Continue</button>
+      <button class="btn btn-sm btn-primary">Continue</button>
     </div>
   </div>
 </form>
@@ -43,25 +48,25 @@
     {% if files is none %}
     <div class="alert alert-warning" role="status"><span>Reactor files are not readable here. Enter the reference.</span></div>
     {% elif files %}
-    <label class="fieldset">
-      <span class="fieldset-legend">SLS file</span>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">SLS file</legend>
       <select name="sls" class="select font-mono">
         <option value="">Custom reference…</option>
         {% for f in files %}<option value="salt://{{ f }}" {% if pick == "salt://" + f %}selected{% endif %}>{{ f }}</option>{% endfor %}
       </select>
-    </label>
+    </fieldset>
     {% endif %}
-    <label class="fieldset">
-      <span class="fieldset-legend">{% if files %}Or custom reference{% else %}SLS reference{% endif %}</span>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">{% if files %}Or custom reference{% else %}SLS reference{% endif %}</legend>
       <input name="sls_custom" value="{{ custom }}" placeholder="salt://reactor/boot.sls" class="input font-mono"{% if files %} list="reactor-sls-files"{% endif %}>
       {% if files %}<datalist id="reactor-sls-files">
         {% for f in files %}<option value="salt://{{ f }}">{% endfor %}
       </datalist>{% endif %}
       <span class="text-xs opacity-70">Custom references appear in the list but link only when they resolve under the reactor roots.</span>
-    </label>
+    </fieldset>
     <div class="card-actions justify-between">
       <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.add_wizard') }}">‹ Back</a>
-      <button class="btn btn-primary">Review</button>
+      <button class="btn btn-sm btn-primary">Review</button>
     </div>
   </div>
 </form>
@@ -92,7 +97,7 @@
     {% endif %}
     <div class="card-actions justify-between">
       <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.add_wizard') }}">‹ Start over</a>
-      <button class="btn btn-primary">Confirm and add</button>
+      <button class="btn btn-sm btn-primary">Confirm and add</button>
     </div>
   </div>
 </form>

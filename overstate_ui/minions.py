@@ -8,12 +8,14 @@ paths keep working.
 import csv
 import datetime as dt
 import io
+import shlex
 
 import httpx
 from flask import (
     Blueprint,
     Response,
     abort,
+    current_app,
     flash,
     jsonify,
     redirect,
@@ -596,31 +598,53 @@ def onboard():
     pending = sorted(m for m, st in statuses.items() if st == "pending")
     master_host = get_setting("master_host")
     inputs = onboard_inputs(request.args)
-    script = build_onboard_script(*inputs) if inputs else None
+    script_url = None
+    if inputs:
+        from itsdangerous import URLSafeTimedSerializer
+
+        token = URLSafeTimedSerializer(
+            current_app.secret_key, salt="minion-onboard"
+        ).dumps(inputs)
+        base_url = (current_app.config.get("PUBLIC_URL") or request.url_root).rstrip(
+            "/"
+        )
+        script_url = f"{base_url}{url_for('minions.onboard_script', token=token)}"
     return render_template(
         "onboard.html",
         master_host=master_host,
         pending=pending,
         reachable=reachable,
-        script=script,
+        script_url=script_url,
+        script_command=(
+            f"script=$(curl -fsSL {shlex.quote(script_url)}) "
+            "&& printf '%s\\n' \"$script\" | sudo sh"
+            if script_url
+            else None
+        ),
     )
 
 
-@bp.route("/onboard/script")
-@login_required
-def onboard_script():
-    """Download the generated join script. Same validation as the form."""
-    from .authz import require
+@bp.route("/onboard/script/<token>")
+def onboard_script(token: str):
+    """Serve an expiring script URL for a host's unauthenticated curl."""
+    from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-    require("minion.onboard")
-    inputs = onboard_inputs(request.args)
-    if inputs is None:
-        return redirect(url_for("minions.onboard"))
-    distro, master, mid = inputs
+    signer = URLSafeTimedSerializer(current_app.secret_key, salt="minion-onboard")
+    try:
+        inputs = signer.loads(token, max_age=1800)
+    except SignatureExpired:
+        abort(410)
+    except BadSignature:
+        abort(404)
+    try:
+        distro, topology, masters, mid = inputs
+        script = build_onboard_script(distro, topology, tuple(masters), mid)
+    except (TypeError, ValueError, KeyError, IndexError):
+        abort(404)
     return Response(
-        build_onboard_script(distro, master, mid),
+        script,
         mimetype="text/x-shellscript",
-        headers={"Content-Disposition": f"attachment; filename=onboard-{mid}.sh"},
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
 
 

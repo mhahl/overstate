@@ -7,44 +7,44 @@
 </div>
 <form method="get" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
-    <label class="fieldset">
-      <span class="fieldset-legend">Left</span>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Left</legend>
       <select name="a" class="select select-sm">
         <option value="">—</option>
         {% for m in mids %}<option value="{{ m }}"{% if m == mid_a %} selected{% endif %}>{{ m }}</option>{% endfor %}
       </select>
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">Left revision</span>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Left revision</legend>
       <select name="rev_a" class="select select-sm">
         <option value="">newest snapshot</option>
         <option value="live"{% if rev_a == "live" %} selected{% endif %}>live</option>
         {% for s in snaps_a %}<option value="{{ s.id }}"{% if rev_a == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
       </select>
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">Right</span>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Right</legend>
       <select name="b" class="select select-sm">
         <option value="">—</option>
         {% for m in mids %}<option value="{{ m }}"{% if m == mid_b %} selected{% endif %}>{{ m }}</option>{% endfor %}
       </select>
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">Right revision</span>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Right revision</legend>
       <select name="rev_b" class="select select-sm">
         <option value="">newest snapshot</option>
         <option value="live"{% if rev_b == "live" %} selected{% endif %}>live</option>
         {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
       </select>
-    </label>
+    </fieldset>
     <button class="btn btn-sm btn-primary mb-1">Compare</button>
   </div>
   <p class="text-xs opacity-70 mt-2">Pick the same minion on both sides to compare two of its snapshots.</p>
 </form>
 {% if compared %}
-<div class="join mb-4" role="tablist" aria-label="View">
-  <a role="tab" class="join-item btn btn-sm {{ 'btn-active' if view == 'changes' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='changes') }}">Changes</a>
-  <a role="tab" class="join-item btn btn-sm {{ 'btn-active' if view == 'full' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='full') }}">Full</a>
+<div class="tabs tabs-box mb-4" role="tablist" aria-label="View">
+  <a role="tab" class="tab {{ 'tab-active' if view == 'changes' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='changes') }}">Changes</a>
+  <a role="tab" class="tab {{ 'tab-active' if view == 'full' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='full') }}">Full</a>
 </div>
 <div class="card bg-base-100 border border-base-300 shadow-sm">
   <div class="px-4 py-3 border-b border-base-300 text-sm">

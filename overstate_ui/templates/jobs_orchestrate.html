@@ -8,24 +8,24 @@
 <form method="post" action="{{ url_for('jobs.orchestrate_run') }}" class="card bg-base-100 border border-base-300 shadow-sm max-w-2xl">
   <div class="card-body gap-3">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="fieldset">
-      <span class="fieldset-legend">Mods (dotted orchestration name)</span>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Mods (dotted orchestration name)</legend>
       <input name="mods" class="input font-mono" placeholder="orch.deploy-web" required autocomplete="off">
-    </label>
+    </fieldset>
     <div class="flex flex-wrap gap-3 items-end">
-      <label class="fieldset w-40">
-        <span class="fieldset-legend">Saltenv</span>
+      <fieldset class="fieldset w-40">
+        <legend class="fieldset-legend">Saltenv</legend>
         <input name="saltenv" value="base" class="input font-mono" autocomplete="off">
-      </label>
-      <label class="fieldset">
-        <span class="fieldset-legend">Dry run</span>
+      </fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Dry run</legend>
         <input name="test" type="checkbox" class="checkbox" checked>
-      </label>
+      </fieldset>
     </div>
-    <label class="fieldset">
-      <span class="fieldset-legend">Pillar override (optional JSON object)</span>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Pillar override (optional JSON object)</legend>
       <textarea name="pillar" rows="4" class="textarea font-mono" placeholder='{"role": "web"}' autocomplete="off"></textarea>
-    </label>
+    </fieldset>
     <div class="card-actions justify-end mt-1">
       {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('job.run.orchestrate')) %}
       <button class="btn btn-primary">Run orchestration</button>

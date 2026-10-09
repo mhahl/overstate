@@ -13,10 +13,10 @@
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <div class="card-body flex-row flex-wrap items-end gap-2">
-    <label class="fieldset flex-1 min-w-48">
-      <span class="fieldset-legend">Search</span>
+    <fieldset class="fieldset flex-1 min-w-48">
+      <legend class="fieldset-legend">Search</legend>
       <input type="search" name="q" value="{{ q }}" placeholder="Search minion…" class="input input-sm">
-    </label>
+    </fieldset>
     <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('pillar.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>

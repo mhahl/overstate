@@ -10,26 +10,26 @@
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <div class="card-body flex-row flex-wrap items-end gap-2">
-    <label class="fieldset flex-1 min-w-48">
-      <span class="fieldset-legend">User</span>
+    <fieldset class="fieldset flex-1 min-w-48">
+      <legend class="fieldset-legend">User</legend>
       <input name="user" value="{{ user }}" placeholder="Search user…" class="input input-sm w-full" autocomplete="off">
-    </label>
-    <label class="fieldset flex-1 min-w-48">
-      <span class="fieldset-legend">Action</span>
+    </fieldset>
+    <fieldset class="fieldset flex-1 min-w-48">
+      <legend class="fieldset-legend">Action</legend>
       <input name="action" value="{{ action }}" placeholder="Search action…" class="input input-sm w-full" autocomplete="off">
-    </label>
-    <label class="fieldset">
-      <span class="fieldset-legend">Outcome</span>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Outcome</legend>
       <select name="outcome" class="select select-sm">
         <option value="">any</option>
         <option value="allow"{% if outcome == "allow" %} selected{% endif %}>allow</option>
         <option value="deny"{% if outcome == "deny" %} selected{% endif %}>deny</option>
       </select>
-    </label>
-    <label class="fieldset flex-1 min-w-48">
-      <span class="fieldset-legend">Permission</span>
+    </fieldset>
+    <fieldset class="fieldset flex-1 min-w-48">
+      <legend class="fieldset-legend">Permission</legend>
       <input name="permission" value="{{ permission }}" placeholder="Search permission…" class="input input-sm w-full" autocomplete="off">
-    </label>
+    </fieldset>
     <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if user or action or outcome or permission %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>

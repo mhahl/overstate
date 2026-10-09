@@ -13,7 +13,7 @@
       </div>
       {% for key, meta in section.fields %}
       <div class="fieldset">
-        <label class="fieldset-legend" for="setting-{{ section_name }}-{{ key }}">{{ meta.label }}</label>
+        <fieldset class="fieldset-legend" for="setting-{{ section_name }}-{{ key }}">{{ meta.label }}</fieldset>
         {% if meta.options %}
         <select id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" class="select w-full"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>
           {% for opt in meta.options %}
@@ -35,7 +35,7 @@
   <div class="flex items-center justify-between gap-4">
     {% if is_admin %}
     <p class="text-sm opacity-70">Saving applies your changes immediately.</p>
-    <button class="btn btn-primary">Save</button>
+    <button class="btn btn-sm btn-primary">Save</button>
     {% else %}
     <p class="text-sm opacity-70">Only admins can change settings.</p>
     {% endif %}
@@ -89,16 +89,16 @@
       <form method="post" action="{{ url_for('settings.save') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="section" value="access">
-        <label class="fieldset"><span class="fieldset-legend">Mode</span>
+        <fieldset class="fieldset"><legend class="fieldset-legend">Mode</legend>
         <select name="rbac_mode" class="select select-sm">
           <option value="legacy"{% if rbac_mode_value != "scoped" %} selected{% endif %}>legacy</option>
           <option value="scoped"{% if rbac_mode_value == "scoped" %} selected{% endif %}>scoped</option>
-        </select></label>
-        <label class="fieldset"><span class="fieldset-legend">Role fallback</span>
+        </select></fieldset>
+        <fieldset class="fieldset"><legend class="fieldset-legend">Role fallback</legend>
         <select name="rbac_role_fallback" class="select select-sm">
           <option value="on"{% if rbac_fallback_value != "off" %} selected{% endif %}>on</option>
           <option value="off"{% if rbac_fallback_value == "off" %} selected{% endif %}>off</option>
-        </select></label>
+        </select></fieldset>
         <button class="btn btn-sm btn-primary">Save</button>
       </form>
     </div>
@@ -138,17 +138,17 @@
       {% endif %}
       <form method="post" action="{{ url_for('settings.create_idp_mapping') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label class="fieldset"><span class="fieldset-legend">IdP group</span>
-        <input name="idp_group" class="input input-sm" autocomplete="off" required></label>
-        <label class="fieldset"><span class="fieldset-legend">Role</span>
+        <fieldset class="fieldset"><legend class="fieldset-legend">IdP group</legend>
+        <input name="idp_group" class="input input-sm" autocomplete="off" required></fieldset>
+        <fieldset class="fieldset"><legend class="fieldset-legend">Role</legend>
         <select name="role" class="select select-sm">
           {% for label, roles in role_groups %}
           <optgroup label="{{ label }}">
             {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
           </optgroup>
           {% endfor %}
-        </select></label>
-        <label class="fieldset"><span class="fieldset-legend">Scope kind</span>
+        </select></fieldset>
+        <fieldset class="fieldset"><legend class="fieldset-legend">Scope kind</legend>
         <select name="scope_kind" class="select select-sm">
           <option value="fleet">fleet</option>
           <option value="group">group</option>
@@ -156,16 +156,16 @@
           <option value="glob" selected>glob</option>
           <option value="grain">grain</option>
           <option value="prefix">prefix</option>
-        </select></label>
-        <label class="fieldset"><span class="fieldset-legend">Scope value (group id, ids, pattern, or path)</span>
-        <input name="scope_value" class="input input-sm font-mono" autocomplete="off"></label>
-        <label class="fieldset"><span class="fieldset-legend">Grain key (grain scopes)</span>
+        </select></fieldset>
+        <fieldset class="fieldset"><legend class="fieldset-legend">Scope value (group id, ids, pattern, or path)</legend>
+        <input name="scope_value" class="input input-sm font-mono" autocomplete="off"></fieldset>
+        <fieldset class="fieldset"><legend class="fieldset-legend">Grain key (grain scopes)</legend>
         <select name="grain_key" class="select select-sm">
           <option value="">—</option>
           {% for gk in grain_keys %}<option value="{{ gk }}">{{ gk }}</option>{% endfor %}
-        </select></label>
-        <label class="fieldset"><span class="fieldset-legend">Grain value</span>
-        <input name="grain_value" class="input input-sm font-mono" autocomplete="off"></label>
+        </select></fieldset>
+        <fieldset class="fieldset"><legend class="fieldset-legend">Grain value</legend>
+        <input name="grain_value" class="input input-sm font-mono" autocomplete="off"></fieldset>
         <button class="btn btn-sm btn-primary">Add mapping</button>
       </form>
       {% if rbac_scoped %}
@@ -206,8 +206,8 @@
       {% endif %}
       <form method="post" action="{{ url_for('settings.rotation_verify') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label class="fieldset flex-1 min-w-52"><span class="fieldset-legend">Candidate password</span>
-        <input type="password" name="password" class="input input-sm w-full font-mono" autocomplete="new-password"></label>
+        <fieldset class="fieldset flex-1 min-w-52"><legend class="fieldset-legend">Candidate password</legend>
+        <input type="password" name="password" class="input input-sm w-full font-mono" autocomplete="new-password"></fieldset>
         <button class="btn btn-sm btn-primary">Verify</button>
       </form>
     </div>
