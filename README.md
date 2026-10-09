@@ -19,7 +19,7 @@ behind salt-api; the app never embeds a master.
 
 ## Run it locally
 
-You need Podman or Docker with compose.
+You need Podman with compose.
 
 ```sh
 cp .env.example .env
@@ -30,7 +30,7 @@ Open `https://127.0.0.1:8000` and accept the self-signed cert. The
 first boot prints the admin password in the app log:
 
 ```sh
-podman logs overstate_overstate_1 | grep "seeded admin"
+podman compose logs overstate | grep "seeded admin"
 ```
 
 `./scripts/seed-mock.sh --force` fills the UI with fake fleet data
