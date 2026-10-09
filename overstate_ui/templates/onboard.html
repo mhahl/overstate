@@ -34,7 +34,7 @@
           <legend class="fieldset-legend">Distribution</legend>
           <select name="distro" class="select select-sm">
             {% for d in ["rhel", "fedora", "suse"] %}
-            <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE"}[d] }}</option>
+            <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE (OS repos)"}[d] }}</option>
             {% endfor %}
           </select>
         </fieldset>

@@ -36,7 +36,6 @@ from .jobs_helpers import FUN_RE, _split_state_id, _state_label
 from .minions_helpers import (
     HOST_RE,
     ONBOARD_DISTROS,
-    ONBOARD_INSTALL,
     OS_ICONS,
     PRESENCE_ORDER,
     _beacon_refusal,
@@ -91,7 +90,6 @@ __all__ = [
     "DETAIL_TABS",
     "HOST_RE",
     "ONBOARD_DISTROS",
-    "ONBOARD_INSTALL",
     "OS_ICONS",
     "PAGE_SIZES",
     "PRESENCE_ORDER",

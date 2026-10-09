@@ -690,7 +690,8 @@ def test_onboard_generates_script(client):
     assert rv.headers["Cache-Control"] == "no-store"
     script = rv.data.decode()
     assert "dnf" in script and "zypper" not in script
-    assert "[overstate-saltproject]" in script
+    assert "salt.repo" in script and "broadcom" not in script
+    assert "github.com/saltstack/salt-install-guide" in script
     assert 'master: "salt.example.com"' in script
     assert 'id: "db-02"' in script
 
@@ -712,7 +713,8 @@ def test_onboard_failover_and_rejects_invalid_script_token(client):
     )
     script_url = re.search(r"curl -fsSL ('[^']+'|[^ )]+)", command).group(1).strip("'")
     script = client.get(script_url).data.decode()
-    assert "zypper" in script
+    assert "zypper" in script and "dnf" not in script
+    assert "packages.broadcom.com" not in script
     assert 'master:\n  - "salt-a.example.com"\n  - "salt-b.example.com"' in script
     assert "master_type: failover" in script
     assert "master_alive_interval: 30" in script
@@ -751,7 +753,8 @@ def test_build_onboard_script_distros():
         build_onboard_script("suse", "failover", ("m", "n"), "h"),
     )
     assert "dnf" in scripts[0] and "dnf" in scripts[1]
-    assert "zypper" in scripts[2]
+    assert "zypper" in scripts[2] and "packages.broadcom.com" not in scripts[2]
+    assert "salt-install-guide/releases/latest/download/salt.repo" in scripts[0]
     for script in scripts:
         subprocess.run(["sh", "-n"], input=script, text=True, check=True)
 
