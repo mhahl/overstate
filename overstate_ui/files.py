@@ -322,6 +322,20 @@ def index():
     page = min(page, pages)
     rows = group_rows(entries[(page - 1) * per_page : page * per_page])
     has_top = (roots() / "top.sls").is_file()
+    from .file_sync_schedule import (
+        FILE_SYNC_CRON_DEFAULT,
+        LAST_MESSAGE_SETTING,
+        LAST_RUN_SETTING,
+        LAST_STATUS_SETTING,
+    )
+    from .settings import get_setting
+
+    file_sync = {
+        "schedule": get_setting("file_sync_cron") or FILE_SYNC_CRON_DEFAULT,
+        "last_run": get_setting(LAST_RUN_SETTING),
+        "last_status": get_setting(LAST_STATUS_SETTING),
+        "last_message": get_setting(LAST_MESSAGE_SETTING),
+    }
     return render_template(
         "files.html",
         rows=rows,
@@ -337,6 +351,7 @@ def index():
         truncated=truncated,
         has_top=has_top,
         git=git_status(),
+        file_sync=file_sync,
     )
 
 

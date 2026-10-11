@@ -1,0 +1,61 @@
+# Kubernetes runs a small UTC tick; the persisted Settings cron expression
+# decides whether this invocation performs a pull. This lets admins change
+# the schedule without granting the web app CronJob-write RBAC.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: file-sync
+spec:
+  schedule: "* * * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 180
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: file-sync
+              image: overstate-app
+              imagePullPolicy: Always
+              command: ["python", "-m", "overstate_ui.file_sync_cli"]
+              env:
+                - name: SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: overstate-secrets
+                      key: SECRET_KEY
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: overstate-db-app
+                      key: password
+                - name: DATABASE_URL
+                  value: "postgresql+psycopg://overstate:$(DB_PASSWORD)@overstate-db-rw:5432/overstate"
+                - name: SALT_API_URL
+                  value: https://salt-master-api:8000
+                - name: SALT_API_VERIFY_CA
+                  value: "false"
+                - name: SALT_EAUTH_USER
+                  value: overstate
+                - name: SALT_EAUTH_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: overstate-secrets
+                      key: SALT_API_USER_PASS
+                - name: SALT_EAUTH_TYPE
+                  value: pam
+                - name: FILE_ROOTS
+                  value: /srv/states/salt
+              volumeMounts:
+                - name: srv
+                  mountPath: /srv/states
+          volumes:
+            - name: srv
+              persistentVolumeClaim:
+                claimName: srv-data

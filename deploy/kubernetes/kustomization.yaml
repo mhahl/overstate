@@ -39,6 +39,7 @@ resources:
   - app.yaml
   - worker.yaml
   - reconcile-cronjob.yaml
+  - file-sync-cronjob.yaml
   - ingress.yaml
   - salt-mq-routes.yaml
 

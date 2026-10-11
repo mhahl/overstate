@@ -18,6 +18,11 @@ from flask_login import current_user, login_required
 from .audit import log_event
 from .auth import roles_required
 from .db import get_session
+from .file_sync_schedule import (
+    FILE_SYNC_CRON_DEFAULT,
+    FILE_SYNC_SETTING,
+    validate_file_sync_schedule,
+)
 from .models import Setting
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
@@ -37,6 +42,11 @@ DEFS = {
         "help": "Enter at least two IPv4 or IPv6 addresses, one per line or comma-separated. New minions use all addresses with Salt failover enabled. Leave empty to disable onboarding until configured.",
         "default": "",
         "multiline": True,
+    },
+    FILE_SYNC_SETTING: {
+        "label": "File sync cron schedule (UTC)",
+        "help": "Five numeric cron fields: minute hour day month weekday. Supports *, lists, ranges, and steps. Default: hourly at minute 0. Enter off to disable scheduled sync.",
+        "default": FILE_SYNC_CRON_DEFAULT,
     },
     "oidc_issuer": {
         "label": "OIDC issuer",
@@ -93,6 +103,11 @@ SECTIONS = [
         "title": "Minion connectivity",
         "desc": "Master IPs used for failover by newly onboarded minions.",
         "keys": ["master_ips"],
+    },
+    {
+        "title": "File synchronization",
+        "desc": "Pull the tracked file-roots repository on a UTC cron schedule. Scheduled sync uses fast-forward-only git pulls.",
+        "keys": [FILE_SYNC_SETTING],
     },
     {
         "title": "Single sign-on (OIDC)",
@@ -481,6 +496,14 @@ def save():
             )
         except ValueError as exc:
             flash(str(exc), "error")
+            return redirect(url_for("settings.index"))
+    if FILE_SYNC_SETTING in posted:
+        schedule = request.form.get(FILE_SYNC_SETTING, "").strip()
+        try:
+            validate_file_sync_schedule(schedule or FILE_SYNC_CRON_DEFAULT)
+        except ValueError as exc:
+            session.rollback()
+            flash(f"Invalid file sync schedule: {exc}.", "error")
             return redirect(url_for("settings.index"))
     for key, meta in DEFS.items():
         if key not in posted:

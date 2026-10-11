@@ -54,6 +54,17 @@
       {% endif %}
     </div>
   </section>
+  <section class="card bg-base-100 border border-base-300 shadow-sm mb-3" aria-label="Scheduled file sync">
+    <div class="card-body py-3">
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="font-semibold">Scheduled sync</span>
+        <code class="font-mono">{{ file_sync.schedule }}</code>
+        {% if file_sync.schedule|lower == "off" %}<span class="badge badge-sm badge-ghost">disabled</span>{% endif %}
+        {% if file_sync.last_status %}<span class="badge badge-sm{% if file_sync.last_status == 'success' %} badge-success{% elif file_sync.last_status == 'warning' %} badge-warning{% else %} badge-error{% endif %}">{{ file_sync.last_status }}</span>{% endif %}
+      </div>
+      {% if file_sync.last_message %}<p class="text-xs opacity-70">{{ file_sync.last_message }}{% if file_sync.last_run %} · {{ file_sync.last_run }}{% endif %}</p>{% else %}<p class="text-xs opacity-70">No scheduled sync has run yet. Change the schedule in Settings.</p>{% endif %}
+    </div>
+  </section>
   {% macro dir_tree(nodes) %}
   <ul class="menu menu-sm p-0">
     {% for n in nodes %}

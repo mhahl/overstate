@@ -207,8 +207,15 @@ respectively.
 - `page_size`. Minion list rows per page: 10, 25, or 50.
 - `theme`. `light` (the default), `dark`, or `wireframe`. Applies server-side to every page, including the login screen.
 
+**File synchronization.**
+
+- `file_sync_cron`. Five numeric cron fields in UTC: minute, hour, day of month, month, weekday. `*`, comma-separated lists, ranges, and steps are supported; for example `*/15 * * * *` syncs every 15 minutes or `0 2 * * 1-5` syncs at 02:00 on weekdays. The default is `0 * * * *` (hourly at minute 0). Enter `off` to disable scheduled pulls; manual Sync now remains available.
+- The Kubernetes `file-sync` CronJob checks the stored setting once a minute. Only due slots run `git fetch` and `git pull --ff-only`; unpushed or dirty work is never forced. It mounts the shared `srv-data` volume and has no Kubernetes API token or extra RBAC.
+- The Files page shows the configured schedule and latest result. Successes and failures also appear in Audit as `file-sync:*`; a failed Git pull exits non-zero so the Kubernetes Job is marked failed and its logs explain the refusal. A fileserver refresh failure is shown as a warning and retried on the next scheduled run.
+
 Saving writes one row per value and flashes confirmation. Invalid
-option values reset to the default instead of erroring.
+option values reset to the default instead of erroring; an invalid cron
+expression is rejected without changing saved settings.
 
 **Single sign-on (IdP mappings).** In scoped mode the mapping editor
 replaces the two group-list boxes above: group name, role, scope, one
