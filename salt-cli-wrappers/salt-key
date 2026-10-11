@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Salt-key CLI wrapper for salt-cli pod."""
+import sys
+import os
+import json
+import ssl
+import urllib.request
+import urllib.error
+
+ROLE = os.environ.get("OVERSTATE_ROLE", "viewer").lower()
+API_USER = os.environ.get("SALT_API_USER", "overstate")
+API_PASS = os.environ.get("SALT_API_USER_PASS", "")
+MASTERS = [
+    "https://salt-master-0.salt-master.overstate.svc.cluster.local:8000",
+    "https://salt-master-1.salt-master.overstate.svc.cluster.local:8000",
+    "https://salt-master-2.salt-master.overstate.svc.cluster.local:8000",
+    "https://salt-master-api.overstate.svc.cluster.local:8000",
+]
+
+def print_help():
+    print("""Usage: salt-key [options]
+
+Actions:
+  -L, --list-all        List all public keys
+  -a ACCEPT, --accept=ACCEPT
+                        Accept the specified key
+  -r REJECT, --reject=REJECT
+                        Reject the specified key
+  -d DELETE, --delete=DELETE
+                        Delete the specified key
+""")
+
+def get_token(master_url, ctx):
+    login_data = json.dumps({"username": API_USER, "password": API_PASS, "eauth": "pam"}).encode()
+    req = urllib.request.Request(f"{master_url}/login", data=login_data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, context=ctx, timeout=4) as r:
+        return json.loads(r.read())["return"][0]["token"]
+
+def main():
+    args = sys.argv[1:]
+    if not args or "-h" in args or "--help" in args:
+        print_help()
+        sys.exit(0)
+
+    ctx = ssl._create_unverified_context()
+
+    if "-L" in args or "--list-all" in args:
+        # Listing keys is allowed for all roles (viewer, operator, admin)
+        minions = set()
+        minions_pre = set()
+        minions_rejected = set()
+        minions_denied = set()
+
+        for master_url in MASTERS:
+            try:
+                token = get_token(master_url, ctx)
+                call_data = json.dumps([{"client": "wheel", "fun": "key.list_all"}]).encode()
+                req = urllib.request.Request(master_url, data=call_data, headers={"Content-Type": "application/json", "X-Auth-Token": token})
+                with urllib.request.urlopen(req, context=ctx, timeout=5) as r:
+                    res = json.loads(r.read())
+                    tag_data = res.get("return", [{}])[0]
+                    ret = tag_data.get("data", {}).get("return", tag_data.get("return", {}))
+                    if isinstance(ret, dict):
+                        minions.update(ret.get("minions", []))
+                        minions_pre.update(ret.get("minions_pre", []))
+                        minions_rejected.update(ret.get("minions_rejected", []))
+                        minions_denied.update(ret.get("minions_denied", []))
+            except Exception:
+                continue
+
+        print("Accepted Keys:")
+        for m in sorted(minions):
+            print(f"  {m}")
+        print("Denied Keys:")
+        for m in sorted(minions_denied):
+            print(f"  {m}")
+        print("Unaccepted Keys:")
+        for m in sorted(minions_pre):
+            print(f"  {m}")
+        print("Rejected Keys:")
+        for m in sorted(minions_rejected):
+            print(f"  {m}")
+        sys.exit(0)
+
+    # Mutating key actions require operator or admin
+    action = None
+    target_mid = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-a", "--accept", "-r", "--reject", "-d", "--delete"):
+            action = {"-a": "accept", "--accept": "accept", "-r": "reject", "--reject": "reject", "-d": "delete", "--delete": "delete"}[a]
+            if i + 1 < len(args):
+                target_mid = args[i+1]
+                i += 1
+        elif a.startswith(("-a=", "--accept=", "-r=", "--reject=", "-d=", "--delete=")):
+            flag, val = a.split("=", 1)
+            action = {"-a": "accept", "--accept": "accept", "-r": "reject", "--reject": "reject", "-d": "delete", "--delete": "delete"}[flag]
+            target_mid = val
+        i += 1
+
+    if not action or not target_mid:
+        print_help()
+        sys.exit(1)
+
+    if ROLE == "viewer":
+        print(f"forbidden: viewer role cannot {action} keys.", file=sys.stderr)
+        sys.exit(1)
+
+    wheel_fun = f"key.{action}"
+    applied = 0
+    for master_url in MASTERS:
+        try:
+            token = get_token(master_url, ctx)
+            call_data = json.dumps([{"client": "wheel", "fun": wheel_fun, "match": target_mid}]).encode()
+            req = urllib.request.Request(master_url, data=call_data, headers={"Content-Type": "application/json", "X-Auth-Token": token})
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as r:
+                applied += 1
+        except Exception:
+            continue
+
+    if applied > 0:
+        print(f"Key '{target_mid}' {action}ed on {applied} master(s).")
+    else:
+        print(f"Error: failed to {action} key '{target_mid}'.", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

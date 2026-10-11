@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Salt CLI wrapper for salt-cli pod."""
+import sys
+import os
+import json
+import ssl
+import urllib.request
+import urllib.error
+
+ROLE = os.environ.get("OVERSTATE_ROLE", "viewer").lower()
+API_USER = os.environ.get("SALT_API_USER", "overstate")
+API_PASS = os.environ.get("SALT_API_USER_PASS", "")
+MASTERS = [
+    "https://salt-master-0.salt-master.overstate.svc.cluster.local:8000",
+    "https://salt-master-1.salt-master.overstate.svc.cluster.local:8000",
+    "https://salt-master-2.salt-master.overstate.svc.cluster.local:8000",
+    "https://salt-master-api.overstate.svc.cluster.local:8000",
+]
+
+def print_help():
+    print("""Usage: salt [options] '<target>' <function> [arguments]
+
+Options:
+  -h, --help            show this help message and exit
+  -t TGT_TYPE, --tgt-type=TGT_TYPE
+                        The type of target expression: glob, grain, list, compound
+  --preview             dry-run preview
+""")
+
+def format_yaml(val, indent=4):
+    pad = " " * indent
+    if isinstance(val, dict):
+        if not val:
+            return "{}"
+        lines = []
+        for k, v in val.items():
+            if isinstance(v, (dict, list)):
+                lines.append(f"{pad}{k}:")
+                lines.append(format_yaml(v, indent + 2))
+            else:
+                lines.append(f"{pad}{k}: {v}")
+        return "\n".join(lines)
+    elif isinstance(val, list):
+        if not val:
+            return "[]"
+        lines = []
+        for item in val:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{pad}-")
+                lines.append(format_yaml(item, indent + 2))
+            else:
+                lines.append(f"{pad}- {item}")
+        return "\n".join(lines)
+    else:
+        return f"{pad}{val}"
+
+def main():
+    args = sys.argv[1:]
+    if not args or "-h" in args or "--help" in args:
+        print_help()
+        sys.exit(0)
+
+    if ROLE == "viewer":
+        print("forbidden: viewer role cannot fire salt commands.", file=sys.stderr)
+        sys.exit(1)
+
+    tgt_type = "glob"
+    positional = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-t", "--tgt-type"):
+            i += 1
+            if i < len(args):
+                tgt_type = args[i]
+        elif a.startswith("--tgt-type="):
+            tgt_type = a.split("=", 1)[1]
+        elif a.startswith("-"):
+            pass
+        else:
+            positional.append(a)
+        i += 1
+
+    if len(positional) < 2:
+        print("Usage: salt [options] '<target>' <function> [arguments]", file=sys.stderr)
+        sys.exit(1)
+
+    tgt = positional[0]
+    fun = positional[1]
+    arg_list = positional[2:]
+
+    ctx = ssl._create_unverified_context()
+    login_data = json.dumps({"username": API_USER, "password": API_PASS, "eauth": "pam"}).encode()
+    call_payload = [{"client": "local", "tgt": tgt, "fun": fun, "arg": arg_list, "tgt_type": tgt_type}]
+    call_data = json.dumps(call_payload).encode()
+
+    all_returns = {}
+    success = False
+
+    for master_url in MASTERS:
+        try:
+            req = urllib.request.Request(f"{master_url}/login", data=login_data, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, context=ctx, timeout=4) as r:
+                token = json.loads(r.read())["return"][0]["token"]
+
+            req2 = urllib.request.Request(master_url, data=call_data, headers={"Content-Type": "application/json", "X-Auth-Token": token})
+            with urllib.request.urlopen(req2, context=ctx, timeout=10) as r:
+                res = json.loads(r.read())
+                ret = res.get("return", [{}])[0]
+                if isinstance(ret, dict):
+                    all_returns.update(ret)
+                success = True
+        except Exception:
+            continue
+
+    if not success and not all_returns:
+        print(f"Error: could not contact salt-master cluster", file=sys.stderr)
+        sys.exit(1)
+
+    if not all_returns:
+        print(f"No minions responded to {fun}.")
+        sys.exit(0)
+
+    for minion, ret in sorted(all_returns.items()):
+        print(f"{minion}:")
+        if isinstance(ret, (dict, list)):
+            print(format_yaml(ret, indent=4))
+        else:
+            print(f"    {ret}")
+
+if __name__ == "__main__":
+    main()

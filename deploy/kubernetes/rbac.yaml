@@ -31,7 +31,13 @@ rules:
     verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["pods", "pods/log", "events"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -78,4 +84,96 @@ subjects:
 roleRef:
   kind: Role
   name: salt-master-peers
+  apiGroup: rbac.authorization.k8s.io
+---
+# On-demand salt-cli ServiceAccounts, Roles, and RoleBindings.
+# Confined strictly to the overstate namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: salt-cli-admin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: salt-cli-admin
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: salt-cli-admin
+subjects:
+  - kind: ServiceAccount
+    name: salt-cli-admin
+roleRef:
+  kind: Role
+  name: salt-cli-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: salt-cli-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: salt-cli-operator
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: salt-cli-operator
+subjects:
+  - kind: ServiceAccount
+    name: salt-cli-operator
+roleRef:
+  kind: Role
+  name: salt-cli-operator
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: salt-cli-viewer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: salt-cli-viewer
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: salt-cli-viewer
+subjects:
+  - kind: ServiceAccount
+    name: salt-cli-viewer
+roleRef:
+  kind: Role
+  name: salt-cli-viewer
   apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,19 @@
+FROM quay.io/sigaint/overstate-salt-master:lts-pg14
+
+RUN python3 -c "import urllib.request; urllib.request.urlretrieve('https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl', '/usr/local/bin/kubectl')" \
+    && chmod +x /usr/local/bin/kubectl
+
+COPY salt-cli-wrappers/salt /usr/local/bin/salt
+COPY salt-cli-wrappers/salt-key /usr/local/bin/salt-key
+COPY salt-cli-wrappers/salt-run /usr/local/bin/salt-run
+COPY salt-cli-wrappers/entrypoint.sh /usr/local/bin/salt-cli-entrypoint.sh
+
+RUN chmod +x /usr/local/bin/salt \
+             /usr/local/bin/salt-key \
+             /usr/local/bin/salt-run \
+             /usr/local/bin/salt-cli-entrypoint.sh
+
+WORKDIR /home/salt
+
+ENTRYPOINT ["/usr/local/bin/salt-cli-entrypoint.sh"]
+CMD ["sleep", "infinity"]

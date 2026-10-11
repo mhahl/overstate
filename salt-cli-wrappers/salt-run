@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Salt-run CLI wrapper for salt-cli pod."""
+import sys
+import os
+import json
+import ssl
+import urllib.request
+import urllib.error
+
+ROLE = os.environ.get("OVERSTATE_ROLE", "viewer").lower()
+API_USER = os.environ.get("SALT_API_USER", "overstate")
+API_PASS = os.environ.get("SALT_API_USER_PASS", "")
+MASTER_API = "https://salt-master-api.overstate.svc.cluster.local:8000"
+
+def format_yaml(val, indent=2):
+    pad = " " * indent
+    if isinstance(val, dict):
+        if not val:
+            return "{}"
+        lines = []
+        for k, v in val.items():
+            if isinstance(v, (dict, list)):
+                lines.append(f"{pad}{k}:")
+                lines.append(format_yaml(v, indent + 2))
+            else:
+                lines.append(f"{pad}{k}: {v}")
+        return "\n".join(lines)
+    elif isinstance(val, list):
+        if not val:
+            return "[]"
+        lines = []
+        for item in val:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{pad}-")
+                lines.append(format_yaml(item, indent + 2))
+            else:
+                lines.append(f"{pad}- {item}")
+        return "\n".join(lines)
+    else:
+        return f"{pad}{val}"
+
+def main():
+    args = sys.argv[1:]
+    if not args or "-h" in args or "--help" in args:
+        print("Usage: salt-run [options] <runner_function> [k=v ...]")
+        sys.exit(0)
+
+    fun = args[0]
+    kwargs = {}
+    for tok in args[1:]:
+        if "=" in tok:
+            k, v = tok.split("=", 1)
+            kwargs[k] = v
+
+    ctx = ssl._create_unverified_context()
+    login_data = json.dumps({"username": API_USER, "password": API_PASS, "eauth": "pam"}).encode()
+    req = urllib.request.Request(f"{MASTER_API}/login", data=login_data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=5) as r:
+            token = json.loads(r.read())["return"][0]["token"]
+    except Exception as exc:
+        print(f"Error authenticating to salt-api: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    call_payload = [{"client": "runner", "fun": fun, "kwarg": kwargs}]
+    req2 = urllib.request.Request(MASTER_API, data=json.dumps(call_payload).encode(), headers={"Content-Type": "application/json", "X-Auth-Token": token})
+    try:
+        with urllib.request.urlopen(req2, context=ctx, timeout=15) as r:
+            res = json.loads(r.read())
+            ret = res.get("return", [{}])[0]
+            print(format_yaml(ret, indent=0))
+    except Exception as exc:
+        print(f"Error executing runner {fun}: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

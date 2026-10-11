@@ -19,11 +19,14 @@ stamping twice is harmless.
 
 from __future__ import annotations
 
+import base64
 import datetime
 import json
 import os
+import socket
 import ssl
 import urllib.error
+import urllib.parse
 import urllib.request
 
 SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
@@ -274,3 +277,243 @@ class K8sClient:
             )
         )
         return ready, len(items)
+
+    def create_pod(self, manifest: dict) -> dict:
+        """Create a Pod in this namespace."""
+        manifest.setdefault("apiVersion", "v1")
+        manifest.setdefault("kind", "Pod")
+        meta = manifest.setdefault("metadata", {})
+        meta["namespace"] = self.config.namespace
+        return self._call(
+            "POST",
+            f"/api/v1/namespaces/{self.config.namespace}/pods",
+            manifest,
+        )
+
+    def get_pod(self, name: str) -> dict | None:
+        """Get Pod resource or None if not found."""
+        try:
+            return self._call(
+                "GET",
+                f"/api/v1/namespaces/{self.config.namespace}/pods/{name}",
+            )
+        except K8sError as exc:
+            if "404" in str(exc) or "not found" in str(exc).lower():
+                return None
+            raise
+
+    def delete_pod(self, name: str, grace_period_seconds: int = 0) -> dict | None:
+        """Delete a Pod in this namespace."""
+        try:
+            return self._call(
+                "DELETE",
+                f"/api/v1/namespaces/{self.config.namespace}/pods/{name}?gracePeriodSeconds={grace_period_seconds}",
+            )
+        except K8sError as exc:
+            if "404" in str(exc) or "not found" in str(exc).lower():
+                return None
+            raise
+
+    def cleanup_salt_cli_pods(self, max_age_seconds: int = 1800) -> list[str]:
+        """Delete completed, failed, deadlined, or stale salt-cli pods."""
+        cleaned = []
+        try:
+            res = self._call(
+                "GET",
+                f"/api/v1/namespaces/{self.config.namespace}/pods?labelSelector=app.kubernetes.io/name=salt-cli",
+            )
+            now = datetime.datetime.now(datetime.UTC)
+            for item in res.get("items") or []:
+                meta = item.get("metadata") or {}
+                name = meta.get("name", "")
+                status = item.get("status") or {}
+                phase = status.get("phase", "")
+                reason = status.get("reason", "")
+                created_str = meta.get("creationTimestamp", "")
+                is_expired = False
+                if created_str:
+                    try:
+                        created = datetime.datetime.fromisoformat(
+                            created_str.replace("Z", "+00:00")
+                        )
+                        if (now - created).total_seconds() > max_age_seconds:
+                            is_expired = True
+                    except Exception:
+                        pass
+                if phase in ("Succeeded", "Failed") or is_expired or reason == "DeadlineExceeded":
+                    try:
+                        self.delete_pod(name)
+                        cleaned.append(name)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return cleaned
+
+    def exec_pod(
+        self,
+        pod_name: str,
+        command: list[str],
+        container: str | None = None,
+        timeout: float = 30.0,
+    ) -> tuple[int, str, str]:
+        """Execute command in pod via Kubernetes WebSocket exec.
+
+        Returns (exit_code, stdout, stderr).
+        """
+        if not self.config.available:
+            raise K8sUnavailableError("not running in a cluster")
+
+        if hasattr(self, "_exec_transport") and callable(self._exec_transport):
+            return self._exec_transport(pod_name, command, container, timeout)
+
+        query = [("stdout", "true"), ("stderr", "true")]
+        if container:
+            query.append(("container", container))
+        for cmd in command:
+            query.append(("command", cmd))
+        qs = urllib.parse.urlencode(query)
+
+        parsed = urllib.parse.urlparse(self.config.server)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        base_path = parsed.path.rstrip("/")
+        path = f"{base_path}/api/v1/namespaces/{self.config.namespace}/pods/{pod_name}/exec?{qs}"
+
+        sec_key = base64.b64encode(os.urandom(16)).decode("ascii")
+        req = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            f"Authorization: Bearer {self.config.token}\r\n"
+            f"Upgrade: websocket\r\n"
+            f"Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {sec_key}\r\n"
+            f"Sec-WebSocket-Version: 13\r\n"
+            f"Sec-WebSocket-Protocol: v4.channel.k8s.io\r\n\r\n"
+        )
+
+        ctx = None
+        if parsed.scheme == "https":
+            if self.config.ca_path and os.path.isfile(self.config.ca_path):
+                ctx = ssl.create_default_context(cafile=self.config.ca_path)
+            else:
+                ctx = ssl._create_unverified_context()
+
+        raw_sock = socket.create_connection((host, port), timeout=timeout)
+        sock = ctx.wrap_socket(raw_sock, server_hostname=host) if ctx else raw_sock
+        sock.settimeout(timeout)
+        try:
+            sock.sendall(req.encode("ascii"))
+            header_data = b""
+            while b"\r\n\r\n" not in header_data:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                header_data += chunk
+            if b"101" not in header_data.split(b"\r\n")[0]:
+                raise K8sError(
+                    f"WebSocket exec handshake failed: {header_data[:200].decode('utf-8', 'replace')}"
+                )
+
+            rest = header_data.split(b"\r\n\r\n", 1)[1]
+            buf = rest
+            stdout_parts = []
+            stderr_parts = []
+            status_parts = []
+
+            while True:
+                while len(buf) < 2:
+                    c = sock.recv(4096)
+                    if not c:
+                        break
+                    buf += c
+                if len(buf) < 2:
+                    break
+                b1, b2 = buf[0], buf[1]
+                opcode = b1 & 0x0F
+                has_mask = (b2 & 0x80) != 0
+                length = b2 & 0x7F
+                idx = 2
+                if length == 126:
+                    while len(buf) < idx + 2:
+                        c = sock.recv(4096)
+                        if not c:
+                            break
+                        buf += c
+                    if len(buf) < idx + 2:
+                        break
+                    length = int.from_bytes(buf[idx : idx + 2], "big")
+                    idx += 2
+                elif length == 127:
+                    while len(buf) < idx + 8:
+                        c = sock.recv(4096)
+                        if not c:
+                            break
+                        buf += c
+                    if len(buf) < idx + 8:
+                        break
+                    length = int.from_bytes(buf[idx : idx + 8], "big")
+                    idx += 8
+
+                mask = None
+                if has_mask:
+                    while len(buf) < idx + 4:
+                        c = sock.recv(4096)
+                        if not c:
+                            break
+                        buf += c
+                    if len(buf) < idx + 4:
+                        break
+                    mask = buf[idx : idx + 4]
+                    idx += 4
+
+                while len(buf) < idx + length:
+                    c = sock.recv(4096)
+                    if not c:
+                        break
+                    buf += c
+                if len(buf) < idx + length:
+                    break
+
+                payload = buf[idx : idx + length]
+                buf = buf[idx + length :]
+                if mask:
+                    payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+
+                if opcode == 8:  # close
+                    break
+                if opcode in (1, 2) and payload:
+                    channel = payload[0]
+                    data = payload[1:]
+                    if channel == 1:
+                        stdout_parts.append(data)
+                    elif channel == 2:
+                        stderr_parts.append(data)
+                    elif channel == 3:
+                        status_parts.append(data)
+        finally:
+            sock.close()
+
+        stdout = b"".join(stdout_parts).decode("utf-8", "replace")
+        stderr = b"".join(stderr_parts).decode("utf-8", "replace")
+        status_raw = b"".join(status_parts).decode("utf-8", "replace")
+
+        exit_code = 0
+        if status_raw:
+            try:
+                st = json.loads(status_raw)
+                if st.get("status") == "Failure":
+                    causes = (st.get("details") or {}).get("causes") or []
+                    exit_code = 1
+                    for c in causes:
+                        if c.get("reason") == "ExitCode":
+                            try:
+                                exit_code = int(c.get("message", 1))
+                            except ValueError:
+                                exit_code = 1
+                elif st.get("status") == "Success":
+                    exit_code = 0
+            except Exception:
+                pass
+
+        return exit_code, stdout, stderr

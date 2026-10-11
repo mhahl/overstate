@@ -13,3 +13,4 @@ PLAN.md
 # Local tooling state (IDE, agent sessions). Never commit.
 .idea/
 .agents/
+kubectl

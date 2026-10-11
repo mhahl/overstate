@@ -27,6 +27,7 @@ from .jobs_helpers import (
     is_test_mode,
 )
 from .jobs_service import launch
+from .k8s import K8sClient
 from .keys import ACTIONS as KEY_ACTIONS
 from .models import JobReturn, Minion
 from .salt_client import SaltApiError
@@ -413,14 +414,173 @@ def _cmd_runner(argv: list[str]) -> dict:
     return {"output": f"$ salt-run {fun}\n" + _compact(result)}
 
 
+def get_or_spawn_pod(user, k8s: K8sClient | None = None) -> tuple[str, bool]:
+    """Find or spawn an on-demand salt-cli pod for user.
+
+    Returns (pod_name, is_ready).
+    """
+    if k8s is None:
+        k8s = K8sClient()
+    if not k8s.config.available:
+        return "", False
+
+    # Cleanup stale/completed/deadlined pods first
+    k8s.cleanup_salt_cli_pods()
+
+    username = getattr(user, "username", "user") or "user"
+    role = getattr(user, "role", "viewer") or "viewer"
+
+    # Search for existing active pod for this user
+    try:
+        pods = k8s.list_pods(
+            f"app.kubernetes.io/name=salt-cli,overstate.sigaint.au/user={username}"
+        )
+        for p in pods:
+            if p.get("phase") in ("Running", "Pending"):
+                return p["name"], p["ready"]
+    except Exception:
+        pass
+
+    # Spawn a new salt-cli pod
+    import uuid
+
+    suffix = uuid.uuid4().hex[:6]
+    pod_name = f"salt-cli-{username}-{suffix}"
+    sa_name = f"salt-cli-{role}"
+
+    env = [
+        {"name": "OVERSTATE_USER", "value": username},
+        {"name": "OVERSTATE_ROLE", "value": role},
+        {"name": "SALT_API_URL", "value": "https://salt-master-api:8000"},
+        {"name": "SALT_API_USER", "value": "overstate"},
+    ]
+    if role != "viewer":
+        env.append(
+            {
+                "name": "SALT_API_USER_PASS",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": "overstate-secrets",
+                        "key": "SALT_API_USER_PASS",
+                    }
+                },
+            }
+        )
+
+    manifest = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": pod_name,
+            "namespace": k8s.config.namespace,
+            "labels": {
+                "app.kubernetes.io/name": "salt-cli",
+                "overstate.sigaint.au/user": username,
+                "overstate.sigaint.au/role": role,
+            },
+        },
+        "spec": {
+            "serviceAccountName": sa_name,
+            "activeDeadlineSeconds": 1800,
+            "restartPolicy": "Never",
+            "containers": [
+                {
+                    "name": "salt-cli",
+                    "image": "quay.io/sigaint/overstate:salt-cli",
+                    "imagePullPolicy": "IfNotPresent",
+                    "env": env,
+                }
+            ],
+        },
+    }
+
+    k8s.create_pod(manifest)
+
+    # Wait briefly for Ready
+    import time
+
+    for _ in range(25):
+        time.sleep(0.4)
+        pod = k8s.get_pod(pod_name)
+        if not pod:
+            continue
+        status = pod.get("status") or {}
+        if status.get("phase") == "Running":
+            return pod_name, True
+        if status.get("phase") in ("Failed", "Error"):
+            break
+
+    return pod_name, False
+
+
 @bp.get("/")
 @login_required
 def index():
     return render_template("console.html", help_text=HELP_TEXT)
 
 
+@bp.get("/pod-status")
+@login_required
+def pod_status():
+    k8s = K8sClient()
+    if not k8s.config.available:
+        return jsonify({"available": False})
+    username = getattr(current_user, "username", "user") or "user"
+    role = getattr(current_user, "role", "viewer") or "viewer"
+    try:
+        pods = k8s.list_pods(
+            f"app.kubernetes.io/name=salt-cli,overstate.sigaint.au/user={username}"
+        )
+        for p in pods:
+            if p.get("phase") in ("Running", "Pending"):
+                return jsonify(
+                    {
+                        "available": True,
+                        "active": True,
+                        "pod": p["name"],
+                        "phase": p["phase"],
+                        "ready": p["ready"],
+                        "role": role,
+                        "service_account": f"salt-cli-{role}",
+                    }
+                )
+    except Exception:
+        pass
+    return jsonify(
+        {
+            "available": True,
+            "active": False,
+            "role": role,
+            "service_account": f"salt-cli-{role}",
+        }
+    )
+
+
+@bp.post("/destroy")
+@login_required
+def destroy():
+    k8s = K8sClient()
+    if not k8s.config.available:
+        return jsonify({"ok": True, "message": "k8s unavailable"})
+    username = getattr(current_user, "username", "user") or "user"
+    deleted = []
+    try:
+        pods = k8s.list_pods(
+            f"app.kubernetes.io/name=salt-cli,overstate.sigaint.au/user={username}"
+        )
+        for p in pods:
+            try:
+                k8s.delete_pod(p["name"])
+                deleted.append(p["name"])
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return jsonify({"ok": True, "deleted": deleted})
+
+
 @bp.post("/run")
-@roles_required("operator")
+@login_required
 def run():
     data = request.get_json(silent=True) or {}
     line = str(data.get("line", "")).strip()
@@ -428,6 +588,76 @@ def run():
         return jsonify(
             {"ok": False, "output": "Type `help` for the commands this console runs."}
         ), 400
+
+    k8s = K8sClient()
+    # In-cluster: execute in on-demand salt-cli pod
+    if k8s.config.available:
+        username = getattr(current_user, "username", "user") or "user"
+
+        if line in ("exit", "quit"):
+            try:
+                pods = k8s.list_pods(
+                    f"app.kubernetes.io/name=salt-cli,overstate.sigaint.au/user={username}"
+                )
+                for p in pods:
+                    try:
+                        k8s.delete_pod(p["name"])
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            return jsonify(
+                {"ok": True, "output": "Session closed. Pod destroyed.", "closed": True}
+            )
+
+        if line == "clear":
+            return jsonify({"ok": True, "output": "", "clear": True})
+
+        try:
+            pod_name, ready = get_or_spawn_pod(current_user, k8s)
+            if not pod_name:
+                return jsonify(
+                    {"ok": False, "output": "Failed to spawn salt-cli pod."}
+                ), 500
+
+            code, stdout, stderr = k8s.exec_pod(
+                pod_name, ["bash", "-c", line], timeout=30.0
+            )
+            output = stdout
+            if stderr and stderr != stdout:
+                output = f"{output}\n{stderr}".strip() if output else stderr
+            if not output and code == 0:
+                output = "(command completed with no output)"
+
+            log_event(username, f"cli:{line[:60]}")
+            return jsonify(
+                {
+                    "ok": code == 0,
+                    "output": output,
+                    "pod": pod_name,
+                    "code": code,
+                }
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "output": f"Error running in pod: {exc}"}), 500
+
+    # Outside cluster: fallback for unit tests
+    from .auth import role_level
+    from .authz import LEGACY_FLOOR_PERMS, audit_deny, authorize, rbac_mode
+
+    if rbac_mode() != "scoped":
+        if role_level(getattr(current_user, "role", None)) < role_level("operator"):
+            return jsonify(
+                {"ok": False, "output": "forbidden: you need the operator role to fire."}
+            ), 403
+    else:
+        needed = LEGACY_FLOOR_PERMS[role_level("operator")]
+        if not any(authorize(current_user, p) for p in needed):
+            audit_deny(next(iter(needed)))
+            return jsonify(
+                {"ok": False, "output": "forbidden: you need the operator role to fire."}
+            ), 403
+
     try:
         argv = _argv(line)
     except ConsoleError as exc:
