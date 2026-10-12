@@ -358,6 +358,6 @@ def test_settings_read_shows_display_keys_only(env):
         session.commit()
     login_as(env, "bob")
     html = env.get("/settings/").data.decode()
-    assert "Master hostname" in html
+    assert "Master IP addresses" in html
     assert "OIDC issuer" not in html
     assert "IdP group mappings" not in html
