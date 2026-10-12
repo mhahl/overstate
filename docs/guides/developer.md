@@ -119,11 +119,14 @@ handling and error shape stay in one place.
 `OIDC_ENV_FALLBACK` maps OIDC keys to their config names.
 
 `get_setting` resolves in order: settings table row, then env-backed
-config for OIDC keys, then the detected master hostname for
-`master_host`, then the DEF default. The save view loops over `DEFS`,
-trims posted values, drops cleared OIDC rows so the environment
-applies again, resets anything else empty to its default, and coerces
-option values back to default on mismatch.
+config for OIDC keys, then the DEF default. `master_ips` is an explicit
+configuration: the save view normalizes comma/newline-separated IP
+literals, rejects duplicates and fewer than two addresses, and stores
+one address per line. Onboarding reads this setting and always renders
+`master_type: failover`; callers cannot supply an individual master.
+The save view trims posted values, drops cleared OIDC rows so the
+environment applies again, and coerces option values back to default
+on mismatch.
 
 Add a setting by adding one `DEFS` entry, appending its key to a
 `SECTIONS` group, and adding a fallback entry if the environment may

@@ -658,25 +658,30 @@ def test_minions_refresh_caches_grains(client):
     assert "Fedora Linux 41" in html
 
 
+def _configure_master_ips(client, value="192.0.2.10, 192.0.2.11"):
+    client.post("/settings/", data={"master_ips": value})
+
+
 def test_onboard_renders_form_and_pending(client):
     html = client.get("/minions/onboard").data.decode()
     assert "Onboard a minion" in html
     assert 'name="mid"' in html and 'name="distro"' in html
-    assert 'name="masters"' in html
-    assert 'name="topology"' in html
+    assert 'name="masters"' not in html
+    assert 'name="topology"' not in html
+    assert "Single master" not in html
     assert "new-01" in html  # pending key from the fixture roster
     assert "Run this on the new machine" not in html
     assert "Onboard minion" in client.get("/minions/").data.decode()
 
 
-def test_onboard_generates_script(client):
+def test_onboard_generates_failover_script(client):
+    _configure_master_ips(client)
     client.app.config["PUBLIC_URL"] = "https://overstate.example.com/"
     html = client.get(
         "/minions/onboard?mid=db-02&distro=fedora&topology=single&masters=salt.example.com"
     ).data.decode()
     assert "Run this on the new machine" in html
     assert "curl -fsSL" in html and "sudo sh" in html
-    assert "Download .sh" not in html
     assert 'data-copy="onboard-command"' in html
     assert 'id="onboard-command"' in html
     command = unescape(
@@ -692,19 +697,26 @@ def test_onboard_generates_script(client):
     assert "dnf" in script and "zypper" not in script
     assert "salt.repo" in script and "broadcom" not in script
     assert "github.com/saltstack/salt-install-guide" in script
-    assert 'master: "salt.example.com"' in script
+    assert 'master:\n  - "192.0.2.10"\n  - "192.0.2.11"' in script
+    assert "master_type: failover" in script
     assert 'id: "db-02"' in script
 
 
-def test_onboard_rejects_bad_input(client):
-    html = client.get(
-        "/minions/onboard?mid=bad+id%21&distro=fedora&masters=salt.example.com"
-    ).data.decode()
-    assert "valid hostnames" in html
+def test_onboard_rejects_bad_minion_id(client):
+    _configure_master_ips(client)
+    html = client.get("/minions/onboard?mid=bad+id%21&distro=fedora").data.decode()
+    assert "valid minion id" in html
+    assert "Run this on the new machine" not in html
+
+
+def test_onboard_requires_multiple_master_ips(client):
+    html = client.get("/minions/onboard?mid=db-02&distro=fedora").data.decode()
+    assert "at least two master IP addresses" in html
     assert "Run this on the new machine" not in html
 
 
 def test_onboard_failover_and_rejects_invalid_script_token(client):
+    _configure_master_ips(client)
     html = client.get(
         "/minions/onboard?mid=db-02&distro=suse&topology=failover&masters=salt-a.example.com%0Asalt-b.example.com"
     ).data.decode()
@@ -715,7 +727,7 @@ def test_onboard_failover_and_rejects_invalid_script_token(client):
     script = client.get(script_url).data.decode()
     assert "zypper" in script and "dnf" not in script
     assert "packages.broadcom.com" not in script
-    assert 'master:\n  - "salt-a.example.com"\n  - "salt-b.example.com"' in script
+    assert 'master:\n  - "192.0.2.10"\n  - "192.0.2.11"' in script
     assert "master_type: failover" in script
     assert "master_alive_interval: 30" in script
     assert client.get("/minions/onboard/script/forged-token").status_code == 404
@@ -726,7 +738,7 @@ def test_onboard_script_url_expires(client, monkeypatch):
     from itsdangerous import URLSafeTimedSerializer
 
     token = URLSafeTimedSerializer(client.app.secret_key, salt="minion-onboard").dumps(
-        ["fedora", "single", ["salt.example.com"], "db-02"]
+        ["fedora", "failover", ["192.0.2.10", "192.0.2.11"], "db-02"]
     )
     real_time = itsdangerous.timed.time.time
     monkeypatch.setattr(itsdangerous.timed.time, "time", lambda: real_time() + 1801)
@@ -736,63 +748,65 @@ def test_onboard_script_url_expires(client, monkeypatch):
     )
 
 
-def test_onboard_rejects_invalid_master_topology(client):
-    html = client.get(
-        "/minions/onboard?mid=db-02&distro=fedora&topology=failover&masters=salt.example.com"
-    ).data.decode()
-    assert "valid hostnames" in html
-    assert "Run this on the new machine" not in html
-
-
 def test_build_onboard_script_distros():
     from overstate_ui.minions import build_onboard_script
 
+    masters = ("192.0.2.10", "2001:db8::10")
     scripts = (
-        build_onboard_script("rhel", "single", ("m",), "h"),
-        build_onboard_script("fedora", "single", ("m",), "h"),
-        build_onboard_script("suse", "failover", ("m", "n"), "h"),
+        build_onboard_script("rhel", "failover", masters, "h"),
+        build_onboard_script("fedora", "failover", masters, "h"),
+        build_onboard_script("suse", "failover", masters, "h"),
     )
     assert "dnf" in scripts[0] and "dnf" in scripts[1]
     assert "zypper" in scripts[2] and "packages.broadcom.com" not in scripts[2]
     assert "salt-install-guide/releases/latest/download/salt.repo" in scripts[0]
+    assert '  - "2001:db8::10"' in scripts[0]
     for script in scripts:
         subprocess.run(["sh", "-n"], input=script, text=True, check=True)
+    with pytest.raises(ValueError, match="Invalid onboarding"):
+        build_onboard_script("fedora", "single", masters, "h")
 
 
-def test_master_host_setting_saved_and_used():
-    from overstate_ui.settings import default_master_host, get_setting
+def test_master_ips_setting_saved_and_used(client):
+    from overstate_ui.settings import get_setting, parse_master_ips
 
-    init_db("sqlite://")
-    app = create_app(TestConfig)
-    app.config["WTF_CSRF_ENABLED"] = False
-    app.extensions["salt_client"] = SaltClient(
-        "https://salt:8000", "u", "p", transport=fake_transport()
-    )
-    with app.app_context():
-        create_all()
-        seed_admin(password="pw")
-        assert get_setting("master_host") == default_master_host()
-        assert get_setting("master_host") != ""
-    c = app.test_client()
-    c.post("/login", data={"username": "admin", "password": "pw"})
-    c.post("/settings/", data={"master_host": "salt.example.com"})
-    with app.app_context():
-        assert get_setting("master_host") == "salt.example.com"
-    assert "salt.example.com" in c.get("/minions/onboard").data.decode()
-    c.post("/settings/", data={"master_host": ""})
-    with app.app_context():
-        assert get_setting("master_host") == default_master_host()
+    html = client.get("/settings/").data.decode()
+    assert 'name="master_ips"' in html
+    assert "Master IP addresses" in html
+    _configure_master_ips(client)
+    with client.app.app_context():
+        assert parse_master_ips(get_setting("master_ips")) == [
+            "192.0.2.10",
+            "192.0.2.11",
+        ]
+    assert "192.0.2.10" in client.get("/minions/onboard").data.decode()
 
 
-def test_master_host_falls_back_to_api_host(monkeypatch):
-    from overstate_ui import settings as settings_mod
+def test_master_ips_setting_rejects_invalid_or_single_address(client):
+    from overstate_ui.settings import get_setting
 
-    monkeypatch.setattr(settings_mod.socket, "getfqdn", lambda: "localhost")
-    init_db("sqlite://")
-    app = create_app(TestConfig)
-    with app.app_context():
-        create_all()
-        assert settings_mod.get_setting("master_host") == "salt-master"
+    client.post("/settings/", data={"master_ips": "192.0.2.10"})
+    with client.app.app_context():
+        assert get_setting("master_ips") == ""
+    assert "at least two" in client.get("/settings/").data.decode()
+    client.post("/settings/", data={"master_ips": "192.0.2.10, salt.example.com"})
+    with client.app.app_context():
+        assert get_setting("master_ips") == ""
+
+
+def test_parse_master_ips_validation():
+    from overstate_ui.settings import parse_master_ips
+
+    assert parse_master_ips("192.0.2.10\n2001:0db8::10") == [
+        "192.0.2.10",
+        "2001:db8::10",
+    ]
+    with pytest.raises(ValueError, match="valid IP address"):
+        parse_master_ips("192.0.2.10, salt.example.com")
+    with pytest.raises(ValueError, match="at least two"):
+        parse_master_ips("192.0.2.10")
+    with pytest.raises(ValueError, match="Duplicate"):
+        parse_master_ips("192.0.2.10, 192.0.2.10")
 
 
 def test_minion_detail_rejects_glob(client):

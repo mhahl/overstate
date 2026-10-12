@@ -594,7 +594,7 @@ def onboard():
 
     statuses, _, reachable = cached_roster(get_salt())
     pending = sorted(m for m, st in statuses.items() if st == "pending")
-    master_host = get_setting("master_host")
+    master_ips = get_setting("master_ips")
     inputs = onboard_inputs(request.args)
     script_url = None
     if inputs:
@@ -609,7 +609,7 @@ def onboard():
         script_url = f"{base_url}{url_for('minions.onboard_script', token=token)}"
     return render_template(
         "onboard.html",
-        master_host=master_host,
+        master_ips=master_ips,
         pending=pending,
         reachable=reachable,
         script_url=script_url,

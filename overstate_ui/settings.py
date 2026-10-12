@@ -1,8 +1,8 @@
 """DB-backed settings. Only the OIDC client secret may live here (declared exception); all other credentials stay env-only."""
 
+import ipaddress
+import re
 import secrets
-import socket
-from urllib.parse import urlsplit
 
 from flask import (
     Blueprint,
@@ -32,10 +32,11 @@ OIDC_ENV_FALLBACK = {
 }
 
 DEFS = {
-    "master_host": {
-        "label": "Master hostname",
-        "help": "Minion-facing Salt master hostname shown in the onboarding wizard. An empty value resets to the detected default.",
+    "master_ips": {
+        "label": "Master IP addresses",
+        "help": "Enter at least two IPv4 or IPv6 addresses, one per line or comma-separated. New minions use all addresses with Salt failover enabled. Leave empty to disable onboarding until configured.",
         "default": "",
+        "multiline": True,
     },
     "oidc_issuer": {
         "label": "OIDC issuer",
@@ -89,9 +90,9 @@ DEFS = {
 
 SECTIONS = [
     {
-        "title": "Server",
-        "desc": "How minions and browsers reach this installation.",
-        "keys": ["master_host"],
+        "title": "Minion connectivity",
+        "desc": "Master IPs used for failover by newly onboarded minions.",
+        "keys": ["master_ips"],
     },
     {
         "title": "Single sign-on (OIDC)",
@@ -118,20 +119,27 @@ SECTIONS = [
 ]
 
 
-def default_master_host() -> str:
-    """Detected default for the minion-facing master hostname: this
-    host's FQDN, falling back to the salt-api URL host (this app often
-    runs next to the master, but an admin should verify in Settings)."""
-    try:
-        fqdn = socket.getfqdn()
-    except OSError:
-        fqdn = ""
-    if fqdn and fqdn not in ("localhost",):
-        return fqdn
-    try:
-        return urlsplit(current_app.config["SALT_API_URL"]).hostname or ""
-    except (ValueError, KeyError):
-        return ""
+def parse_master_ips(value: str) -> list[str]:
+    """Return normalized, unique IP literals for the failover roster.
+
+    Empty input means not configured. Any non-empty roster must contain
+    at least two addresses so onboarding cannot emit single-master config.
+    """
+    tokens = [part for part in re.split(r"[\s,]+", value.strip()) if part]
+    if not tokens:
+        return []
+    addresses = []
+    for token in tokens:
+        try:
+            address = str(ipaddress.ip_address(token))
+        except ValueError as exc:
+            raise ValueError(f"{token!r} is not a valid IP address.") from exc
+        if address in addresses:
+            raise ValueError(f"Duplicate master IP address: {address}.")
+        addresses.append(address)
+    if len(addresses) < 2:
+        raise ValueError("Enter at least two master IP addresses for failover.")
+    return addresses
 
 
 def get_setting(key: str) -> str:
@@ -140,15 +148,13 @@ def get_setting(key: str) -> str:
         return row.value
     if key in OIDC_ENV_FALLBACK:
         return current_app.config.get(OIDC_ENV_FALLBACK[key], "") or ""
-    if key == "master_host":
-        return default_master_host()
     return DEFS.get(key, {}).get("default", "")
 
 
 #: Keys a scoped settings.read holder may see. OIDC issuer, client id,
 #: group lists, and the client secret are grant.admin; the rotation card
 #: is settings.rotate_eauth.
-READ_DISPLAY_KEYS = ("page_size", "theme", "master_host")
+READ_DISPLAY_KEYS = ("page_size", "theme", "master_ips")
 
 
 def _settings_context():
@@ -467,6 +473,15 @@ def save():
     _mirror = _rbac_mode() == "scoped"
     session = get_session()
     posted = set(request.form)
+    normalized_master_ips = None
+    if "master_ips" in posted:
+        try:
+            normalized_master_ips = "\n".join(
+                parse_master_ips(request.form.get("master_ips", ""))
+            )
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("settings.index"))
     for key, meta in DEFS.items():
         if key not in posted:
             # Section forms post only their own keys: anything absent
@@ -478,6 +493,8 @@ def save():
             # their absence as a clear.
             continue
         value = request.form.get(key, "").strip()
+        if key == "master_ips":
+            value = normalized_master_ips or ""
         if key == "oidc_client_secret":
             if request.form.get("clear_oidc_client_secret") == "on":
                 # Explicit clear: drop the override so the env applies.
@@ -495,7 +512,7 @@ def save():
                 if row is not None:
                     session.delete(row)
                 continue
-            value = default_master_host() if key == "master_host" else meta["default"]
+            value = meta["default"]
         if "options" in meta and value not in meta["options"]:
             value = meta["default"]
         row = session.get(Setting, key)

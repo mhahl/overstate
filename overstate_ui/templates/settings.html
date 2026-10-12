@@ -13,13 +13,15 @@
       </div>
       {% for key, meta in section.fields %}
       <div class="fieldset">
-        <fieldset class="fieldset-legend" for="setting-{{ section_name }}-{{ key }}">{{ meta.label }}</fieldset>
+        <label class="fieldset-legend" for="setting-{{ section_name }}-{{ key }}">{{ meta.label }}</label>
         {% if meta.options %}
         <select id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" class="select w-full"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>
           {% for opt in meta.options %}
           <option value="{{ opt }}"{% if values[key] == opt %} selected{% endif %}>{{ opt }}</option>
           {% endfor %}
         </select>
+        {% elif meta.multiline %}
+        <textarea id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" rows="3" class="textarea w-full font-mono"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>{{ values[key] }}</textarea>
         {% else %}
         <input id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" value="{% if "secret" not in key %}{{ values[key] }}{% endif %}" placeholder="{% if "secret" in key %}Unchanged{% endif %}" type="{% if "secret" in key %}password{% else %}text{% endif %}" autocomplete="{% if "secret" in key %}new-password{% else %}off{% endif %}" class="input w-full font-mono"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>
         {% endif %}

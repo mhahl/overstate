@@ -172,16 +172,17 @@ discovery URL, and claim names.
 Four sub-tabs: General, Single sign-on, Access control, and
 Rotation. Each form saves only its own values. Admins edit; everyone
 else reads. In scoped mode a holder of `settings.read` sees only
-display values (`page_size`, `theme`, `master_host`); OIDC fields
+display values (`page_size`, `theme`, `master_ips`); OIDC fields
 and the rotation card need `grant.admin` and `settings.rotate_eauth`
 respectively.
 
-**Server.**
+**Minion connectivity.**
 
-- `master_host`. The Salt master hostname shown in the onboarding
-  wizard. Empty resets to the detected default: the app host's FQDN,
-  else the host part of the salt-api URL. Verify it. New minions point
-  at whatever this says.
+- `master_ips`. Enter at least two unique IPv4 or IPv6 literals,
+  separated by commas or newlines. The onboarding wizard uses the full
+  list and emits Salt `master_type: failover`; it does not accept a
+  per-minion master override. Empty disables script generation until
+  the setting is configured. Legacy `master_host` values are not used.
 
 **Single sign-on (OIDC).**
 

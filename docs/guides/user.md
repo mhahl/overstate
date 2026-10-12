@@ -124,13 +124,14 @@ Click a minion ID for its detail page. Tabs organize the facts:
 
 The onboard wizard builds the shell commands for a fresh machine.
 Reach it from the Onboard minion button on the Minions list or the
-Onboard a minion link on the pending Keys tab. Pick the distribution
-(openSUSE or Fedora), type the minion ID and the master hostname,
-and the page renders a join script. Download it, run it on the new
-machine as root, then come back: the minion appears in
-the pending list. Acceptance happens on the Keys page, not here.
-The wizard shows pending keys and whether the master is reachable so
-you know where you stand.
+Onboard a minion link on the pending Keys tab. Configure at least two
+master IP addresses under Settings first, then pick the distribution
+(RHEL, Fedora, or SUSE) and enter the minion ID. The generated script
+uses all configured addresses with Salt failover enabled; there is no
+per-minion master selector. Copy the command, run it on the new machine
+as root, then come back: the minion appears in the pending list.
+Acceptance happens on the Keys page, not here. The wizard shows pending
+keys and whether the master is reachable so you know where you stand.
 
 ## Keys
 

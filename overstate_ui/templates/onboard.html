@@ -26,32 +26,23 @@
     <div class="card-body">
       <h2 class="card-title text-base">Describe the new minion</h2>
       <form method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-wrap items-end gap-2">
-        <fieldset class="fieldset flex-1 min-w-40">
-          <legend class="fieldset-legend">Minion id</legend>
+        <label class="fieldset flex-1 min-w-40">
+          <span class="fieldset-legend">Minion id</span>
           <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm font-mono" required>
-        </fieldset>
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Distribution</legend>
+        </label>
+        <label class="fieldset">
+          <span class="fieldset-legend">Distribution</span>
           <select name="distro" class="select select-sm">
             {% for d in ["rhel", "fedora", "suse"] %}
             <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE (OS repos)"}[d] }}</option>
             {% endfor %}
           </select>
-        </fieldset>
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Setup</legend>
-          <select name="topology" class="select select-sm">
-            <option value="single"{% if request.args.get('topology', 'single') == 'single' %} selected{% endif %}>Single master</option>
-            <option value="failover"{% if request.args.get('topology') == 'failover' %} selected{% endif %}>Failover masters</option>
-          </select>
-        </fieldset>
-        <fieldset class="fieldset flex-1 min-w-40">
-          <legend class="fieldset-legend">Master host(s)</legend>
-          <textarea name="masters" placeholder="Salt master hostname(s), one per line" class="textarea textarea-sm font-mono" required>{{ request.args.get('masters', request.args.get('master', master_host)) }}</textarea>
-        </fieldset>
+        </label>
         <button class="btn btn-sm btn-primary">Generate script</button>
       </form>
-      <p class="text-sm opacity-70">Enter one master for single-master, or at least two for failover. Defaults to <span class="font-mono">{{ master_host or "—" }}</span>. <a class="link" href="{{ url_for('settings.index') }}">Change it in Settings</a>.</p>
+      <p class="text-sm opacity-70">The script always uses the configured failover master IPs:</p>
+      <pre class="font-mono text-xs p-3 bg-base-200 rounded-box overflow-x-auto">{{ master_ips or "Not configured" }}</pre>
+      <p class="text-sm opacity-70"><a class="link" href="{{ url_for('settings.index') }}">Change master IPs in Settings</a>.</p>
     </div>
   </section>
   {% if script_url %}
