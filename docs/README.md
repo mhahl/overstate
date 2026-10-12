@@ -22,6 +22,7 @@ Entry point for all documentation. Paths are repo-root-relative.
 | [`docs/reference/returner.md`](reference/returner.md) | Job-return path (master-side returner config) |
 | [`docs/reference/topology.md`](reference/topology.md) | Proxy minions, syndic, salt-ssh coverage |
 | [`docs/reference/upstream-salt-patches.md`](reference/upstream-salt-patches.md) | Record of patches carried against upstream Salt |
+| [`docs/reference/ui-style-guide.md`](reference/ui-style-guide.md) | Shared UI styling conventions for navigation, settings, onboarding, and console |
 
 ## Decision records and history
 

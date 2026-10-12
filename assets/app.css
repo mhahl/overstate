@@ -158,3 +158,129 @@
 #editor-mount .tok-punctuation {
   opacity: 0.78;
 }
+
+/* Shared application chrome and operational surfaces. These rules keep
+   settings, onboarding, and the command console on the same visual system
+   without changing their markup contracts or behavior. */
+:root[data-theme="wireframe"] {
+  --color-base-100: oklch(99.3% 0.004 255);
+  --color-base-200: oklch(96.8% 0.009 255);
+  --color-base-300: oklch(91.8% 0.018 255);
+  --color-base-content: oklch(25% 0.035 260);
+  --color-primary: oklch(53% 0.2 258);
+  --color-primary-content: oklch(98% 0.01 258);
+  --color-secondary: oklch(90% 0.025 255);
+  --color-secondary-content: oklch(27% 0.035 260);
+  --color-accent: oklch(88% 0.045 225);
+  --color-accent-content: oklch(27% 0.035 260);
+  --color-neutral: oklch(33% 0.04 260);
+  --color-neutral-content: oklch(98% 0.006 255);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.625rem;
+  --radius-box: 0.9rem;
+  --depth: 1;
+}
+
+body.bg-base-200 {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--color-base-100) 34%, transparent),
+    transparent 22rem
+  );
+}
+
+.drawer-content > header.navbar {
+  background-color: color-mix(in oklab, var(--color-base-100) 90%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 1px 3px color-mix(in oklab, var(--color-base-content) 6%, transparent);
+}
+
+.drawer-side aside .menu .menu-title {
+  padding-inline: 0.85rem;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.drawer-side aside .menu li > a {
+  min-height: 2.55rem;
+  border-radius: 0.7rem;
+  font-weight: 500;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.drawer-side aside .menu li > a.menu-active {
+  color: var(--color-primary);
+  background-color: color-mix(in oklab, var(--color-primary) 11%, var(--color-base-100));
+  font-weight: 650;
+}
+
+main .card.bg-base-100 {
+  border-color: color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  border-radius: 1rem;
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--color-base-content) 5%, transparent),
+    0 8px 24px color-mix(in oklab, var(--color-base-content) 4%, transparent);
+}
+
+main .tabs.tabs-border[role="tablist"] {
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-base-300);
+  padding-bottom: 0.4rem;
+}
+
+main .tabs.tabs-border[role="tablist"] > .tab {
+  min-height: 2.4rem;
+  border: 0;
+  border-radius: 0.65rem;
+  padding-inline: 0.9rem;
+  color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
+  font-weight: 550;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+main .tabs.tabs-border[role="tablist"] > .tab:is(.tab-active, [aria-selected="true"]) {
+  color: var(--color-primary);
+  background-color: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+  font-weight: 650;
+}
+
+main :is(.input, .select, .textarea):focus-visible {
+  outline: 3px solid color-mix(in oklab, var(--color-primary) 32%, transparent);
+  outline-offset: 1px;
+}
+
+main .btn {
+  font-weight: 600;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+main .btn-primary {
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--color-primary) 22%, transparent);
+}
+
+#term {
+  background-color: oklch(24% 0.035 260);
+  color: oklch(93% 0.012 250);
+  border-radius: 0.95rem 0.95rem 0 0;
+  line-height: 1.65;
+}
+
+#console-form {
+  background-color: var(--color-base-100);
+  border-radius: 0 0 0.95rem 0.95rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-side aside .menu li > a,
+  main .tabs.tabs-border[role="tablist"] > .tab,
+  main .btn {
+    transition: none;
+  }
+}

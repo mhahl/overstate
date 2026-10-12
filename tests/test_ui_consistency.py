@@ -149,3 +149,46 @@ def test_back_links_share_glyph_and_size():
             # Every "‹ ..." control is a back/prev link: small ghost style.
             if "‹ " in line:
                 assert "btn-sm" in line, f"{name.name}: {line.strip()}"
+
+
+def test_shared_visual_system_covers_app_shell_settings_and_console():
+    css = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "overstate_ui"
+        / "static"
+        / "app.css"
+    ).read_text()
+    assert ':root[data-theme="wireframe"]' in css
+    assert ".drawer-side aside .menu li > a.menu-active" in css
+    assert 'main .tabs.tabs-border[role="tablist"]' in css
+    assert "#term" in css
+    assert "prefers-reduced-motion: reduce" in css
+
+    source = (
+        pathlib.Path(__file__).resolve().parent.parent / "assets" / "app.css"
+    ).read_text()
+    marker = "/* Shared application chrome and operational surfaces. These rules keep"
+    source_layer = source[source.index(marker) :]
+    built_layer = css[css.index(':root[data-theme="wireframe"]') :]
+    for rule in (
+        ':root[data-theme="wireframe"]',
+        ".drawer-content > header.navbar",
+        ".drawer-side aside .menu li > a.menu-active",
+        'main .tabs.tabs-border[role="tablist"]',
+        "main :is(.input, .select, .textarea):focus-visible",
+        "#term",
+        "#console-form",
+        "@media (prefers-reduced-motion: reduce)",
+    ):
+        assert rule in source_layer
+        assert rule in built_layer
+    for declaration in (
+        "--color-base-100: oklch(99.3% 0.004 255);",
+        "--radius-box: 0.9rem;",
+        "backdrop-filter: blur(14px);",
+        "outline-offset: 1px;",
+        "line-height: 1.65;",
+        "transition: none;",
+    ):
+        assert declaration in source_layer
+        assert declaration in built_layer

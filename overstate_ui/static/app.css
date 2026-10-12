@@ -8,8 +8,6 @@
       "Segoe UI Symbol", "Noto Color Emoji";
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
       "Courier New", monospace;
-    --color-slate-100: oklch(96.8% 0.007 247.896);
-    --color-slate-900: oklch(20.8% 0.042 265.755);
     --color-black: #000;
     --spacing: 0.25rem;
     --container-lg: 32rem;
@@ -4588,9 +4586,6 @@
   .top-0 {
     top: 0px;
   }
-  .top-20 {
-    top: calc(var(--spacing) * 20);
-  }
   .top-full {
     top: 100%;
   }
@@ -5791,6 +5786,19 @@
     mask-size: 100% 100%;
     --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cg fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 6v6l4 2'/%3E%3C/g%3E%3C/svg%3E");
   }
+  .icon-\[lucide--container\] {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    background-color: currentColor;
+    -webkit-mask-image: var(--svg);
+    mask-image: var(--svg);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cg fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'%3E%3Cpath d='M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z'/%3E%3Cpath d='M10 21.9V14L2.1 9.1M10 14l11.9-6.9M14 19.8v-8.1m4 5.8V9.4'/%3E%3C/g%3E%3C/svg%3E");
+  }
   .icon-\[lucide--cpu\] {
     display: inline-block;
     width: 1em;
@@ -6024,6 +6032,19 @@
     -webkit-mask-size: 100% 100%;
     mask-size: 100% 100%;
     --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M5 12h14m-7-7v14'/%3E%3C/svg%3E");
+  }
+  .icon-\[lucide--power\] {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    background-color: currentColor;
+    -webkit-mask-image: var(--svg);
+    mask-image: var(--svg);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 2v10m6.4-5.4a9 9 0 1 1-12.77.04'/%3E%3C/svg%3E");
   }
   .icon-\[lucide--rotate-cw\] {
     display: inline-block;
@@ -6691,9 +6712,6 @@
   .max-h-80 {
     max-height: calc(var(--spacing) * 80);
   }
-  .max-h-\[60vh\] {
-    max-height: 60vh;
-  }
   .min-h-0 {
     min-height: 0px;
   }
@@ -7324,9 +7342,6 @@
   .py-4 {
     padding-block: calc(var(--spacing) * 4);
   }
-  .py-5 {
-    padding-block: calc(var(--spacing) * 5);
-  }
   .py-6 {
     padding-block: calc(var(--spacing) * 6);
   }
@@ -7573,6 +7588,10 @@
   }
   .blur {
     --tw-blur: blur(8px);
+    filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
+  }
+  .grayscale {
+    --tw-grayscale: grayscale(100%);
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
   }
   .filter {
@@ -8045,6 +8064,138 @@
 }
 #editor-mount .tok-punctuation {
   opacity: 0.78;
+}
+:root[data-theme="wireframe"] {
+  --color-base-100: oklch(99.3% 0.004 255);
+  --color-base-200: oklch(96.8% 0.009 255);
+  --color-base-300: oklch(91.8% 0.018 255);
+  --color-base-content: oklch(25% 0.035 260);
+  --color-primary: oklch(53% 0.2 258);
+  --color-primary-content: oklch(98% 0.01 258);
+  --color-secondary: oklch(90% 0.025 255);
+  --color-secondary-content: oklch(27% 0.035 260);
+  --color-accent: oklch(88% 0.045 225);
+  --color-accent-content: oklch(27% 0.035 260);
+  --color-neutral: oklch(33% 0.04 260);
+  --color-neutral-content: oklch(98% 0.006 255);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.625rem;
+  --radius-box: 0.9rem;
+  --depth: 1;
+}
+body.bg-base-200 {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  background-image: linear-gradient( 180deg, var(--color-base-100), transparent 22rem );
+  @supports (color: color-mix(in lab, red, red)) {
+    background-image: linear-gradient( 180deg, color-mix(in oklab, var(--color-base-100) 34%, transparent), transparent 22rem );
+  }
+}
+.drawer-content > header.navbar {
+  background-color: var(--color-base-100);
+  @supports (color: color-mix(in lab, red, red)) {
+    background-color: color-mix(in oklab, var(--color-base-100) 90%, transparent);
+  }
+  backdrop-filter: blur(14px);
+  box-shadow: 0 1px 3px var(--color-base-content);
+  @supports (color: color-mix(in lab, red, red)) {
+    box-shadow: 0 1px 3px color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  }
+}
+.drawer-side aside .menu .menu-title {
+  padding-inline: 0.85rem;
+  color: var(--color-base-content);
+  @supports (color: color-mix(in lab, red, red)) {
+    color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+  }
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.drawer-side aside .menu li > a {
+  min-height: 2.55rem;
+  border-radius: 0.7rem;
+  font-weight: 500;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.drawer-side aside .menu li > a.menu-active {
+  color: var(--color-primary);
+  background-color: var(--color-primary);
+  @supports (color: color-mix(in lab, red, red)) {
+    background-color: color-mix(in oklab, var(--color-primary) 11%, var(--color-base-100));
+  }
+  font-weight: 650;
+}
+main .card.bg-base-100 {
+  border-color: var(--color-base-content);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  }
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px var(--color-base-content), 0 8px 24px var(--color-base-content);
+  @supports (color: color-mix(in lab, red, red)) {
+    box-shadow: 0 1px 2px color-mix(in oklab, var(--color-base-content) 5%, transparent), 0 8px 24px color-mix(in oklab, var(--color-base-content) 4%, transparent);
+  }
+}
+main .tabs.tabs-border[role="tablist"] {
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-base-300);
+  padding-bottom: 0.4rem;
+}
+main .tabs.tabs-border[role="tablist"] > .tab {
+  min-height: 2.4rem;
+  border: 0;
+  border-radius: 0.65rem;
+  padding-inline: 0.9rem;
+  color: var(--color-base-content);
+  @supports (color: color-mix(in lab, red, red)) {
+    color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
+  }
+  font-weight: 550;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+main .tabs.tabs-border[role="tablist"] > .tab:is(.tab-active, [aria-selected="true"]) {
+  color: var(--color-primary);
+  background-color: var(--color-primary);
+  @supports (color: color-mix(in lab, red, red)) {
+    background-color: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+  }
+  font-weight: 650;
+}
+main :is(.input, .select, .textarea):focus-visible {
+  outline: 3px solid var(--color-primary);
+  @supports (color: color-mix(in lab, red, red)) {
+    outline: 3px solid color-mix(in oklab, var(--color-primary) 32%, transparent);
+  }
+  outline-offset: 1px;
+}
+main .btn {
+  font-weight: 600;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+main .btn-primary {
+  box-shadow: 0 1px 2px var(--color-primary);
+  @supports (color: color-mix(in lab, red, red)) {
+    box-shadow: 0 1px 2px color-mix(in oklab, var(--color-primary) 22%, transparent);
+  }
+}
+#term {
+  background-color: oklch(24% 0.035 260);
+  color: oklch(93% 0.012 250);
+  border-radius: 0.95rem 0.95rem 0 0;
+  line-height: 1.65;
+}
+#console-form {
+  background-color: var(--color-base-100);
+  border-radius: 0 0 0.95rem 0.95rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer-side aside .menu li > a, main .tabs.tabs-border[role="tablist"] > .tab, main .btn {
+    transition: none;
+  }
 }
 @layer base {
   @media (prefers-color-scheme: dark) {
