@@ -159,15 +159,19 @@ def test_roster_cache_roundtrip(fake_redis):
 def test_clear_key_caches_drops_both(fake_redis):
     from overstate_ui.tasks_queue import (
         KEYS_CACHE_KEY,
+        MERGED_ROSTER_CACHE_KEY,
         ROSTER_CACHE_KEY,
         clear_key_caches,
         write_keys_cache,
+        write_merged_roster_cache,
         write_roster_cache,
     )
 
     write_roster_cache({"web-01": "accepted"}, set())
+    write_merged_roster_cache({"web-01": "accepted"}, set())
     write_keys_cache({"accepted": []}, [])
     assert ROSTER_CACHE_KEY in fake_redis.store
+    assert MERGED_ROSTER_CACHE_KEY in fake_redis.store
     assert KEYS_CACHE_KEY in fake_redis.store
     clear_key_caches()
     assert fake_redis.store == {}

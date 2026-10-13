@@ -62,6 +62,29 @@ def fake_transport() -> httpx.MockTransport:
                 )
             if body.get("fun") in ("key.accept", "key.reject", "key.delete"):
                 assert body.get("match") in ("web-01", "new-01")
+                if body.get("fun") == "key.accept":
+                    # Accept reaches pending and denied alike (rotated
+                    # keys): assert the include flags ride along.
+                    assert body.get("include_rejected") is True
+                    assert body.get("include_denied") is True
+                    return httpx.Response(
+                        200,
+                        json={
+                            "return": [
+                                {
+                                    "data": {
+                                        "return": {
+                                            "minions": [body.get("match")],
+                                            "minions_pre": [],
+                                            "minions_rejected": [],
+                                            "minions_denied": [],
+                                        },
+                                        "success": True,
+                                    }
+                                }
+                            ]
+                        },
+                    )
                 return httpx.Response(
                     200, json={"return": [{"data": {"return": {}, "success": True}}]}
                 )
@@ -162,12 +185,18 @@ def test_keys_index_serves_cached_roster(client, fake_redis, monkeypatch):
 def test_keys_act_clears_caches(client, fake_redis):
     """A key mutation must drop the roster caches so the next view
     renders live trust instead of the pre-accept snapshot."""
-    from overstate_ui.tasks_queue import KEYS_CACHE_KEY, ROSTER_CACHE_KEY
+    from overstate_ui.tasks_queue import (
+        KEYS_CACHE_KEY,
+        MERGED_ROSTER_CACHE_KEY,
+        ROSTER_CACHE_KEY,
+    )
 
     client.get("/keys/?tab=pending")
     client.get("/minions/")
     assert KEYS_CACHE_KEY in fake_redis.store
-    assert ROSTER_CACHE_KEY in fake_redis.store
+    # /minions/ lists from the merged roster now; the sticky key is
+    # only warmed by presence checks.
+    assert MERGED_ROSTER_CACHE_KEY in fake_redis.store
     client.post("/keys/accept", data={"id": "new-01", "tab": "pending"})
     assert fake_redis.store == {}
 
@@ -188,6 +217,92 @@ def test_key_accept_writes_audit_row():
     with app.app_context():
         row = get_session().query(AuditEvent).one()
         assert (row.user, row.action) == ("admin", "accept-key")
+
+
+def test_key_accept_reaches_denied_key(client, monkeypatch):
+    """A rotated minion re-files its new pub under denied (Salt
+    anti-hijack): accept must include denied/rejected and read the
+    wheel return, not flash success over a no-op."""
+    import overstate_ui.keys as keys_mod
+
+    calls: list[dict] = []
+
+    class Pod:
+        def __init__(self, listing):
+            self._listing = listing
+
+        def wheel(self, fun, **kwargs):
+            calls.append({"fun": fun, **kwargs})
+            if fun == "key.list_all":
+                return [{"data": {"return": dict(self._listing)}}]
+            if fun == "key.finger":
+                return [{"data": {"return": {}}}]
+            assert fun == "key.accept"
+            mid = kwargs["match"]
+            return [
+                {
+                    "data": {
+                        "return": {
+                            "minions": [mid],
+                            "minions_pre": [],
+                            "minions_rejected": [],
+                            "minions_denied": [],
+                        },
+                        "success": True,
+                    }
+                }
+            ]
+
+    denied = {
+        "minions": [],
+        "minions_pre": [],
+        "minions_rejected": [],
+        "minions_denied": ["new-01"],
+    }
+    pods = [("pod-0", Pod(denied)), ("pod-1", Pod(denied))]
+    monkeypatch.setattr(keys_mod, "pod_clients", lambda default: pods)
+    rv = client.post(
+        "/keys/accept", data={"id": "new-01", "tab": "denied"}, follow_redirects=True
+    )
+    assert b"new-01: accepted." in rv.data
+    accepts = [c for c in calls if c["fun"] == "key.accept"]
+    assert len(accepts) == 2
+    assert all(
+        c.get("include_denied") is True and c.get("include_rejected") is True
+        for c in accepts
+    )
+    with client.app.app_context():
+        row = (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action == "accept-key")
+            .one()
+        )
+        assert row.minion_id == "new-01"
+
+
+def test_key_accept_denied_tab_offers_accept(client, monkeypatch, fake_redis):
+    """The denied tab must offer Accept: a rotated key lives there and
+    accept is its way home."""
+    import overstate_ui.keys as keys_mod
+
+    fake_redis.store.clear()
+    monkeypatch.setattr(
+        keys_mod,
+        "merged_key_data",
+        lambda clients, **kw: (
+            {
+                "accepted": [],
+                "pending": [],
+                "rejected": [],
+                "denied": [{"id": "new-01", "fingerprint": FP, "states": {}}],
+            },
+            [],
+        ),
+    )
+    html = client.get("/keys/?tab=denied").data.decode()
+    assert "new-01" in html
+    assert ">Accept</button>" in html
 
 
 def test_minions_list_search_paginate(client):

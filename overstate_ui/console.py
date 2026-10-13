@@ -29,6 +29,7 @@ from .jobs_helpers import (
 from .jobs_service import launch
 from .k8s import K8sClient
 from .keys import ACTIONS as KEY_ACTIONS
+from .keys import key_action_applied
 from .models import JobReturn, Minion
 from .salt_client import SaltApiError
 
@@ -299,28 +300,42 @@ def _cmd_key(argv: list[str]) -> dict:
     known = {i for ids in roster.values() for i in ids}
     if mid not in known:
         raise ConsoleError(f"Unknown key: {mid} is not on the current list.")
+    pods = pod_clients(get_salt())
     failed = []
-    for name, cli in pod_clients(get_salt()):
+    unapplied = []
+    for name, cli in pods:
         try:
-            cli.wheel(KEY_ACTIONS[action], match=mid)
+            # Same include flags as the Keys page: key.accept only
+            # moves pending by default, so a rotated minion re-filed
+            # under denied would no-op there while reading as success.
+            kwargs = {"match": mid}
+            if action == "accept":
+                kwargs["include_rejected"] = True
+                kwargs["include_denied"] = True
+            result = cli.wheel(KEY_ACTIONS[action], **kwargs)
+            if not key_action_applied(action, result, mid):
+                unapplied.append(name)
         except SaltApiError:
             failed.append(name)
     from .tasks_queue import clear_key_caches
 
-    if failed:
-        if len(failed) < len(pod_clients(get_salt())):
-            # Reachable masters applied it: drop the roster caches even
+    if failed or unapplied:
+        if len(failed) < len(pods):
+            # Some masters applied it: drop the roster caches even
             # though this reports as an error.
             clear_key_caches()
-        raise ConsoleError(
-            f"salt-api error on {', '.join(failed)}: "
-            + (
-                "nothing changed."
-                if len(failed) == len(pod_clients(get_salt()))
-                else "partial: other masters applied it."
-            ),
-            status=502,
+        bits = []
+        if failed:
+            bits.append(f"salt-api error on {', '.join(failed)}")
+        if unapplied:
+            bits.append(
+                f"{', '.join(unapplied)} left it in another state "
+                "(delete the key there if that state is wrong)"
+            )
+        tail = "nothing changed." if len(failed) == len(pods) else (
+            "partial: other masters applied it."
         )
+        raise ConsoleError(f"{'; '.join(bits)}: {tail}", status=502)
     clear_key_caches()
     log_event(current_user.username, f"console:key.{action}:{mid}", minion_id=mid)
     if action == "delete":

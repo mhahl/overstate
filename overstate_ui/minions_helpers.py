@@ -370,6 +370,69 @@ def cached_roster(
     return statuses, up, reachable
 
 
+# Accepted everywhere beats pending anywhere: a freshly accepted key
+# reaches each pod's key dir on its own write, so the merged view must
+# not flap a minion back to pending because one slow pod lags.
+_STATUS_RANK = {"accepted": 0, "rejected": 1, "denied": 2, "pending": 3}
+
+
+def merged_live_roster(
+    clients, http_timeout: float | None = ROSTER_HTTP_TIMEOUT
+) -> tuple[dict[str, str], set[str], bool]:
+    """Union of live_roster across pods: (statuses, up, reachable).
+
+    Status per minion is the strongest any reachable pod reports;
+    up is the union (manage.status is a per-pod publish bus, so a
+    single-pod read undercounts). Unreachable pods contribute
+    nothing; reachable means any pod answered either half.
+    """
+    statuses: dict[str, str] = {}
+    up: set[str] = set()
+    reachable = False
+    for _name, client in clients:
+        sub, sub_up, sub_ok = live_roster(client, http_timeout=http_timeout)
+        if not sub_ok:
+            continue
+        reachable = True
+        up |= sub_up
+        for mid, st in sub.items():
+            if mid not in statuses or _STATUS_RANK.get(
+                st, 99
+            ) < _STATUS_RANK.get(statuses[mid], 99):
+                statuses[mid] = st
+    return statuses, up, reachable
+
+
+def merged_cached_roster(
+    default_client, http_timeout: float | None = ROSTER_HTTP_TIMEOUT
+) -> tuple[dict[str, str], set[str], bool]:
+    """(statuses, up, reachable) merged across pods, on its own cache.
+
+    Lives on MERGED_ROSTER_CACHE_KEY, deliberately separate from the
+    sticky ROSTER_CACHE_KEY that minion_is_up skip-live reads: a
+    unioned up set there would defeat the not-up skip and hang on
+    foreign minions (see docs/plans/gather-budget.md). List pickers
+    (minions, groups, schedules, onboard) read this so a minion known
+    to any reachable master shows up.
+    """
+    from .fleet import pod_clients
+    from .tasks_queue import read_merged_roster_cache, write_merged_roster_cache
+
+    cached = read_merged_roster_cache()
+    if (
+        isinstance(cached, dict)
+        and isinstance(cached.get("statuses"), dict)
+        and isinstance(cached.get("up"), list)
+    ):
+        return dict(cached["statuses"]), set(cached["up"]), True
+    statuses, up, reachable = merged_live_roster(
+        pod_clients(default_client), http_timeout=http_timeout
+    )
+    if reachable:
+        write_merged_roster_cache(statuses, up)
+    return statuses, up, reachable
+
+
 def refresh_sync(only_ids: list[str] | None = None) -> None:
     """Synchronous refresh. Worker fallback and no-Redis path."""
     from flask import flash

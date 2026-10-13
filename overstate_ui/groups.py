@@ -7,7 +7,7 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
-from .minions import PAGE_SIZES, cached_roster
+from .minions import PAGE_SIZES, merged_cached_roster
 from .models import Minion, MinionGroup
 
 bp = Blueprint("groups", __name__, url_prefix="/groups")
@@ -73,7 +73,9 @@ def index():
         all_groups.sort(key=lambda g: g.name, reverse=True)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(max(1, page), pages)
-    statuses, _, _ = cached_roster(get_salt())
+    # The member picker unions live roster ids with the snapshot so
+    # a minion accepted on any pod shows up.
+    statuses, _, _ = merged_cached_roster(get_salt())
     roster = sorted(row.id for row in get_session().query(Minion.id).all())
     if _scoped and not _fleet:
         # The member picker renders only in-scope ids.

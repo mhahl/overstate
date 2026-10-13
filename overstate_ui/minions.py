@@ -43,6 +43,7 @@ from .minions_helpers import (
     cached_roster,
     hydrate_entries,
     live_roster,
+    merged_cached_roster,
     minion_entries,
     minion_is_up,
     minion_rows,
@@ -101,6 +102,7 @@ __all__ = [
     "cached_roster",
     "hydrate_entries",
     "live_roster",
+    "merged_cached_roster",
     "minion_entries",
     "minion_is_up",
     "minion_rows",
@@ -243,10 +245,12 @@ def index():
     direction = request.args.get("dir", "asc")
     if direction not in ("asc", "desc"):
         direction = "asc"
-    # The roster comes from a short cache, so filtering never pays Salt
-    # round trips; grains hydrate only for the ids on this page, not the
-    # whole fleet.
-    statuses, up, reachable = cached_roster(get_salt())
+    # The merged roster (union across pods) comes from a short cache,
+    # so filtering never pays Salt round trips; grains hydrate only
+    # for the ids on this page, not the whole fleet. Single-minion
+    # skip-live checks stay on the sticky roster on purpose — a
+    # unioned up set would defeat the not-up skip.
+    statuses, up, reachable = merged_cached_roster(get_salt())
     entries = minion_entries(statuses, up, q, status_filter, sort, direction)
     if allowed is not None:
         entries = [e for e in entries if e["id"] in allowed]
@@ -307,7 +311,9 @@ def presence():
         return jsonify(cached)
     # Presence needs no grains: the lightweight merge carries everything
     # presence_of reads, so a cache miss costs columns, not snapshots.
-    statuses, up, _ = cached_roster(get_salt())
+    # Merged across pods: manage.status is a per-pod bus, so a single
+    # pod's up set undercounts the fleet.
+    statuses, up, _ = merged_cached_roster(get_salt())
     entries = minion_entries(statuses, up, "", "", sort="id")
     if allowed is not None:
         entries = [e for e in entries if e["id"] in allowed]
@@ -330,7 +336,7 @@ def export_csv():
     status_filter = request.args.get("status", "")
     if status_filter not in ("", "accepted", "pending", "rejected", "denied"):
         status_filter = ""
-    statuses, up, _ = cached_roster(get_salt())
+    statuses, up, _ = merged_cached_roster(get_salt())
     rows = minion_rows(statuses, up, q, status_filter)
     if allowed is not None:
         rows = [r for r in rows if r["id"] in allowed]
@@ -592,7 +598,9 @@ def onboard():
     require("minion.onboard")
     from .settings import get_setting
 
-    statuses, _, reachable = cached_roster(get_salt())
+    # A pending key may land on any pod (minions pin to one MQ),
+    # so the onboard pending list reads the merged roster.
+    statuses, _, reachable = merged_cached_roster(get_salt())
     pending = sorted(m for m, st in statuses.items() if st == "pending")
     master_ips = get_setting("master_ips")
     inputs = onboard_inputs(request.args)

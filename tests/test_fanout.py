@@ -264,6 +264,28 @@ def _wheel_ok(funs, roster):
             return httpx.Response(
                 200, json={"return": [{"data": {"return": {"m1": "aa:bb"}}}]}
             )
+        if body.get("fun") == "key.accept":
+            # Accept must reach denied/rejected too (rotated keys).
+            assert body.get("include_rejected") is True
+            assert body.get("include_denied") is True
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": [body.get("match")],
+                                    "minions_pre": [],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                },
+                                "success": True,
+                            }
+                        }
+                    ]
+                },
+            )
         return httpx.Response(200, json={"return": [True]})
 
     return behavior
@@ -299,6 +321,71 @@ def test_keys_partial_accept_warns(app_pair, monkeypatch):
     )
     assert b"pod-1 is unreachable" in rv.data
     assert ("key.accept", "m1") in funs0
+    actions = [a for a, _ in _actions(client)]
+    assert "accept-key-partial:m1:pod-1" in actions
+
+
+def test_keys_unapplied_accept_warns_names_pod(app_pair, monkeypatch):
+    """A pod whose wheel call succeeds but leaves mid out of the
+    target state (e.g. rejecting a denied key) must not read as
+    success: the flash names the pod and the audit says partial."""
+
+    def stagnant(body):
+        # list_all shows m1 pending on both pods (roster gate);
+        # key.accept returns m1 still pending: no-op, not success.
+        if body.get("fun") == "key.list_all":
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": [],
+                                    "minions_pre": ["m1"],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
+        if body.get("fun") == "key.finger":
+            return httpx.Response(
+                200, json={"return": [{"data": {"return": {"m1": "aa:bb"}}}]}
+            )
+        if body.get("fun") == "key.accept":
+            return httpx.Response(
+                200,
+                json={
+                    "return": [
+                        {
+                            "data": {
+                                "return": {
+                                    "minions": [],
+                                    "minions_pre": ["m1"],
+                                    "minions_rejected": [],
+                                    "minions_denied": [],
+                                },
+                                "success": True,
+                            }
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(200, json={"return": [True]})
+
+    c0 = _pod_client([], _wheel_ok([], ["m1"]))
+    c1 = _pod_client([], stagnant)
+    monkeypatch.setattr(
+        keys_mod, "pod_clients", lambda default: [("pod-0", c0), ("pod-1", c1)]
+    )
+    client = app_pair["login"]()
+    rv = client.post(
+        "/keys/accept", data={"id": "m1", "tab": "pending"}, follow_redirects=True
+    )
+    assert b"pod-1 left it in another state" in rv.data
     actions = [a for a, _ in _actions(client)]
     assert "accept-key-partial:m1:pod-1" in actions
 

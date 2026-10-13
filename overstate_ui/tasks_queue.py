@@ -31,6 +31,13 @@ ROSTER_TTL = 30
 manage.status. The minion list and key pages render from this instead of
 paying two Salt round trips per view (and per filter keystroke); key
 mutations clear it so trust changes show up immediately."""
+MERGED_ROSTER_CACHE_KEY = "minions:roster:merged"
+"""Merged multi-pod roster, same shape as ROSTER_CACHE_KEY. List pickers
+(minions, groups, schedules, onboard) read this so a minion known to any
+reachable master shows up; single-minion skip-live checks
+(:func:`minion_is_up`) stay on the sticky ROSTER_CACHE_KEY on purpose —
+a unioned up set would defeat the not-up skip and hang on foreign
+minions (see docs/plans/gather-budget.md)."""
 KEYS_CACHE_KEY = "keys:roster"
 KEYS_TTL = 30
 """Cached merged multi-pod key roster with fingerprints, same deal as
@@ -282,6 +289,30 @@ def write_roster_cache(statuses: dict, up: set | list) -> None:
         pass
 
 
+def read_merged_roster_cache() -> dict | None:
+    """Cached merged multi-pod roster, same shape as read_roster_cache."""
+    import redis
+
+    try:
+        raw = get_redis_client().get(MERGED_ROSTER_CACHE_KEY)
+        return json.loads(raw) if raw else None
+    except (redis.exceptions.RedisError, ValueError):
+        return None
+
+
+def write_merged_roster_cache(statuses: dict, up: set | list) -> None:
+    import redis
+
+    try:
+        get_redis_client().set(
+            MERGED_ROSTER_CACHE_KEY,
+            json.dumps({"statuses": statuses, "up": sorted(up)}),
+            ex=ROSTER_TTL,
+        )
+    except (redis.exceptions.RedisError, ValueError, TypeError):
+        pass
+
+
 def read_keys_cache() -> dict | None:
     """Cached {"data": {tab: rows}, "failed": [pods]} or None."""
     import redis
@@ -305,12 +336,14 @@ def write_keys_cache(data: dict, failed: list) -> None:
 
 
 def clear_key_caches() -> None:
-    """Drop roster + keys caches after a key mutation (accept, reject,
-    delete, reconcile, remove-with-key) so trust changes render on the
-    next view instead of at TTL expiry. Never raises."""
+    """Drop roster + merged roster + keys caches after a key mutation
+    (accept, reject, delete, reconcile, remove-with-key) so trust changes
+    render on the next view instead of at TTL expiry. Never raises."""
     import redis
 
     try:
-        get_redis_client().delete(ROSTER_CACHE_KEY, KEYS_CACHE_KEY)
+        get_redis_client().delete(
+            ROSTER_CACHE_KEY, MERGED_ROSTER_CACHE_KEY, KEYS_CACHE_KEY
+        )
     except redis.exceptions.RedisError:
         pass

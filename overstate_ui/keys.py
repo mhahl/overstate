@@ -40,6 +40,55 @@ ACTIONS = {"accept": "key.accept", "reject": "key.reject", "delete": "key.delete
 
 PAST = {"accept": "accepted", "reject": "rejected", "delete": "deleted"}
 
+# Salt key buckets, used to read wheel key.* glob_match returns.
+_KEY_BUCKETS = ("minions", "minions_pre", "minions_rejected", "minions_denied")
+
+
+def key_action_applied(action: str, result, mid: str) -> bool:
+    """Whether a wheel key.* return shows mid applied.
+
+    Salt returns the post-change glob_match ({"minions": [...]}) through
+    salt-api as [{"data": {"return": {...}}}]. Fail-open on unknown
+    shapes (True, {"success": True}, [{"result": True}]) so older
+    masters never read as failures; {} means no match, which is
+    unapplied for accept/reject but success for delete (already gone).
+    """
+    try:
+        node = result[0] if isinstance(result, list) and result else result
+        if isinstance(node, dict):
+            data = node.get("data")
+            if isinstance(data, dict) and "return" in data:
+                if data.get("success") is False:
+                    return False
+                node = data["return"]
+        if node is True:
+            return True
+        if isinstance(node, dict):
+            if any(k in node for k in _KEY_BUCKETS):
+                present = {
+                    k for k in _KEY_BUCKETS if mid in (node.get(k) or [])
+                }
+                if not present:
+                    # Absent on this pod: nothing to apply there (the
+                    # key lives on another pod). Absent is converged.
+                    return True
+                if action == "accept":
+                    return "minions" in present
+                if action == "reject":
+                    return "minions_rejected" in present
+                if action == "delete":
+                    return False
+                return True
+            if node == {}:
+                # No match on this pod: nothing to apply there (the
+                # key lives on another pod). Absent is converged, and
+                # a delete of an already-absent key is the end state.
+                return True
+            return True
+        return True
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return True
+
 # key.finger section names per roster tab (when the return is sectioned).
 _FINGER_SECTIONS = {
     "accepted": "minions",
@@ -425,9 +474,21 @@ def act(action: str):
         flash("That key is missing from the current list.", "error")
         return redirect(url_for("keys.index", **keep))
     failed = []
+    unapplied = []
     for name, cli in clients:
         try:
-            cli.wheel(ACTIONS[action], match=mid)
+            # key.accept only moves pending by default: a rotated
+            # minion re-files its new pub under denied (anti-hijack),
+            # so an accept that skips denied/rejected no-ops there
+            # while flashing success. Include both: the roster gate
+            # above means only a known id can reach here.
+            kwargs = {"match": mid}
+            if action == "accept":
+                kwargs["include_rejected"] = True
+                kwargs["include_denied"] = True
+            result = cli.wheel(ACTIONS[action], **kwargs)
+            if not key_action_applied(action, result, mid):
+                unapplied.append(name)
         except SaltApiError:
             failed.append(name)
     if len(failed) == len(clients):
@@ -457,15 +518,27 @@ def act(action: str):
                 minion_id=mid,
             )
     suffix = " Inventory row removed." if removed else ""
-    if failed:
+    unanswered = sorted(set(failed) | set(unapplied))
+    if failed or unapplied:
+        bits = []
+        if failed:
+            bits.append(f"{', '.join(failed)} did not answer")
+        if unapplied:
+            # The wheel call succeeded but left mid out of the target
+            # state there: e.g. rejecting a denied key, or acting on a
+            # pod that never saw it. Name it instead of flashing success.
+            bits.append(
+                f"{', '.join(unapplied)} left it in another state "
+                "(delete the key there if that state is wrong)"
+            )
         flash(
-            f"{mid}: {past} on the reachable masters. "
-            f"{', '.join(failed)} did not answer. Retry to converge.{suffix}",
+            f"{mid}: {past} on the converged masters. "
+            f"{'; '.join(bits)}. Retry to converge.{suffix}",
             "warning",
         )
         log_event(
             current_user.username,
-            f"{action}-key-partial:{mid}:{','.join(failed)}",
+            f"{action}-key-partial:{mid}:{','.join(unanswered)}",
             permission="key.delete" if action == "delete" else "key.accept",
             minion_id=mid,
         )

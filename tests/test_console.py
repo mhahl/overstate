@@ -52,6 +52,32 @@ def fake_transport() -> httpx.MockTransport:
         if client == "wheel":
             if body.get("fun") == "key.list_all":
                 return httpx.Response(200, json={"return": [dict(KEY_LISTING)]})
+            if body.get("fun") in ("key.accept", "key.reject", "key.delete"):
+                if body.get("fun") == "key.accept":
+                    # Rotated keys live under denied: accept must
+                    # include them or the key no-ops while reading
+                    # as success.
+                    assert body.get("include_rejected") is True
+                    assert body.get("include_denied") is True
+                    mid = body.get("match")
+                    return httpx.Response(
+                        200,
+                        json={
+                            "return": [
+                                {
+                                    "data": {
+                                        "return": {
+                                            "minions": [mid],
+                                            "minions_pre": [],
+                                            "minions_rejected": [],
+                                            "minions_denied": [],
+                                        },
+                                        "success": True,
+                                    }
+                                }
+                            ]
+                        },
+                    )
             return httpx.Response(200, json={"return": [{"result": True}]})
         if client == "runner":
             if body.get("fun") == "manage.status":

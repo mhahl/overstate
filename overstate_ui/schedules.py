@@ -7,7 +7,7 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .jobs_helpers import ALLOWED_FUNS, FUN_RE
-from .minions import _exact_mid, cached_roster, minion_is_up
+from .minions import _exact_mid, merged_cached_roster, minion_is_up
 from .salt_client import SaltApiError
 
 bp = Blueprint("schedules", __name__, url_prefix="/schedules")
@@ -74,7 +74,9 @@ def index():
     require("schedule.read")
     mid = request.args.get("minion", "")
     client = get_salt()
-    statuses, _, _ = cached_roster(client)
+    # Accepted on any pod counts: a minion pinned to another pod's
+    # MQ is still schedulable from here (jobs fan out to all pods).
+    statuses, _, _ = merged_cached_roster(client)
     accepted = sorted(m for m, st in statuses.items() if st == "accepted")
     if rbac_mode() == "scoped" and not has_fleet(current_user, "schedule.read"):
         allowed = minions_with(current_user, "schedule.read")

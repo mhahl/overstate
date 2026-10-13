@@ -11,6 +11,7 @@ from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.minions_helpers import (
     hydrate_entries,
     live_roster,
+    merged_live_roster,
     minion_entries,
     minion_rows,
     summarize_schedule,
@@ -128,6 +129,46 @@ def test_roster_happy_path_silent(caplog):
     assert up == {"web-01"}
     assert reachable is True
     assert caplog.text == ""
+
+
+def _pod(wheel, runner):
+    return StubClient(wheel=wheel, runner=runner)
+
+
+def test_merged_roster_unions_status_and_presence():
+    """Bug 1: the minion list read one master (pod-0-only labels).
+    The merged roster takes the strongest status any reachable pod
+    reports and unions the per-pod up sets."""
+    pod0 = _pod(
+        wheel=[{"data": {"return": {"minions": ["web-01"], "minions_pre": ["new-01"]}}}],
+        runner=[{"up": ["web-01"], "down": []}],
+    )
+    pod1 = _pod(
+        wheel=[{"data": {"return": {"minions": ["new-01"], "minions_pre": []}}}],
+        runner=[{"up": ["new-01"], "down": []}],
+    )
+    statuses, up, reachable = merged_live_roster([("pod-0", pod0), ("pod-1", pod1)])
+    # Accepted anywhere beats pending elsewhere; both up sets merge.
+    assert statuses == {"web-01": "accepted", "new-01": "accepted"}
+    assert up == {"web-01", "new-01"}
+    assert reachable is True
+
+
+def test_merged_roster_ignores_unreachable_pod():
+    """A dead pod contributes nothing: its ids keep the live pod's
+    status instead of vanishing."""
+    live = _pod(wheel=KEYS, runner=STATUS)
+    dead = _pod(
+        wheel=SaltApiError("wheel down"), runner=SaltApiError("runner down")
+    )
+    statuses, up, reachable = merged_live_roster([("pod-0", live), ("pod-1", dead)])
+    assert statuses == {"web-01": "accepted"}
+    assert up == {"web-01"}
+    assert reachable is True
+    statuses, up, reachable = merged_live_roster(
+        [("pod-0", dead), ("pod-1", dead)]
+    )
+    assert (statuses, up, reachable) == ({}, set(), False)
 
 
 def test_summarize_schedule_humanizes_intervals():
