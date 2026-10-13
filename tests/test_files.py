@@ -254,7 +254,7 @@ def test_edit_page_renders_editor_and_fallback(edit_checkout):
     assert 'id="editor-textarea"' in html  # no-JS fallback form field
     assert 'data-lang="yaml"' in html  # .sls gets YAML highlighting
     assert 'name="base_sha"' in html and 'name="base_hash"' in html
-    assert "card bg-base-100" in html  # editor sits in a panel, not bare
+    assert "card-bordered" in html  # editor sits in a panel, not bare
     assert "lines<" in html or "lines</span>" in html  # panel header line count
 
 

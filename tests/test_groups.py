@@ -233,7 +233,7 @@ def test_minions_page_has_no_groups(admin):
 def test_nav_links_groups_page(admin):
     html = admin.get("/minions/").data.decode()
     assert 'href="/groups/"' in html
-    assert "Groups</a>" in html
+    assert "Groups</span>" in html
 
 
 def table_html(html):

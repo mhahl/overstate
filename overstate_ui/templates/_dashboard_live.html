@@ -4,11 +4,13 @@ and dashboard.panels (poll hydration). No Salt I/O feeds this template:
 When `probing` with a `poll_qs`, the wrapper re-polls itself via htmx;
 resolved renders drop those attributes so polling stops on its own. #}
 <div id="dashboard-live" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
-<div class="flex flex-wrap items-end gap-3">
-  <div>
-    <h1 class="text-2xl font-bold tracking-tight">Fleet overview</h1>
-    <p class="text-sm opacity-70 mt-0.5">Salt control plane status and recent activity.</p>
-  </div>
+<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+  <ul>
+    <li aria-current="page">Dashboard</li>
+  </ul>
+</div>
+<div class="flex flex-wrap items-center gap-3">
+  <h1 class="text-2xl font-bold tracking-tight">Fleet overview</h1>
   <div class="flex gap-2 ms-auto items-center">
     {# Reserved slot: identical content either way, toggled invisible so the
     buttons never shift when polling resolves. visibility:hidden also hides
@@ -34,50 +36,30 @@ already says so. Only claim "unreachable" once polling settled. #}
   <span>salt-api unreachable. Database history only.</span>
 </div>
 {% endif %}
-<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-  <section class="stats bg-base-100 shadow-sm border border-base-300">
-    <div class="stat p-4">
-      <div class="stat-figure text-success">
-        <span class="icon-[lucide--cpu] size-6" aria-hidden="true"></span>
-      </div>
-      <div class="stat-title font-medium text-base-content">Accepted minions</div>
-      <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.accepted if stats.keys_live else "–" }}</div>
-      <div class="stat-desc">Keys in accepted state</div>
-    </div>
-  </section>
-  <section class="stats bg-base-100 shadow-sm border border-base-300">
-    <div class="stat p-4">
-      <div class="stat-figure text-warning">
-        <span class="icon-[lucide--clock] size-6" aria-hidden="true"></span>
-      </div>
-      <div class="stat-title font-medium text-base-content">Pending keys</div>
-      <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.pending if stats.keys_live else "–" }}</div>
-      <div class="stat-desc"><a class="link" href="{{ url_for('keys.index', tab='pending') }}">Review queue</a></div>
-    </div>
-  </section>
-  <section class="stats bg-base-100 shadow-sm border border-base-300">
-    <div class="stat p-4">
-      <div class="stat-figure text-info">
-        <span class="icon-[lucide--zap] size-6" aria-hidden="true"></span>
-      </div>
-      <div class="stat-title font-medium text-base-content">Minions up / down</div>
-      <div class="stat-value text-3xl font-semibold tabular-nums">{{ (stats.up|string) + " / " + (stats.down|string) if stats.presence_live else "–" }}</div>
-      <div class="stat-desc"><a class="link" href="{{ url_for('minions.index') }}">Browse inventory</a></div>
-    </div>
-  </section>
-  <section class="stats bg-base-100 shadow-sm border border-base-300">
-    <div class="stat p-4">
-      <div class="stat-figure text-primary">
-        <span class="icon-[lucide--play] size-6" aria-hidden="true"></span>
-      </div>
-      <div class="stat-title font-medium text-base-content">Jobs in flight</div>
-      <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.in_flight }}</div>
-      <div class="stat-desc">{% if stats.in_flight_live %}Live from master · {% else %}Database count · {% endif %}<a class="link" href="{{ url_for('jobs.index', tab='running') }}">Running jobs</a></div>
-    </div>
-  </section>
-</div>
-<div class="grid gap-4 lg:grid-cols-2">
-  <section class="card bg-base-100 shadow-sm rounded-box min-w-0">
+<section class="stats stats-vertical md:stats-horizontal bg-base-100 border border-base-300" aria-label="Fleet totals">
+  <div class="stat px-5 py-4">
+    <div class="stat-title font-medium text-base-content">Accepted minions</div>
+    <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.accepted if stats.keys_live else "–" }}</div>
+    <div class="stat-desc">Keys in accepted state</div>
+  </div>
+  <div class="stat px-5 py-4">
+    <div class="stat-title font-medium text-base-content">Pending keys</div>
+    <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.pending if stats.keys_live else "–" }}</div>
+    <div class="stat-desc"><a class="link" href="{{ url_for('keys.index', tab='pending') }}">Review queue</a></div>
+  </div>
+  <div class="stat px-5 py-4">
+    <div class="stat-title font-medium text-base-content">Minions up / down</div>
+    <div class="stat-value text-3xl font-semibold tabular-nums">{{ (stats.up|string) + " / " + (stats.down|string) if stats.presence_live else "–" }}</div>
+    <div class="stat-desc"><a class="link" href="{{ url_for('minions.index') }}">Browse inventory</a></div>
+  </div>
+  <div class="stat px-5 py-4">
+    <div class="stat-title font-medium text-base-content">Jobs in flight</div>
+    <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.in_flight }}</div>
+    <div class="stat-desc">{% if stats.in_flight_live %}Live from master · {% else %}Database count · {% endif %}<a class="link" href="{{ url_for('jobs.index', tab='running') }}">Running jobs</a></div>
+  </div>
+</section>
+<div class="grid gap-4 lg:grid-cols-2 items-start">
+  <section class="card card-bordered bg-base-100 min-w-0">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base whitespace-nowrap">Last failures</h2>
@@ -89,10 +71,10 @@ already says so. Only claim "unreachable" once polling settled. #}
         <thead><tr><th>Minion</th><th>JID</th><th class="text-right">Retcode</th></tr></thead>
         <tbody>
           {% for r in stats.last_failures %}
-          <tr class="hover:bg-base-200">
+          <tr>
             <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=r.minion_id) }}">{{ r.minion_id }}</a></td>
             <td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=r.jid) }}">{{ r.jid }}</a></td>
-            <td class="text-right tabular-nums"><span class="badge badge-sm badge-error">{{ r.retcode }}</span></td>
+            <td class="text-right tabular-nums"><span class="badge badge-sm badge-outline badge-error">{{ r.retcode }}</span></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -100,10 +82,7 @@ already says so. Only claim "unreachable" once polling settled. #}
       </div>
       {% else %}
       <div class="py-6 text-center">
-        <div class="size-12 rounded-full bg-base-200 flex items-center justify-center mx-auto">
-          <span class="icon-[lucide--circle-check] size-5 text-success" aria-hidden="true"></span>
-        </div>
-        <p class="font-medium mt-2">No failures recorded</p>
+        <p class="font-medium">No failures recorded</p>
         <p class="text-sm opacity-70">Failed returns appear here.</p>
         <a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
       </div>
@@ -111,11 +90,11 @@ already says so. Only claim "unreachable" once polling settled. #}
     </div>
   </section>
   <div class="flex flex-col gap-4 min-w-0">
-  <section class="card bg-base-100 shadow-sm rounded-box">
+  <section class="card card-bordered bg-base-100">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base">salt-api health</h2>
-        <span class="badge badge-sm ms-auto {{ 'badge-success' if stats.reachable else ('badge-neutral' if probing else 'badge-error') }}">{{ "reachable" if stats.reachable else ("checking" if probing else "unreachable") }}</span>
+        <span class="badge badge-sm badge-outline ms-auto {{ 'badge-success' if stats.reachable else ('badge-neutral' if probing else 'badge-error') }}">{{ "reachable" if stats.reachable else ("checking" if probing else "unreachable") }}</span>
         {% if (current_user.role in ("admin", "operator") and not rbac_scoped) or (rbac_scoped and can('dashboard.probe')) %}
         <form method="post" action="{{ url_for('dashboard.check_now') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -125,10 +104,10 @@ already says so. Only claim "unreachable" once polling settled. #}
       </div>
       <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt class="opacity-70">URL</dt><dd class="font-mono text-xs break-all">{{ health.url }}</dd>
-        <dt class="opacity-70">Token age</dt><dd>{{ "%.0f"|format(health.token_age) if health.token_age >= 0 else "none" }}s</dd>
-        <dt class="opacity-70">@wheel</dt><dd><span class="badge badge-sm {{ 'badge-success' if health.wheel_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.wheel_ok else ("checking" if probing else "failing") }}</span></dd>
-        <dt class="opacity-70">@runner</dt><dd><span class="badge badge-sm {{ 'badge-success' if health.runner_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.runner_ok else ("checking" if probing else "failing") }}</span></dd>
-        <dt class="opacity-70">Returns</dt><dd>{% if stats.returns.age is none %}{% if stats.returns.stale %}<span class="badge badge-sm badge-error" title="Jobs completed but the returner stored nothing. Check master_job_cache.">none recorded</span>{% else %}<span class="opacity-70">none yet</span>{% endif %}{% else %}<span class="{{ 'text-error' if stats.returns.stale else '' }}" title="Newest stored return">{{ stats.returns.age }}</span>{% endif %}</dd>
+        <dt class="opacity-70">Token age</dt><dd class="tabular-nums">{{ "%.0f"|format(health.token_age) if health.token_age >= 0 else "none" }}s</dd>
+        <dt class="opacity-70">@wheel</dt><dd><span class="badge badge-sm badge-outline {{ 'badge-success' if health.wheel_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.wheel_ok else ("checking" if probing else "failing") }}</span></dd>
+        <dt class="opacity-70">@runner</dt><dd><span class="badge badge-sm badge-outline {{ 'badge-success' if health.runner_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.runner_ok else ("checking" if probing else "failing") }}</span></dd>
+        <dt class="opacity-70">Returns</dt><dd>{% if stats.returns.age is none %}{% if stats.returns.stale %}<span class="badge badge-sm badge-outline badge-error" title="Jobs completed but the returner stored nothing. Check master_job_cache.">none recorded</span>{% else %}<span class="opacity-70">none yet</span>{% endif %}{% else %}<span class="{{ 'text-error' if stats.returns.stale else '' }}" title="Newest stored return">{{ stats.returns.age }}</span>{% endif %}</dd>
       </dl>
       {% if health.error %}<p class="text-error text-sm mt-2">{{ health.error }}</p>{% endif %}
       <div class="divider my-1">Capabilities</div>
@@ -140,7 +119,7 @@ already says so. Only claim "unreachable" once polling settled. #}
         {% else %}
         {% for c in checks %}
         <li class="flex items-center gap-2">
-          <span class="badge badge-sm {{ 'badge-success' if c.ok else 'badge-error' }}">{{ "ok" if c.ok else "failing" }}</span>
+          <span class="badge badge-sm badge-outline {{ 'badge-success' if c.ok else 'badge-error' }}">{{ "ok" if c.ok else "failing" }}</span>
           <span><span class="font-medium">{{ c.feature }}</span> <span class="opacity-70 font-mono text-xs">{{ c.fun }}</span></span>
         </li>
         <li class="text-xs opacity-70 -mt-1 ml-14">{{ c.grant }}</li>
@@ -149,24 +128,24 @@ already says so. Only claim "unreachable" once polling settled. #}
       </ul>
     </div>
   </section>
-  <section class="card bg-base-100 shadow-sm rounded-box">
+  <section class="card card-bordered bg-base-100">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base">Salt masters</h2>
         {% if masters and masters.available %}
-        <span class="badge badge-sm ms-auto {{ 'badge-success' if masters.complete else 'badge-warning' }}">{{ "ready" if masters.complete else "rollout progressing" }}</span>
+        <span class="badge badge-sm badge-outline ms-auto {{ 'badge-success' if masters.complete else 'badge-warning' }}">{{ "ready" if masters.complete else "rollout progressing" }}</span>
         {% elif masters or not probing %}
-        <span class="badge badge-sm ms-auto badge-neutral">unavailable</span>
+        <span class="badge badge-sm badge-outline ms-auto badge-neutral">unavailable</span>
         {% else %}
-        <span class="badge badge-sm ms-auto badge-neutral">checking</span>
+        <span class="badge badge-sm badge-outline ms-auto badge-neutral">checking</span>
         {% endif %}
       </div>
       {% if masters and masters.available %}
-      <p class="text-sm opacity-70 mt-1">Rollout {{ "complete" if masters.complete else "progressing" }} · {{ masters.updated_replicas }}/{{ masters.replicas }} updated, {{ masters.ready_replicas }}/{{ masters.replicas }} ready</p>
+      <p class="text-sm opacity-70 mt-1">Rollout {{ "complete" if masters.complete else "progressing" }} · <span class="tabular-nums">{{ masters.updated_replicas }}/{{ masters.replicas }} updated, {{ masters.ready_replicas }}/{{ masters.replicas }} ready</span></p>
       <ul class="flex flex-col gap-2 mt-2">
         {% for pod in masters.pods %}
         <li class="flex items-center gap-2 text-sm min-w-0">
-          <span class="badge badge-sm shrink-0 {{ 'badge-success' if pod.ready else 'badge-warning' }}">{{ "ready" if pod.ready else (pod.phase|lower or "not ready") }}</span>
+          <span class="badge badge-sm badge-outline shrink-0 {{ 'badge-success' if pod.ready else 'badge-warning' }}">{{ "ready" if pod.ready else (pod.phase|lower or "not ready") }}</span>
           <span class="font-mono text-xs truncate min-w-0">{{ pod.name }}</span>
           {% if pod.restarts %}<span class="text-xs opacity-60 tabular-nums whitespace-nowrap shrink-0" title="Container restarts">{{ pod.restarts }}× restarted</span>{% endif %}
           <span class="ms-auto font-mono text-xs opacity-70 truncate min-w-0 max-w-[16rem] text-right" title="{{ pod.image }}">{{ pod.image_short }}</span>
@@ -184,30 +163,35 @@ already says so. Only claim "unreachable" once polling settled. #}
       {% endif %}
     </div>
   </section>
-  <section class="card bg-base-100 shadow-sm rounded-box">
+  <section class="card card-bordered bg-base-100">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base">Salt versions</h2>
-        <span class="badge badge-sm ms-auto {{ 'badge-success' if stats.versions_live else 'badge-neutral' }}">{{ "live" if stats.versions_live else "snapshot" }}</span>
+        <span class="badge badge-sm badge-outline ms-auto {{ 'badge-success' if stats.versions_live else 'badge-neutral' }}">{{ "live" if stats.versions_live else "snapshot" }}</span>
       </div>
       {% if stats.versions %}
-      <ul class="flex flex-col gap-1 text-sm mt-1">
-        {% for version, count in stats.versions.items()|sort %}
-        <li class="flex items-center gap-2">
-          <span class="font-mono text-xs">{{ version }}</span>
-          <span class="ms-auto tabular-nums">{{ count }}</span>
-        </li>
-        {% endfor %}
-      </ul>
+      <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead><tr><th>Version</th><th class="text-right">Minions</th></tr></thead>
+        <tbody>
+          {% for version, count in stats.versions.items()|sort %}
+          <tr>
+            <td class="font-mono text-xs">{{ version }}</td>
+            <td class="text-right tabular-nums">{{ count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
       {% else %}
       <p class="text-sm opacity-70">No version data.</p>
       {% endif %}
     </div>
   </section>
-  <nav class="card bg-base-100 shadow-sm rounded-box" aria-label="Operator shortcuts">
+  <nav class="card card-bordered bg-base-100" aria-label="Operator shortcuts">
     <div class="card-body p-4">
       <h2 class="card-title text-base">Operator shortcuts</h2>
-      <ul class="menu p-0">
+      <ul class="menu menu-sm p-0">
         <li><a href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a></li>
         <li><a href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a></li>
         <li><a href="{{ url_for('jobs.new', preset='refresh-pillar') }}">Refresh pillar</a></li>

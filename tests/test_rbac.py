@@ -54,7 +54,7 @@ MUTATIONS = [
     ("post", "/schedules/m1/add", {}),
     ("post", "/minions/m1/beacons/enable", {}),
     ("post", "/minions/m1/beacons/disable", {}),
-    ("post", "/settings/", {"theme": "dark"}),
+    ("post", "/settings/", {"page_size": "10"}),
     ("post", "/settings/rotation/generate", {}),
     ("post", "/settings/rotation/verify", {}),
     ("get", "/users/", None),
@@ -77,7 +77,7 @@ def test_viewer_can_still_read(client):
 def test_operator_can_mutate_but_not_admin_routes(client):
     login_as(client, "op")
     assert client.post("/states/watch", data={"sls": "demo"}).status_code == 302
-    assert client.post("/settings/", data={"theme": "dark"}).status_code == 403
+    assert client.post("/settings/", data={"page_size": "10"}).status_code == 403
     assert client.get("/users/").status_code == 403
 
 
@@ -137,10 +137,10 @@ def test_settings_save_keeps_secret_when_empty(client):
     client.post("/settings/", data={"oidc_client_secret": "s3cr3t-top"})
     with client.app.app_context():
         assert get_session().get(Setting, "oidc_client_secret").value == "s3cr3t-top"
-    client.post("/settings/", data={"theme": "dark"})
+    client.post("/settings/", data={"page_size": "10"})
     with client.app.app_context():
         assert get_setting("oidc_client_secret") == "s3cr3t-top"
-        assert get_setting("theme") == "dark"
+        assert get_setting("page_size") == "10"
     client.post(
         "/settings/",
         data={"oidc_client_secret": "", "clear_oidc_client_secret": "on"},
@@ -330,9 +330,9 @@ def test_settings_save_touches_only_posted_keys(client):
     from overstate_ui.settings import get_setting
 
     login_as(client, "admin")
-    client.post("/settings/", data={"theme": "dark", "default_target": "web-*"})
+    client.post("/settings/", data={"page_size": "10", "default_target": "web-*"})
     client.post("/settings/", data={"section": "general", "default_target": "db-*"})
     with client.app.app_context():
-        assert get_setting("theme") == "dark"
+        assert get_setting("page_size") == "10"
         assert get_setting("default_target") == "db-*"
         assert get_session().get(Setting, "oidc_issuer") is None

@@ -1,11 +1,17 @@
 {% extends "base.html" %}
 {% block title %}{{ mid }} pillar · Overstate{% endblock %}
 {% block content %}
+<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
+  <ul>
+    <li>States</li>
+    <li><a class="link" href="{{ url_for('pillar.index') }}">Pillar</a></li>
+    <li aria-current="page"><span class="font-mono">{{ mid }}</span></li>
+  </ul>
+</nav>
 <div class="flex flex-wrap items-center gap-2 mb-4">
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.index') }}">‹ Pillar</a>
-  <h1 class="text-2xl font-bold tracking-tight font-mono">{{ mid }}</h1>
+  <h1 class="text-2xl font-bold tracking-tight font-mono mr-auto">{{ mid }}</h1>
   {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('pillar.capture', minion=mid)) %}
-  <form method="post" action="{{ url_for('pillar.capture', mid=mid) }}" class="ml-auto">
+  <form method="post" action="{{ url_for('pillar.capture', mid=mid) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-primary">Capture snapshot</button>
   </form>
@@ -18,7 +24,7 @@
 </div>
 {% endif %}
 <div class="grid lg:grid-cols-2 gap-4">
-  <section class="card bg-base-100 border border-base-300 shadow-sm">
+  <section class="card card-bordered">
     <div class="card-body">
       <div class="flex items-center gap-2 mb-1">
         <h2 class="card-title text-base mr-auto">Live rendered pillar</h2>
@@ -31,9 +37,9 @@
       {% endif %}
     </div>
   </section>
-  <section class="card bg-base-100 border border-base-300 shadow-sm">
+  <section class="card card-bordered">
     <div class="card-body">
-      <h2 class="card-title text-base">Snapshots <span class="badge badge-sm badge-neutral">{{ snaps|length }}</span></h2>
+      <h2 class="card-title text-base">Snapshots <span class="badge badge-sm badge-outline badge-neutral">{{ snaps|length }}</span></h2>
       {% if snaps %}
       <ul>
         {% for s in snaps %}

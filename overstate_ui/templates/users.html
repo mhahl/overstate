@@ -2,21 +2,26 @@
 {% import "_grant_dialog.html" as gd %}
 {% block title %}Users · Overstate{% endblock %}
 {% block content %}
-<div class="max-w-4xl">
+<nav aria-label="Breadcrumb" class="breadcrumbs text-sm py-0 mb-1">
+  <ul>
+    <li>Admin</li>
+    <li aria-current="page">Users</li>
+  </ul>
+</nav>
+<div>
   <div class="flex flex-wrap items-end gap-3 mb-5">
     <div class="mr-auto">
       <h1 class="text-2xl font-bold tracking-tight">Users</h1>
-      <p class="text-sm opacity-70 mt-0.5">Roles and access for local and SSO accounts.</p>
     </div>
   </div>
   {% import "_macros.html" as m %}
-  <form method="get" action="{{ url_for('users.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+  <form method="get" action="{{ url_for('users.index') }}" class="sticky top-0 z-20 bg-base-100/95 backdrop-blur py-2 mb-4" role="search" aria-label="Filter users">
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
-    <div class="card-body flex-row flex-wrap items-end gap-2">
+    <div class="flex flex-row flex-wrap items-end gap-2">
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Role</legend>
-        <select name="role" class="select select-sm" onchange="this.form.requestSubmit()">
+        <select name="role" class="select select-sm select-bordered" onchange="this.form.requestSubmit()">
           <option value="">All roles</option>
           {% for r in roles %}
           <option value="{{ r }}"{% if role == r %} selected{% endif %}>{{ r|capitalize }}</option>
@@ -31,7 +36,7 @@
       {% if role %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('users.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
     </div>
   </form>
-  <div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="card card-bordered bg-base-100">
   <div class="overflow-x-auto">
   <table class="table table-sm table-zebra table-pin-rows w-full">
     <thead><tr>{{ m.sort_th_plain('users.index', 'username', 'Username', sort, direction, {'role': role}) }}{{ m.sort_th_plain('users.index', 'role', 'Role', sort, direction, {'role': role}) }}<th>Auth</th>{% if rbac_scoped %}<th>Grants</th>{% endif %}<th class="text-right">Actions</th></tr></thead>
@@ -39,7 +44,7 @@
     {% for u in users %}
       <tr>
         <td class="font-medium">{{ u.username }}</td>
-        <td><span class="badge badge-sm {{ 'badge-primary' if u.role == 'admin' else 'badge-neutral' }}">{{ u.role }}</span></td>
+        <td><span class="badge badge-sm {{ 'badge-outline' if u.role == 'admin' else 'badge-ghost' }}">{{ u.role }}</span></td>
         <td class="text-sm">{{ auth_label(u) }}</td>
         {% if rbac_scoped %}
         <td class="text-xs opacity-70">
@@ -56,7 +61,7 @@
           {% if not delegate_view %}
           <form method="post" action="{{ url_for('users.set_role', uid=u.id) }}" class="join-item flex">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <select name="role" class="select select-sm join-item" aria-label="Fleet role"{% if rbac_scoped and u.id == current_user.id %} disabled{% endif %}>
+            <select name="role" class="select select-sm select-bordered join-item" aria-label="Fleet role"{% if rbac_scoped and u.id == current_user.id %} disabled{% endif %}>
               {% for r in roles %}
               <option value="{{ r }}" {% if r == u.role %}selected{% endif %}>{{ r }}</option>
               {% endfor %}
@@ -90,7 +95,7 @@
   </div>
   {% if rbac_scoped and not delegate_view %}<p class="text-xs opacity-70 mt-2">Fleet role is the whole fleet, including pillar, and applies on top of scoped grants.</p>{% endif %}
   {% if rbac_scoped and not delegate_view %}
-  <section class="card bg-base-100 border border-base-300 shadow-sm mt-4" aria-label="Service accounts">
+  <section class="card card-bordered bg-base-100 mt-4" aria-label="Service accounts">
     <div class="card-body gap-3">
       <h2 class="card-title text-base">Service accounts</h2>
       <p class="text-sm opacity-70">CI identities for <code>POST /api/jobs/run</code>. No password, no login, no ladder role — a Bearer [REDACTED] fires as the account's grants. A token shows its secret once, at creation.</p>
@@ -106,7 +111,7 @@
           <span class="text-xs opacity-70 font-mono">{{ token.token_prefix }}…</span>
           {% if token.saved_job_id %}<span class="badge badge-sm badge-outline">pinned #{{ token.saved_job_id }}</span>{% else %}<span class="badge badge-sm badge-outline">unpinned reads</span>{% endif %}
           {% if token.expires_at %}<span class="text-xs opacity-70">expires {{ token.expires_at }}</span>{% endif %}
-          {% if token.revoked_at %}<span class="badge badge-sm badge-error">revoked</span>
+          {% if token.revoked_at %}<span class="badge badge-sm badge-outline">revoked</span>
           {% else %}
           <form method="post" action="{{ url_for('users.revoke_token', uid=entry.user.id, tid=token.id) }}" class="inline" data-confirm="Revoke this token? Fires in flight are unaffected.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -118,14 +123,14 @@
         <form method="post" action="{{ url_for('users.create_token', uid=entry.user.id) }}" class="flex flex-wrap items-end gap-2 mt-2">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <fieldset class="fieldset"><legend class="fieldset-legend">Token name</legend>
-          <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
+          <input name="name" class="input input-sm input-bordered" autocomplete="off" required></fieldset>
           <fieldset class="fieldset"><legend class="fieldset-legend">Pin to saved job</legend>
-          <select name="saved_job_id" class="select select-sm">
+          <select name="saved_job_id" class="select select-sm select-bordered">
             <option value="">Unpinned (read class only)</option>
             {% for job in saved_jobs %}<option value="{{ job.id }}">{{ job.name }} · {{ job.fun }}</option>{% endfor %}
           </select></fieldset>
           <fieldset class="fieldset"><legend class="fieldset-legend">Expires in days</legend>
-          <input name="expires_days" type="number" min="1" max="3650" class="input input-sm w-24" placeholder="never"></fieldset>
+          <input name="expires_days" type="number" min="1" max="3650" class="input input-sm input-bordered w-24" placeholder="never"></fieldset>
           <button class="btn btn-sm btn-primary">Mint token</button>
         </form>
       </div>
@@ -133,7 +138,7 @@
       <form method="post" action="{{ url_for('users.create_service_account') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <fieldset class="fieldset"><legend class="fieldset-legend">New service account</legend>
-        <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
+        <input name="name" class="input input-sm input-bordered" autocomplete="off" required></fieldset>
         <button class="btn btn-sm btn-primary">Create account</button>
       </form>
     </div>

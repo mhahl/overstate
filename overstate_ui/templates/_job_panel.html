@@ -3,7 +3,7 @@ stand-in), `job`, and `view` (describe_return payload) from the
 including scope or the panel fragment route. Used by the job detail
 loop and fetched live as new returns land, so keep markup identical
 in both paths. #}
-<details id="panel-{{ r.minion_id }}" data-panel-mid="{{ r.minion_id }}" data-live="{{ '1' if r.live|default(False) else '0' }}" class="collapse bg-base-100 border {{ 'border-error' if not r.success else 'border-base-300' }} shadow-sm" {% if not r.success %}open{% endif %}>
+<details id="panel-{{ r.minion_id }}" data-panel-mid="{{ r.minion_id }}" data-live="{{ '1' if r.live|default(False) else '0' }}" class="collapse bg-base-100 border {{ 'border-error' if not r.success else 'border-base-300' }}" {% if not r.success %}open{% endif %}>
   <summary class="collapse-title font-mono text-sm flex items-center gap-2">
     {% if r.success %}<span class="status status-success"></span>{% else %}<span class="status status-error"></span>{% endif %}
     <span class="mr-auto">{{ r.minion_id }} — {{ "ok" if r.success else ("failed, retcode " ~ r.retcode) }}</span>

@@ -239,7 +239,7 @@ def test_minion_search_json(client):
 
 def test_palette_markup_present(client):
     html = client.get("/").data.decode()
-    assert 'id="palette-btn"' in html and "Ctrl K" in html
+    assert 'id="palette-btn"' in html and "⌘K" in html
     assert "/minions/search" in html
 
 

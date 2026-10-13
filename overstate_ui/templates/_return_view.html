@@ -22,7 +22,7 @@ in every variant. #}
         <span class="font-mono text-xs">{{ s.label }}</span>
         {% if s.changed or s.sls or s.duration_text %}
         <span class="ml-auto grid shrink-0 grid-cols-[4rem_minmax(0,10rem)_6rem] items-center gap-x-2">
-          <span class="flex justify-end">{% if s.changed and not s.failed %}<span class="badge badge-xs badge-warning shrink-0">changed</span>{% endif %}</span>
+          <span class="flex justify-end">{% if s.changed and not s.failed %}<span class="badge badge-xs badge-outline shrink-0">changed</span>{% endif %}</span>
           <span class="min-w-0">{% if s.sls %}<span class="badge badge-xs badge-ghost font-mono max-w-full truncate" title="{{ s.sls }}">{{ s.sls }}</span>{% endif %}</span>
           <span class="text-right text-xs opacity-60 tabular-nums">{{ s.duration_text or "" }}</span>
         </span>

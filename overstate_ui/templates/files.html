@@ -1,25 +1,30 @@
 {% extends "base.html" %}
 {% block title %}Files · Overstate{% endblock %}
 {% block content %}
+<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
+  <ul>
+    <li>States</li>
+    <li aria-current="page">Files</li>
+  </ul>
+</nav>
 <div class="w-full">
-  <div class="flex flex-wrap items-end gap-3 mb-5">
-    <div class="mr-auto">
-    <h1 class="text-2xl font-bold tracking-tight">State files</h1>
-    <p class="text-sm opacity-70 mt-0.5">Browse and edit state files. Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
-    {% if has_top %}<p class="text-sm mt-1"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% else %}<p class="text-sm mt-1 text-warning">No top.sls at file roots. The master serves nothing until you clone the states repo on the Repo tab.</p>{% endif %}
-    </div>
+  <div class="flex flex-wrap items-center gap-3 mb-4">
+    <h1 class="text-2xl font-bold tracking-tight mr-auto">State files</h1>
     {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
     <a class="btn btn-sm btn-outline" title="Clone, repoint, and repair the file-roots checkout" href="{{ url_for('files.repo') }}">Repo settings</a>
     {% endif %}
   </div>
-  <section class="card bg-base-100 border border-base-300 shadow-sm mb-3" aria-label="Git checkout status">
+  <div class="w-full mb-4">
+    {% if has_top %}<p class="text-sm"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% else %}<p class="text-sm text-warning">No top.sls at file roots. The master serves nothing until you clone the states repo on the Repo tab.</p>{% endif %}
+  </div>
+  <section class="card card-bordered mb-3" aria-label="Git checkout status">
     <div class="card-body py-3">
       {% if git.ok %}
       <div class="flex flex-wrap items-center gap-2 text-sm">
         <span class="font-semibold">Git</span>
         <span class="font-mono">{{ git.branch }}</span>
         <span class="font-mono">{{ git.sha }}</span>
-        {% if git.clean %}<span class="badge badge-sm badge-success">clean</span>{% else %}<span class="badge badge-sm badge-warning">{{ git.dirty_count }} uncommitted</span>{% endif %}
+        {% if git.clean %}<span class="badge badge-sm badge-outline badge-success">clean</span>{% else %}<span class="badge badge-sm badge-outline badge-warning">{{ git.dirty_count }} uncommitted</span>{% endif %}
         {% if git.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ git.upstream }}{% if git.ahead is not none %} · {{ git.ahead }} ahead, {{ git.behind }} behind{% endif %}</span>{% else %}<span class="opacity-70 text-xs">no upstream</span>{% endif %}
         {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.sync')) %}
         <span class="ms-auto flex gap-1 max-sm:w-full max-sm:mt-1">
@@ -54,13 +59,13 @@
       {% endif %}
     </div>
   </section>
-  <section class="card bg-base-100 border border-base-300 shadow-sm mb-3" aria-label="Scheduled file sync">
+  <section class="card card-bordered mb-3" aria-label="Scheduled file sync">
     <div class="card-body py-3">
       <div class="flex flex-wrap items-center gap-2 text-sm">
         <span class="font-semibold">Scheduled sync</span>
         <code class="font-mono">{{ file_sync.schedule }}</code>
         {% if file_sync.schedule|lower == "off" %}<span class="badge badge-sm badge-ghost">disabled</span>{% endif %}
-        {% if file_sync.last_status %}<span class="badge badge-sm{% if file_sync.last_status == 'success' %} badge-success{% elif file_sync.last_status == 'warning' %} badge-warning{% else %} badge-error{% endif %}">{{ file_sync.last_status }}</span>{% endif %}
+        {% if file_sync.last_status %}<span class="badge badge-sm badge-outline{% if file_sync.last_status == 'success' %} badge-success{% elif file_sync.last_status == 'warning' %} badge-warning{% else %} badge-error{% endif %}">{{ file_sync.last_status }}</span>{% endif %}
       </div>
       {% if file_sync.last_message %}<p class="text-xs opacity-70">{{ file_sync.last_message }}{% if file_sync.last_run %} · {{ file_sync.last_run }}{% endif %}</p>{% else %}<p class="text-xs opacity-70">No scheduled sync has run yet. Change the schedule in Settings.</p>{% endif %}
     </div>
@@ -78,7 +83,7 @@
   </ul>
   {% endmacro %}
   <div class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] items-start">
-  <nav class="card bg-base-100 border border-base-300 shadow-sm" aria-label="Folders">
+  <nav class="card card-bordered" aria-label="Folders">
     <div class="card-body p-3">
       <div class="flex items-center gap-2 px-1 pb-1">
         <h2 class="font-semibold text-sm">Folders</h2>
@@ -103,16 +108,16 @@
     </ul>
   </nav>
   {% endif %}
-  <form method="get" action="{{ url_for('files.index') }}" class="flex gap-2 mb-3">
+  <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex gap-2 mb-3 sticky top-0 z-10 bg-base-100 py-2">
     <input type="hidden" name="dir" value="{{ d }}">
-    <input name="q" value="{{ q }}" placeholder="Search files…" class="input input-sm flex-1" aria-label="Search files">
+    <input name="q" value="{{ q }}" placeholder="Search files…" class="input input-bordered input-sm flex-1" aria-label="Search files">
     <button class="btn btn-sm btn-primary">Search</button>
     {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', dir=d) }}">Clear</a>{% endif %}
   </form>
   {% if truncated %}
   <div class="alert alert-warning text-sm mb-3" role="status">Listing capped at {{ total }} of many files. Narrow it with search.</div>
   {% endif %}
-  <div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="card card-bordered">
   {% if not rows %}
   <div class="py-8 text-center">
     <p class="font-medium">{% if q %}No files match "{{ q }}"{% elif d %}No files under "{{ d }}"{% else %}No files found{% endif %}</p>

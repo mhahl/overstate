@@ -7,6 +7,7 @@ pinned by a static template assertion instead.
 """
 
 import pathlib
+import re
 
 from overstate_ui import create_app
 from overstate_ui.audit import log_event
@@ -55,7 +56,7 @@ def test_filter_submit_is_primary_on_every_filter_page():
     c = make_client()
     for path in FILTER_PAGES:
         html = c.get(path).data.decode()
-        assert 'btn-primary mb-1">Filter' in html, path
+        assert re.search(r'class="[^"]*btn-primary[^"]*">Filter', html), path
         assert 'class="btn btn-sm mb-1">Filter' not in html, path
 
 
@@ -158,37 +159,33 @@ def test_shared_visual_system_covers_app_shell_settings_and_console():
         / "static"
         / "app.css"
     ).read_text()
-    assert ':root[data-theme="wireframe"]' in css
-    assert ".drawer-side aside .menu li > a.menu-active" in css
-    assert 'main .tabs.tabs-border[role="tablist"]' in css
+    assert ':root[data-theme="wireframe"]' not in css
     assert "#term" in css
     assert "prefers-reduced-motion: reduce" in css
 
     source = (
         pathlib.Path(__file__).resolve().parent.parent / "assets" / "app.css"
     ).read_text()
-    marker = "/* Shared application chrome and operational surfaces. These rules keep"
-    source_layer = source[source.index(marker) :]
-    built_layer = css[css.index(':root[data-theme="wireframe"]') :]
+    assert "themes: cmyk" in source
     for rule in (
-        ':root[data-theme="wireframe"]',
-        ".drawer-content > header.navbar",
-        ".drawer-side aside .menu li > a.menu-active",
-        'main .tabs.tabs-border[role="tablist"]',
-        "main :is(.input, .select, .textarea):focus-visible",
+        ":focus-visible",
         "#term",
         "#console-form",
         "@media (prefers-reduced-motion: reduce)",
     ):
-        assert rule in source_layer
-        assert rule in built_layer
-    for declaration in (
-        "--color-base-100: oklch(99.3% 0.004 255);",
-        "--radius-box: 0.9rem;",
-        "backdrop-filter: blur(14px);",
-        "outline-offset: 1px;",
-        "line-height: 1.65;",
-        "transition: none;",
+        assert rule in source
+        assert rule in css
+
+    shell = (TEMPLATES / "base.html").read_text()
+    for marker in (
+        'data-theme="cmyk"',
+        "h-screen w-screen overflow-hidden",
+        'aria-label="Primary"',
+        'aria-label="Secondary"',
+        'id="content"',
+        "max-w-[1600px]",
+        "lg:w-[270px]",
+        "⌘K",
     ):
-        assert declaration in source_layer
-        assert declaration in built_layer
+        assert marker in shell, marker
+    assert "drawer-side" not in shell

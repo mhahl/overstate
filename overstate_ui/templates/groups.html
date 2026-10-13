@@ -1,30 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Groups · Overstate{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-end gap-3 mb-5">
-  <div class="mr-auto">
-    <h1 class="text-2xl font-bold tracking-tight">Groups <span class="badge badge-neutral align-middle">{{ total }}</span></h1>
-    <p class="text-sm opacity-70 mt-0.5">Saved member lists for group targets. Unknown IDs are skipped when you run a job.</p>
-    {% if not (((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) and not rbac_scoped) or (rbac_scoped and can('group.write'))) %}
-    <p class="text-sm opacity-70 mt-0.5">Operators only. Saved groups appear as the “group” target on the <a class="link" href="{{ url_for('jobs.new') }}">New job</a> form.</p>
-    {% endif %}
-  </div>
+<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+  <ul>
+    <li aria-current="page">Groups</li>
+  </ul>
+</div>
+<div class="flex flex-wrap items-center gap-3">
+  <h1 class="text-2xl font-bold tracking-tight">Groups ({{ total }})</h1>
+  <div class="flex gap-2 ms-auto items-center">
   {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
   <button type="button" class="btn btn-sm btn-primary" onclick="openGroupModal()">New group</button>
   {% endif %}
-</div>
-<form method="get" action="{{ url_for('groups.index') }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
-  <div class="card-body flex-row flex-wrap items-end gap-2">
-    <fieldset class="fieldset flex-1 min-w-48">
-      <legend class="fieldset-legend">Search</legend>
-      <input type="search" name="q" value="{{ q }}" placeholder="Search name or member…" class="input input-sm">
-    </fieldset>
-    <button class="btn btn-sm btn-primary mb-1">Filter</button>
-    {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
+</div>
+{% if not (((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) and not rbac_scoped) or (rbac_scoped and can('group.write'))) %}
+<p class="text-sm opacity-70">Operators only. Saved groups appear as the “group” target on the <a class="link" href="{{ url_for('jobs.new') }}">New job</a> form.</p>
+{% endif %}
+<form method="get" action="{{ url_for('groups.index') }}" class="sticky top-0 z-10 bg-base-100 py-2 flex flex-wrap items-end gap-2" role="search" aria-label="Filter groups">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search name or member…" aria-label="Search groups" class="input input-sm input-bordered w-full max-w-xs">
+  <button class="btn btn-sm btn-primary">Filter</button>
+  {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
 </form>
 {% import "_macros.html" as m %}
-<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="card card-bordered bg-base-100">
   <div class="overflow-x-auto">
     <table class="table table-sm table-zebra table-pin-rows w-full">
       <thead><tr>{{ m.sort_th_plain('groups.index', 'name', 'Name', sort, direction, {'q': q}) }}{{ m.sort_th_plain('groups.index', 'members', 'Members', sort, direction, {'q': q}) }}<th>IDs</th><th class="text-right">Use</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
@@ -32,7 +31,7 @@
         {% for g in groups %}
         <tr>
           <td class="font-medium">{{ g.name }}</td>
-          <td class="text-right">{{ g.members|length }}</td>
+          <td class="text-right tabular-nums">{{ g.members|length }}</td>
           <td class="font-mono text-xs opacity-70 max-w-72 truncate" title="{{ g.members|join(', ') }}">{{ g.members|join(", ") }}</td>
           <td class="text-right whitespace-nowrap"><a class="btn btn-xs btn-ghost" href="{{ url_for('jobs.new', tgt_type='group', tgt=g.name) }}">Use in new job</a></td>
           {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
@@ -49,7 +48,13 @@
       </tbody>
     </table>
     {% if not groups %}
-    <p class="text-sm opacity-70 px-4 py-3">{% if q %}No groups match “{{ q }}”.{% else %}No groups yet. Save minions as a group to run jobs on them together.{% endif %}</p>
+    <div class="py-8 text-center">
+      <p class="font-medium">{% if q %}No groups match “{{ q }}”.{% else %}No groups yet{% endif %}</p>
+      <p class="text-sm opacity-70">Save minions as a group to run jobs on them together.</p>
+      {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
+      <button type="button" class="btn btn-sm btn-primary mt-2" onclick="openGroupModal()">New group</button>
+      {% endif %}
+    </div>
     {% endif %}
   </div>
   <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
@@ -68,11 +73,11 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Name</legend>
-        <input id="group-modal-name" name="name" class="input w-full" autocomplete="off" required>
+        <input id="group-modal-name" name="name" class="input input-bordered w-full" autocomplete="off" required>
       </fieldset>
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Members <span id="group-modal-count" class="badge badge-neutral badge-sm ml-1">0</span></legend>
-        <input id="group-modal-search" type="search" placeholder="Filter minions…" autocomplete="off" class="input input-sm w-full" oninput="filterGroupMembers()">
+        <input id="group-modal-search" type="search" placeholder="Filter minions…" autocomplete="off" class="input input-sm input-bordered w-full" oninput="filterGroupMembers()">
         <div class="mt-1 max-h-56 overflow-auto rounded-lg border border-base-300">
           <table class="table table-sm table-zebra table-pin-rows w-full">
             <thead><tr><th class="w-8"><span class="sr-only">Select</span></th><th>Minion</th></tr></thead>
@@ -146,7 +151,7 @@
     nameCell.textContent = value;
     if (stale) {
       var badge = document.createElement('span');
-      badge.className = 'badge badge-warning badge-xs ml-2';
+      badge.className = 'badge badge-outline badge-warning badge-xs ml-2';
       badge.textContent = 'not seen';
       nameCell.appendChild(badge);
     }

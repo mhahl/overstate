@@ -1,55 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Minions · Overstate{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-end gap-3 mb-5">
-  <div class="mr-auto">
-    <h1 class="text-2xl font-bold tracking-tight">Minions <span class="badge badge-neutral align-middle">{{ total }}</span></h1>
-    <p class="text-sm opacity-70 mt-0.5">Inventory snapshots with live presence.</p>
+<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+  <ul>
+    <li aria-current="page">Minions</li>
+  </ul>
+</div>
+<div class="flex flex-wrap items-center gap-3">
+  <h1 class="text-2xl font-bold tracking-tight">Minions ({{ total }})</h1>
+  <div class="flex gap-2 ms-auto items-center">
+    {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('minion.refresh')) %}
+    <form method="post" action="{{ url_for('minions.refresh') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-primary">Refresh inventory</button>
+    </form>
+    {% endif %}
+    <a id="export-csv" class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.export_csv') }}">Export CSV</a>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.onboard') }}">Onboard minion</a>
+    <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists" aria-pressed="false">Pause live updates</button>
   </div>
-  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('minion.refresh')) %}
-  <form method="post" action="{{ url_for('minions.refresh') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-sm btn-primary">Refresh inventory</button>
-  </form>
-  {% endif %}
-  <a id="export-csv" class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.export_csv') }}">Export CSV</a>
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.onboard') }}">Onboard minion</a>
-  <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists" aria-pressed="false">Pause live updates</button>
 </div>
 {% if not reachable %}
-<div class="alert alert-error mb-4" role="alert">
+<div class="alert alert-error" role="alert">
   <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
   <span>Salt API is unreachable. Cached snapshot only.</span>
 </div>
 {% endif %}
-<form id="minions-filter" method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:400ms, submit" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+<form id="minions-filter" method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:400ms, submit" class="sticky top-0 z-10 bg-base-100 py-2 flex flex-wrap items-end gap-2" role="search" aria-label="Filter minions">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
-  <div class="card-body flex-row flex-wrap items-end gap-2">
-    <fieldset class="fieldset flex-1 min-w-48">
-      <legend class="fieldset-legend">Search</legend>
-      <input type="search" name="q" value="{{ q }}" placeholder="Search id…" class="input input-sm">
-    </fieldset>
-    <fieldset class="fieldset">
-      <legend class="fieldset-legend">Key status</legend>
-      <select name="status" class="select select-sm" onchange="this.form.requestSubmit()">
-        <option value="">All statuses</option>
-        {% for s in ["accepted", "pending", "rejected", "denied"] %}
-        <option value="{{ s }}"{% if status == s %} selected{% endif %}>{{ s|capitalize }}</option>
-        {% endfor %}
-      </select>
-    </fieldset>
-    <button class="btn btn-sm btn-primary mb-1">Filter</button>
-  </div>
+  <input type="search" name="q" value="{{ q }}" placeholder="Search id…" aria-label="Search minions" class="input input-sm input-bordered w-full max-w-xs">
+  <select name="status" aria-label="Key status" class="select select-sm select-bordered" onchange="this.form.requestSubmit()">
+    <option value="">All statuses</option>
+    {% for s in ["accepted", "pending", "rejected", "denied"] %}
+    <option value="{{ s }}"{% if status == s %} selected{% endif %}>{{ s|capitalize }}</option>
+    {% endfor %}
+  </select>
+  <button class="btn btn-sm btn-primary">Filter</button>
 </form>
 <form id="bulk-form" method="get" action="{{ url_for('jobs.new') }}">
 <input type="hidden" name="bulk_run" value="1">
 </form>
-<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="card card-bordered bg-base-100">
 {% include "_minion_rows.html" %}
 </div>
 <noscript>
-<div class="card bg-base-100 border border-base-300 shadow-sm mt-4">
+<div class="card card-bordered bg-base-100 mt-4">
   <div class="card-body">
     <p class="font-medium text-sm">Remove a minion without JavaScript</p>
     <ul class="flex flex-col gap-2 mt-2">

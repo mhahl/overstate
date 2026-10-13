@@ -1,33 +1,37 @@
 {% extends "base.html" %}
 {% block title %}Repo · Overstate{% endblock %}
 {% block content %}
+<nav aria-label="Breadcrumb" class="breadcrumbs text-sm py-0 mb-1">
+  <ul>
+    <li>Admin</li>
+    <li aria-current="page">Repo</li>
+  </ul>
+</nav>
 <div class="flex flex-wrap items-end gap-3 mb-5">
   <div class="mr-auto">
   <h1 class="text-2xl font-bold tracking-tight">Repo</h1>
-  <p class="text-sm opacity-70 mt-0.5">Bootstrap, repoint, and repair the shared-states checkout (salt/ + pillar/). Admin only.</p>
   </div>
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.index') }}">‹ State files</a>
 </div>
 
-<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card card-bordered bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Status</h2>
 {% if checkout and status and status.ok %}
 <div class="text-sm flex flex-wrap gap-2 items-center">
   <span class="font-mono">{{ status.branch }}</span>
   <span class="font-mono">{{ status.sha }}</span>
-  {% if status.clean %}<span class="badge badge-sm badge-success">clean</span>{% else %}<span class="badge badge-sm badge-warning">{{ status.dirty_count }} uncommitted</span>{% endif %}
+  {% if status.clean %}<span class="badge badge-sm badge-outline badge-success">clean</span>{% else %}<span class="badge badge-sm badge-outline badge-warning">{{ status.dirty_count }} uncommitted</span>{% endif %}
   {% if status.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ status.upstream }}{% if status.ahead is not none %} · {{ status.ahead }} ahead, {{ status.behind }} behind{% endif %}</span>{% endif %}
 </div>
 <p class="text-sm mt-2">Origin: <span class="font-mono text-xs break-all">{{ origin or "none" }}</span></p>
-<p class="text-sm">Push credentials: {% if token_configured %}<span class="badge badge-sm badge-success">stored</span>{% else %}<span class="badge badge-sm badge-ghost">none</span>{% endif %}</p>
+<p class="text-sm">Push credentials: {% if token_configured %}<span class="badge badge-sm badge-outline badge-success">stored</span>{% else %}<span class="badge badge-sm badge-outline">none</span>{% endif %}</p>
 {% if layout %}
 <p class="text-sm mt-1">States entry point <span class="font-mono text-xs">salt/top.sls</span>:
-  {% if layout.salt_top %}<span class="badge badge-sm badge-success">present</span>
-  {% else %}<span class="badge badge-sm badge-warning">missing. The master serves nothing without it.</span>{% endif %}</p>
+  {% if layout.salt_top %}<span class="badge badge-sm badge-outline badge-success">present</span>
+  {% else %}<span class="badge badge-sm badge-outline badge-warning">missing. The master serves nothing without it.</span>{% endif %}</p>
 <p class="text-sm mt-1">Pillar entry point <span class="font-mono text-xs">pillar/top.sls</span>:
-  {% if layout.pillar_top %}<span class="badge badge-sm badge-success">present</span>
-  {% else %}<span class="badge badge-sm badge-ghost">missing</span>{% endif %}</p>
+  {% if layout.pillar_top %}<span class="badge badge-sm badge-outline badge-success">present</span>
+  {% else %}<span class="badge badge-sm badge-outline">missing</span>{% endif %}</p>
 {% if layout.checkout and layout.at_roots %}
 <p class="text-sm mt-1 opacity-70">Legacy layout. The checkout sits at file roots so only salt/ is served. Re-clone to use the shared salt/ + pillar/ layout.</p>
 {% endif %}
@@ -39,7 +43,7 @@
 </div>
 
 {% if not checkout %}
-<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card card-bordered bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Clone</h2>
 <p class="text-sm opacity-70 mb-2">Clones the states repo at the shared roots with <span class="font-mono text-xs">salt/</span> and <span class="font-mono text-xs">pillar/</span> beside each other. An existing <span class="font-mono text-xs">salt/</span> seed tree is replaced only after you confirm. <span class="font-mono text-xs">reactor/</span> is always kept.</p>
@@ -51,7 +55,7 @@
   <input type="hidden" name="url" value="{{ replace_pending.url }}">
   <input type="hidden" name="branch" value="{{ replace_pending.branch }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
+  <input type="password" name="token" class="input input-sm input-bordered" autocomplete="off"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy the salt/ tree and clone?">Confirm replace and clone</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
 </form>
@@ -59,18 +63,18 @@
 <form method="post" action="{{ url_for('files.repo_clone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL (https or SSH)</legend>
-  <input type="text" name="url" class="input input-sm" placeholder="https://git.example.com/salt/states.git"></fieldset>
+  <input type="text" name="url" class="input input-sm input-bordered" placeholder="https://git.example.com/salt/states.git"></fieldset>
   <fieldset class="fieldset"><legend class="fieldset-legend">Branch (blank = remote default)</legend>
-  <input type="text" name="branch" class="input input-sm"></fieldset>
+  <input type="text" name="branch" class="input input-sm input-bordered"></fieldset>
   <fieldset class="fieldset"><legend class="fieldset-legend">Token, https only (stored 0600 at the shared roots, one slot)</legend>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
+  <input type="password" name="token" class="input input-sm input-bordered" autocomplete="off"></fieldset>
   <div><button class="btn btn-sm btn-primary" data-confirm="Clone this repo at the shared roots?">Clone</button></div>
 </form>
 {% endif %}
 </div>
 </div>
 {% if srv_nonempty %}
-<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card card-bordered bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Re-clone from scratch</h2>
 <p class="text-sm opacity-70 mb-2">The shared roots are not empty, so plain clone refuses. Re-clone clears them first (keeping <span class="font-mono text-xs">reactor/</span>), then clones fresh.</p>
@@ -82,7 +86,7 @@
   <input type="hidden" name="url" value="{{ pending.url }}">
   <input type="hidden" name="branch" value="{{ pending.branch }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
+  <input type="password" name="token" class="input input-sm input-bordered" autocomplete="off"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy these files and re-clone?">Confirm re-clone</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
 </form>
@@ -90,11 +94,11 @@
 <form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL</legend>
-  <input type="text" name="url" class="input input-sm"></fieldset>
+  <input type="text" name="url" class="input input-sm input-bordered"></fieldset>
   <fieldset class="fieldset"><legend class="fieldset-legend">Branch (blank = remote default)</legend>
-  <input type="text" name="branch" class="input input-sm"></fieldset>
+  <input type="text" name="branch" class="input input-sm input-bordered"></fieldset>
   <fieldset class="fieldset"><legend class="fieldset-legend">Token, https only (stored, never shown)</legend>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
+  <input type="password" name="token" class="input input-sm input-bordered" autocomplete="off"></fieldset>
   <div><button class="btn btn-sm btn-outline">Preview re-clone…</button></div>
 </form>
 {% endif %}
@@ -102,20 +106,20 @@
 </div>
 {% endif %}
 {% else %}
-<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card card-bordered bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Repoint origin</h2>
 <p class="text-sm opacity-70 mb-2">Refuses on dirty trees and unpushed commits. Repointing under either orphans work onto the wrong remote.</p>
 <form method="post" action="{{ url_for('files.repo_set_remote') }}" class="flex flex-wrap items-end gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset flex-1"><legend class="fieldset-legend">New origin URL</legend>
-  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm"></fieldset>
+  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm input-bordered"></fieldset>
   <button class="btn btn-sm mb-1" data-confirm="Repoint origin at this URL?">Repoint</button>
 </form>
 </div>
 </div>
 
-<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card card-bordered bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Reset to upstream</h2>
 <p class="text-sm opacity-70 mb-2">Abandons tracked working-tree changes. Refuses on unpushed commits. Untracked files survive unless you select the box.</p>
@@ -137,7 +141,7 @@
 </div>
 </div>
 
-<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card card-bordered bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Re-clone from scratch</h2>
 <p class="text-sm opacity-70 mb-2">Destroys the checkout and clones fresh. Use only for corrupt <code class="font-mono">.git</code>. Refuses on unpushed commits.</p>
@@ -149,7 +153,7 @@
   <input type="hidden" name="url" value="{{ pending.url }}">
   <input type="hidden" name="branch" value="{{ pending.branch }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
+  <input type="password" name="token" class="input input-sm input-bordered" autocomplete="off"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy the checkout and re-clone?">Confirm re-clone</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
 </form>
@@ -157,18 +161,18 @@
 <form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL</legend>
-  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm"></fieldset>
+  <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm input-bordered"></fieldset>
   <fieldset class="fieldset"><legend class="fieldset-legend">Branch (blank = remote default)</legend>
-  <input type="text" name="branch" value="{{ status.branch if status and status.branch != 'detached' else '' }}" class="input input-sm"></fieldset>
+  <input type="text" name="branch" value="{{ status.branch if status and status.branch != 'detached' else '' }}" class="input input-sm input-bordered"></fieldset>
   <fieldset class="fieldset"><legend class="fieldset-legend">Token, only if changing it (stored, never shown)</legend>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
+  <input type="password" name="token" class="input input-sm input-bordered" autocomplete="off"></fieldset>
   <div><button class="btn btn-sm btn-outline">Preview re-clone…</button></div>
 </form>
 {% endif %}
 </div>
 </div>
 
-<div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+<div class="card card-bordered bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Push credentials</h2>
 <p class="text-sm opacity-70 mb-2">One token slot, stored 0600 at the shared roots outside the browsed salt/ tree. {% if token_configured %}Configured.{% else %}Empty.{% endif %}</p>
@@ -176,7 +180,7 @@
 <form method="post" action="{{ url_for('files.repo_token_save') }}" class="flex flex-wrap items-end gap-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Token for the current origin host</legend>
-  <input type="password" name="token" class="input input-sm" autocomplete="off"></fieldset>
+  <input type="password" name="token" class="input input-sm input-bordered" autocomplete="off"></fieldset>
   <button class="btn btn-sm mb-1">Save token</button>
 </form>
 <form method="post" action="{{ url_for('files.repo_token_clear') }}">

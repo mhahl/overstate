@@ -1,13 +1,12 @@
 {% import "_macros.html" as m %}
 <div id="jobs-region"{% if tab == "running" %} data-poll-url="{{ url_for('jobs.index', tab='running', sort=sort, dir=direction, q=q) }}"{% endif %}>
-<div class="card bg-base-100 border border-base-300 shadow-sm">
-<div class="tabs tabs-border px-3 pt-2">
+<div class="tabs tabs-bordered mb-4" aria-label="Job lists">
   {% for name in ["running", "history", "saved"] %}
   {% set href = url_for('jobs.index', tab=name, sort=sort, dir=direction, q=q) %}
-  <a href="{{ href }}" hx-get="{{ href }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-neutral ml-1">{{ running|length }}</span>{% endif %}</a>
+  <a href="{{ href }}" hx-get="{{ href }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-outline ml-1">{{ running|length }}</span>{% endif %}</a>
   {% endfor %}
 </div>
-<div class="border-t border-base-300">
+<div class="card card-bordered bg-base-100">
 {% if tab == "saved" %}
 {% if saved %}
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Name</th><th>Function</th><th>Target</th><th class="text-right"></th></tr></thead><tbody>
@@ -23,6 +22,7 @@
 <div class="py-8 text-center">
   <p class="font-medium">No saved jobs</p>
   <p class="text-sm opacity-70">Save one from the run form.</p>
+  <a class="btn btn-sm btn-primary mt-3" href="{{ url_for('jobs.new') }}">Run job</a>
 </div>
 {% endif %}
 {% else %}
@@ -56,6 +56,5 @@
 </div>
 {% endif %}
 {% endif %}
-</div>
 </div>
 </div>

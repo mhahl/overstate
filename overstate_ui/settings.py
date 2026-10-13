@@ -89,12 +89,6 @@ DEFS = {
         "options": ["10", "25", "50"],
         "default": "25",
     },
-    "theme": {
-        "label": "Theme",
-        "help": "Interface color scheme.",
-        "options": ["light", "dark", "wireframe"],
-        "default": "light",
-    },
 }
 
 
@@ -128,8 +122,8 @@ SECTIONS = [
     },
     {
         "title": "Display",
-        "desc": "List density and color scheme.",
-        "keys": ["page_size", "theme"],
+        "desc": "List density.",
+        "keys": ["page_size"],
     },
 ]
 
@@ -169,7 +163,7 @@ def get_setting(key: str) -> str:
 #: Keys a scoped settings.read holder may see. OIDC issuer, client id,
 #: group lists, and the client secret are grant.admin; the rotation card
 #: is settings.rotate_eauth.
-READ_DISPLAY_KEYS = ("page_size", "theme", "master_ips")
+READ_DISPLAY_KEYS = ("page_size", "master_ips")
 
 
 def _settings_context():

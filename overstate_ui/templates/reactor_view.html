@@ -2,16 +2,21 @@
 {% block title %}{{ rel }} · Reactor · Overstate{% endblock %}
 {% block content %}
 <div class="w-full">
+  <nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
+    <ul>
+      <li>Automate</li>
+      <li><a href="{{ url_for('reactor.index') }}">Reactor</a></li>
+      <li aria-current="page" class="font-mono">{{ rel }}</li>
+    </ul>
+  </nav>
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.index') }}">‹ Reactor</a>
-    <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
-  </div>
-  <p class="text-sm opacity-70 mb-4">Admins edit reactor SLS bodies. This code runs with master privileges and fires on matching events.</p>
+    <h1 class="text-xl font-bold font-mono tracking-tight break-all mr-auto">{{ rel }}</h1>
   {% if content is not none and current_user.is_authenticated and ((current_user.role == 'admin' and not rbac_scoped) or (rbac_scoped and can('reactor.persist'))) %}
-  <div class="mb-4"><a class="btn btn-sm btn-primary" href="{{ url_for('reactor.edit', sls=rel) }}">Edit</a></div>
+  <a class="btn btn-sm btn-primary" href="{{ url_for('reactor.edit', sls=rel) }}">Edit</a>
   {% endif %}
+  </div>
   {% if content is none %}
-  <div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="card card-bordered bg-base-100">
     <div class="card-body py-8 text-center">
       <p class="font-medium">Cannot display {{ rel }}</p>
       <p class="text-sm opacity-70">This file is {{ reason }} ({{ size }} bytes{% if max_bytes and reason.startswith("too large") %}; display limit is {{ max_bytes }} bytes{% endif %}).</p>

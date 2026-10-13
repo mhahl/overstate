@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Master console · Overstate{% endblock %}
 {% block content %}
-<div class="mb-5 flex flex-wrap items-center justify-between gap-4">
-  <div>
+<div class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
+  <ul>
+    <li><a href="{{ url_for('jobs.index', tab='history') }}">Jobs</a></li>
+    <li aria-current="page">Console</li>
+  </ul>
+</div>
+<div class="mb-5 flex flex-wrap items-end gap-4">
+  <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Master console</h1>
-    <p class="text-sm opacity-70 mt-0.5">On-demand salt-cli pod in namespace <code>overstate</code>. Interactive bash, salt, and kubectl scoped to your user permissions.</p>
   </div>
   <div class="flex items-center gap-2">
     <button type="button" id="btn-destroy" class="btn btn-sm btn-outline btn-error">
@@ -18,10 +23,10 @@
   <span>Signed in as <strong>viewer</strong>: on-demand pod runs with <code>ServiceAccount/salt-cli-viewer</code> (read-only in <code>overstate</code>).</span>
 </div>
 {% endif %}
-<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="card card-bordered bg-base-100">
   <div class="flex items-center gap-2 px-4 py-2 border-b border-base-200">
     <h2 class="text-sm font-medium mr-auto">salt-master</h2>
-    <span id="pod-badge" class="badge badge-sm badge-success gap-1">
+    <span id="pod-badge" class="badge badge-sm badge-outline badge-success gap-1">
       <span class="icon-[lucide--container] size-3.5"></span> salt-cli pod
     </span>
     <span class="badge badge-sm badge-outline">{{ current_user.role }} (SA: salt-cli-{{ current_user.role }})</span>
@@ -30,7 +35,7 @@
   <form id="console-form" data-no-pending class="flex items-center gap-2 px-4 py-3 border-t border-base-200">
     <label for="console-input" class="font-mono text-sm text-success font-bold shrink-0">salt-master $</label>
     <input id="console-input" name="line" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
-      placeholder="bash, salt '*' test.ping, kubectl get pods, exit ... (help for commands)" class="input input-sm font-mono flex-1 min-w-0">
+      placeholder="bash, salt '*' test.ping, kubectl get pods, exit ... (help for commands)" aria-label="Console command" class="input input-sm input-bordered font-mono flex-1 min-w-0">
     <button class="btn btn-sm btn-primary" type="submit">Run</button>
   </form>
 </div>

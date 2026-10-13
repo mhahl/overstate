@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 {% block title %}View {{ key }} · Master config{% endblock %}
 {% block content %}
-<div class="max-w-4xl">
+<nav aria-label="Breadcrumb" class="breadcrumbs text-sm py-0 mb-1">
+  <ul>
+    <li>Admin</li>
+    <li>Master config</li>
+    <li aria-current="page" class="font-mono">{{ key }}</li>
+  </ul>
+</nav>
+<div>
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <a class="btn btn-sm btn-ghost" href="{{ url_for('masterconfig.index') }}">‹ Back</a>
-    <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ key }}</h1>
+    <h1 class="text-xl font-bold font-mono tracking-tight break-all mr-auto">{{ key }}</h1>
     <a class="btn btn-sm btn-primary" href="{{ url_for('masterconfig.edit', key=key) }}">Edit</a>
   </div>
   {% with active="master" %}{% include "_settings_tabs.html" %}{% endwith %}
@@ -14,7 +20,7 @@
   </div>
   {% endif %}
   <p class="text-sm opacity-70 mb-4">{{ size }} bytes · live at revision <code class="font-mono">{{ revision }}</code>.</p>
-  <div class="card bg-base-100 border border-base-300 shadow-sm">
+  <div class="card card-bordered bg-base-100">
     <div class="card-body p-3 sm:p-4">
       <pre class="font-mono text-sm whitespace-pre-wrap break-all">{{ content }}</pre>
     </div>

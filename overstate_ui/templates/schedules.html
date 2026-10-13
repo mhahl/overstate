@@ -1,19 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Schedules · Overstate{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-end gap-3 mb-5">
+<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
+  <ul>
+    <li>Automate</li>
+    <li aria-current="page">Schedules</li>
+  </ul>
+</nav>
+<div class="flex flex-wrap items-end gap-3 mb-4">
   <div class="mr-auto">
     <h1 class="text-2xl font-bold tracking-tight">Schedules</h1>
-    <p class="text-sm opacity-70 mt-0.5">Per-minion Salt scheduler jobs.</p>
   </div>
 </div>
-<form method="get" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+<form method="get" class="card card-sm card-bordered bg-base-100 mb-4 sticky top-0 z-10" role="search">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Minion</legend>
-      <select name="minion" class="select select-sm" onchange="this.form.submit()">
+      <select name="minion" class="select select-sm select-bordered" onchange="this.form.submit()">
         {% for m in minions %}
         <option value="{{ m }}"{% if m == mid %} selected{% endif %}>{{ m }}</option>
         {% endfor %}
@@ -28,24 +33,24 @@
 </div>
 {% endif %}
 {% if mid and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write'))) %}
-<form method="post" action="{{ url_for('schedules.add', mid=mid) }}" class="card card-sm bg-base-100 border border-base-300 shadow-sm mb-4">
+<form method="post" action="{{ url_for('schedules.add', mid=mid) }}" class="card card-sm card-bordered bg-base-100 mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Name</legend>
-      <input name="name" placeholder="e.g. hourly-ping" class="input input-sm" required>
+      <input name="name" placeholder="e.g. hourly-ping" class="input input-sm input-bordered" required>
     </fieldset>
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Function</legend>
-      <input name="function" placeholder="test.ping" class="input input-sm font-mono" required>
+      <input name="function" placeholder="test.ping" class="input input-sm input-bordered font-mono" required>
     </fieldset>
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Every</legend>
-      <input name="value" type="number" min="1" value="60" class="input input-sm w-24" required>
+      <input name="value" type="number" min="1" value="60" class="input input-sm input-bordered w-24" required>
     </fieldset>
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Unit</legend>
-      <select name="unit" class="select select-sm">
+      <select name="unit" class="select select-sm select-bordered">
         {% for u in ["seconds", "minutes", "hours", "days"] %}
         <option value="{{ u }}">{{ u }}</option>
         {% endfor %}
@@ -60,7 +65,7 @@
 </form>
 {% endif %}
 {% if entries is mapping and entries %}
-<div class="card bg-base-100 border border-base-300 shadow-sm">
+<div class="card card-bordered bg-base-100">
 <div class="overflow-x-auto">
 {% import "_macros.html" as m %}
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('schedules.index', 'name', 'Job', sort, direction, {'minion': mid}) }}{{ m.sort_th_plain('schedules.index', 'function', 'Function', sort, direction, {'minion': mid}) }}<th>When</th><th>Enabled</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
@@ -68,7 +73,7 @@
 <tr><td class="font-mono text-xs">{{ name }}</td>
 <td class="font-mono text-xs">{{ job.get("function", "–") }}</td>
 <td class="font-mono text-xs">{% if job.get("seconds") is not none %}<span title="seconds">{{ job.get("seconds") }}</span> seconds{% elif job.get("minutes") is not none %}<span title="minutes">{{ job.get("minutes") }}</span> minutes{% elif job.get("hours") is not none %}<span title="hours">{{ job.get("hours") }}</span> hours{% elif job.get("days") is not none %}<span title="days">{{ job.get("days") }}</span> days{% elif job.get("cron") %}{{ job.get("cron") }}{% else %}–{% endif %}</td>
-<td>{% if job.get("enabled") is false %}<span class="badge badge-sm badge-neutral">no</span>{% else %}<span class="badge badge-sm badge-success">yes</span>{% endif %}</td>
+<td>{% if job.get("enabled") is false %}<span class="badge badge-sm badge-outline">no</span>{% else %}<span class="badge badge-sm badge-outline badge-success">yes</span>{% endif %}</td>
 {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}<td class="text-right"><span class="join join-horizontal">
   <form method="post" action="{{ url_for('schedules.act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
   <form method="post" action="{{ url_for('schedules.act', mid=mid, action='disable') }}" data-confirm="Disable job '{{ name }}' on {{ mid }}? Runs pause and the job stays listed."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
@@ -81,7 +86,7 @@
 {% elif raw %}
 <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ raw }}</code></pre>
 {% else %}
-<div class="card bg-base-100 border border-base-300 shadow-sm"><div class="py-8 text-center">
+<div class="card card-bordered bg-base-100"><div class="py-8 text-center">
   <p class="font-medium">{% if mid %}No schedules on {{ mid }}{% else %}No accepted minions{% endif %}</p>
   <p class="text-sm opacity-70">New scheduler entries appear here.</p>
 </div></div>

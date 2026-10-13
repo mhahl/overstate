@@ -2,17 +2,17 @@
 <div id="minion-table">
   <div class="overflow-x-auto">
   <table class="table table-sm table-zebra table-pin-rows w-full">
-    <thead><tr>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}<th class="w-8"><input type="checkbox" id="bulk-all" class="checkbox checkbox-sm" aria-label="Select all minions"></th>{% endif %}{{ m.sort_th('minions.index', 'id', 'Id', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'key', 'Key', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'presence', 'Presence', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'os', 'OS', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}<th>IP</th><th>CPUs</th><th>Salt</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}<th class="w-10"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+    <thead><tr>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}<th class="w-8"><input type="checkbox" id="bulk-all" class="checkbox checkbox-sm" aria-label="Select all minions"></th>{% endif %}{{ m.sort_th('minions.index', 'id', 'Id', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'key', 'Key', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'presence', 'Presence', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'os', 'OS', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}<th>IP</th><th class="text-right">CPUs</th><th>Salt</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}<th class="w-10"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
       {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}<td><input type="checkbox" name="bulk" value="{{ r.id }}" form="bulk-form" class="checkbox checkbox-sm" aria-label="Select {{ r.id }}"></td>{% endif %}
       <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=r.id) }}">{{ r.id }}</a>{% if r.grains.proxytype or r.grains.proxyid %} <span class="badge badge-sm badge-outline">proxy</span>{% endif %}</td>
       <td>
-        {% if r.key_status == "accepted" %}<span class="badge badge-sm badge-success">accepted</span>
-        {% elif r.key_status == "pending" %}<span class="badge badge-sm badge-warning">pending</span>
-        {% elif r.key_status in ["rejected", "denied"] %}<span class="badge badge-sm badge-error">{{ r.key_status }}</span>
-        {% else %}<span class="badge badge-sm badge-neutral">{{ r.key_status }}</span>{% endif %}
+        {% if r.key_status == "accepted" %}<span class="badge badge-sm badge-outline badge-success">accepted</span>
+        {% elif r.key_status == "pending" %}<span class="badge badge-sm badge-outline badge-warning">pending</span>
+        {% elif r.key_status in ["rejected", "denied"] %}<span class="badge badge-sm badge-outline badge-error">{{ r.key_status }}</span>
+        {% else %}<span class="badge badge-sm badge-outline badge-neutral">{{ r.key_status }}</span>{% endif %}
       </td>
       <td><span class="inline-flex items-center gap-1.5 text-sm presence" data-mid="{{ r.id }}" {% if r.dead %}title="Key is accepted but the minion does not respond. Open its detail page to diagnose."{% endif %}>
         {% if r.up %}<span class="status status-success" aria-hidden="true"></span><span>up</span>
@@ -21,7 +21,7 @@
       </span></td>
       <td class="text-sm">{{ r.grains.get("osfinger", "–") }} {{ r.grains.get("osrelease", "") }}</td>
       <td class="font-mono text-xs">{{ (r.grains.get("ipv4") or ["–"])[0] }}</td>
-      <td>{{ r.grains.get("num_cpus", "–") }}</td>
+      <td class="text-right tabular-nums">{{ r.grains.get("num_cpus", "–") }}</td>
       <td class="font-mono text-xs">{{ r.grains.get("saltversion", "–") }}</td>
       {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}
       <td class="text-right">
@@ -50,6 +50,7 @@
   <div class="py-8 text-center">
     <p class="font-medium">No minions match</p>
     <p class="text-sm opacity-70">Adjust the search or key-status filter.</p>
+    <a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('minions.index') }}">Clear filters</a>
   </div>
   {% endif %}
   <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">

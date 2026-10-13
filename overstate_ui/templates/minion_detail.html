@@ -1,10 +1,20 @@
 {% extends "base.html" %}
 {% block title %}{{ mid }} · Overstate{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-center gap-2 mb-5">
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">‹ Minions</a>
+<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+  <ul>
+    <li><a href="{{ url_for('minions.index') }}">Minions</a></li>
+    <li aria-current="page" class="font-mono">{{ mid }}</li>
+  </ul>
+</div>
+<div class="flex flex-wrap items-center gap-3">
   <h1 class="text-2xl font-bold tracking-tight font-mono">{{ mid }}</h1>
-  {% if not snapshot %}<span class="badge badge-warning">not in snapshot cache</span>{% endif %}
+  {% if not snapshot %}<span class="badge badge-sm badge-outline badge-warning">not in snapshot cache</span>{% endif %}
+  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}
+  <div class="flex gap-2 ms-auto items-center">
+    <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}" data-loading-link data-loading-text="Loading…">Run job on this minion</a>
+  </div>
+  {% endif %}
 </div>
 {% if error %}
 <div class="alert alert-error mb-4" role="alert">
@@ -12,60 +22,37 @@
   <span>{{ error }}</span>
 </div>
 {% endif %}
-<div class="card bg-base-100 border border-base-300 shadow-sm">
-<div class="tabs tabs-border px-3 pt-2">
+<div class="tabs tabs-bordered" aria-label="Minion sections">
   {% for t in tabs %}
   <a href="{{ url_for('minions.detail', mid=mid, tab=t) }}" class="tab{% if tab == t %} tab-active{% endif %}">{{ t|capitalize }}</a>
   {% endfor %}
 </div>
-<div class="border-t border-base-300">
+<div class="card card-bordered bg-base-100 min-w-0">
+<div>
 {% if tab == "overview" %}
   <div class="flex flex-col gap-4 p-4">
-    <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
-      <div class="bg-base-200 rounded-box">
-        <div class="p-4 flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--activity] size-4" aria-hidden="true"></span></span>
-            <p class="font-medium text-sm">Presence</p>
-          </div>
-          <p class="text-2xl font-semibold flex items-center gap-2"><span id="presence-dot" class="status animate-pulse" aria-hidden="true"></span><span id="presence-text">checking</span></p>
-          <p class="text-xs text-base-content/60">Live from the master</p>
-        </div>
+    <section class="stats stats-vertical md:stats-horizontal bg-base-100 border border-base-300" aria-label="Minion status">
+      <div class="stat px-5 py-4">
+        <div class="stat-title font-medium text-base-content">Presence</div>
+        <div class="stat-value text-2xl font-semibold flex items-center gap-2"><span id="presence-dot" class="status animate-pulse" aria-hidden="true"></span><span id="presence-text">checking</span></div>
+        <div class="stat-desc">Live from the master</div>
       </div>
-      <div class="bg-base-200 rounded-box">
-        <div class="p-4 flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--key] size-4" aria-hidden="true"></span></span>
-            <p class="font-medium text-sm">Key</p>
-          </div>
-          <p class="text-2xl font-semibold">{% if key_status == "accepted" %}<span class="badge badge-success">accepted</span>{% elif key_status == "pending" %}<span class="badge badge-warning">pending</span>{% elif key_status in ["rejected", "denied"] %}<span class="badge badge-error">{{ key_status }}</span>{% else %}<span class="badge badge-neutral">unknown</span>{% endif %}</p>
-          <p class="text-xs text-base-content/60">Key state on the master</p>
-        </div>
+      <div class="stat px-5 py-4">
+        <div class="stat-title font-medium text-base-content">Key</div>
+        <div class="stat-value text-2xl font-semibold">{% if key_status == "accepted" %}<span class="badge badge-outline badge-success">accepted</span>{% elif key_status == "pending" %}<span class="badge badge-outline badge-warning">pending</span>{% elif key_status in ["rejected", "denied"] %}<span class="badge badge-outline badge-error">{{ key_status }}</span>{% else %}<span class="badge badge-outline badge-neutral">unknown</span>{% endif %}</div>
+        <div class="stat-desc">Key state on the master</div>
       </div>
-      <div class="bg-base-200 rounded-box">
-        <div class="p-4 flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--badge-check] size-4" aria-hidden="true"></span></span>
-            <p class="font-medium text-sm">Conformity</p>
-          </div>
-          <p class="text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-success">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-warning">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-error">unreachable</span>{% else %}<span class="badge badge-neutral">unknown</span>{% endif %}</p>
-          {% if conformity.get("status") == "drifted" %}<p class="text-xs">Last run reported changes. Open Recent activity below, then rerun state.apply to converge.</p>
-          {% elif conformity.get("status") == "unreachable" %}<p class="text-xs">Last run could not reach this minion. Check presence and key state above.</p>
-          {% elif (not conformity.get("status") or conformity.get("status") == "unknown") and not conformity.get("jid") %}<p class="text-xs">No highstate-style job has reported for this minion yet. Run one to establish conformity.</p>{% endif %}
-          <p class="text-xs text-base-content/60">{% if conformity.get("jid") and conformity.get("status") != "unknown" %}Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% elif conformity.get("status") and (conformity.get("status") != "unknown" or conformity.get("jid")) %}No highstate-style job recorded{% endif %}</p>
-        </div>
+      <div class="stat px-5 py-4">
+        <div class="stat-title font-medium text-base-content">Conformity</div>
+        <div class="stat-value text-2xl font-semibold">{% if conformity.get("status") == "ok" %}<span class="badge badge-outline badge-success">ok</span>{% elif conformity.get("status") == "drifted" %}<span class="badge badge-outline badge-warning">drifted</span>{% elif conformity.get("status") == "unreachable" %}<span class="badge badge-outline badge-error">unreachable</span>{% else %}<span class="badge badge-outline badge-neutral">unknown</span>{% endif %}</div>
+        <div class="stat-desc">{% if conformity.get("status") == "drifted" %}Last run reported changes. Rerun state.apply to converge.{% elif conformity.get("status") == "unreachable" %}Last run could not reach this minion.{% elif (not conformity.get("status") or conformity.get("status") == "unknown") and not conformity.get("jid") %}No highstate-style job has reported for this minion yet.{% endif %}{% if conformity.get("jid") and conformity.get("status") != "unknown" %} Last checked in <a class="link font-mono" href="{{ url_for('jobs.detail', jid=conformity.get('jid')) }}">{{ conformity.get("jid") }}</a>{% elif conformity.get("status") and (conformity.get("status") != "unknown" or conformity.get("jid")) %} No highstate-style job recorded{% endif %}</div>
       </div>
-      <div class="bg-base-200 rounded-box">
-        <div class="p-4 flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <span class="flex items-center justify-center size-8 rounded-full bg-base-100"><span class="icon-[lucide--clock] size-4" aria-hidden="true"></span></span>
-            <p class="font-medium text-sm">Last seen</p>
-          </div>
-          <p class="text-2xl font-semibold tabular-nums">{{ last_seen.strftime("%Y-%m-%d %H:%M") if last_seen else "never" }}</p>
-          <p class="text-xs text-base-content/60">Snapshot cache</p>
-        </div>
+      <div class="stat px-5 py-4">
+        <div class="stat-title font-medium text-base-content">Last seen</div>
+        <div class="stat-value text-2xl font-semibold tabular-nums">{{ last_seen.strftime("%Y-%m-%d %H:%M") if last_seen else "never" }}</div>
+        <div class="stat-desc">Snapshot cache</div>
       </div>
-    </div>
+    </section>
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <section aria-label="Machine facts" class="xl:col-span-2">
         <div class="flex flex-col gap-3">
@@ -100,7 +87,7 @@
           <ul class="flex flex-col gap-2">
             {% for item in recent %}
             <li class="flex items-center gap-2 text-sm">
-              {% if item.ret.success %}<span class="badge badge-sm badge-success">ok</span>{% else %}<span class="badge badge-sm badge-error">failed</span>{% endif %}
+              {% if item.ret.success %}<span class="badge badge-sm badge-outline badge-success">ok</span>{% else %}<span class="badge badge-sm badge-outline badge-error">failed</span>{% endif %}
               <span class="font-mono">{{ item.fun }}</span>
               <a class="link font-mono text-xs ms-auto" href="{{ url_for('jobs.detail', jid=item.ret.jid) }}">{{ item.ret.jid }}</a>
             </li>
@@ -108,9 +95,6 @@
           </ul>
           {% else %}
           <p class="text-sm text-base-content/60">No jobs have run on this minion.</p>
-          {% endif %}
-          {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}
-          <p><a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', bulk=mid) }}" data-loading-link data-loading-text="Loading…">Run job on this minion</a></p>
           {% endif %}
         </div>
       </section>
@@ -189,7 +173,7 @@
 {% for s in rows %}
 <tr><td class="font-mono text-xs break-all">{{ s.id }}</td>
 <td class="font-mono text-xs">{{ s.sls or "–" }}</td>
-<td>{% if s.verdict == "ok" %}<span class="badge badge-sm badge-success">ok</span>{% elif s.verdict == "changed" %}<span class="badge badge-sm badge-warning">changed</span>{% elif s.verdict == "failed" %}<span class="badge badge-sm badge-error">failed</span>{% else %}<span class="badge badge-sm badge-neutral">unknown</span>{% endif %}</td>
+<td>{% if s.verdict == "ok" %}<span class="badge badge-sm badge-outline badge-success">ok</span>{% elif s.verdict == "changed" %}<span class="badge badge-sm badge-outline badge-warning">changed</span>{% elif s.verdict == "failed" %}<span class="badge badge-sm badge-outline badge-error">failed</span>{% else %}<span class="badge badge-sm badge-outline badge-neutral">unknown</span>{% endif %}</td>
 <td class="text-xs break-all">{{ s.comment or "–" }}</td></tr>
 {% endfor %}
 </tbody></table>
@@ -208,11 +192,11 @@
 <p class="text-xs opacity-70">Shows the last stored run. Press Refresh to query the minion.</p>
 {% if data.live_note %}<div class="alert alert-warning text-sm" role="status">{{ data.live_note }}</div>{% endif %}
 {% if data.live %}
-<p class="font-medium text-sm">Live description <span class="badge badge-sm badge-info">not stored</span></p>
+<p class="font-medium text-sm">Live description <span class="badge badge-sm badge-outline badge-info">not stored</span></p>
 {{ state_chip_rows(data.live) }}
 {% endif %}
 {% if data.stored %}
-<p class="font-medium text-sm">Last stored run · <span class="font-mono">{{ data.stored.fun }}</span> in <a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=data.stored.jid) }}">{{ data.stored.jid }}</a> {% if data.stored.success %}<span class="badge badge-sm badge-success">ok</span>{% else %}<span class="badge badge-sm badge-error">failed</span>{% endif %}</p>
+<p class="font-medium text-sm">Last stored run · <span class="font-mono">{{ data.stored.fun }}</span> in <a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=data.stored.jid) }}">{{ data.stored.jid }}</a> {% if data.stored.success %}<span class="badge badge-sm badge-outline badge-success">ok</span>{% else %}<span class="badge badge-sm badge-outline badge-error">failed</span>{% endif %}</p>
 {% if data.stored.states %}
 {{ state_chip_rows(data.stored.states) }}
 {% else %}
@@ -258,7 +242,7 @@
 <div class="p-4 flex flex-col gap-4">
 <div class="flex flex-wrap items-center gap-2">
   <p class="font-semibold me-auto">Schedules</p>
-  {% if data.sched_enabled is not none %}{% if data.sched_enabled %}<span class="badge badge-sm badge-success">scheduler enabled</span>{% else %}<span class="badge badge-sm badge-warning">scheduler disabled</span>{% endif %}{% endif %}
+  {% if data.sched_enabled is not none %}{% if data.sched_enabled %}<span class="badge badge-sm badge-outline badge-success">scheduler enabled</span>{% else %}<span class="badge badge-sm badge-outline badge-warning">scheduler disabled</span>{% endif %}{% endif %}
   <a class="link text-xs" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>
 </div>
 {% if data.schedule_rows %}
@@ -269,7 +253,7 @@
 <td class="font-mono text-xs break-all">{{ row.function or "–" }}</td>
 <td class="text-xs whitespace-nowrap">{{ row.every }}</td>
 <td class="font-mono text-xs break-all">{% if row.arguments %}{{ row.arguments }}{% else %}–{% endif %}</td>
-<td>{% if row.enabled %}<span class="badge badge-sm badge-success">enabled</span>{% else %}<span class="badge badge-sm badge-ghost">disabled</span>{% endif %}</td></tr>
+<td>{% if row.enabled %}<span class="badge badge-sm badge-outline badge-success">enabled</span>{% else %}<span class="badge badge-sm badge-ghost">disabled</span>{% endif %}</td></tr>
 {% endfor %}
 </tbody></table>
 </div>
@@ -306,7 +290,7 @@
 </div>
 </div>
 {% if tab == "overview" %}
-<section aria-label="All grain facts" class="card bg-base-100 shadow-sm mt-4">
+<section aria-label="All grain facts" class="card card-bordered bg-base-100 mt-4">
   <div class="collapse collapse-arrow">
     <input type="checkbox" aria-label="Toggle all grain facts">
     <div class="collapse-title font-semibold">All grain facts ({{ data.grains|length }})</div>

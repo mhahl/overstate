@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Onboard minion · Overstate{% endblock %}
 {% block content %}
-<div class="mb-5">
-  <div class="flex flex-wrap items-end gap-3">
-    <div class="mr-auto">
-      <h1 class="text-2xl font-bold tracking-tight">Onboard a minion</h1>
-      <p class="text-sm opacity-70 mt-0.5">Describe the machine, run its install command, accept its key.</p>
-    </div>
-    <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">‹ Minions</a>
-  </div>
+<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+  <ul>
+    <li><a href="{{ url_for('minions.index') }}">Minions</a></li>
+    <li aria-current="page">Onboard</li>
+  </ul>
+</div>
+<div class="flex flex-wrap items-center gap-3">
+  <h1 class="text-2xl font-bold tracking-tight">Onboard a minion</h1>
 </div>
 <ul class="steps w-full mb-6" aria-label="Progress">
   <li class="step step-primary">Describe</li>
@@ -22,17 +22,17 @@
 </div>
 {% endif %}
 <div class="flex flex-col gap-4 max-w-3xl">
-  <section class="card bg-base-100 border border-base-300 shadow-sm">
+  <section class="card card-bordered bg-base-100">
     <div class="card-body">
       <h2 class="card-title text-base">Describe the new minion</h2>
       <form method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-wrap items-end gap-2">
         <label class="fieldset flex-1 min-w-40">
           <span class="fieldset-legend">Minion id</span>
-          <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm font-mono" required>
+          <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm input-bordered font-mono" required>
         </label>
         <label class="fieldset">
           <span class="fieldset-legend">Distribution</span>
-          <select name="distro" class="select select-sm">
+          <select name="distro" class="select select-sm select-bordered">
             {% for d in ["rhel", "fedora", "suse"] %}
             <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE (OS repos)"}[d] }}</option>
             {% endfor %}
@@ -46,7 +46,7 @@
     </div>
   </section>
   {% if script_url %}
-  <section class="card bg-base-100 border border-base-300 shadow-sm">
+  <section class="card card-bordered bg-base-100">
     <div class="card-body">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base mr-auto">Run this on the new machine as root</h2>
@@ -56,11 +56,11 @@
     </div>
   </section>
   {% endif %}
-  <section class="card bg-base-100 border border-base-300 shadow-sm">
+  <section class="card card-bordered bg-base-100">
     <div class="card-body">
       <h2 class="card-title text-base">Accept the key</h2>
       {% if pending %}
-      <p class="text-sm"><span class="badge badge-warning">{{ pending|length }} pending</span></p>
+      <p class="text-sm"><span class="badge badge-outline badge-warning">{{ pending|length }} pending</span></p>
       <ul class="list-disc list-inside font-mono text-xs">
         {% for mid in pending %}<li>{{ mid }}</li>{% endfor %}
       </ul>
@@ -71,7 +71,7 @@
       <a class="btn btn-sm btn-primary self-start" href="{{ url_for('keys.index', tab='pending') }}">Review pending keys</a>
     </div>
   </section>
-  <section class="card bg-base-100 border border-base-300 shadow-sm">
+  <section class="card card-bordered bg-base-100">
     <div class="card-body">
       <h2 class="card-title text-base">Verify</h2>
       <p class="text-sm opacity-70">Run a first command, then check history.</p>

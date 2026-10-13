@@ -2,9 +2,16 @@
 {% block title %}Edit {{ rel }} · Reactor · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
+  <nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
+    <ul>
+      <li>Automate</li>
+      <li><a href="{{ url_for('reactor.index') }}">Reactor</a></li>
+      <li><a href="{{ url_for('reactor.view', sls=rel) }}" class="font-mono">{{ rel }}</a></li>
+      <li aria-current="page">Edit</li>
+    </ul>
+  </nav>
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.view', sls=rel) }}">‹ Back</a>
-    <h1 class="text-xl font-bold font-mono tracking-tight break-all">{{ rel }}</h1>
+    <h1 class="text-xl font-bold font-mono tracking-tight break-all mr-auto">{{ rel }}</h1>
   </div>
   <div class="alert alert-warning mb-4 text-sm">
     <span><strong>Admin-only:</strong> this code runs with master privileges and fires on matching events fleet-wide. The app blocks invalid YAML and refuses raced saves.</span>
@@ -13,11 +20,11 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="sls" value="{{ rel }}">
     <input type="hidden" name="base_hash" value="{{ base_hash }}">
-    <div class="card bg-base-100 border border-base-300 shadow-sm mb-3">
+    <div class="card card-bordered bg-base-100 mb-3">
       <div class="card-body p-3 sm:p-4">
         <div class="flex items-center gap-2 mb-2">
           <span class="font-mono text-xs break-all opacity-70 mr-auto">{{ rel }}</span>
-          <span class="badge badge-sm badge-ghost">yaml</span>
+          <span class="badge badge-sm badge-outline">yaml</span>
           <span class="text-xs opacity-60 tabular-nums">{{ content.splitlines()|length }} lines</span>
         </div>
         <div id="editor-mount" data-lang="yaml" class="border border-base-300 rounded-lg overflow-hidden"></div>
@@ -25,9 +32,9 @@
           class="textarea font-mono text-sm w-full mt-2" aria-label="SLS contents">{{ content }}</textarea>
       </div>
     </div>
-    <div class="flex gap-2 mt-3">
-      <button class="btn btn-sm btn-primary" type="submit">Save</button>
+    <div class="flex justify-end gap-2 mt-3">
       <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.view', sls=rel) }}">Cancel</a>
+      <button class="btn btn-sm btn-primary" type="submit">Save</button>
     </div>
   </form>
   <script src="{{ url_for('static', filename='editor.bundle.js') }}"></script>

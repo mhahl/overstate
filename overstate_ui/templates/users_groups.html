@@ -1,23 +1,27 @@
 {% extends "base.html" %}
 {% import "_grant_dialog.html" as gd %}
-{% block title %}Groups · Overstate{% endblock %}
+{% block title %}Access groups · Overstate{% endblock %}
 {% block content %}
-<div class="max-w-4xl">
+<nav aria-label="Breadcrumb" class="breadcrumbs text-sm py-0 mb-1">
+  <ul>
+    <li>Admin</li>
+    <li aria-current="page">Access groups</li>
+  </ul>
+</nav>
+<div>
   <div class="flex flex-wrap items-end gap-3 mb-5">
     <div class="mr-auto">
-      <h1 class="text-2xl font-bold tracking-tight">Groups</h1>
-      <p class="text-sm opacity-70 mt-0.5">Who belongs together: hand-built local groups and IdP-claim membership.</p>
+      <h1 class="text-2xl font-bold tracking-tight">Access groups</h1>
     </div>
   </div>
-  <section class="card bg-base-100 border border-base-300 shadow-sm" aria-label="Local groups">
+  <section class="card card-bordered bg-base-100" aria-label="Local groups">
     <div class="card-body gap-3">
       <h2 class="card-title text-base">Local groups</h2>
-      <p class="text-sm opacity-70">Membership lists for local accounts, created by hand. Grants on a group apply to every member.</p>
       {% for g in local_groups %}
       <div class="border border-base-300 rounded-lg p-3">
         <div class="flex flex-wrap items-center gap-2">
           <span class="font-medium">{{ g.name }}</span>
-          <span class="badge badge-sm badge-ghost">{{ member_ids.get(g.id, [])|length }} members</span>
+          <span class="badge badge-sm badge-outline">{{ member_ids.get(g.id, [])|length }} members</span>
           {% for grant in group_grants.get(g.id, []) %}
           <span class="badge badge-sm badge-outline">{{ grant.role }} · {% if grant.scope_kind == "fleet" %}fleet{% elif grant.scope_kind == "group" %}group {{ group_names.get(grant.scope_value, grant.scope_value) }}{% else %}{{ grant.scope_kind }}:{{ grant.scope_value }}{% endif %}</span>
           {% endfor %}
@@ -41,7 +45,7 @@
           <form method="post" action="{{ url_for('users.edit_local_group_members', gid=g.id) }}" class="flex flex-wrap items-end gap-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <fieldset class="fieldset"><legend class="fieldset-legend">Members</legend>
-            <select name="user_ids" multiple class="select select-sm min-h-24">
+            <select name="user_ids" multiple class="select select-sm select-bordered min-h-24">
               {% for au in all_users %}
               <option value="{{ au.id }}"{% if au.id in member_ids.get(g.id, []) %} selected{% endif %}>{{ au.username }}</option>
               {% endfor %}
@@ -53,7 +57,7 @@
           <form method="post" action="{{ url_for('users.rename_local_group', gid=g.id) }}" class="flex items-end gap-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <fieldset class="fieldset"><legend class="fieldset-legend">Rename</legend>
-            <input name="name" value="{{ g.name }}" class="input input-sm" autocomplete="off"></fieldset>
+            <input name="name" value="{{ g.name }}" class="input input-sm input-bordered" autocomplete="off"></fieldset>
             <button class="btn btn-sm">Rename</button>
           </form>
           {% endif %}
@@ -73,16 +77,15 @@
       <form method="post" action="{{ url_for('users.create_local_group') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <fieldset class="fieldset"><legend class="fieldset-legend">New group name</legend>
-        <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
+        <input name="name" class="input input-sm input-bordered" autocomplete="off" required></fieldset>
         <button class="btn btn-sm btn-primary">Create group</button>
       </form>
     </div>
   </section>
   {% if not delegate_view %}
-  <section class="card bg-base-100 border border-base-300 shadow-sm mt-4" aria-label="IdP groups">
+  <section class="card card-bordered bg-base-100 mt-4" aria-label="IdP groups">
     <div class="card-body gap-3">
       <h2 class="card-title text-base">IdP groups</h2>
-      <p class="text-sm opacity-70">Provider groups from the OIDC groups claim, recorded automatically at each login. Read-only: membership is owned by the provider, access by the mappings below and on Settings.</p>
       {% if idp_groups %}
       <div class="overflow-x-auto">
       <table class="table table-sm table-zebra w-full">
