@@ -457,6 +457,23 @@ def test_minion_row_refresh_updates_snapshot(client):
     assert "refreshed" in client.get(rv.headers["Location"]).data.decode()
 
 
+def test_minion_row_refresh_creates_missing_row(client, fake_redis):
+    """A freshly accepted key has no snapshot row yet (the list shows it
+    from the live roster union): Refresh must create it, not flash
+    'Unknown minion'."""
+    from overstate_ui.tasks_queue import write_merged_roster_cache
+
+    # new-01 is pending in the roster fixture but has no Minion row.
+    write_merged_roster_cache({"new-01": "accepted"}, {"new-01"})
+    with client.app.app_context():
+        assert get_session().get(Minion, "new-01") is None
+    rv = client.post("/minions/new-01/refresh")
+    assert rv.status_code == 302
+    with client.app.app_context():
+        assert get_session().get(Minion, "new-01") is not None
+    assert "Unknown minion" not in client.get(rv.headers["Location"]).data.decode()
+
+
 def test_minion_row_refresh_without_grains_keeps_snapshot(client, fake_redis):
     # The roster says up, so the refresh proceeds to Salt and finds no
     # grain data; the snapshot stays put. (A not-up roster skips the

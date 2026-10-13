@@ -413,7 +413,12 @@ def refresh():
 @bp.post("/<mid>/refresh")
 @roles_required("operator")
 def refresh_one(mid: str):
-    """Re-pull grains for a single minion into the snapshot cache."""
+    """Re-pull grains for a single minion into the snapshot cache.
+
+    A freshly accepted key has no snapshot row yet (the list shows it
+    from the live roster union), so Refresh creates the row instead of
+    erroring. A minion unknown to both the roster and the cache still
+    errors: Refresh cannot invent ids."""
     from .authz import rbac_mode, require
 
     mid = _exact_mid(mid)
@@ -421,8 +426,25 @@ def refresh_one(mid: str):
         require("minion.refresh", minion=mid)
     row = get_session().get(Minion, mid)
     if row is None:
-        flash(f"Unknown minion '{mid}'.", "error")
-        return redirect(url_for("minions.index"))
+        from .minions_helpers import merged_cached_roster
+
+        statuses, _, reachable = merged_cached_roster(get_salt())
+        if mid not in statuses and not reachable:
+            # Indistinguishable from an outage: fail open to the live
+            # call below instead of a wrong "unknown" error.
+            pass
+        elif mid not in statuses:
+            flash(f"Unknown minion '{mid}'.", "error")
+            return redirect(url_for("minions.index"))
+        row = Minion(
+            id=mid,
+            grains={},
+            conformity={},
+            key_status=statuses.get(mid, "accepted"),
+        )
+        get_session().add(row)
+        get_session().commit()
+        log_event(current_user.username, f"minion-refresh:{mid}", minion_id=mid)
     if minion_is_up(get_salt(), mid) is False:
         flash(f"{mid} is not responding. Stored data is shown.", "warning")
         return redirect(url_for("minions.index"))
