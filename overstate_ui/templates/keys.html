@@ -1,13 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Keys · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li aria-current="page">Keys</li>
-  </ul>
-</nav>
-<div class="flex flex-wrap items-center gap-3">
-  <h1 class="text-2xl font-bold tracking-tight">Keys ({{ counts.pending }} pending)</h1>
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  <h1 class="text-2xl font-bold tracking-tight me-auto">Keys</h1>
+  <span class="badge badge-sm badge-soft badge-warning">{{ counts.pending }} pending</span>
 </div>
 {% if syndic_masters %}
 <div class="alert alert-info mb-4" role="note">
@@ -23,83 +19,78 @@
 </div>
 {% endif %}
 {% import "_macros.html" as m %}
-<form method="get" action="{{ url_for('keys.index') }}" class="sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex flex-wrap items-end gap-2" role="search" aria-label="Filter keys">
-  <input type="hidden" name="tab" value="{{ tab }}">
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <input type="hidden" name="dir" value="{{ direction }}">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search id or fingerprint…" aria-label="Search keys" class="input input-sm w-full max-w-xs">
-  <button class="btn btn-sm btn-primary">Filter</button>
-  {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('keys.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
-</form>
 <section class="card card-border bg-base-100 min-w-0" aria-label="{{ tab|capitalize }} keys">
-<div class="px-4 pt-3">
-<nav class="tabs tabs-border max-w-full overflow-x-auto" aria-label="Key states">
-  {% for name in ["pending", "accepted", "rejected", "denied"] %}
-  <a href="{{ url_for('keys.index', tab=name, q=q, sort=sort, dir=direction) }}" class="tab{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }} <span class="badge badge-sm badge-soft {{ 'badge-warning' if name == 'pending' else 'badge-ghost' }} ms-1">{{ counts[name] }}</span></a>
-  {% endfor %}
-</nav>
-</div>
-<div>
-{% if rows %}
-{% set legacy_operator = not rbac_scoped and current_user.role in ("operator", "admin") %}
-{% set may_accept = legacy_operator or (rbac_scoped and can('key.accept')) %}
-{% set ns = namespace(show_actions=false) %}
-{% for row in rows %}
-{% set may_delete = legacy_operator or (rbac_scoped and can('key.delete', minion=row.id)) %}
-{% if (tab == 'pending' and may_accept) or (tab in ('rejected', 'denied') and (may_accept or may_delete)) or (tab == 'accepted' and may_delete) %}{% set ns.show_actions = true %}{% endif %}
-{% endfor %}
-<div class="max-w-full overflow-x-auto rounded-box">
-<table class="table table-sm table-zebra table-pin-rows w-full">
-  <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q}) }}<th>Fingerprint</th><th>Pods</th>{% if ns.show_actions %}<th class="w-48 text-right">Action</th>{% endif %}</tr></thead>
-  <tbody>
-  {% for row in rows %}
-  <tr>
-    <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=row.id) }}">{{ row.id }}</a></td>
-    <td class="font-mono text-xs break-all">{{ row.fingerprint }}</td>
-    <td class="text-xs whitespace-nowrap">{% for pod, state in (row.states or {}).items() %}<span class="badge badge-sm badge-soft {{ 'badge-success' if state == 'accepted' else 'badge-warning' if state == 'pending' else 'badge-error' if state in ('rejected', 'denied') else 'badge-ghost' }} me-1">{{ pod }}: {{ state }}</span>{% endfor %}</td>
-    {% if ns.show_actions %}<td class="text-right">
-      {% set may_delete = legacy_operator or (rbac_scoped and can('key.delete', minion=row.id)) %}
-      {% if (tab == 'pending' and may_accept) or (tab in ('rejected', 'denied') and (may_accept or may_delete)) or (tab == 'accepted' and may_delete) %}<div class="join join-horizontal">
-      {% if tab == "pending" %}
-      <form method="post" action="{{ url_for('keys.act', action='accept') }}" data-confirm="Accept key for '{{ row.id }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-success join-item">Accept</button></form>
-      <form method="post" action="{{ url_for('keys.act', action='reject') }}" data-confirm="Reject key for '{{ row.id }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm join-item">Reject</button></form>
-      {% elif tab in ("rejected", "denied") %}
-      {# A rotated minion re-files under denied: accept reaches it there. #}
-      {% if may_accept %}
-      <form method="post" action="{{ url_for('keys.act', action='accept') }}" data-confirm="Accept key for '{{ row.id }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-success join-item">Accept</button></form>
-      {% endif %}
-      {% if may_delete %}
-      <form method="post" action="{{ url_for('keys.act', action='delete') }}" data-confirm="Delete key for '{{ row.id }}'? A running minion reappears as pending."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
-      {% endif %}
-      {% else %}
-      {% if may_delete %}
-      <form method="post" action="{{ url_for('keys.act', action='delete') }}" data-confirm="Delete key for '{{ row.id }}'? A running minion reappears as pending."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
-      {% endif %}
-      {% endif %}
-      </div>{% endif %}
-    </td>{% endif %}
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-</div>
-{% else %}
-<div class="py-8 text-center">
-  <p class="font-medium">No {{ tab }} keys</p>
-  <p class="text-sm opacity-70">This tab has no keys.</p>
-  {% if tab == "pending" %}<a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('minions.onboard') }}">Onboard a minion</a>{% endif %}
-</div>
-{% endif %}
-{% if total %}
-<nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Keys pages">
-  <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} {{ tab }} keys</span>
-  <div class="join">
-    {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('keys.index', tab=tab, q=q, sort=sort, dir=direction, page=page-1) }}">Prev</a>{% endif %}
-    <span class="join-item btn btn-sm btn-disabled" aria-current="page">Page {{ page }} of {{ pages }}</span>
-    {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('keys.index', tab=tab, q=q, sort=sort, dir=direction, page=page+1) }}">Next</a>{% endif %}
+  <div class="px-4 pt-3">
+    <nav class="tabs tabs-border max-w-full overflow-x-auto" aria-label="Key states">
+      {% for name in ["pending", "accepted", "rejected", "denied"] %}
+      <a href="{{ url_for('keys.index', tab=name, q=q, sort=sort, dir=direction) }}" class="tab{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }} <span class="badge badge-sm badge-soft {{ 'badge-warning' if name == 'pending' else 'badge-ghost' }} ms-1">{{ counts[name] }}</span></a>
+      {% endfor %}
+    </nav>
   </div>
-</nav>
-{% endif %}
-</div>
+  <form method="get" action="{{ url_for('keys.index') }}" class="flex flex-wrap items-end gap-2 border-b border-base-300 px-4 py-3" role="search" aria-label="Filter keys">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    {{ m.table_search_field("keys-search", "q", q, "Search", "Search id or fingerprint…", "Search keys") }}
+    <button class="btn btn-sm btn-primary mb-0.5">Filter</button>
+    {% if q %}<a class="btn btn-sm btn-ghost mb-0.5" href="{{ url_for('keys.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
+  </form>
+  <div>
+  {% if rows %}
+  {% set legacy_operator = not rbac_scoped and current_user.role in ("operator", "admin") %}
+  {% set may_accept = legacy_operator or (rbac_scoped and can('key.accept')) %}
+  {% set ns = namespace(show_actions=false) %}
+  {% for row in rows %}
+  {% set may_delete = legacy_operator or (rbac_scoped and can('key.delete', minion=row.id)) %}
+  {% if (tab == 'pending' and may_accept) or (tab in ('rejected', 'denied') and (may_accept or may_delete)) or (tab == 'accepted' and may_delete) %}{% set ns.show_actions = true %}{% endif %}
+  {% endfor %}
+  <div class="max-w-full overflow-x-auto rounded-box">
+    <table class="table table-sm table-pin-rows w-full">
+      <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q}) }}<th>Fingerprint</th><th>Pods</th>{% if ns.show_actions %}<th class="w-48 text-right">Action</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for row in rows %}
+      <tr class="hover">
+        <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=row.id) }}">{{ row.id }}</a></td>
+        <td class="font-mono text-xs break-all">{{ row.fingerprint }}</td>
+        <td class="text-xs whitespace-nowrap">{% for pod, state in (row.states or {}).items() %}<span class="badge badge-sm badge-soft {{ 'badge-success' if state == 'accepted' else 'badge-warning' if state == 'pending' else 'badge-error' if state in ('rejected', 'denied') else 'badge-ghost' }} me-1">{{ pod }}: {{ state }}</span>{% endfor %}</td>
+        {% if ns.show_actions %}<td class="text-right">
+          {% set may_delete = legacy_operator or (rbac_scoped and can('key.delete', minion=row.id)) %}
+          {% if (tab == 'pending' and may_accept) or (tab in ('rejected', 'denied') and (may_accept or may_delete)) or (tab == 'accepted' and may_delete) %}<div class="join join-horizontal">
+          {% if tab == "pending" %}
+          <form method="post" action="{{ url_for('keys.act', action='accept') }}" data-confirm="Accept key for '{{ row.id }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-success join-item">Accept</button></form>
+          <form method="post" action="{{ url_for('keys.act', action='reject') }}" data-confirm="Reject key for '{{ row.id }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm join-item">Reject</button></form>
+          {% elif tab in ("rejected", "denied") %}
+          {% if may_accept %}
+          <form method="post" action="{{ url_for('keys.act', action='accept') }}" data-confirm="Accept key for '{{ row.id }}'?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-success join-item">Accept</button></form>
+          {% endif %}
+          {% if may_delete %}
+          <form method="post" action="{{ url_for('keys.act', action='delete') }}" data-confirm="Delete key for '{{ row.id }}'? A running minion reappears as pending."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
+          {% endif %}
+          {% else %}
+          {% if may_delete %}
+          <form method="post" action="{{ url_for('keys.act', action='delete') }}" data-confirm="Delete key for '{{ row.id }}'? A running minion reappears as pending."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
+          {% endif %}
+          {% endif %}
+          </div>{% endif %}
+        </td>{% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="py-8 text-center">
+    <p class="font-medium">No {{ tab }} keys</p>
+    <p class="text-sm opacity-70">This tab has no keys.</p>
+    {% if tab == "pending" %}<a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('minions.onboard') }}">Onboard a minion</a>{% endif %}
+  </div>
+  {% endif %}
+  {% if total %}
+  <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Keys pages">
+    <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}&ndash;{{ [page * per_page, total]|min }} of {{ total }} {{ tab }} keys</span>
+    {{ m.pagination_plain('keys.index', page, pages, {'tab': tab, 'q': q, 'sort': sort, 'dir': direction}, 'Key pages') }}
+  </div>
+  {% endif %}
+  </div>
 </section>
 {% endblock %}

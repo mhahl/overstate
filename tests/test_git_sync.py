@@ -310,7 +310,7 @@ def test_push_operator_and_viewer_forbidden_and_get_disallowed(checkout):
 
 def test_push_button_admin_only(checkout):
     c = app_for(checkout)
-    assert b"Push" in c.get("/files/").data  # admin sees it
+    assert b"Push" in c.get("/files/?tab=updates").data  # admin sees it
     _add_operator(c)
     _login(c, "op")
     assert b"Push" not in c.get("/files/").data  # operator does not

@@ -91,6 +91,14 @@ def _salt_master_sts():
     return sts
 
 
+def test_salt_master_memory_budget_allows_cluster_headroom():
+    resources = _salt_master_sts()["spec"]["template"]["spec"]["containers"][0][
+        "resources"
+    ]
+    assert resources["requests"]["memory"] == "2Gi"
+    assert resources["limits"]["memory"] == "4Gi"
+
+
 def test_master_trio_never_shares_a_node():
     sts = _salt_master_sts()
     required = sts["spec"]["template"]["spec"]["affinity"]["podAntiAffinity"][

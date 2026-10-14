@@ -299,15 +299,15 @@ def test_theme_control_is_available_on_login_and_app_pages(client):
     app = client.get("/minions/").data.decode()
     assert 'value="dark"' in app
     assert 'aria-label="Dark theme"' in app
-    assert 'data-theme="cmyk"' in login
-    assert 'data-theme="cmyk"' in app
+    assert 'data-theme="corporate"' in login
+    assert 'data-theme="corporate"' in app
 
 
 def test_mobile_header_hides_secondary_labels(client):
     html = client.get("/minions/").data.decode()
     assert 'class="hidden sm:inline font-semibold">Overstate</span>' in html
     assert 'font-normal hidden md:inline">Jump to…</span>' in html
-    assert 'class="flex flex-wrap gap-2 ms-auto items-center"' in html
+    assert 'class="ms-auto flex items-center gap-1 sm:gap-2"' in html
 
 
 def test_mobile_drawer_has_keyboard_operable_controls(client):

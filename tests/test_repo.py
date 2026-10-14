@@ -303,10 +303,11 @@ def _actions(app):
 
 def test_repo_view_offers_clone_when_empty(web_client):
     _, client, _roots = web_client
-    rv = client.get("/files/repo")
+    rv = client.get("/files/repo", follow_redirects=True)
     assert rv.status_code == 200
     assert b"Clone" in rv.data
-    assert b'href="/files/"' in rv.data
+    assert b'aria-label="File page sections"' in rv.data
+    assert b'href="/files/?tab=files"' in rv.data
 
 
 def test_repo_clone_refuses_non_allowlisted_url(web_client):
@@ -476,7 +477,7 @@ def test_repo_view_offers_reclone_when_roots_nonempty(web_client):
     _, client, roots = web_client
     roots.mkdir(parents=True)
     (roots / "stray.sls").write_text("# leftover\n")
-    rv = client.get("/files/repo")
+    rv = client.get("/files/repo", follow_redirects=True)
     assert rv.status_code == 200
     assert b"Re-clone from scratch" in rv.data
     assert b"not empty" in rv.data
@@ -484,7 +485,7 @@ def test_repo_view_offers_reclone_when_roots_nonempty(web_client):
 
 def test_repo_view_hides_reclone_when_empty(web_client):
     _, client, _roots = web_client
-    rv = client.get("/files/repo")
+    rv = client.get("/files/repo", follow_redirects=True)
     assert rv.status_code == 200
     assert b"Clone" in rv.data
     assert b"Re-clone from scratch" not in rv.data
@@ -532,7 +533,7 @@ def test_repo_page_shows_entry_points(web_client, tmp_path):
     _seed(bare, tmp_path, files=("salt/top.sls", "pillar/top.sls"))
     with app.app_context():
         assert gs._clone(f"file://{bare}", None)["ok"]
-    rv = client.get("/files/repo")
+    rv = client.get("/files/repo", follow_redirects=True)
     assert rv.status_code == 200
     assert b"salt/top.sls" in rv.data
     assert b"pillar/top.sls" in rv.data

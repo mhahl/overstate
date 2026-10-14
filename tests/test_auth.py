@@ -39,7 +39,7 @@ def test_login_page_shows_logo(client):
 
 def test_login_page_uses_local_build(client):
     html = client.get("/login").data.decode()
-    assert 'data-theme="cmyk"' in html
+    assert 'data-theme="corporate"' in html
     assert "/static/app.css" in html
     assert "cdn.jsdelivr.net" not in html
 

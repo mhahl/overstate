@@ -100,6 +100,17 @@ def test_shell_polls_without_touching_salt(monkeypatch):
     assert "Salt masters" in html and "Probing masters" in html
 
 
+def test_dashboard_uses_fleet_operations_workspace(monkeypatch):
+    _fake_queue(monkeypatch)
+    html = _dashboard_client().get("/").data.decode()
+    assert 'id="fleet-dashboard"' in html
+    assert 'aria-label="Fleet metrics"' in html
+    assert 'aria-label="Attention queue"' in html
+    assert 'aria-label="Control plane"' in html
+    assert 'aria-label="Master rollout"' in html
+    assert 'aria-label="Operator actions"' in html
+
+
 def test_shell_queues_capabilities_without_minions(monkeypatch):
     """Wheel/runner/history doors must probe before any minion is
     inventoried: gating the caps probe on a ping target leaves @wheel

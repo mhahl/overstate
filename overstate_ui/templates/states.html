@@ -1,12 +1,6 @@
 {% extends "base.html" %}
 {% block title %}States · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li>States</li>
-    <li aria-current="page">Conformity</li>
-  </ul>
-</nav>
 <div class="flex flex-wrap items-center gap-3 mb-4">
   <h1 class="text-2xl font-bold tracking-tight me-auto">States &amp; conformity</h1>
   <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a>
@@ -17,32 +11,40 @@
   </form>
   {% endif %}
 </div>
-<div class="flex flex-wrap items-center gap-2 mb-4 text-sm">
-  <span class="opacity-70">Watching:</span>
-  {% for w in watched %}
-  <div class="badge badge-outline gap-1 font-mono">
-    {{ w.sls }}
-    {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
-    <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" class="inline-flex" data-confirm="Stop watching '{{ w.sls }}'?">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-xs btn-ghost opacity-60 hover:opacity-100" aria-label="Stop watching {{ w.sls }}">×</button>
-    </form>
-    {% endif %}
+<section class="card card-border mb-4" aria-label="Watched states">
+  <div class="card-body py-3">
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <span class="font-semibold">Watching</span>
+      <div class="flex flex-wrap items-center gap-1">
+      {% for w in watched %}
+        <div class="badge badge-outline gap-1 font-mono">
+          {{ w.sls }}
+          {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
+          <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" class="inline-flex" data-confirm="Stop watching '{{ w.sls }}'?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-xs btn-ghost opacity-60 hover:opacity-100" aria-label="Stop watching {{ w.sls }}">x</button>
+          </form>
+          {% endif %}
+        </div>
+      {% else %}
+        <span class="opacity-60">Nothing watched. Verdicts cover the whole run.</span>
+      {% endfor %}
+      </div>
+      <div class="ms-auto">
+      {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
+        <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input name="sls" placeholder="Watch an SLS..." class="input input-xs w-36" required aria-label="State name to watch">
+          <button class="btn btn-xs btn-primary">Watch</button>
+        </form>
+      {% endif %}
+      </div>
+    </div>
   </div>
-  {% else %}
-  <span class="opacity-60">Nothing watched. Verdicts cover the whole run.</span>
-  {% endfor %}
-  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
-  <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-1 ms-1">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input name="sls" placeholder="Watch an SLS…" class="input input-xs w-36" required aria-label="State name to watch">
-    <button class="btn btn-xs btn-primary">Watch</button>
-  </form>
-  {% endif %}
-</div>
-<section class="card card-border" aria-label="Conformity">
-  <div class="card-body">
-    <div class="flex flex-wrap items-center gap-2">
+</section>
+<section class="card card-border bg-base-100" aria-label="Conformity">
+  <div class="card-body p-0">
+    <div class="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2">
       <h2 class="card-title text-base me-auto">Conformity</h2>
       <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by status">
         {% for opt in ["", "ok", "drifted", "unreachable", "unknown"] %}
@@ -55,8 +57,6 @@
 </section>
 <script>
 (function () {
-  // Chips live outside the swapped table, so an HTMX sort would leave
-  // them carrying the initial sort; rebuild them from the address bar.
   function syncChips() {
     var params = new URLSearchParams(location.search);
     var sort = params.get("sort") || {{ sort|tojson }};

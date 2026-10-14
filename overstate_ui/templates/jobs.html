@@ -1,11 +1,7 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}Jobs · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li aria-current="page">Jobs</li>
-  </ul>
-</nav>
 <div class="flex flex-wrap items-end gap-3 mb-4">
   <div class="me-auto">
     <h1 class="text-2xl font-bold tracking-tight">Jobs</h1>
@@ -14,24 +10,20 @@
   <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
   <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists" aria-pressed="false">Pause live updates</button>
 </div>
-<form id="jobs-filter" method="get" action="{{ url_for('jobs.index') }}" hx-get="{{ url_for('jobs.index') }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" role="search" aria-label="Filter jobs" class="sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2 mb-4">
+<section class="card card-border bg-base-100 min-w-0" aria-label="Job lists">
+<form id="jobs-filter" method="get" action="{{ url_for('jobs.index') }}" hx-get="{{ url_for('jobs.index') }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" role="search" aria-label="Filter jobs" class="px-4 py-3 border-b border-base-300">
   <input type="hidden" name="tab" value="{{ tab }}">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <div class="flex flex-row flex-wrap items-end gap-2">
-    <fieldset class="fieldset flex-1 min-w-48">
-      <legend class="fieldset-legend">Search</legend>
-      <input type="search" name="q" value="{{ q }}" placeholder="Search JID, function, target, user…" aria-label="Search jobs" class="input input-sm w-full">
-    </fieldset>
-    <fieldset class="fieldset min-w-48">
-      <legend class="fieldset-legend">Jump to JID</legend>
-      <input type="search" name="jump" value="" placeholder="Exact JID…" aria-label="Jump to JID" class="input input-sm font-mono w-full">
-    </fieldset>
+    {{ m.table_search_field("jobs-search", "q", q, "Search", "Search JID, function, target, user…", "Search jobs") }}
+    {{ m.table_search_field("jobs-jump", "jump", "", "Jump to JID", "Exact JID…", "Jump to JID") }}
     <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('jobs.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
 {% include "_job_rows.html" %}
+</section>
 <script>
 (function () {
   var btn = document.getElementById("live-toggle");

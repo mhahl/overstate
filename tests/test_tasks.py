@@ -284,6 +284,6 @@ def test_dashboard_without_worker_shows_snapshot(app, admin):
         get_session().add(Minion(id="m1", grains={}, conformity={}))
         get_session().commit()
     html = admin.get("/").data.decode()
-    assert "Capabilities" in html
+    assert "Capability checks" in html
     assert "Background worker unreachable" in html
     assert "No capability data yet." in html

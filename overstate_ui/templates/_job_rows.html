@@ -1,6 +1,5 @@
 {% import "_macros.html" as m %}
 <div id="jobs-region"{% if tab == "running" %} data-poll-url="{{ url_for('jobs.index', tab='running', sort=sort, dir=direction, q=q) }}"{% endif %}>
-<div class="card card-border bg-base-100">
 <div class="px-4 pt-3">
 <div class="tabs tabs-border" aria-label="Job lists">
   {% for name in ["running", "history", "saved"] %}
@@ -41,11 +40,7 @@
 </div>
 {% if tab == "history" and pages > 1 %}
 <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
-  <div class="join">
-    {% if page > 1 %}{{ m.hx_link(url_for('jobs.index', tab=tab, q=q, sort=sort, dir=direction, page=page-1), '#jobs-region', '‹ Prev', 'join-item btn btn-sm') }}{% endif %}
-    <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
-    {% if page < pages %}{{ m.hx_link(url_for('jobs.index', tab=tab, q=q, sort=sort, dir=direction, page=page+1), '#jobs-region', 'Next ›', 'join-item btn btn-sm') }}{% endif %}
-  </div>
+  {{ m.pagination_hx('jobs.index', page, pages, {'tab': tab, 'q': q, 'sort': sort, 'dir': direction}, '#jobs-region', 'Job pages') }}
   <span id="jobs-refreshing" class="hidden items-center gap-1.5 text-xs opacity-60 ms-auto" role="status">
     <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>Refreshing…
   </span>
@@ -58,5 +53,4 @@
 </div>
 {% endif %}
 {% endif %}
-</div>
 </div>

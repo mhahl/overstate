@@ -19,3 +19,79 @@
 {% endif %}
 <th aria-sort="{{ direction if active else 'none' }}" class="whitespace-nowrap"><a href="{{ href }}" hx-get="{{ href }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true" class="inline-flex items-center gap-1 hover:underline">{{ label }}{% if active %}{% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
 {% endmacro %}
+
+{% macro pagination_plain(endpoint, page, pages, params, label="Pages") %}
+<nav aria-label="{{ label }}" class="flex flex-wrap items-center gap-3">
+  <span class="text-sm text-base-content/70">Page {{ page }} of {{ pages }}</span>
+  <div class="join">
+    {% if page > 1 %}
+    {% set prev_href = url_for(endpoint, **dict(params, page=page-1)) %}
+    <a class="join-item btn btn-sm" href="{{ prev_href }}" aria-label="Go to previous page"><span class="icon-[lucide--chevron-left] size-4" aria-hidden="true"></span><span>Prev</span></a>
+    {% else %}
+    <span class="join-item btn btn-sm btn-disabled" aria-disabled="true"><span class="icon-[lucide--chevron-left] size-4" aria-hidden="true"></span><span>Prev</span></span>
+    {% endif %}
+    {% set ns = namespace(prev=0) %}
+    {% for p in range(1, pages + 1) %}
+    {% if p == 1 or p == pages or (p >= page - 1 and p <= page + 1) %}
+    {% if ns.prev and p - ns.prev > 1 %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">…</span>{% endif %}
+    {% if p == page %}
+    <span class="join-item btn btn-sm btn-active" aria-current="page">{{ p }}</span>
+    {% else %}
+    {% set p_href = url_for(endpoint, **dict(params, page=p)) %}
+    <a class="join-item btn btn-sm" href="{{ p_href }}" aria-label="Go to page {{ p }}">{{ p }}</a>
+    {% endif %}
+    {% set ns.prev = p %}
+    {% endif %}
+    {% endfor %}
+    {% if page < pages %}
+    {% set next_href = url_for(endpoint, **dict(params, page=page+1)) %}
+    <a class="join-item btn btn-sm" href="{{ next_href }}" aria-label="Go to next page"><span>Next</span><span class="icon-[lucide--chevron-right] size-4" aria-hidden="true"></span></a>
+    {% else %}
+    <span class="join-item btn btn-sm btn-disabled" aria-disabled="true"><span>Next</span><span class="icon-[lucide--chevron-right] size-4" aria-hidden="true"></span></span>
+    {% endif %}
+  </div>
+</nav>
+{% endmacro %}
+
+{% macro pagination_hx(endpoint, page, pages, params, target, label="Pages") %}
+<nav aria-label="{{ label }}" class="flex flex-wrap items-center gap-3">
+  <span class="text-sm text-base-content/70">Page {{ page }} of {{ pages }}</span>
+  <div class="join">
+    {% if page > 1 %}
+    {% set prev_href = url_for(endpoint, **dict(params, page=page-1)) %}
+    <a class="join-item btn btn-sm" href="{{ prev_href }}" hx-get="{{ prev_href }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true" aria-label="Go to previous page"><span class="icon-[lucide--chevron-left] size-4" aria-hidden="true"></span><span>Prev</span></a>
+    {% else %}
+    <span class="join-item btn btn-sm btn-disabled" aria-disabled="true"><span class="icon-[lucide--chevron-left] size-4" aria-hidden="true"></span><span>Prev</span></span>
+    {% endif %}
+    {% set ns = namespace(prev=0) %}
+    {% for p in range(1, pages + 1) %}
+    {% if p == 1 or p == pages or (p >= page-1 and p <= page+1) %}
+    {% if ns.prev and p - ns.prev > 1 %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">…</span>{% endif %}
+    {% if p == page %}
+    <span class="join-item btn btn-sm btn-active" aria-current="page">{{ p }}</span>
+    {% else %}
+    {% set p_href = url_for(endpoint, **dict(params, page=p)) %}
+    <a class="join-item btn btn-sm" href="{{ p_href }}" hx-get="{{ p_href }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true" aria-label="Go to page {{ p }}">{{ p }}</a>
+    {% endif %}
+    {% set ns.prev = p %}
+    {% endif %}
+    {% endfor %}
+    {% if page < pages %}
+    {% set next_href = url_for(endpoint, **dict(params, page=page+1)) %}
+    <a class="join-item btn btn-sm" href="{{ next_href }}" hx-get="{{ next_href }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true" aria-label="Go to next page"><span>Next</span><span class="icon-[lucide--chevron-right] size-4" aria-hidden="true"></span></a>
+    {% else %}
+    <span class="join-item btn btn-sm btn-disabled" aria-disabled="true"><span>Next</span><span class="icon-[lucide--chevron-right] size-4" aria-hidden="true"></span></span>
+    {% endif %}
+  </div>
+</nav>
+{% endmacro %}
+
+{% macro table_search_field(id, name, value, field_label, placeholder, aria_label=none) %}
+<fieldset class="fieldset w-full max-w-xs sm:max-w-64 min-w-0">
+  <legend class="fieldset-legend">{{ field_label }}</legend>
+  <label class="input input-sm w-full min-w-0 gap-2">
+    <span class="icon-[lucide--search] size-4 text-base-content/60" aria-hidden="true"></span>
+    <input id="{{ id }}" type="search" name="{{ name }}" value="{{ value }}" placeholder="{{ placeholder }}" aria-label="{{ aria_label or field_label }}" autocomplete="off" class="grow min-w-0">
+  </label>
+</fieldset>
+{% endmacro %}

@@ -2,15 +2,7 @@
 {% block title %}Edit {{ rel }} · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
-  <nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-    <ul>
-      <li>States</li>
-      <li><a class="link" href="{{ url_for('files.index') }}">Files</a></li>
-      <li><a class="link font-mono" href="{{ url_for('files.view', path=rel) }}">{{ rel }}</a></li>
-      <li aria-current="page">Edit</li>
-    </ul>
-  </nav>
-  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <div class="flex flex-wrap items-center gap-2 mb-4">
     <h1 class="text-xl font-bold font-mono tracking-tight break-all me-auto">{{ rel }}</h1>
   </div>
   <p class="text-sm opacity-70 mb-4">Saving commits this file locally{% if revision %} (checkout at <code class="font-mono">{{ revision }}</code>){% endif %}; an admin pushes it upstream separately.</p>

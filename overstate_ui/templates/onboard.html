@@ -1,85 +1,152 @@
 {% extends "base.html" %}
 {% block title %}Onboard minion · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li><a href="{{ url_for('minions.index') }}">Minions</a></li>
-    <li aria-current="page">Onboard</li>
-  </ul>
-</nav>
-<div class="flex flex-wrap items-center gap-3">
-  <h1 class="text-2xl font-bold tracking-tight">Onboard a minion</h1>
-</div>
-<ul class="steps w-full mb-6" aria-label="Progress">
-  <li class="step step-primary">Describe</li>
-  <li class="step {{ 'step-primary' if script_url else '' }}">Install</li>
-  <li class="step {{ 'step-primary' if pending else '' }}">Accept key</li>
-  <li class="step">Verify</li>
+<header class="flex flex-wrap items-center gap-3 mb-4">
+  <div class="me-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Onboard a minion</h1>
+    <p class="text-sm text-base-content/70 mt-1">Connect a machine to the Salt fleet and verify its first response.</p>
+  </div>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('keys.index', tab='pending') }}">
+    <span class="icon-[lucide--key-round] size-4" aria-hidden="true"></span>Pending keys
+  </a>
+</header>
+
+<ul class="steps w-full mb-4" aria-label="Onboarding steps">
+  <li data-content="1" class="step step-primary">Describe</li>
+  <li data-content="2" class="step {{ 'step-primary' if script_url else '' }}">Install</li>
+  <li data-content="3" class="step {{ 'step-primary' if pending else '' }}">Accept key</li>
+  <li data-content="4" class="step">Verify</li>
 </ul>
+
 {% if not reachable %}
 <div class="alert alert-error mb-4" role="alert">
-  <span>Salt API is unreachable. You can still generate the script, but you cannot check key status now.</span>
+  <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
+  <div><p class="font-semibold">Salt API is unreachable</p><p class="text-sm">You can still generate an installer, but pending key status cannot be refreshed right now.</p></div>
 </div>
 {% endif %}
-<div class="flex flex-col gap-4 max-w-3xl">
-  <section class="card card-border bg-base-100">
-    <div class="card-body">
-      <h2 class="card-title text-base">Describe the new minion</h2>
-      <form method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-wrap items-end gap-2">
-        <label class="fieldset flex-1 min-w-40">
-          <span class="fieldset-legend">Minion id</span>
-          <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm font-mono" required>
-        </label>
-        <label class="fieldset">
-          <span class="fieldset-legend">Distribution</span>
-          <select name="distro" class="select select-sm">
+
+<main id="onboarding-workflow" class="grid gap-4 xl:grid-cols-12 items-stretch">
+  <section id="onboarding-step-describe" class="card card-border bg-base-100 min-w-0 xl:col-span-7" aria-labelledby="onboard-describe-title">
+    <div class="card-body gap-4">
+      <div class="flex items-start gap-3">
+        <span class="icon-[lucide--pencil-line] size-5 mt-1 text-base-content/60" aria-hidden="true"></span>
+        <div>
+          <h2 id="onboard-describe-title" class="card-title text-base">Step 1 · Describe the machine</h2>
+          <p class="text-sm text-base-content/70 mt-1">Set its minion ID and operating system to prepare the right install command.</p>
+        </div>
+      </div>
+      <form id="onboard-describe-form" method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-col gap-3">
+        <div class="grid gap-3 sm:grid-cols-2">
+        <fieldset class="fieldset min-w-0">
+          <label class="label" for="onboard-mid">Minion ID</label>
+          <input id="onboard-mid" name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm w-full font-mono" autocomplete="off" required>
+        </fieldset>
+        <fieldset class="fieldset min-w-0">
+          <label class="label" for="onboard-distro">Distribution</label>
+          <select id="onboard-distro" name="distro" class="select select-sm w-full">
             {% for d in ["rhel", "fedora", "suse"] %}
             <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE (OS repos)"}[d] }}</option>
             {% endfor %}
           </select>
-        </label>
-        <button class="btn btn-sm btn-primary">Generate script</button>
+        </fieldset>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-xs text-base-content/60">Minion IDs must be unique across this Salt master.</p>
+          <button class="btn btn-primary">
+            <span class="icon-[lucide--terminal] size-4" aria-hidden="true"></span>Generate installer
+          </button>
+        </div>
       </form>
-      <p class="text-sm opacity-70">The script always uses the configured failover master IPs:</p>
-      <pre class="font-mono text-xs p-3 bg-base-200 rounded-box overflow-x-auto">{{ master_ips or "Not configured" }}</pre>
-      <p class="text-sm opacity-70"><a class="link" href="{{ url_for('settings.index') }}">Change master IPs in Settings</a>.</p>
     </div>
   </section>
-  {% if script_url %}
-  <section class="card card-border bg-base-100">
-    <div class="card-body">
+
+  <aside class="card card-border bg-base-100 min-w-0 h-full xl:col-span-5" aria-label="Failover master configuration">
+    <div class="card-body gap-3">
       <div class="flex items-center gap-2">
-        <h2 class="card-title text-base me-auto">Run this on the new machine as root</h2>
-        <button type="button" class="btn btn-sm btn-ghost" data-copy="onboard-command">Copy</button>
+        <span class="icon-[lucide--server] size-4 text-base-content/60" aria-hidden="true"></span>
+        <h2 class="card-title text-base">Salt failover masters</h2>
       </div>
-      <pre class="mockup-code text-xs overflow-x-auto p-4"><code id="onboard-command">{{ script_command }}</code></pre>
+      {% if master_ips %}
+      <p class="text-sm text-base-content/70">The installer configures failover across these master addresses:</p>
+      <ul class="flex flex-col gap-2">
+        {% for ip in master_ips.splitlines() %}
+        {% if ip.strip() %}<li class="flex items-center gap-2"><span class="icon-[lucide--server] size-4 text-base-content/50" aria-hidden="true"></span><code class="font-mono text-sm">{{ ip.strip() }}</code></li>{% endif %}
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="alert alert-warning" role="status">
+        <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+        <span>Master IP addresses are not configured. Configure at least two before generating an installer.</span>
+      </div>
+      {% endif %}
+      <a class="link text-sm" href="{{ url_for('settings.index') }}">Manage master IPs in Settings</a>
+    </div>
+  </aside>
+
+  {% if script_url %}
+  <section id="onboarding-step-install" class="card card-border bg-base-100 min-w-0 xl:col-span-12" aria-labelledby="onboard-install-title">
+    <div class="card-body gap-4">
+      <div class="flex flex-wrap items-start gap-3">
+        <span class="icon-[lucide--terminal] size-5 mt-1 text-base-content/60" aria-hidden="true"></span>
+        <div class="me-auto">
+          <h2 id="onboard-install-title" class="card-title text-base">Step 2 · Run this on the new machine as root</h2>
+          <p class="text-sm text-base-content/70 mt-1">This one-time command installs Salt Minion and configures failover.</p>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" data-copy="onboard-command">
+          <span class="icon-[lucide--copy] size-4" aria-hidden="true"></span>Copy command
+        </button>
+      </div>
+      <div class="mockup-code text-xs overflow-x-auto"><pre><code id="onboard-command">{{ script_command }}</code></pre></div>
+      <p class="flex items-start gap-2 text-sm text-base-content/70">
+        <span class="icon-[lucide--clock-3] size-4 mt-0.5 shrink-0" aria-hidden="true"></span>
+        The signed installer link expires after 30 minutes. Generate a new command if it expires.
+      </p>
     </div>
   </section>
   {% endif %}
-  <section class="card card-border bg-base-100">
-    <div class="card-body">
-      <h2 class="card-title text-base">Accept the key</h2>
+
+  <section id="onboarding-step-accept" class="card card-border bg-base-100 min-w-0 xl:col-span-7" aria-labelledby="onboard-accept-title">
+    <div class="card-body gap-3">
+      <div class="flex items-center gap-2">
+        <span class="icon-[lucide--key-round] size-5 text-base-content/60" aria-hidden="true"></span>
+        <h2 id="onboard-accept-title" class="card-title text-base">Step 3 · Verify and accept the key</h2>
+      </div>
+      <p class="text-sm text-base-content/70">Compare the fingerprint from <code class="font-mono">salt-call key.finger</code> on the machine with the pending key before accepting it.</p>
       {% if pending %}
-      <p class="text-sm"><span class="badge badge-outline badge-warning">{{ pending|length }} pending</span></p>
-      <ul class="list-disc list-inside font-mono text-xs">
-        {% for mid in pending %}<li>{{ mid }}</li>{% endfor %}
+      <div class="flex flex-wrap items-center gap-2"><span class="badge badge-warning badge-outline">{{ pending|length }} pending</span><span class="text-sm text-base-content/60">Select the ID you just installed:</span></div>
+      <ul class="list">
+        {% for mid in pending %}
+        <li class="list-row">
+          <span class="icon-[lucide--cpu] size-4 text-base-content/60" aria-hidden="true"></span>
+          <div class="list-col-grow"><span class="font-mono text-sm">{{ mid }}</span></div>
+          {% if request.args.get('mid') == mid %}<span class="badge badge-info badge-outline">This minion</span>{% endif %}
+        </li>
+        {% endfor %}
       </ul>
       {% else %}
-      <p class="text-sm opacity-70">No pending keys. Start the minion and wait a minute.</p>
+      <div class="flex items-start gap-2 text-sm text-base-content/70">
+        <span class="icon-[lucide--timer] size-4 mt-0.5 shrink-0" aria-hidden="true"></span>
+        <span>No pending keys yet. Start the minion and allow a minute for its request to reach a master.</span>
+      </div>
       {% endif %}
-      <p class="text-sm opacity-70">Compare the fingerprint from <span class="font-mono">salt-call key.finger</span> on the machine with the Keys page, then accept the key.</p>
-      <a class="btn btn-sm btn-primary self-start" href="{{ url_for('keys.index', tab='pending') }}">Review pending keys</a>
-    </div>
-  </section>
-  <section class="card card-border bg-base-100">
-    <div class="card-body">
-      <h2 class="card-title text-base">Verify</h2>
-      <p class="text-sm opacity-70">Run a first command, then check history.</p>
-      <div class="flex flex-wrap gap-2">
-        <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">Browse inventory</a>
+      <div class="card-actions">
+        <a class="btn btn-sm btn-outline" href="{{ url_for('keys.index', tab='pending') }}">Review pending keys</a>
       </div>
     </div>
   </section>
-</div>
+
+  <section id="onboarding-step-verify" class="card card-border bg-base-100 min-w-0 xl:col-span-5" aria-labelledby="onboard-verify-title">
+    <div class="card-body gap-3">
+      <div class="flex items-center gap-2">
+        <span class="icon-[lucide--circle-check] size-5 text-base-content/60" aria-hidden="true"></span>
+        <h2 id="onboard-verify-title" class="card-title text-base">Step 4 · Verify check-in</h2>
+      </div>
+      <p class="text-sm text-base-content/70">After accepting the key, run a ping to confirm the minion can receive commands.</p>
+      <div class="flex flex-wrap gap-2">
+        <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">Open inventory</a>
+      </div>
+    </div>
+  </section>
+</main>
 {% endblock %}

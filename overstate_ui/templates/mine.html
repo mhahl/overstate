@@ -1,12 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Mine · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li>States</li>
-    <li aria-current="page">Mine</li>
-  </ul>
-</nav>
 <div class="flex flex-wrap items-center gap-3 mb-4">
   <h1 class="text-2xl font-bold tracking-tight me-auto">Mine</h1>
 </div>
@@ -17,7 +11,8 @@
   {% if tgt and fun %}<a class="btn btn-sm" href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir=direction) }}">Retry lookup</a>{% endif %}
 </div>
 {% endif %}
-<form method="get" role="search" class="flex flex-wrap items-end gap-2 mb-4 sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2">
+<section class="card card-border bg-base-100 min-w-0" aria-label="Mine lookup">
+<form method="get" role="search" class="flex flex-wrap items-end gap-2 px-3 py-2 border-b border-base-300" aria-label="Mine lookup filters">
   <input type="hidden" name="dir" value="{{ direction }}">
   <fieldset class="fieldset w-full sm:w-auto">
     <label class="label" for="mine-target">Target</label>
@@ -39,7 +34,6 @@
 </form>
 {% if tgt and fun and not error %}
 {% if entries %}
-<section class="card card-border bg-base-100 min-w-0" aria-label="Mine results">
 <div class="max-w-full overflow-x-auto rounded-box">
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th aria-sort="{{ direction }}"><a href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir='desc' if direction == 'asc' else 'asc') }}" class="inline-flex items-center gap-1 hover:underline">Minion {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}</a></th><th>Value</th></tr></thead><tbody>
 {% for mid, value in entries.items() %}
@@ -48,21 +42,18 @@
 {% endfor %}
 </tbody></table>
 </div>
+{% import "_macros.html" as m %}
 <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Mine pages">
   <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} minions</span>
-  <div class="join">
-    {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir=direction, page=page-1) }}">Prev</a>{% endif %}
-    <span class="join-item btn btn-sm btn-disabled" aria-current="page">Page {{ page }} of {{ pages }}</span>
-    {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir=direction, page=page+1) }}">Next</a>{% endif %}
-  </div>
+  {{ m.pagination_plain('mine.index', page, pages, {'tgt': tgt, 'tgt_type': tgt_type, 'fun': fun, 'dir': direction}, 'Mine pages') }}
 </nav>
-</section>
-<p class="text-xs opacity-70 mt-3">Mine data stays cached: minions push it on their own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a> to update it.</p>
+<p class="text-xs opacity-70 px-4 py-3 border-t border-base-300">Mine data stays cached: minions push it on their own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a> to update it.</p>
 {% else %}
-<div class="card card-border"><div class="py-8 text-center">
+<div class="py-8 px-4 text-center">
   <p class="font-medium">Mine has nothing stored for {{ fun }}</p>
   <p class="text-sm opacity-70">No minion reported that function for this target. Minions only report functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then look again.</p>
-</div></div>
+</div>
 {% endif %}
 {% endif %}
+</section>
 {% endblock %}

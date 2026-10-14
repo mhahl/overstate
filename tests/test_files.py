@@ -113,7 +113,26 @@ def test_group_headers_and_top_hint(rooted, tmp_path):
     rv = rooted.get("/files/")
     assert rv.status_code == 200
     assert b"sub/" in rv.data  # directory header row
-    assert b"top.sls" in rv.data  # entry-point hint
+    assert b"top.sls" in rv.data  # file remains visible in the listing
+    assert b"Entry point: maps minions to states" not in rv.data
+
+
+def test_repo_settings_keeps_files_navigation(rooted):
+    rv = rooted.get("/files/repo", follow_redirects=True)
+    html = rv.data.decode()
+    assert rv.status_code == 200
+    assert 'aria-label="File page sections"' in html
+    assert "Repo settings" in html
+    assert "Clone" in html
+
+
+def test_updates_actions_are_grouped_in_a_named_panel(rooted):
+    rv = rooted.get("/files/", query_string={"tab": "updates"})
+    html = rv.data.decode()
+    assert rv.status_code == 200
+    assert 'id="file-update-actions"' in html
+    assert "Check for updates" in html
+    assert "Sync now" in html
 
 
 def test_pagination_splits_many_files(rooted, tmp_path):
@@ -520,7 +539,7 @@ def test_index_links_repo_settings_for_admin(rooted):
     rv = rooted.get("/files/")
     assert rv.status_code == 200
     assert b"Repo settings" in rv.data
-    assert b'href="/files/repo"' in rv.data
+    assert b'href="/files/?tab=repo"' in rv.data
 
 
 def test_normalize_dir_cleans_prefix():
@@ -580,12 +599,12 @@ def test_list_tree_skips_git_internals(rooted, tmp_path):
     assert not any(r.startswith(".git") for r in rels)
 
 
-def test_index_dir_filters_listing_and_crumbs(rooted):
+def test_index_dir_filters_listing_and_shows_current_path(rooted):
     rv = rooted.get("/files/", query_string={"dir": "sub"})
     assert rv.status_code == 200
     html = rv.data.decode()
     assert "sub/db.sls" in html and "web.sls" not in html
-    assert 'aria-label="Current folder"' in html
+    assert 'class="text-sm font-mono mb-3 text-base-content/70"' in html
     assert "Back to all files" not in html  # non-empty needs no escape hatch
     assert 'name="dir" value="sub"' in html  # search stays in the folder
 
@@ -593,7 +612,7 @@ def test_index_dir_filters_listing_and_crumbs(rooted):
 def test_index_unknown_dir_explains_with_way_back(rooted):
     rv = rooted.get("/files/", query_string={"dir": "nope"})
     assert rv.status_code == 200
-    assert 'No files under "nope"' in rv.data.decode()
+    assert 'No files under “nope”' in rv.data.decode()
     assert b"Back to all files" in rv.data
 
 
@@ -631,16 +650,15 @@ def test_index_dir_survives_pagination(rooted, tmp_path):
             query_string={"dir": "big", "per_page": "25", "page": "2"},
         ).data.decode()
     assert "Page 2 of 2" in html
-    pager = html.split('<div class="join ms-auto">')[1].split("</div>")[0]
+    pager = html.split('<div class="join">')[1].split("</div>")[0]
     assert "dir=big" in pager
     assert "big/keep-29.sls" in html
 
 
-def test_view_shows_breadcrumbs(rooted):
+def test_view_shows_file_path_without_breadcrumbs(rooted):
     html = rooted.get("/files/view", query_string={"path": "sub/db.sls"}).data.decode()
-    assert 'aria-label="File path"' in html
-    assert 'href="/files/?dir=sub"' in html
-    assert "<span" in html and "db.sls" in html
+    assert "sub/db.sls" in html
+    assert "breadcrumbs" not in html
 
 
 def test_browser_bundle_served_locally(rooted):

@@ -1,30 +1,44 @@
 {% import "_macros.html" as m %}
 <div id="conformity-table">
-      {% if minions %}
-      <div class="overflow-x-auto rounded-box">
-      <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {"status": status_filter}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {"status": status_filter}, '#conformity-table', false) }}<th>Checked</th><th>History</th><th>Source JID</th></tr></thead><tbody>
+  {% if minions %}
+  <div class="max-w-full overflow-x-auto rounded-box">
+    <table class="table table-sm table-pin-rows w-full">
+      <thead>
+        <tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {"status": status_filter}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {"status": status_filter}, '#conformity-table', false) }}<th>Checked</th><th>History</th><th>Source JID</th></tr>
+      </thead>
+      <tbody>
       {% for m in minions %}
       {% set cstatus = (m.conformity or {}).get("status", "unknown") %}
-      <tr><td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=m.id) }}">{{ m.id }}</a></td>
-      <td>
-        {% if cstatus == "ok" %}<span class="badge badge-sm badge-success" role="status" aria-label="Conformity: ok">ok</span>
-        {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>
-        {% elif cstatus == "unreachable" %}<span class="badge badge-sm badge-error badge-outline" role="status" aria-label="Conformity: unreachable">unreachable</span>
-        {% else %}<span class="badge badge-sm badge-neutral" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>{% endif %}
-        {% if (m.conformity or {}).get("partial") %}<span class="badge badge-sm badge-warning" title="You see the whole-job verdict because this return did not isolate watched states.">partial</span>{% endif %}
-      </td>
-      {% set checked = (m.conformity or {}).get("checked_at", "") %}
-      <td class="font-mono text-xs whitespace-nowrap">{% if checked %}{{ checked[:16].replace("T", " ") }}{% else %}–{% endif %}</td>
-      <td><span class="inline-flex items-center gap-1">{% for h in history.get(m.id, []) %}<span class="badge badge-xs {% if h.status == 'ok' %}badge-success{% elif h.status in ['drifted', 'failed'] %}badge-error{% elif h.status == 'unreachable' %}badge-error badge-outline{% else %}badge-neutral{% endif %}" title="{{ h.jid }}"></span>{% else %}–{% endfor %}</span></td>
-      {% set src_jid = (m.conformity or {}).get("jid") %}
-      <td class="font-mono text-xs">{% if src_jid and cstatus != "unknown" %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}–{% endif %}</td></tr>
+      <tr class="hover">
+        <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=m.id) }}">{{ m.id }}</a></td>
+        <td>
+          {% if cstatus == "ok" %}<span class="badge badge-sm badge-success" role="status" aria-label="Conformity: ok">ok</span>
+          {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>
+          {% elif cstatus == "unreachable" %}<span class="badge badge-sm badge-error badge-outline" role="status" aria-label="Conformity: unreachable">unreachable</span>
+          {% else %}<span class="badge badge-sm badge-neutral" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>{% endif %}
+          {% if (m.conformity or {}).get("partial") %}<span class="badge badge-sm badge-warning" title="You see the whole-job verdict because this return did not isolate watched states.">partial</span>{% endif %}
+        </td>
+        {% set checked = (m.conformity or {}).get("checked_at", "") %}
+        <td class="font-mono text-xs whitespace-nowrap">{% if checked %}{{ checked[:16].replace("T", " ") }}{% else %}–{% endif %}</td>
+        <td><span class="inline-flex items-center gap-1">
+          {% for h in history.get(m.id, []) %}
+          {% if h.status == "ok" %}<span class="badge badge-xs badge-success" title="{{ h.jid }}" aria-label="History: ok"></span>
+          {% elif h.status in ["drifted", "failed"] %}<span class="badge badge-xs badge-error" title="{{ h.jid }}" aria-label="History: {{ h.status }}"></span>
+          {% elif h.status == "unreachable" %}<span class="badge badge-xs badge-error badge-outline" title="{{ h.jid }}" aria-label="History: unreachable"></span>
+          {% else %}<span class="badge badge-xs badge-neutral" title="{{ h.jid }}" aria-label="History: {{ h.status }}"></span>{% endif %}
+          {% else %}–{% endfor %}
+        </span></td>
+        {% set src_jid = (m.conformity or {}).get("jid") %}
+        <td class="font-mono text-xs">{% if src_jid and cstatus != "unknown" %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}–{% endif %}</td>
+      </tr>
       {% endfor %}
-      </tbody></table>
-      </div>
-      {% else %}
-      <div class="py-4 text-center">
-        <p class="font-medium">No minions in cache</p>
-        <p class="text-sm opacity-70">Refresh the inventory to populate conformity.</p>
-      </div>
-      {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="py-8 text-center">
+    <p class="font-medium">No minions in cache</p>
+    <p class="text-sm opacity-70">Refresh the inventory to populate conformity.</p>
+  </div>
+  {% endif %}
 </div>

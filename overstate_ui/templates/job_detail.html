@@ -1,12 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Job {{ job.jid }} · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li><a href="{{ url_for('jobs.index', tab='history') }}">Jobs</a></li>
-    <li aria-current="page" class="font-mono">{{ job.jid }}</li>
-  </ul>
-</nav>
 <div class="flex flex-wrap items-center gap-2 mb-4">
   <h1 class="text-xl font-bold font-mono tracking-tight">{{ job.jid }}</h1>
   <span class="badge badge-sm badge-outline {{ 'badge-success' if job.complete else 'badge-info' }}">{{ "complete" if job.complete else "running" }}</span>

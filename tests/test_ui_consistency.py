@@ -21,6 +21,17 @@ TEMPLATES = (
 )
 
 FILTER_PAGES = ["/audit/", "/groups/", "/jobs/", "/keys/", "/minions/", "/pillar/"]
+TABLE_SEARCH_TEMPLATES = (
+    "audit.html",
+    "files.html",
+    "groups.html",
+    "jobs.html",
+    "keys.html",
+    "minions.html",
+    "pillar.html",
+    "reactor.html",
+    "users.html",
+)
 
 
 def make_client():
@@ -56,8 +67,30 @@ def test_filter_submit_is_primary_on_every_filter_page():
     c = make_client()
     for path in FILTER_PAGES:
         html = c.get(path).data.decode()
+        if path == "/groups/":
+            assert re.search(r'class="[^"]*btn-outline[^"]*">Filter groups', html), path
+            continue
         assert re.search(r'class="[^"]*btn-primary[^"]*">Filter', html), path
         assert 'class="btn btn-sm mb-1">Filter' not in html, path
+
+
+def test_table_searches_use_compact_shared_component():
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(loader=FileSystemLoader(str(TEMPLATES)), autoescape=True)
+    rendered = env.from_string(
+        '{% import "_macros.html" as m %}'
+        '{{ m.table_search_field("table-q", "q", "term", "Search", "Search table…", "Search table") }}'
+    ).render()
+    assert 'class="fieldset w-full max-w-xs sm:max-w-64 min-w-0"' in rendered
+    assert 'class="input input-sm w-full min-w-0 gap-2"' in rendered
+    assert 'icon-[lucide--search]' in rendered
+    assert 'id="table-q" type="search" name="q"' in rendered
+    assert 'aria-label="Search table"' in rendered
+
+    for template_name in TABLE_SEARCH_TEMPLATES:
+        source = (TEMPLATES / template_name).read_text()
+        assert "m.table_search_field(" in source, template_name
 
 
 def test_pagination_uses_join_component():
@@ -224,7 +257,7 @@ def test_clean_ui_rhythm_and_logical_properties():
                 offenders.append(f"{name.name}: {line.strip()[:80]}")
             if "gap-3 mt-1 mb-4" in line:
                 offenders.append(f"{name.name}: {line.strip()[:80]}")
-            if 'role="search"' in line and ("border-base-300" not in line or "rounded-lg" not in line):
+            if 'role="search"' in line and ("rounded-lg" in line and "mb-4" in line):
                 offenders.append(f"{name.name}: {line.strip()[:80]}")
     assert not offenders, "clean-ui rhythm: " + "; ".join(offenders)
 
@@ -280,7 +313,7 @@ def test_templates_have_balanced_tags():
         "/jobs/?tab=saved", "/jobs/hist-000", "/states/", "/pillar/",
         "/pillar/diff", "/schedules/", "/events/", "/audit/", "/users/",
         "/users/groups", "/settings/", "/settings/access", "/settings/rotation",
-        "/settings/sso", "/groups/", "/files/", "/files/repo", "/reactor/",
+        "/settings/sso", "/groups/", "/files/", "/files/?tab=repo", "/reactor/",
         "/mine/", "/console/", "/jobs/new", "/minions/onboard",
     ]
     c = make_client()
@@ -312,7 +345,7 @@ def test_shared_visual_system_covers_app_shell_settings_and_console():
     source = (
         pathlib.Path(__file__).resolve().parent.parent / "assets" / "app.css"
     ).read_text()
-    assert "themes: cmyk" in source
+    assert "themes: corporate --default, dark" in source
     for rule in (
         ":focus-visible",
         "#term",
@@ -324,7 +357,7 @@ def test_shared_visual_system_covers_app_shell_settings_and_console():
 
     shell = (TEMPLATES / "base.html").read_text()
     for marker in (
-        'data-theme="cmyk"',
+        'data-theme="corporate"',
         "drawer lg:drawer-open",
         "drawer-side",
         "menu-title",

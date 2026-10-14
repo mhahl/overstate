@@ -1,69 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Audit · Overstate{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb" class="breadcrumbs text-sm mb-1"><ul>
-  <li>Observe</li>
-  <li aria-current="page">Audit</li>
-</ul></nav>
 <div class="flex flex-wrap items-center gap-3 mb-4">
   <h1 class="text-2xl font-bold tracking-tight me-auto">Audit ({{ total }})</h1>
 </div>
 {% import "_macros.html" as m %}
-<form method="get" action="{{ url_for('audit.index') }}" class="sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2 mb-4" role="search" aria-label="Audit filters">
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <input type="hidden" name="dir" value="{{ direction }}">
-  <div class="flex flex-row flex-wrap items-end gap-2">
-    <fieldset class="fieldset flex-1 min-w-48">
-      <legend class="fieldset-legend">User</legend>
-      <input name="user" value="{{ user }}" placeholder="Search user…" aria-label="User" class="input input-sm w-full" autocomplete="off">
-    </fieldset>
-    <fieldset class="fieldset flex-1 min-w-48">
-      <legend class="fieldset-legend">Action</legend>
-      <input name="action" value="{{ action }}" placeholder="Search action…" aria-label="Action" class="input input-sm w-full" autocomplete="off">
-    </fieldset>
-    <fieldset class="fieldset">
-      <legend class="fieldset-legend">Outcome</legend>
-      <select name="outcome" aria-label="Outcome" class="select select-sm">
-        <option value="">any</option>
-        <option value="allow"{% if outcome == "allow" %} selected{% endif %}>allow</option>
-        <option value="deny"{% if outcome == "deny" %} selected{% endif %}>deny</option>
-      </select>
-    </fieldset>
-    <fieldset class="fieldset flex-1 min-w-48">
-      <legend class="fieldset-legend">Permission</legend>
-      <input name="permission" value="{{ permission }}" placeholder="Search permission…" aria-label="Permission" class="input input-sm w-full" autocomplete="off">
-    </fieldset>
-    <button class="btn btn-sm btn-primary mb-1">Filter</button>
-    {% if user or action or outcome or permission %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
-  </div>
-</form>
 <section class="card card-border bg-base-100 min-w-0" aria-label="Audit entries">
-  <div class="max-w-full overflow-x-auto rounded-box">
-    <table class="table table-zebra table-sm table-pin-rows w-full">
-      <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}<th>Outcome</th><th>Permission</th><th>Minion</th><th>Job</th></tr></thead>
-      <tbody>
-        {% for e in events %}
-        <tr>
-          <td class="whitespace-nowrap text-xs opacity-70">{{ e.created_at }}</td>
-          <td class="font-medium">{{ e.user }}</td>
-          <td class="font-mono text-xs">{{ e.action }}</td>
-          <td><span class="badge badge-sm badge-soft {{ 'badge-error' if e.outcome == 'deny' else 'badge-success' if e.outcome == 'allow' else 'badge-ghost' }}">{{ 'Denied' if e.outcome == 'deny' else 'Allowed' if e.outcome == 'allow' else 'Legacy' }}</span></td>
-          <td class="font-mono text-xs">{{ e.permission or '—' }}</td>
-          <td class="font-mono text-xs">{{ e.minion_id or '—' }}</td>
-          <td>{% if e.jid %}<a class="link link-primary font-mono text-xs" href="{{ url_for('jobs.detail', jid=e.jid) }}">{{ e.jid }}</a>{% else %}<span class="opacity-40">—</span>{% endif %}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="text-center opacity-70 py-6">No events match. Try changing the filters.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <form method="get" action="{{ url_for('audit.index') }}" class="border-b border-base-300 px-4 py-3" role="search" aria-label="Audit filters">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    <div class="flex flex-row flex-wrap items-end gap-2">
+      {{ m.table_search_field("audit-user-search", "user", user, "User", "Search user…", "User") }}
+      {{ m.table_search_field("audit-action-search", "action", action, "Action", "Search action…", "Action") }}
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Outcome</legend>
+        <select name="outcome" aria-label="Outcome" class="select select-sm">
+          <option value="">any</option>
+          <option value="allow"{% if outcome == "allow" %} selected{% endif %}>allow</option>
+          <option value="deny"{% if outcome == "deny" %} selected{% endif %}>deny</option>
+        </select>
+      </fieldset>
+      {{ m.table_search_field("audit-permission-search", "permission", permission, "Permission", "Search permission…", "Permission") }}
+      <button class="btn btn-sm btn-primary mb-1">Filter</button>
+      {% if user or action or outcome or permission %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
+    </div>
+  </form>
+  <div class="card-body p-0">
+    <div class="max-w-full overflow-x-auto rounded-box">
+      <table class="table table-sm table-pin-rows w-full">
+        <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}<th>Outcome</th><th>Permission</th><th>Minion</th><th>Job</th></tr></thead>
+        <tbody>
+          {% for e in events %}
+          <tr class="hover">
+            <td class="whitespace-nowrap text-xs opacity-70">{{ e.created_at }}</td>
+            <td class="font-medium">{{ e.user }}</td>
+            <td class="font-mono text-xs">{{ e.action }}</td>
+            <td><span class="badge badge-sm badge-soft {{ 'badge-error' if e.outcome == 'deny' else 'badge-success' if e.outcome == 'allow' else 'badge-ghost' }}">{{ 'Denied' if e.outcome == 'deny' else 'Allowed' if e.outcome == 'allow' else 'Legacy' }}</span></td>
+            <td class="font-mono text-xs">{{ e.permission or '—' }}</td>
+            <td class="font-mono text-xs">{{ e.minion_id or '—' }}</td>
+            <td>{% if e.jid %}<a class="link link-primary font-mono text-xs" href="{{ url_for('jobs.detail', jid=e.jid) }}">{{ e.jid }}</a>{% else %}<span class="opacity-40">—</span>{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center opacity-70 py-6">No events match. Try changing the filters.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pages > 1 %}
+    <div class="px-4 py-3 border-t border-base-300">
+    {{ m.pagination_plain('audit.index', page, pages, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'sort': sort, 'dir': direction}, 'Audit pages') }}
+    </div>
+    {% endif %}
   </div>
 </section>
-{% if pages > 1 %}
-<nav class="join mt-4" aria-label="Audit pages">
-  {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('audit.index', user=user, action=action, outcome=outcome, permission=permission, page=page-1, sort=sort, dir=direction) }}">‹ Prev</a>{% endif %}
-  <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('audit.index', user=user, action=action, outcome=outcome, permission=permission, page=page+1, sort=sort, dir=direction) }}">Next ›</a>{% endif %}
-</nav>
-{% endif %}
 {% endblock %}

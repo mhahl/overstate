@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Settings · Overstate{% endblock %}
 {% macro setting_sections(sections, values, is_admin, section_name) %}
-<form method="post" class="max-w-2xl flex flex-col gap-4">
+<form method="post" class="flex flex-col gap-4">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="section" value="{{ section_name }}">
   {% for section in sections %}
@@ -45,42 +45,44 @@
 </form>
 {% endmacro %}
 {% block content %}
-<nav aria-label="Breadcrumb" class="breadcrumbs text-sm mb-1">
-  <ul>
-    <li>Admin</li>
-    <li aria-current="page">Settings</li>
-  </ul>
-</nav>
-<div>
-  <div class="flex flex-wrap items-end gap-3 mb-4">
-    <div class="me-auto">
-      <h1 class="text-2xl font-bold tracking-tight">Settings</h1>
-    </div>
+<div class="flex flex-wrap items-end gap-3 mb-4">
+  <div class="me-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Settings</h1>
   </div>
-  {% with active="server" %}{% include "_settings_tabs.html" %}{% endwith %}
-  <nav class="tabs tabs-border max-w-full overflow-x-auto mb-5" aria-label="Settings sections">
-    <a{% if section == 'general' %} aria-current="page"{% endif %} class="tab{% if section == 'general' %} tab-active{% endif %}" href="{{ url_for('settings.index') }}">General</a>
-    {% if sso_sections %}
-    <a{% if section == 'sso' %} aria-current="page"{% endif %} class="tab{% if section == 'sso' %} tab-active{% endif %}" href="{{ url_for('settings.sso') }}">Single sign-on</a>
-    {% endif %}
-    {% if is_admin or show_oidc %}
-    <a{% if section == 'access' %} aria-current="page"{% endif %} class="tab{% if section == 'access' %} tab-active{% endif %}" href="{{ url_for('settings.access') }}">Access control</a>
-    {% endif %}
-    {% if can_rotate %}
-    <a{% if section == 'rotation' %} aria-current="page"{% endif %} class="tab{% if section == 'rotation' %} tab-active{% endif %}" href="{{ url_for('settings.rotation') }}">Rotation</a>
-    {% endif %}
+</div>
+<div class="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)] items-start">
+  <nav class="card card-border bg-base-100 lg:sticky lg:top-24" aria-label="Settings sections">
+    <div class="p-2">
+      <ul class="menu menu-sm gap-0.5">
+        <li><a href="{{ url_for('settings.index') }}" class="{% if section == 'general' %}menu-active{% endif %}"{% if section == 'general' %} aria-current="page"{% endif %}><span class="icon-[lucide--sliders-horizontal] size-4" aria-hidden="true"></span>General</a></li>
+        {% if sso_sections %}
+        <li><a href="{{ url_for('settings.sso') }}" class="{% if section == 'sso' %}menu-active{% endif %}"{% if section == 'sso' %} aria-current="page"{% endif %}><span class="icon-[lucide--fingerprint] size-4" aria-hidden="true"></span>Single sign-on</a></li>
+        {% endif %}
+        {% if is_admin or show_oidc %}
+        <li><a href="{{ url_for('settings.access') }}" class="{% if section == 'access' %}menu-active{% endif %}"{% if section == 'access' %} aria-current="page"{% endif %}><span class="icon-[lucide--lock-keyhole] size-4" aria-hidden="true"></span>Access control</a></li>
+        {% endif %}
+        {% if can_rotate %}
+        <li><a href="{{ url_for('settings.rotation') }}" class="{% if section == 'rotation' %}menu-active{% endif %}"{% if section == 'rotation' %} aria-current="page"{% endif %}><span class="icon-[lucide--rotate-ccw] size-4" aria-hidden="true"></span>Rotation</a></li>
+        {% endif %}
+        {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %}
+        <li class="menu-title mt-2">Infrastructure</li>
+        <li><a href="{{ url_for('masterconfig.index') }}"><span class="icon-[lucide--server] size-4" aria-hidden="true"></span>Master settings</a></li>
+        {% endif %}
+      </ul>
+    </div>
   </nav>
+  <div>
   {% if section == "sso" %}
   {% if sso_sections %}
   {{ setting_sections(sso_sections, values, is_admin, "sso") }}
   {% else %}
-  <p class="text-sm opacity-70 max-w-2xl">No sign-on settings are visible to you.</p>
+  <p class="text-sm opacity-70">No sign-on settings are visible to you.</p>
   {% endif %}
   {% elif section == "access" %}
   {% if not is_admin and not show_oidc %}
-  <p class="text-sm opacity-70 max-w-2xl">Access control is not visible to you.</p>
+  <p class="text-sm opacity-70">Access control is not visible to you.</p>
   {% else %}
-  <div class="max-w-2xl flex flex-col gap-4">
+  <div class="flex flex-col gap-4">
   {% if is_admin %}
   <section class="card card-border bg-base-100" aria-labelledby="rbac-mode">
     <div class="card-body gap-3">
@@ -120,11 +122,11 @@
       </div>
       {% if idp_mappings %}
       <div class="overflow-x-auto rounded-box">
-      <table class="table table-sm table-zebra w-full">
+      <table class="table table-sm w-full">
         <thead><tr><th>IdP group</th><th>Role</th><th>Scope</th><th>Origin</th><th class="text-right">Actions</th></tr></thead>
         <tbody>
         {% for m in idp_mappings %}
-          <tr>
+          <tr class="hover">
             <td class="font-mono text-xs">{{ m.idp_group }}</td>
             <td>{{ m.role }}</td>
             <td class="font-mono text-xs">{{ m.scope_kind }}:{{ m.scope_value }}</td>
@@ -185,9 +187,9 @@
   {% endif %}
   {% elif section == "rotation" %}
   {% if not can_rotate %}
-  <p class="text-sm opacity-70 max-w-2xl">Rotation is not available to you.</p>
+  <p class="text-sm opacity-70">Rotation is not available to you.</p>
   {% else %}
-  <section class="card card-border bg-base-100 max-w-2xl" aria-labelledby="rotation">
+  <section class="card card-border bg-base-100" aria-labelledby="rotation">
     <div class="card-body gap-3">
       <div>
         <h2 id="rotation" class="card-title text-base">salt-api password rotation</h2>
@@ -223,5 +225,6 @@
   {% else %}
   {{ setting_sections(general_sections, values, is_admin, "general") }}
   {% endif %}
+  </div>
 </div>
 {% endblock %}

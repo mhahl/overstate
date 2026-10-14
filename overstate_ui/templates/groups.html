@@ -1,86 +1,142 @@
 {% extends "base.html" %}
-{% block title %}Groups · Overstate{% endblock %}
+{% block title %}Minion groups · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li aria-current="page">Groups</li>
-  </ul>
-</nav>
-<div class="flex flex-wrap items-center gap-3">
-  <h1 class="text-2xl font-bold tracking-tight">Groups ({{ total }})</h1>
-  <div class="flex gap-2 ms-auto items-center">
-  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
-  <button type="button" class="btn btn-sm btn-primary" onclick="openGroupModal()">New group</button>
-  {% endif %}
+{% set can_write = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  <div class="me-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Minion groups</h1>
+    <p class="text-sm text-base-content/70 mt-1">Reusable fleet scopes for Salt jobs.</p>
   </div>
+  {% if can_write %}
+  <button type="button" class="btn btn-primary" onclick="openGroupModal()">
+    <span class="icon-[lucide--plus] size-4" aria-hidden="true"></span>New group
+  </button>
+  {% endif %}
 </div>
-{% if not (((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) and not rbac_scoped) or (rbac_scoped and can('group.write'))) %}
-<p class="text-sm opacity-70">Operators only. Saved groups appear as the “group” target on the <a class="link" href="{{ url_for('jobs.new') }}">New job</a> form.</p>
+{% if not can_write %}
+<div class="alert alert-info mb-4" role="note">
+  <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
+  <span>Groups are read-only for your role. Use them as targets on the <a class="link font-medium" href="{{ url_for('jobs.new') }}">New job</a> page.</span>
+</div>
 {% endif %}
-<form method="get" action="{{ url_for('groups.index') }}" class="sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex flex-wrap items-end gap-2" role="search" aria-label="Filter groups">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search name or member…" aria-label="Search groups" class="input input-sm w-full max-w-xs">
-  <button class="btn btn-sm btn-primary">Filter</button>
-  {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
-</form>
+
 {% import "_macros.html" as m %}
-<div class="card card-border bg-base-100">
-  <div class="overflow-x-auto rounded-box">
-    <table class="table table-sm table-zebra table-pin-rows w-full">
-      <thead><tr>{{ m.sort_th_plain('groups.index', 'name', 'Name', sort, direction, {'q': q}) }}{{ m.sort_th_plain('groups.index', 'members', 'Members', sort, direction, {'q': q}) }}<th>IDs</th><th class="text-right">Use</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
+<section id="groups-directory" class="card card-border bg-base-100" aria-labelledby="groups-directory-title">
+  <form id="groups-filter" method="get" action="{{ url_for('groups.index') }}" class="border-b border-base-300 px-4 py-3" role="search" aria-label="Search groups">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    <div class="flex flex-wrap items-end gap-2">
+      {{ m.table_search_field("groups-search", "q", q, "Find a group", "Group name or minion ID", "Search group names and member IDs") }}
+      <button class="btn btn-sm btn-outline mb-0.5">Filter groups</button>
+      {% if q %}<a class="btn btn-sm btn-ghost mb-0.5" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear search</a>{% endif %}
+    </div>
+  </form>
+  <div class="flex flex-wrap items-center gap-3 px-4 py-4 border-b border-base-300">
+    <div class="me-auto">
+      <h2 id="groups-directory-title" class="font-semibold">Fleet group directory</h2>
+      <p class="text-sm text-base-content/70 mt-0.5">{{ total }} group{% if total != 1 %}s{% endif %}{% if q %} matching “{{ q }}”{% endif %}</p>
+    </div>
+    {% if groups and can_write %}<span class="text-xs text-base-content/60">Changes affect future jobs only</span>{% endif %}
+  </div>
+  {% if groups %}
+  <div class="max-w-full overflow-x-auto">
+    <table class="table table-sm table-pin-rows w-full">
+      <thead>
+        <tr>
+          {{ m.sort_th_plain('groups.index', 'name', 'Group', sort, direction, {'q': q}) }}
+          {{ m.sort_th_plain('groups.index', 'members', 'Members', sort, direction, {'q': q}) }}
+          <th>Member IDs</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
       <tbody>
         {% for g in groups %}
-        <tr>
-          <td class="font-medium">{{ g.name }}</td>
-          <td class="text-right tabular-nums">{{ g.members|length }}</td>
-          <td class="font-mono text-xs opacity-70 max-w-72 truncate" title="{{ g.members|join(', ') }}">{{ g.members|join(", ") }}</td>
-          <td class="text-right whitespace-nowrap"><a class="btn btn-xs btn-ghost" href="{{ url_for('jobs.new', tgt_type='group', tgt=g.name) }}">Use in new job</a></td>
-          {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
-          <td class="text-right whitespace-nowrap">
-            <button type="button" class="btn btn-xs" onclick='openGroupModal({{ g.id }}, {{ g.name|tojson }}, {{ g.members|tojson }})'>Edit</button>
-            <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline" data-confirm="Delete group '{{ g.name }}' ({{ g.members|length }} members)?">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-xs btn-error btn-outline">Delete</button>
-            </form>
+        <tr class="hover">
+          <td>
+            <div class="flex items-center gap-2 font-medium">
+              <span class="icon-[lucide--users-round] size-4 text-base-content/60" aria-hidden="true"></span>
+              {{ g.name }}
+            </div>
           </td>
-          {% endif %}
+          <td class="whitespace-nowrap">
+            <span class="badge badge-outline tabular-nums">{{ g.members|length }} member{% if g.members|length != 1 %}s{% endif %}</span>
+          </td>
+          <td class="min-w-56">
+            <div class="flex flex-wrap items-center gap-1">
+              {% for mid in g.members[:3] %}<span class="badge badge-ghost font-mono text-xs">{{ mid }}</span>{% endfor %}
+              {% if g.members|length > 3 %}
+              <details class="text-xs">
+                <summary class="link cursor-pointer">+{{ g.members|length - 3 }} more</summary>
+                <ul class="mt-2 flex flex-wrap gap-1">
+                  {% for mid in g.members[3:] %}<li><span class="badge badge-ghost font-mono">{{ mid }}</span></li>{% endfor %}
+                </ul>
+              </details>
+              {% elif not g.members %}<span class="text-sm text-base-content/60">No members</span>{% endif %}
+            </div>
+          </td>
+          <td class="text-right whitespace-nowrap">
+            <div class="flex justify-end gap-1">
+              <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', tgt_type='group', tgt=g.name) }}">
+                <span class="icon-[lucide--play] size-4" aria-hidden="true"></span>Run job
+              </a>
+              {% if can_write %}
+              <button type="button" class="btn btn-sm btn-ghost" onclick='openGroupModal({{ g.id }}, {{ g.name|tojson }}, {{ g.members|tojson }})' aria-label="Edit {{ g.name }}">
+                <span class="icon-[lucide--pencil] size-4" aria-hidden="true"></span><span class="sr-only sm:not-sr-only">Edit</span>
+              </button>
+              <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline" data-confirm="Delete group '{{ g.name }}' ({{ g.members|length }} members)?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-error btn-outline" aria-label="Delete {{ g.name }}">
+                  <span class="icon-[lucide--trash-2] size-4" aria-hidden="true"></span><span class="sr-only sm:not-sr-only">Delete</span>
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-    {% if not groups %}
-    <div class="py-8 text-center">
-      <p class="font-medium">{% if q %}No groups match “{{ q }}”.{% else %}No groups yet{% endif %}</p>
-      <p class="text-sm opacity-70">Save minions as a group to run jobs on them together.</p>
-      {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
-      <button type="button" class="btn btn-sm btn-primary mt-2" onclick="openGroupModal()">New group</button>
-      {% endif %}
-    </div>
-    {% endif %}
   </div>
-  <div class="flex items-center gap-2 px-4 py-3 border-t border-base-300">
-    <div class="join">
-      {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('groups.index', q=q, page=page-1, per_page=per_page, sort=sort, dir=direction) }}">‹ Prev</a>{% endif %}
-      <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
-      {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('groups.index', q=q, page=page+1, per_page=per_page, sort=sort, dir=direction) }}">Next ›</a>{% endif %}
-    </div>
+  {% else %}
+  <div class="px-4 py-12 text-center">
+    <span class="icon-[lucide--users-round] size-7 text-base-content/50" aria-hidden="true"></span>
+    <h3 class="font-semibold mt-3">{% if q %}No groups match that search{% else %}No saved groups yet{% endif %}</h3>
+    <p class="text-sm text-base-content/70 mt-1">{% if q %}Try a different name or minion ID, or clear the search.{% else %}Save a set of minions once, then reuse it as a job target.{% endif %}</p>
+    {% if can_write and not q %}<button type="button" class="btn btn-sm btn-outline mt-4" onclick="openGroupModal()">Create the first group</button>{% endif %}
   </div>
-</div>
-{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
+  {% endif %}
+  <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-t border-base-300">
+    <span class="text-sm text-base-content/70 me-auto">{% if total %}{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} groups{% else %}0 groups{% endif %}</span>
+    {{ m.pagination_plain('groups.index', page, pages, {'q': q, 'per_page': per_page, 'sort': sort, 'dir': direction}, 'Group pages') }}
+  </div>
+</section>
+
+{% if can_write %}
 <dialog id="group-modal" class="modal" aria-labelledby="group-modal-title">
-  <div class="modal-box">
-    <h3 id="group-modal-title" class="font-bold text-lg">New group</h3>
-    <form id="group-modal-form" method="post" action="{{ url_for('groups.create_group') }}" class="flex flex-col gap-3 mt-3">
+  <div class="modal-box max-w-2xl">
+    <div class="flex items-start gap-3">
+      <span class="icon-[lucide--users-round] size-5 mt-1 text-base-content/60" aria-hidden="true"></span>
+      <div>
+        <h2 id="group-modal-title" class="font-bold text-lg">New group</h2>
+        <p class="text-sm text-base-content/70 mt-1">Choose a stable name and the minions this reusable job target should include.</p>
+      </div>
+    </div>
+    <form id="group-modal-form" method="post" action="{{ url_for('groups.create_group') }}" class="flex flex-col gap-4 mt-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <fieldset class="fieldset">
-        <legend class="fieldset-legend">Name</legend>
-        <input id="group-modal-name" name="name" class="input w-full" autocomplete="off" required>
+        <legend class="fieldset-legend">Group name</legend>
+        <input id="group-modal-name" name="name" class="input w-full" autocomplete="off" required aria-label="Group name" aria-describedby="group-name-hint">
+        <p id="group-name-hint" class="text-xs text-base-content/70 mt-1">Use a descriptive label, such as “web-production”.</p>
       </fieldset>
       <fieldset class="fieldset">
-        <legend class="fieldset-legend">Members <span id="group-modal-count" class="badge badge-neutral badge-sm ms-1">0</span></legend>
-        <input id="group-modal-search" type="search" placeholder="Filter minions…" autocomplete="off" class="input input-sm w-full" oninput="filterGroupMembers()">
-        <div class="mt-1 max-h-56 overflow-auto rounded-lg border border-base-300">
-          <table class="table table-sm table-zebra table-pin-rows w-full">
-            <thead><tr><th class="w-8"><span class="sr-only">Select</span></th><th>Minion</th></tr></thead>
+        <legend class="fieldset-legend">Minion members <span id="group-modal-count" class="badge badge-sm ms-1">0</span></legend>
+        <label class="input input-sm w-full flex items-center gap-2">
+          <span class="icon-[lucide--search] size-4 text-base-content/50" aria-hidden="true"></span>
+          <input id="group-modal-search" type="search" placeholder="Filter minion IDs" autocomplete="off" aria-label="Filter minion IDs" class="grow" oninput="filterGroupMembers()">
+        </label>
+        <div class="mt-2 max-h-64 overflow-auto overflow-x-auto rounded-box border border-base-300 bg-base-100">
+          <table class="table table-sm w-full">
+            <thead><tr><th class="w-12"><span class="sr-only">Select</span></th><th>Minion ID</th></tr></thead>
             <tbody id="group-modal-list">
               {% for mid in roster %}
               <tr class="hover" data-name="{{ mid|lower }}">
@@ -91,17 +147,17 @@
             </tbody>
           </table>
         </div>
-        <span class="fieldset-label">Unknown IDs are skipped when you run a job.</span>
+        <p class="text-xs text-base-content/70 mt-1">Unknown IDs are retained but skipped when a job runs.</p>
       </fieldset>
       <p id="group-modal-error" class="text-sm text-error hidden" role="alert"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('group-modal').close()">Cancel</button>
-        <button type="button" class="btn btn-sm btn-ghost" onclick="clearGroupMembers()">Clear</button>
-        <button class="btn btn-sm btn-primary">Save group</button>
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('group-modal').close()">Cancel</button>
+        <button type="button" class="btn btn-ghost" onclick="clearGroupMembers()">Clear selection</button>
+        <button class="btn btn-primary">Save group</button>
       </div>
     </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>Close dialog</button></form>
 </dialog>
 <script>
 (function () {
@@ -167,9 +223,7 @@
     var list = document.getElementById('group-modal-list');
     var search = document.getElementById('group-modal-search');
     var error = document.getElementById('group-modal-error');
-    list.querySelectorAll('[data-extra]').forEach(function (el) {
-      el.remove();
-    });
+    list.querySelectorAll('[data-extra]').forEach(function (el) { el.remove(); });
     var picked = {};
     (members || []).forEach(function (m) { picked[m] = true; });
     boxes().forEach(function (b) { b.checked = !!picked[b.value]; });

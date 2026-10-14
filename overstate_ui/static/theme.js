@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (!control) return;
   control.checked = document.documentElement.dataset.theme === 'dark';
   control.addEventListener('change', function () {
-    var theme = control.checked ? 'dark' : 'cmyk';
+    var theme = control.checked ? 'dark' : 'corporate';
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('overstate-theme', theme); } catch (_) { /* Keep this page's choice. */ }
   });

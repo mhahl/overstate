@@ -1,14 +1,10 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}Minions · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li aria-current="page">Minions</li>
-  </ul>
-</nav>
-<div class="flex flex-wrap items-center gap-3">
-  <h1 class="text-2xl font-bold tracking-tight">Minions ({{ total }})</h1>
-  <div class="flex flex-wrap gap-2 ms-auto items-center">
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  <h1 class="text-2xl font-bold tracking-tight me-auto">Minions ({{ total }})</h1>
+  <div class="flex flex-wrap gap-2 items-center">
     {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('minion.refresh')) %}
     <form method="post" action="{{ url_for('minions.refresh') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -17,33 +13,36 @@
     {% endif %}
     <a id="export-csv" class="btn btn-sm btn-ghost" data-download href="{{ url_for('minions.export_csv') }}">Export CSV</a>
     <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.onboard') }}">Onboard minion</a>
-    <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists" aria-pressed="false">Pause live updates</button>
+    <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates" aria-pressed="false">Pause live updates</button>
   </div>
 </div>
 {% if not reachable %}
-<div class="alert alert-error" role="alert">
+<div class="alert alert-error mb-4" role="alert">
   <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
   <span>Salt API is unreachable. Cached snapshot only.</span>
 </div>
 {% endif %}
-<form id="minions-filter" method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:400ms, submit" class="sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex flex-wrap items-end gap-2" role="search" aria-label="Filter minions">
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <input type="hidden" name="dir" value="{{ direction }}">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search id…" aria-label="Search minions" class="input input-sm w-full max-w-xs">
-  <select name="status" aria-label="Key status" class="select select-sm" onchange="this.form.requestSubmit()">
-    <option value="">All statuses</option>
-    {% for s in ["accepted", "pending", "rejected", "denied"] %}
-    <option value="{{ s }}"{% if status == s %} selected{% endif %}>{{ s|capitalize }}</option>
-    {% endfor %}
-  </select>
-  <button class="btn btn-sm btn-primary">Filter</button>
-</form>
 <form id="bulk-form" method="get" action="{{ url_for('jobs.new') }}">
 <input type="hidden" name="bulk_run" value="1">
 </form>
-<div class="card card-border bg-base-100">
+<section class="card card-border bg-base-100 min-w-0" aria-label="Minion inventory">
+<form id="minions-filter" method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:400ms, submit" class="px-4 py-3 border-b border-base-300 flex flex-wrap items-end gap-2" role="search" aria-label="Filter minions">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
+  {{ m.table_search_field("minions-search", "q", q, "Search", "Search id…", "Search minions") }}
+  <fieldset class="fieldset">
+    <legend class="fieldset-legend">Key status</legend>
+    <select name="status" aria-label="Key status" class="select select-sm" onchange="this.form.requestSubmit()">
+      <option value="">All statuses</option>
+      {% for s in ["accepted", "pending", "rejected", "denied"] %}
+      <option value="{{ s }}"{% if status == s %} selected{% endif %}>{{ s|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </fieldset>
+  <button class="btn btn-sm btn-primary mb-0.5">Filter</button>
+</form>
 {% include "_minion_rows.html" %}
-</div>
+</section>
 <noscript>
 <div class="card card-border bg-base-100 mt-4">
   <div class="card-body">
@@ -93,17 +92,10 @@
 <script>
 (function () {
   var btn = document.getElementById("live-toggle");
-  // Shared pause key: job and minion lists only.
   var key = "overstate-live";
-  function paused() {
-    try { return localStorage.getItem(key) === "off"; }
-    catch (e) { return false; }
-  }
+  function paused() { try { return localStorage.getItem(key) === "off"; } catch (e) { return false; } }
   function paint() { if (btn) { btn.textContent = paused() ? "Resume live updates" : "Pause live updates"; btn.setAttribute("aria-pressed", paused() ? "true" : "false"); } }
-  if (btn) btn.addEventListener("click", function () {
-    try { localStorage.setItem(key, paused() ? "on" : "off"); } catch (e) {}
-    paint();
-  });
+  if (btn) btn.addEventListener("click", function () { try { localStorage.setItem(key, paused() ? "on" : "off"); } catch (e) {} paint(); });
   paint();
   setInterval(function () {
     if (paused() || document.hidden) return;
@@ -116,8 +108,7 @@
           var dot = el.querySelector(".status");
           var label = el.querySelectorAll("span")[1];
           if (!dot || !label) return;
-          var cls = state === "up" ? "status-success"
-            : (state === "dead" ? "status-warning" : "status-error");
+          var cls = state === "up" ? "status-success" : (state === "dead" ? "status-warning" : "status-error");
           dot.classList.remove("status-success", "status-warning", "status-error");
           dot.classList.add(cls);
           label.textContent = state === "dead" ? "accepted, dead" : state;
@@ -129,16 +120,11 @@
 </script>
 <script>
 (function () {
-  // Kebab menus float above the table's scroll wrapper: that wrapper clips
-  // on both the bottom and the top edge, so no static open direction fits
-  // every row. On open, pin the menu to the viewport beside its button,
-  // opening downward unless space runs short.
   function closeAll(except) {
     document.querySelectorAll('details[data-kebab][open]').forEach(function (d) {
       if (d !== except) d.removeAttribute('open');
     });
   }
-  // toggle does not bubble; catch it on the way down.
   document.addEventListener('toggle', function (ev) {
     var d = ev.target && ev.target.closest ? ev.target.closest('details[data-kebab]') : null;
     if (!d || !d.hasAttribute('open')) return;
@@ -175,9 +161,6 @@
 </script>
 <script>
 (function () {
-  // Export follows the active filter: the filter form swaps the table via
-  // HTMX with hx-push-url, so the address bar always holds the filter the
-  // user sees. Stamp it onto the download link at click time.
   var exportLink = document.getElementById('export-csv');
   var exportBase = exportLink ? exportLink.getAttribute('href') : null;
   if (exportLink && exportBase) {
@@ -191,7 +174,7 @@
       exportLink.href = query ? exportBase + '?' + query : exportBase;
     });
   }
-  // bulk-selection: preserve checked minion ids across HTMX table swaps.
+  // bulk-selection: preserve checked minion IDs across HTMX table swaps.
   var kept = new Set();
   document.addEventListener("change", function (ev) {
     if (ev.target && ev.target.id === "bulk-all") {
@@ -212,8 +195,6 @@
     document.querySelectorAll('input[name="bulk"]').forEach(function (box) {
       box.checked = kept.has(box.value);
     });
-    // The filter form sits outside the swapped table, so a sort click
-    // would leave its sort behind; follow the address bar instead.
     var params = new URLSearchParams(location.search);
     var form = document.getElementById("minions-filter");
     if (form) {

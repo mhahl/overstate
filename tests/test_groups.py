@@ -79,13 +79,24 @@ def test_groups_sort_by_members(app, admin):
         get_session().add(MinionGroup(name="small", members=["web-01"]))
         get_session().commit()
     html = admin.get("/groups/?sort=members&dir=desc").data.decode()
-    assert html.index('<td class="font-medium">big</td>') < html.index(
-        '<td class="font-medium">small</td>'
-    )
+    rows = html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    assert rows.index("big") < rows.index("small")
     html = admin.get("/groups/?sort=members&dir=asc").data.decode()
-    assert html.index('<td class="font-medium">small</td>') < html.index(
-        '<td class="font-medium">big</td>'
-    )
+    rows = html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    assert rows.index("small") < rows.index("big")
+
+
+def test_group_page_uses_fleet_directory_layout(admin, app):
+    with app.app_context():
+        get_session().add(MinionGroup(name="web", members=["web-01", "web-02"]))
+        get_session().commit()
+
+    html = admin.get("/groups/").data.decode()
+    assert 'id="groups-directory"' in html
+    assert 'id="groups-filter"' in html
+    assert "Fleet group directory" in html
+    assert "web-01" in html
+    assert "2 members" in html
 
 
 def test_create_rename_edit_delete(admin, app):
@@ -218,7 +229,7 @@ def test_groups_page_renders_table_and_modal(admin):
     assert 'id="group-modal-search"' in html
     assert 'id="group-modal-count"' in html
     assert '<tbody id="group-modal-list">' in html
-    assert "<th>Minion</th>" in html
+    assert "<th>Minion ID</th>" in html
     for mid in ("web-01", "web-02", "db-01"):
         assert f'type="checkbox" name="members" value="{mid}"' in html
     assert "New group" in html
@@ -270,7 +281,7 @@ def test_groups_paginate(admin):
 def test_group_row_links_prefilled_job_form(admin):
     admin.post("/groups", data={"name": "fleet", "members": ["web-01"]})
     html = admin.get("/groups/").data.decode()
-    assert "Use in new job" in html
+    assert "Run job" in html
     assert "/jobs/new?tgt_type=group&amp;tgt=fleet" in html
     body = admin.get("/jobs/new?tgt_type=group&tgt=fleet").data.decode()
     assert 'value="group" selected' in body
@@ -296,7 +307,7 @@ def test_viewer_sees_readonly_hint(app):
     client = app.test_client()
     client.post("/login", data={"username": "v", "password": "pw"})
     html = client.get("/groups/").data.decode()
-    assert "Operators only" in html
+    assert "Groups are read-only for your role" in html
     assert 'id="group-modal"' not in html
 
 

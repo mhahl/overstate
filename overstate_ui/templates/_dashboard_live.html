@@ -1,204 +1,216 @@
-{# Live dashboard region. Rendered by dashboard.index (snapshot shell)
-and dashboard.panels (poll hydration). No Salt I/O feeds this template:
-`stats`/`health`/`checks` are snapshot data until a panel resolves.
-When `probing` with a `poll_qs`, the wrapper re-polls itself via htmx;
-resolved renders drop those attributes so polling stops on its own. #}
-<div id="dashboard-live" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li aria-current="page">Dashboard</li>
-  </ul>
-</nav>
-<div class="flex flex-wrap items-center gap-3">
-  <h1 class="text-2xl font-bold tracking-tight">Fleet overview</h1>
-  <div class="flex gap-2 ms-auto items-center">
-    {# Reserved slot: identical content either way, toggled invisible so the
-    buttons never shift when polling resolves. visibility:hidden also hides
-    it from screen readers until it matters. #}
-    <span role="status" class="flex items-center gap-1.5 text-xs opacity-60{% if not probing %} invisible{% endif %}">
-      <span class="icon-[lucide--loader-circle] size-4 shrink-0 animate-spin" aria-hidden="true"></span>
-      <span>Refreshing live data…</span>
-    </span>
-    <a class="btn btn-sm btn-ghost" href="{{ url_for('events.index') }}">Live events</a>
-    <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">Run job</a>
+{# Snapshot-first fleet command surface. This template is used both by the
+   dashboard shell and by the inexpensive HTMX panel refresh endpoint. #}
+<div id="fleet-dashboard" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <header class="flex flex-wrap items-center gap-4">
+    <div class="me-auto">
+      <h1 class="text-2xl font-bold tracking-tight">Fleet overview</h1>
+      <p class="text-sm text-base-content/70 mt-1">Keys, minion presence, jobs, and Salt control-plane health.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span role="status" class="inline-flex items-center gap-2 text-sm text-base-content/70{% if not probing %} opacity-60 invisible{% endif %}">
+        <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+        Refreshing live data…
+      </span>
+      {% if not probing %}{% if stats.reachable %}<span role="status" class="badge badge-success badge-outline">Live signals connected</span>{% else %}<span role="status" class="badge badge-warning badge-outline">Snapshot data</span>{% endif %}{% endif %}
+      <a class="btn btn-sm btn-ghost" href="{{ url_for('events.index') }}">
+        <span class="icon-[lucide--zap] size-4" aria-hidden="true"></span>Live events
+      </a>
+      <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">
+        <span class="icon-[lucide--play] size-4" aria-hidden="true"></span>Run job
+      </a>
+    </div>
+  </header>
+
+  {% if worker_down %}
+  <div class="alert alert-warning" role="status">
+    <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+    <div><p class="font-semibold">Background worker unreachable</p><p class="text-sm">Showing snapshot data; live probes could not be queued.</p></div>
   </div>
-</div>
-{% if worker_down %}
-<div class="alert alert-warning" role="alert">
-  <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
-  <span>Background worker unreachable. Showing snapshot data.</span>
-</div>
-{# Reachability is unknown while probes are in flight: the spinner above
-already says so. Only claim "unreachable" once polling settled. #}
-{% elif not probing and not stats.reachable %}
-<div class="alert alert-error" role="alert">
-  <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
-  <span>salt-api unreachable. Database history only.</span>
-</div>
-{% endif %}
-<section class="stats stats-vertical md:stats-horizontal bg-base-100 border border-base-300 max-w-full overflow-x-auto" aria-label="Fleet totals">
-  <div class="stat px-5 py-4">
-    <div class="stat-title font-medium text-base-content">Accepted minions</div>
-    <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.accepted if stats.keys_live else "–" }}</div>
-    <div class="stat-desc">Keys in accepted state</div>
+  {% elif not probing and not stats.reachable %}
+  <div class="alert alert-error" role="alert">
+    <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+    <div><p class="font-semibold">salt-api unreachable</p><p class="text-sm">Database history only. Check the master connection before starting work.</p></div>
   </div>
-  <div class="stat px-5 py-4">
-    <div class="stat-title font-medium text-base-content">Pending keys</div>
-    <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.pending if stats.keys_live else "–" }}</div>
-    <div class="stat-desc"><a class="link" href="{{ url_for('keys.index', tab='pending') }}">Review queue</a></div>
-  </div>
-  <div class="stat px-5 py-4">
-    <div class="stat-title font-medium text-base-content">Minions up / down</div>
-    <div class="stat-value text-3xl font-semibold tabular-nums">{{ (stats.up|string) + " / " + (stats.down|string) if stats.presence_live else "–" }}</div>
-    <div class="stat-desc"><a class="link" href="{{ url_for('minions.index') }}">Browse inventory</a></div>
-  </div>
-  <div class="stat px-5 py-4">
-    <div class="stat-title font-medium text-base-content">Jobs in flight</div>
-    <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.in_flight }}</div>
-    <div class="stat-desc">{% if stats.in_flight_live %}Live from master · {% else %}Database count · {% endif %}<a class="link" href="{{ url_for('jobs.index', tab='running') }}">Running jobs</a></div>
-  </div>
-</section>
-<div class="grid gap-4 lg:grid-cols-2 items-start">
-  <section class="card card-border bg-base-100 min-w-0">
-    <div class="card-body p-4">
-      <div class="flex items-center gap-2">
-        <h2 class="card-title text-base whitespace-nowrap">Last failures</h2>
-        <a class="btn btn-xs btn-ghost ms-auto" href="{{ url_for('jobs.index', tab='history') }}">History</a>
-      </div>
-      {% if stats.last_failures %}
-      <div class="overflow-x-auto rounded-box">
-      <table class="table table-sm">
-        <thead><tr><th>Minion</th><th>JID</th><th class="text-right">Retcode</th></tr></thead>
-        <tbody>
-          {% for r in stats.last_failures %}
-          <tr>
-            <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=r.minion_id) }}">{{ r.minion_id }}</a></td>
-            <td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=r.jid) }}">{{ r.jid }}</a></td>
-            <td class="text-right tabular-nums"><span class="badge badge-sm badge-outline badge-error">{{ r.retcode }}</span></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-      <div class="py-6 text-center">
-        <p class="font-medium">No failures recorded</p>
-        <p class="text-sm opacity-70">Failed returns appear here.</p>
-        <a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
-      </div>
-      {% endif %}
+  {% endif %}
+
+  <section id="fleet-metrics" class="stats stats-vertical md:stats-horizontal bg-base-100 border border-base-300 max-w-full overflow-x-auto" aria-label="Fleet metrics">
+    <div class="stat px-5 py-4">
+      <div class="stat-title">Accepted keys</div>
+      <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.accepted if stats.keys_live else "–" }}</div>
+      <div class="stat-desc">Keys accepted by the master</div>
+    </div>
+    <div class="stat px-5 py-4">
+      <div class="stat-title">Pending review</div>
+      <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.pending if stats.keys_live else "–" }}</div>
+      <div class="stat-desc"><a class="link" href="{{ url_for('keys.index', tab='pending') }}">Review pending keys</a></div>
+    </div>
+    <div class="stat px-5 py-4">
+      <div class="stat-title">Minions up / down</div>
+      <div class="stat-value text-3xl font-semibold tabular-nums">{{ (stats.up|string) + " / " + (stats.down|string) if stats.presence_live else "–" }}</div>
+      <div class="stat-desc"><a class="link" href="{{ url_for('minions.index') }}">Open inventory</a></div>
+    </div>
+    <div class="stat px-5 py-4">
+      <div class="stat-title">Jobs in flight</div>
+      <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.in_flight }}</div>
+      <div class="stat-desc">{% if stats.in_flight_live %}Live from master{% else %}Database count{% endif %} · <a class="link" href="{{ url_for('jobs.index', tab='running') }}">View running jobs</a></div>
     </div>
   </section>
-  <div class="flex flex-col gap-4 min-w-0">
-  <section class="card card-border bg-base-100">
-    <div class="card-body p-4">
-      <div class="flex items-center gap-2">
-        <h2 class="card-title text-base">salt-api health</h2>
-        <span class="badge badge-sm badge-outline ms-auto {{ 'badge-success' if stats.reachable else ('badge-neutral' if probing else 'badge-error') }}">{{ "reachable" if stats.reachable else ("checking" if probing else "unreachable") }}</span>
-        {% if (current_user.role in ("admin", "operator") and not rbac_scoped) or (rbac_scoped and can('dashboard.probe')) %}
-        <form method="post" action="{{ url_for('dashboard.check_now') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-xs btn-ghost" title="Re-run the capability probes now">Check now</button>
-        </form>
-        {% endif %}
-      </div>
-      <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-        <dt class="opacity-70">URL</dt><dd class="font-mono text-xs break-all">{{ health.url }}</dd>
-        <dt class="opacity-70">Token age</dt><dd class="tabular-nums">{{ "%.0f"|format(health.token_age) if health.token_age >= 0 else "none" }}s</dd>
-        <dt class="opacity-70">@wheel</dt><dd><span class="badge badge-sm badge-outline {{ 'badge-success' if health.wheel_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.wheel_ok else ("checking" if probing else "failing") }}</span></dd>
-        <dt class="opacity-70">@runner</dt><dd><span class="badge badge-sm badge-outline {{ 'badge-success' if health.runner_ok else ('badge-neutral' if probing else 'badge-error') }}">{{ "ok" if health.runner_ok else ("checking" if probing else "failing") }}</span></dd>
-        <dt class="opacity-70">Returns</dt><dd>{% if stats.returns.age is none %}{% if stats.returns.stale %}<span class="badge badge-sm badge-outline badge-error" title="Jobs completed but the returner stored nothing. Check master_job_cache.">none recorded</span>{% else %}<span class="opacity-70">none yet</span>{% endif %}{% else %}<span class="{{ 'text-error' if stats.returns.stale else '' }}" title="Newest stored return">{{ stats.returns.age }}</span>{% endif %}</dd>
-      </dl>
-      {% if health.error %}<p class="text-error text-sm mt-2">{{ health.error }}</p>{% endif %}
-      <div class="divider my-1">Capabilities</div>
-      <ul class="flex flex-col gap-2 text-sm">
-        {% if checks is none %}
-        <li class="text-sm opacity-70">Probing capabilities…</li>
-        {% elif not checks %}
-        <li class="text-sm opacity-70">No capability data yet.</li>
+
+  <div class="grid gap-4 xl:grid-cols-12 items-start">
+    <div class="flex flex-col gap-4 min-w-0 xl:col-span-7">
+    <section class="card card-border bg-base-100 min-w-0" aria-label="Attention queue">
+      <div class="card-body p-0">
+        <div class="flex flex-wrap items-center gap-3 px-4 py-4 border-b border-base-300">
+          <div class="me-auto">
+            <h2 class="card-title text-base">Last failures</h2>
+            <p class="text-sm text-base-content/70 mt-1">Recent unsuccessful minion returns.</p>
+          </div>
+          <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.index', tab='history') }}">Job history</a>
+        </div>
+        {% if stats.last_failures %}
+        <div class="max-w-full overflow-x-auto">
+          <table class="table table-sm table-pin-rows w-full">
+            <thead><tr><th>Minion</th><th>Job ID</th><th class="text-right">Return code</th></tr></thead>
+            <tbody>
+              {% for r in stats.last_failures %}
+              <tr class="hover">
+                <td><a class="link font-mono text-sm" href="{{ url_for('minions.detail', mid=r.minion_id) }}">{{ r.minion_id }}</a></td>
+                <td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=r.jid) }}">{{ r.jid }}</a></td>
+                <td class="text-right tabular-nums"><span class="badge badge-sm badge-error badge-outline">{{ r.retcode }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
         {% else %}
-        {% for c in checks %}
-        <li class="flex items-center gap-2">
-          <span class="badge badge-sm badge-outline {{ 'badge-success' if c.ok else 'badge-error' }}">{{ "ok" if c.ok else "failing" }}</span>
-          <span><span class="font-medium">{{ c.feature }}</span> <span class="opacity-70 font-mono text-xs">{{ c.fun }}</span></span>
-        </li>
-        <li class="text-xs opacity-70 -mt-1 ms-14">{{ c.grant }}</li>
-        {% endfor %}
+        <div class="px-4 py-8 text-center">
+          <span class="icon-[lucide--circle-check] size-6 text-success" aria-hidden="true"></span>
+          <p class="font-medium mt-2">No failures recorded</p>
+          <p class="text-sm text-base-content/70 mt-1">Failed returns will appear here after a job completes.</p>
+          <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a>
+        </div>
         {% endif %}
-      </ul>
-    </div>
-  </section>
-  <section class="card card-border bg-base-100">
-    <div class="card-body p-4">
-      <div class="flex items-center gap-2">
-        <h2 class="card-title text-base">Salt masters</h2>
+      </div>
+    </section>
+
+    <section class="card card-border bg-base-100 min-w-0" aria-label="Master rollout">
+      <div class="card-body gap-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="me-auto">
+            <h2 class="card-title text-base">Salt masters</h2>
+            <p class="text-sm text-base-content/70 mt-1">Cluster rollout and pod readiness.</p>
+          </div>
+          {% if masters and masters.available %}
+          {% if masters.complete %}<span class="badge badge-success badge-outline">Ready</span>{% else %}<span class="badge badge-warning badge-outline">Rollout progressing</span>{% endif %}
+          {% elif masters or not probing %}<span class="badge badge-ghost">Unavailable</span>
+          {% else %}<span class="badge badge-ghost">Checking</span>{% endif %}
+        </div>
         {% if masters and masters.available %}
-        <span class="badge badge-sm badge-outline ms-auto {{ 'badge-success' if masters.complete else 'badge-warning' }}">{{ "ready" if masters.complete else "rollout progressing" }}</span>
+        <p class="text-sm text-base-content/70">{{ "Rollout complete" if masters.complete else "rollout progressing" }} · <span class="tabular-nums">{{ masters.updated_replicas }}/{{ masters.replicas }} updated, {{ masters.ready_replicas }}/{{ masters.replicas }} ready</span></p>
+        <ul class="divide-y divide-base-300">
+          {% for pod in masters.pods %}
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm min-w-0">
+            {% if pod.ready %}<span class="badge badge-sm badge-success badge-outline shrink-0">Ready</span>{% else %}<span class="badge badge-sm badge-warning badge-outline shrink-0">{{ pod.phase|lower or "Not ready" }}</span>{% endif %}
+            <span class="font-mono text-xs min-w-0 break-all">{{ pod.name }}</span>
+            {% if pod.restarts %}<span class="text-xs text-base-content/60 tabular-nums whitespace-nowrap">{{ pod.restarts }}× restarted</span>{% endif %}
+            <span class="font-mono text-xs text-base-content/70 break-all xl:ms-auto" title="{{ pod.image }}">{{ pod.image_short }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% if masters.images_differ %}<div class="alert alert-warning py-2" role="status"><span>Master pods are running different images. Check the StatefulSet after rollout.</span></div>{% endif %}
+        <p class="text-xs text-base-content/70">Config revision <span class="font-mono">{{ masters.config_revision or "unknown" }}</span>{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %} · <a class="link" href="{{ url_for('masterconfig.index') }}">Master Settings</a>{% endif %}</p>
         {% elif masters or not probing %}
-        <span class="badge badge-sm badge-outline ms-auto badge-neutral">unavailable</span>
+        <div class="py-5 text-center"><p class="font-medium">Master status unavailable</p><p class="text-sm text-base-content/70 mt-1">No cluster connection is available from this dashboard.</p></div>
         {% else %}
-        <span class="badge badge-sm badge-outline ms-auto badge-neutral">checking</span>
+        <p class="text-sm text-base-content/70 py-3">Probing masters…</p>
         {% endif %}
       </div>
-      {% if masters and masters.available %}
-      <p class="text-sm opacity-70 mt-1">Rollout {{ "complete" if masters.complete else "progressing" }} · <span class="tabular-nums">{{ masters.updated_replicas }}/{{ masters.replicas }} updated, {{ masters.ready_replicas }}/{{ masters.replicas }} ready</span></p>
-      <ul class="flex flex-col gap-2 mt-2">
-        {% for pod in masters.pods %}
-        <li class="flex items-center gap-2 text-sm min-w-0">
-          <span class="badge badge-sm badge-outline shrink-0 {{ 'badge-success' if pod.ready else 'badge-warning' }}">{{ "ready" if pod.ready else (pod.phase|lower or "not ready") }}</span>
-          <span class="font-mono text-xs truncate min-w-0">{{ pod.name }}</span>
-          {% if pod.restarts %}<span class="text-xs opacity-60 tabular-nums whitespace-nowrap shrink-0" title="Container restarts">{{ pod.restarts }}× restarted</span>{% endif %}
-          <span class="ms-auto font-mono text-xs opacity-70 truncate min-w-0 max-w-[16rem] text-right" title="{{ pod.image }}">{{ pod.image_short }}</span>
-        </li>
-        {% endfor %}
-      </ul>
-      {% if masters.images_differ %}
-      <p class="text-xs text-warning mt-2">Pods run different images. Let the rollout finish, then check the StatefulSet.</p>
-      {% endif %}
-      <p class="text-xs opacity-70 mt-2">Config rev <span class="font-mono">{{ masters.config_revision or "unknown" }}</span>{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %} · <a class="link" href="{{ url_for('masterconfig.index') }}">Master Settings</a>{% endif %}</p>
-      {% elif masters or not probing %}
-      <p class="text-sm opacity-70 mt-1">Master status unavailable. No cluster connection from here.</p>
-      {% else %}
-      <p class="text-sm opacity-70 mt-1">Probing masters…</p>
-      {% endif %}
+    </section>
     </div>
-  </section>
-  <section class="card card-border bg-base-100">
-    <div class="card-body p-4">
-      <div class="flex items-center gap-2">
-        <h2 class="card-title text-base">Salt versions</h2>
-        <span class="badge badge-sm badge-outline ms-auto {{ 'badge-success' if stats.versions_live else 'badge-neutral' }}">{{ "live" if stats.versions_live else "snapshot" }}</span>
+
+    <div class="flex flex-col gap-4 min-w-0 xl:col-span-5">
+    <section class="card card-border bg-base-100 min-w-0" aria-label="Control plane">
+      <div class="card-body gap-4">
+        <div class="flex flex-wrap items-start gap-3">
+          <div class="me-auto">
+            <h2 class="card-title text-base">salt-api health</h2>
+            <p class="text-sm text-base-content/70 mt-1">Authentication and execution doors.</p>
+          </div>
+          {% if stats.reachable %}
+          <span class="badge badge-success badge-outline">Reachable</span>
+          {% elif probing %}
+          <span class="badge badge-ghost">Checking</span>
+          {% else %}
+          <span class="badge badge-error badge-outline">Unreachable</span>
+          {% endif %}
+          {% if (current_user.role in ("admin", "operator") and not rbac_scoped) or (rbac_scoped and can('dashboard.probe')) %}
+          <form method="post" action="{{ url_for('dashboard.check_now') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline" title="Re-run capability probes">Check now</button>
+          </form>
+          {% endif %}
+        </div>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+          <dt class="text-base-content/70">URL</dt><dd class="font-mono text-xs break-all">{{ health.url }}</dd>
+          <dt class="text-base-content/70">Token age</dt><dd class="tabular-nums">{{ "%.0f"|format(health.token_age) if health.token_age >= 0 else "none" }}s</dd>
+          <dt class="text-base-content/70">@wheel</dt>
+          <dd>{% if health.wheel_ok %}<span class="badge badge-sm badge-success badge-outline">ok</span>{% elif health.wheel_ok is none and probing %}<span class="badge badge-sm badge-ghost">checking</span>{% else %}<span class="badge badge-sm badge-error badge-outline">failing</span>{% endif %}</dd>
+          <dt class="text-base-content/70">@runner</dt>
+          <dd>{% if health.runner_ok %}<span class="badge badge-sm badge-success badge-outline">ok</span>{% elif health.runner_ok is none and probing %}<span class="badge badge-sm badge-ghost">checking</span>{% else %}<span class="badge badge-sm badge-error badge-outline">failing</span>{% endif %}</dd>
+          <dt class="text-base-content/70">Returns</dt>
+          <dd>{% if stats.returns.age is none %}{% if stats.returns.stale %}<span class="badge badge-sm badge-error badge-outline" title="Jobs completed but the returner stored nothing. Check master_job_cache.">none recorded</span>{% else %}<span class="text-base-content/70">none yet</span>{% endif %}{% else %}<span{% if stats.returns.stale %} class="text-error"{% endif %} title="Newest stored return">{{ stats.returns.age }}</span>{% endif %}</dd>
+        </dl>
+        {% if health.error %}<div class="alert alert-error py-2" role="alert"><span>{{ health.error }}</span></div>{% endif %}
+        <div class="border-t border-base-300 pt-3">
+          <h3 class="text-sm font-semibold">Capability checks</h3>
+          {% if checks is none %}
+          <p class="text-sm text-base-content/70 mt-2">Probing capabilities…</p>
+          {% elif not checks %}
+          <p class="text-sm text-base-content/70 mt-2">No capability data yet.</p>
+          {% else %}
+          <ul class="mt-2 flex flex-col gap-3 text-sm">
+            {% for c in checks %}
+            <li>
+              <div class="flex flex-wrap items-center gap-2">
+                {% if c.ok %}<span class="badge badge-sm badge-success badge-outline">Available</span>{% else %}<span class="badge badge-sm badge-error badge-outline">Unavailable</span>{% endif %}
+                <span class="font-medium">{{ c.feature }}</span>
+                <span class="font-mono text-xs text-base-content/70">{{ c.fun }}</span>
+              </div>
+              <p class="text-xs text-base-content/70 mt-1 ms-2">{{ c.grant }}</p>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
       </div>
-      {% if stats.versions %}
-      <div class="overflow-x-auto rounded-box">
-      <table class="table table-sm">
-        <thead><tr><th>Version</th><th class="text-right">Minions</th></tr></thead>
-        <tbody>
-          {% for version, count in stats.versions.items()|sort %}
-          <tr>
-            <td class="font-mono text-xs">{{ version }}</td>
-            <td class="text-right tabular-nums">{{ count }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    </section>
+
+    <section class="card card-border bg-base-100 min-w-0" aria-label="Salt versions">
+      <div class="card-body p-0">
+        <div class="flex flex-wrap items-center gap-3 px-4 py-4 border-b border-base-300">
+          <div class="me-auto"><h2 class="card-title text-base">Salt versions</h2><p class="text-sm text-base-content/70 mt-1">Version distribution across the visible fleet.</p></div>
+          {% if stats.versions_live %}<span class="badge badge-success badge-outline">Live</span>{% else %}<span class="badge badge-ghost">Snapshot</span>{% endif %}
+        </div>
+        {% if stats.versions %}
+        <div class="max-w-full overflow-x-auto">
+          <table class="table table-sm w-full">
+            <thead><tr><th>Version</th><th class="text-right">Minions</th></tr></thead>
+            <tbody>{% for version, count in stats.versions.items()|sort %}<tr class="hover"><td class="font-mono text-sm">{{ version }}</td><td class="text-right tabular-nums">{{ count }}</td></tr>{% endfor %}</tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-base-content/70 px-4 py-5">No Salt version data is available in the current snapshot.</p>
+        {% endif %}
       </div>
-      {% else %}
-      <p class="text-sm opacity-70">No version data.</p>
-      {% endif %}
+    </section>
     </div>
-  </section>
-  <nav class="card card-border bg-base-100" aria-label="Operator shortcuts">
-    <div class="card-body p-4">
-      <h2 class="card-title text-base">Operator shortcuts</h2>
-      <ul class="menu menu-sm p-0">
-        <li><a href="{{ url_for('jobs.new', preset='ping') }}">Run test.ping</a></li>
-        <li><a href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a></li>
-        <li><a href="{{ url_for('jobs.new', preset='refresh-pillar') }}">Refresh pillar</a></li>
-        <li><a href="{{ url_for('minions.index') }}">Browse inventory</a></li>
-      </ul>
-    </div>
-  </nav>
   </div>
-</div>
+
+  <nav class="flex flex-wrap items-center gap-3 border-t border-base-300 pt-4" aria-label="Operator actions">
+    <h2 class="text-sm font-semibold me-auto">Next actions</h2>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.new', preset='ping') }}"><span class="icon-[lucide--radio] size-4" aria-hidden="true"></span>Run test.ping</a>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.new', preset='highstate-dry') }}"><span class="icon-[lucide--shield-check] size-4" aria-hidden="true"></span>Dry-run highstate</a>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.new', preset='refresh-pillar') }}"><span class="icon-[lucide--refresh-cw] size-4" aria-hidden="true"></span>Refresh pillar</a>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}"><span class="icon-[lucide--cpu] size-4" aria-hidden="true"></span>Browse inventory</a>
+  </nav>
 </div>

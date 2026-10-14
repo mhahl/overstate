@@ -388,15 +388,16 @@ def test_legacy_prefix_forwards(mui):
 def test_settings_tabs_switch_sides(mui):
     admin = mui["login"]("admin")
     server = admin.get("/settings/").data.decode()
-    assert "Server Settings" in server and "Master Settings" in server
+    assert 'aria-label="Settings sections"' in server
+    assert "General" in server and "Master settings" in server
     master = admin.get("/settings/master/").data.decode()
-    assert "Master Settings" in master
+    assert "Master settings" in master
     for page in (server, master):
-        assert page.index("<h1") < page.index('aria-label="Settings areas"')
+        assert page.index("<h1") < page.index('aria-label="Settings sections"')
         assert 'aria-current="page"' in page
     op = mui["login"]("op")
     ope = op.get("/settings/").data.decode()
-    assert "Server Settings" in ope and "Master Settings" not in ope
+    assert "General" in ope and "Master settings" not in ope
 
 
 def test_operator_and_viewer_forbidden(mui):

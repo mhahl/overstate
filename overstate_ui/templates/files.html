@@ -1,169 +1,243 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}Files · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li>States</li>
-    <li aria-current="page">Files</li>
-  </ul>
+{% set active_tab = ftab|default("files") %}
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  <div class="me-auto">
+    <h1 class="text-2xl font-bold tracking-tight">State files</h1>
+    {% if active_tab == "files" %}<p class="text-sm text-base-content/70 mt-1">Browse and edit the Salt fileserver roots.</p>{% endif %}
+  </div>
+  {% if active_tab == "files" %}<span class="badge badge-sm badge-outline">{{ total }} files</span>{% endif %}
+</div>
+
+<nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" aria-label="File page sections">
+  <a href="{{ url_for('files.index', tab='files') }}" class="tab{% if active_tab == 'files' %} tab-active{% endif %}"{% if active_tab == 'files' %} aria-current="page"{% endif %}>
+    <span class="icon-[lucide--file-text] size-4" aria-hidden="true"></span>Files
+  </a>
+  <a href="{{ url_for('files.index', tab='updates') }}" class="tab{% if active_tab == 'updates' %} tab-active{% endif %}"{% if active_tab == 'updates' %} aria-current="page"{% endif %}>
+    <span class="icon-[lucide--refresh-cw] size-4" aria-hidden="true"></span>Updates
+  </a>
+  {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
+  <a href="{{ url_for('files.index', tab='repo') }}" class="tab{% if active_tab == 'repo' %} tab-active{% endif %}"{% if active_tab == 'repo' %} aria-current="page"{% endif %}>
+    <span class="icon-[lucide--git-branch] size-4" aria-hidden="true"></span>Repo settings
+  </a>
+  {% endif %}
 </nav>
-<div class="w-full">
-  <div class="flex flex-wrap items-center gap-3 mb-4">
-    <h1 class="text-2xl font-bold tracking-tight me-auto">State files</h1>
-    {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
-    <a class="btn btn-sm btn-outline" title="Clone, repoint, and repair the file-roots checkout" href="{{ url_for('files.repo') }}">Repo settings</a>
-    {% endif %}
-  </div>
-  <div class="w-full mb-4">
-    {% if has_top %}<p class="text-sm"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% else %}<p class="text-sm text-warning">No top.sls at file roots. The master serves nothing until you clone the states repo on the Repo tab.</p>{% endif %}
-  </div>
-  <section class="card card-border mb-3" aria-label="Git checkout status">
-    <div class="card-body py-3">
-      {% if git.ok %}
-      <div class="flex flex-wrap items-center gap-2 text-sm">
-        <span class="font-semibold">Git</span>
-        <span class="font-mono">{{ git.branch }}</span>
-        <span class="font-mono">{{ git.sha }}</span>
-        {% if git.clean %}<span class="badge badge-sm badge-outline badge-success">clean</span>{% else %}<span class="badge badge-sm badge-outline badge-warning">{{ git.dirty_count }} uncommitted</span>{% endif %}
-        {% if git.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ git.upstream }}{% if git.ahead is not none %} · {{ git.ahead }} ahead, {{ git.behind }} behind{% endif %}</span>{% else %}<span class="opacity-70 text-xs">no upstream</span>{% endif %}
-        {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.sync')) %}
-        <div class="ms-auto flex flex-wrap gap-1 max-sm:w-full max-sm:mt-1">
-          <form method="post" action="{{ url_for('files.fetch') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-outline" title="Fetch the remote without changing files">Check for updates</button>
-          </form>
-          <form method="post" action="{{ url_for('files.sync') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-outline">Sync now</button>
-          </form>
-          <form method="post" action="{{ url_for('files.sync_modules') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-outline" title="Publish custom Salt modules (saltutil.sync_all). Distributes files, applies nothing.">Sync modules</button>
-          </form>
-          {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
-          <form method="post" action="{{ url_for('files.push') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-primary" title="Push committed changes upstream">Push</button>
-          </form>
-          {% endif %}
+
+{% if active_tab == "updates" %}
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)] items-start">
+  <section class="card card-border bg-base-100" aria-label="Git checkout status">
+    <div class="card-body gap-4">
+      <div class="flex flex-wrap items-start gap-3">
+        <div class="me-auto">
+          <h2 class="card-title text-base">Checkout status</h2>
+          <p class="text-sm text-base-content/70 mt-1">Current branch and upstream sync state.</p>
         </div>
-        {% endif %}
+        {% if git.ok %}
+        {% if git.clean %}<span class="badge badge-success badge-outline">Clean</span>{% else %}<span class="badge badge-warning badge-outline">{{ git.dirty_count }} uncommitted</span>{% endif %}
+        {% else %}<span class="badge badge-ghost">Unavailable</span>{% endif %}
       </div>
+      {% if git.ok %}
+      <dl class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <dt class="text-xs font-medium text-base-content/60">Branch</dt>
+          <dd class="font-mono text-sm mt-1">{{ git.branch }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs font-medium text-base-content/60">Revision</dt>
+          <dd class="font-mono text-sm mt-1">{{ git.sha }}</dd>
+        </div>
+        <div class="sm:col-span-2">
+          <dt class="text-xs font-medium text-base-content/60">Upstream</dt>
+          <dd class="font-mono text-sm mt-1 break-all">{% if git.upstream %}{{ git.upstream }}{% if git.ahead is not none %}<span class="font-sans text-base-content/70"> · {{ git.ahead }} ahead, {{ git.behind }} behind</span>{% endif %}{% else %}No upstream configured{% endif %}</dd>
+        </div>
+      </dl>
       {% if git.log %}
-      <details class="mt-2"><summary class="text-xs link">Last {{ git.log|length }} commits</summary>
-      <ul class="font-mono text-xs mt-1">{% for line in git.log %}<li>{{ line }}</li>{% endfor %}</ul>
+      <details class="border-t border-base-300 pt-3">
+        <summary class="link text-sm">Recent commits <span class="text-base-content/60">({{ git.log|length }})</span></summary>
+        <ul class="font-mono text-xs mt-3 flex flex-col gap-2">{% for line in git.log %}<li>{{ line }}</li>{% endfor %}</ul>
       </details>
       {% endif %}
       {% else %}
-      <p class="text-sm opacity-70">Git: {{ git.reason }}. Sync is unavailable here.</p>
+      <div class="alert alert-info" role="status">
+        <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
+        <span>Git status is unavailable: {{ git.reason }}.</span>
+      </div>
       {% endif %}
     </div>
   </section>
-  <section class="card card-border mb-3" aria-label="Scheduled file sync">
-    <div class="card-body py-3">
-      <div class="flex flex-wrap items-center gap-2 text-sm">
-        <span class="font-semibold">Scheduled sync</span>
-        <code class="font-mono">{{ file_sync.schedule }}</code>
-        {% if file_sync.schedule|lower == "off" %}<span class="badge badge-sm badge-ghost">disabled</span>{% endif %}
-        {% if file_sync.last_status %}<span class="badge badge-sm badge-outline{% if file_sync.last_status == 'success' %} badge-success{% elif file_sync.last_status == 'warning' %} badge-warning{% else %} badge-error{% endif %}">{{ file_sync.last_status }}</span>{% endif %}
+
+  <section class="card card-border bg-base-100" aria-label="Scheduled file sync">
+    <div class="card-body gap-3">
+      <div class="flex items-start gap-3">
+        <span class="icon-[lucide--calendar-clock] size-5 mt-0.5 text-base-content/60" aria-hidden="true"></span>
+        <div>
+          <h2 class="card-title text-base">Scheduled sync</h2>
+          <p class="font-mono text-sm mt-1">{{ file_sync.schedule }}</p>
+        </div>
+        {% if file_sync.schedule|lower == "off" %}<span class="badge badge-ghost ms-auto">Disabled</span>{% endif %}
       </div>
-      {% if file_sync.last_message %}<p class="text-xs opacity-70">{{ file_sync.last_message }}{% if file_sync.last_run %} · {{ file_sync.last_run }}{% endif %}</p>{% else %}<p class="text-xs opacity-70">No scheduled sync has run yet. Change the schedule in Settings.</p>{% endif %}
+      {% if file_sync.last_status %}
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="text-base-content/70">Last result</span>
+        {% if file_sync.last_status == 'success' %}<span class="badge badge-outline badge-success">{{ file_sync.last_status }}</span>
+        {% elif file_sync.last_status == 'warning' %}<span class="badge badge-outline badge-warning">{{ file_sync.last_status }}</span>
+        {% else %}<span class="badge badge-outline badge-error">{{ file_sync.last_status }}</span>{% endif %}
+      </div>
+      {% endif %}
+      {% if file_sync.last_message %}
+      <p class="text-sm text-base-content/70">{{ file_sync.last_message }}{% if file_sync.last_run %}<span class="block text-xs mt-1">{{ file_sync.last_run }}</span>{% endif %}</p>
+      {% else %}
+      <p class="text-sm text-base-content/70">No scheduled sync has run yet. Configure the schedule in Settings.</p>
+      {% endif %}
     </div>
   </section>
-  {% macro dir_tree(nodes) %}
-  <ul class="menu menu-sm p-0">
-    {% for n in nodes %}
-    <li>
-      <a href="{{ url_for('files.index', dir=n.key, q=q) }}" class="font-mono{% if n.key == d %} menu-active{% endif %}">
-        <span class="icon-[lucide--folder] size-4 opacity-60 shrink-0" aria-hidden="true"></span>{{ n.title }}/
-      </a>
-      {% if n.children %}{{ dir_tree(n.children) }}{% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-  {% endmacro %}
-  <div class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] items-start">
-  <nav class="card card-border" aria-label="Folders">
+
+  <section id="file-update-actions" class="card card-border bg-base-100 xl:col-span-2" aria-label="File update actions">
+    <div class="card-body gap-4">
+      <div>
+        <h2 class="card-title text-base">Update actions</h2>
+        <p class="text-sm text-base-content/70 mt-1">Check the remote before syncing. Module sync distributes custom modules without applying states.</p>
+      </div>
+      {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.sync')) %}
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <form method="post" action="{{ url_for('files.fetch') }}" class="flex flex-col items-start gap-3 rounded-box border border-base-300 bg-base-200/50 p-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <span class="icon-[lucide--cloud-download] size-5 text-base-content/70" aria-hidden="true"></span>
+          <div class="flex-1">
+            <h3 class="font-medium text-sm">Check for updates</h3>
+            <p class="text-xs text-base-content/70 mt-1">Fetch remote refs without changing local files.</p>
+          </div>
+          <button class="btn btn-sm btn-outline">Check remote</button>
+        </form>
+        <form method="post" action="{{ url_for('files.sync') }}" class="flex flex-col items-start gap-3 rounded-box border border-base-300 bg-base-200/50 p-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <span class="icon-[lucide--refresh-cw] size-5 text-base-content/70" aria-hidden="true"></span>
+          <div class="flex-1">
+            <h3 class="font-medium text-sm">Sync files</h3>
+            <p class="text-xs text-base-content/70 mt-1">Fast-forward the shared fileserver checkout.</p>
+          </div>
+          <button class="btn btn-sm btn-outline">Sync now</button>
+        </form>
+        <form method="post" action="{{ url_for('files.sync_modules') }}" class="flex flex-col items-start gap-3 rounded-box border border-base-300 bg-base-200/50 p-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <span class="icon-[lucide--package] size-5 text-base-content/70" aria-hidden="true"></span>
+          <div class="flex-1">
+            <h3 class="font-medium text-sm">Sync custom modules</h3>
+            <p class="text-xs text-base-content/70 mt-1">Publish modules to minions; does not apply states.</p>
+          </div>
+          <button class="btn btn-sm btn-outline">Sync modules</button>
+        </form>
+        {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
+        <form method="post" action="{{ url_for('files.push') }}" class="flex flex-col items-start gap-3 rounded-box border border-base-300 bg-base-200/50 p-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <span class="icon-[lucide--cloud-upload] size-5 text-base-content/70" aria-hidden="true"></span>
+          <div class="flex-1">
+            <h3 class="font-medium text-sm">Push commits</h3>
+            <p class="text-xs text-base-content/70 mt-1">Send committed changes to the configured upstream.</p>
+          </div>
+          <button class="btn btn-sm btn-primary">Push upstream</button>
+        </form>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="text-sm text-base-content/70">You have read-only access to file updates.</p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% elif active_tab == "repo" %}
+{% include "repo.html" %}
+{% else %}
+<div class="grid gap-4 lg:grid-cols-[250px_minmax(0,1fr)] items-start">
+  <nav class="card card-border bg-base-100" aria-label="Folders">
     <div class="card-body p-3">
       <div class="flex items-center gap-2 px-1 pb-1">
         <h2 class="font-semibold text-sm">Folders</h2>
-        <a class="btn btn-xs btn-ghost ms-auto" href="{{ url_for('files.index', q=q) }}">All files</a>
+        <a class="btn btn-xs btn-ghost ms-auto" href="{{ url_for('files.index', tab='files') }}">All files</a>
       </div>
-      <div id="file-tree" data-index-url="{{ url_for('files.index') }}"></div>
-      <div id="file-tree-fallback">{{ dir_tree(tree_nodes) }}</div>
+      <div id="file-tree" class="rounded-box border border-base-300 bg-base-200/60 p-2" data-index-url="{{ url_for('files.index') }}"></div>
+      <div id="file-tree-fallback" class="rounded-box border border-base-300 bg-base-200/60 p-2">
+        {% macro dir_tree(nodes) %}
+        <ul class="menu menu-sm p-0">
+          {% for n in nodes %}
+          <li>
+            {% if n.key == d %}<a href="{{ url_for('files.index', dir=n.key, q=q, tab='files') }}" class="font-mono menu-active">
+            {% else %}<a href="{{ url_for('files.index', dir=n.key, q=q, tab='files') }}" class="font-mono">{% endif %}
+              <span class="icon-[lucide--folder] size-4 shrink-0" aria-hidden="true"></span>{{ n.title }}/
+            </a>
+            {% if n.children %}{{ dir_tree(n.children) }}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endmacro %}
+        {{ dir_tree(tree_nodes) }}
+      </div>
       <script type="application/json" id="file-tree-data">{{ tree_nodes|tojson }}</script>
     </div>
   </nav>
   <div class="min-w-0">
-  {% if d %}
-  <nav class="breadcrumbs text-sm mb-3" aria-label="Current folder">
-    <ul>
+    {% if d %}
+    <p class="text-sm font-mono mb-3 text-base-content/70">
       {% for c in crumbs %}
-      {% if loop.last %}
-      <li aria-current="page"><span class="font-mono">{{ c.label }}/</span></li>
-      {% else %}
-      <li><a class="link font-mono" href="{{ url_for('files.index', dir=c.dir, q=q) }}">{{ c.label }}</a></li>
-      {% endif %}
+      {% if loop.last %}{{ c.label }}/{% else %}<a class="link font-mono" href="{{ url_for('files.index', dir=c.dir, q=q, tab='files') }}">{{ c.label }}</a> /{% endif %}
       {% endfor %}
-    </ul>
-  </nav>
-  {% endif %}
-  <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex flex-wrap gap-2 mb-4 sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2">
-    <input type="hidden" name="dir" value="{{ d }}">
-    <input name="q" value="{{ q }}" placeholder="Search files…" class="input input-sm flex-1" aria-label="Search files">
-    <button class="btn btn-sm btn-primary">Search</button>
-    {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', dir=d) }}">Clear</a>{% endif %}
-  </form>
-  {% if truncated %}
-  <div class="alert alert-warning text-sm mb-3" role="status">Listing capped at {{ total }} of many files. Narrow it with search.</div>
-  {% endif %}
-  <div class="card card-border">
-  {% if not rows %}
-  <div class="py-8 text-center">
-    <p class="font-medium">{% if q %}No files match "{{ q }}"{% elif d %}No files under "{{ d }}"{% else %}No files found{% endif %}</p>
-    <p class="text-sm opacity-70">{% if q %}Try a shorter search.{% elif d %}<a class="link" href="{{ url_for('files.index') }}">Back to all files</a>.{% else %}Nothing under the configured roots.{% endif %}</p>
-  </div>
-  {% else %}
-  <ul>
-    {% for r in rows %}
-    {% if r.group is defined and not d %}
-    <li class="px-4 py-1.5 bg-base-200 font-mono text-xs opacity-70">{{ r.group }}/</li>
-    {% elif r.group is not defined %}
-    <li class="border-b border-base-300 last:border-0">
-      <a href="{{ url_for('files.view', path=r.rel) }}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-base-200">
-        {% if r.rel.endswith((".sls", ".yaml", ".yml", ".jinja")) %}
-        <span class="icon-[lucide--file-code] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
-        {% elif r.rel.endswith(".json") %}
-        <span class="icon-[lucide--file-json] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
-        {% elif r.rel.endswith(".sh") %}
-        <span class="icon-[lucide--file-terminal] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
-        {% else %}
-        <span class="icon-[lucide--file-text] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
-        {% endif %}
-        <span class="font-mono text-sm me-auto break-all">{{ r.rel }}</span>
-        <span class="badge badge-sm badge-ghost">{{ r.size }} B</span>
-      </a>
-    </li>
+    </p>
     {% endif %}
-    {% endfor %}
-  </ul>
-  {% endif %}
+    {% if not has_top %}<div class="alert alert-warning mb-3" role="status"><span>No top.sls file is present in the configured roots.</span>{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}<a class="link" href="{{ url_for('files.index', tab='repo') }}">Open repo settings</a>{% endif %}</div>{% endif %}
+    <section class="card card-border bg-base-100" aria-label="State file listing">
+      <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex flex-wrap items-end gap-2 border-b border-base-300 px-4 py-3" aria-label="Search state files">
+        <input type="hidden" name="tab" value="files">
+        <input type="hidden" name="dir" value="{{ d }}">
+        {{ m.table_search_field("files-search", "q", q, "Search files", "Filter by file name", "Search files") }}
+        <button class="btn btn-sm btn-primary mb-0.5">Search</button>
+        {% if q %}<a class="btn btn-sm btn-ghost mb-0.5" href="{{ url_for('files.index', dir=d, tab='files') }}">Clear</a>{% endif %}
+      </form>
+      {% if truncated %}<div class="alert alert-warning text-sm m-3 mb-0" role="status">Listing capped at {{ total }} files. Narrow the search to see more.</div>{% endif %}
+      <div class="card-body p-0">
+        <div class="max-w-full overflow-x-auto rounded-box">
+        {% if not rows %}
+        <div class="py-10 px-4 text-center">
+          <span class="icon-[lucide--files] size-6 text-base-content/50" aria-hidden="true"></span>
+          <p class="font-medium mt-2">{% if q %}No files match “{{ q }}”{% elif d %}No files under “{{ d }}”{% else %}No files found{% endif %}</p>
+          <p class="text-sm text-base-content/70 mt-1">{% if q %}Try a shorter search.{% elif d %}<a class="link" href="{{ url_for('files.index', tab='files') }}">Back to all files</a>.{% else %}The configured roots are empty.{% endif %}</p>
+        </div>
+        {% else %}
+        <table class="table table-sm table-pin-rows w-full">
+          <thead><tr><th>File</th><th class="text-right w-24">Size</th></tr></thead>
+          <tbody>
+            {% for r in rows %}
+            {% if r.group is defined and not d %}
+            <tr class="hover"><td colspan="2" class="font-mono text-xs text-base-content/70"><a href="{{ url_for('files.index', dir=r.group, q=q, tab='files') }}" class="inline-flex items-center gap-2"><span class="icon-[lucide--folder] size-4" aria-hidden="true"></span>{{ r.group }}/</a></td></tr>
+            {% elif r.group is not defined %}
+            <tr class="hover">
+              <td><a href="{{ url_for('files.view', path=r.rel) }}" class="flex items-center gap-3">
+                {% if r.rel.endswith((".sls", ".yaml", ".yml", ".jinja")) %}<span class="icon-[lucide--file-code] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>
+                {% elif r.rel.endswith(".json") %}<span class="icon-[lucide--file-json] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>
+                {% elif r.rel.endswith(".sh") %}<span class="icon-[lucide--file-terminal] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>
+                {% else %}<span class="icon-[lucide--file-text] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>{% endif %}
+                <span class="font-mono text-sm break-all">{{ r.rel }}</span>
+              </a></td>
+              <td class="text-right"><span class="badge badge-sm badge-ghost tabular-nums">{{ r.size }} B</span></td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+        </div>
+        {% if pages > 1 %}
+        <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-t border-base-300">
+          <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} files</span>
+          {{ m.pagination_plain('files.index', page, pages, {'q': q, 'dir': d, 'per_page': per_page, 'tab': 'files'}, 'File pages') }}
+        </div>
+        {% elif total %}<p class="text-sm text-base-content/70 px-4 py-3 border-t border-base-300">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching “{{ q }}”{% endif %}{% if d %} under “{{ d }}”{% endif %}.</p>{% endif %}
+      </div>
+    </section>
   </div>
-  {% if pages > 1 %}
-  <div class="flex items-center gap-2 mt-3 text-sm">
-    <span class="opacity-70">{{ total }} files</span>
-    <div class="join ms-auto">
-      {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('files.index', q=q, dir=d, page=page - 1, per_page=per_page) }}">‹ Prev</a>{% endif %}
-      <span class="join-item btn btn-sm btn-disabled">Page {{ page }} of {{ pages }}</span>
-      {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('files.index', q=q, dir=d, page=page + 1, per_page=per_page) }}">Next ›</a>{% endif %}
-    </div>
-  </div>
-  {% elif total %}
-  <p class="text-sm opacity-70 mt-3">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching "{{ q }}"{% endif %}{% if d %} under "{{ d }}"{% endif %}.</p>
-  {% endif %}
-  </div>
-  </div>
-  <link href="{{ url_for('static', filename='browser.bundle.css') }}" rel="stylesheet" type="text/css">
-  <script src="{{ url_for('static', filename='browser.bundle.js') }}"></script>
 </div>
+<link href="{{ url_for('static', filename='browser.bundle.css') }}" rel="stylesheet" type="text/css">
+<script src="{{ url_for('static', filename='browser.bundle.js') }}"></script>
+{% endif %}
 {% endblock %}

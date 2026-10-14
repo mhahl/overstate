@@ -284,11 +284,29 @@ def sync_revision() -> str | None:
 @bp.route("/")
 @login_required
 def index():
+    from flask import abort
     from flask_login import current_user
 
-    from .authz import prefix_visible, rbac_mode, require, visible_prefixes
+    from .authz import rbac_mode, require
 
     require("file.read")
+    ftab = request.args.get("tab", "files")
+    if ftab == "repo":
+        if rbac_mode() == "scoped":
+            require("file.git")
+        elif current_user.role != "admin":
+            abort(403)
+    context = _files_page_context()
+    if ftab == "repo":
+        context.update(_repo_context())
+    return render_template("files.html", **context, ftab=ftab)
+
+
+def _files_page_context():
+    from flask_login import current_user
+
+    from .authz import prefix_visible, rbac_mode, visible_prefixes
+
     prefixes = (
         visible_prefixes(current_user) if rbac_mode() == "scoped" else None
     )
@@ -336,23 +354,22 @@ def index():
         "last_status": get_setting(LAST_STATUS_SETTING),
         "last_message": get_setting(LAST_MESSAGE_SETTING),
     }
-    return render_template(
-        "files.html",
-        rows=rows,
-        revision=sync_revision(),
-        q=request.args.get("q", ""),
-        d=d,
-        crumbs=dir_crumbs(d),
-        tree_nodes=tree_nodes,
-        page=page,
-        pages=pages,
-        per_page=per_page,
-        total=total,
-        truncated=truncated,
-        has_top=has_top,
-        git=git_status(),
-        file_sync=file_sync,
-    )
+    return {
+        "rows": rows,
+        "revision": sync_revision(),
+        "q": request.args.get("q", ""),
+        "d": d,
+        "crumbs": dir_crumbs(d),
+        "tree_nodes": tree_nodes,
+        "page": page,
+        "pages": pages,
+        "per_page": per_page,
+        "total": total,
+        "truncated": truncated,
+        "has_top": has_top,
+        "git": git_status(),
+        "file_sync": file_sync,
+    }
 
 
 def _refresh_fileserver() -> str | None:
@@ -632,6 +649,12 @@ def _repo_context(preview=None, pending=None, replace_pending=None):
     }
 
 
+def _render_repo_tab(**overrides):
+    context = _files_page_context()
+    context.update(_repo_context(**overrides))
+    return render_template("files.html", **context, ftab="repo")
+
+
 def _note_refreshed(verb, sha):
     """Fileserver refresh after a tree-changing repo op, sync-style."""
     err = _refresh_fileserver()
@@ -654,7 +677,7 @@ def repo():
     if rbac_mode() == "scoped":
         require("file.git")
     """Repo tab: bootstrap, repoint, and repair the shared-states checkout."""
-    return render_template("repo.html", **_repo_context())
+    return redirect(url_for("files.index", tab="repo"))
 
 
 def _short_list(names: list[str], limit: int = 12) -> str:
@@ -690,15 +713,12 @@ def repo_clone():
         # An existing salt/ tree (the deploy seed) is only ever replaced
         # on a second, explicit confirm — stay on the page naming it.
         log_event(current_user.username, "git-clone-needs-confirm")
-        return render_template(
-            "repo.html",
-            **_repo_context(
-                replace_pending={
-                    "url": url,
-                    "branch": branch,
-                    "files": result["confirm_replace"],
-                }
-            ),
+        return _render_repo_tab(
+            replace_pending={
+                "url": url,
+                "branch": branch,
+                "files": result["confirm_replace"],
+            }
         )
     else:
         flash(f"Clone refused: {result['reason']}. Nothing changed.", "error")
@@ -707,10 +727,7 @@ def repo_clone():
             # Plain clone can never succeed here (unexpected content needs
             # the destructive path); stay on the page with the re-clone
             # form prefilled so the advised path is one click away.
-            return render_template(
-                "repo.html",
-                **_repo_context(pending={"url": url, "branch": branch}),
-            )
+            return _render_repo_tab(pending={"url": url, "branch": branch})
     return redirect(url_for("files.repo"))
 
 
@@ -748,7 +765,7 @@ def repo_reset():
                 "error",
             )
             return redirect(url_for("files.repo"))
-        return render_template("repo.html", **_repo_context(preview=preview))
+        return _render_repo_tab(preview=preview)
     clean = request.form.get("clean") == "1"
     result = reset_hard(clean_untracked=clean)
     if result["ok"]:

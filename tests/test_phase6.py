@@ -106,7 +106,7 @@ def test_settings_save_and_default(client):
         assert get_setting("page_size") == "10"
         assert get_setting("default_target") == "web-*"
     # Shell is CMYK-only; the saved value persists but no longer drives chrome.
-    assert 'data-theme="cmyk"' in client.get("/").data.decode()
+    assert 'data-theme="corporate"' in client.get("/").data.decode()
 
 
 def test_schedule_controls_have_visible_associated_labels(client):

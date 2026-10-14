@@ -1,25 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Pillar · Overstate{% endblock %}
 {% block content %}
-<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
-  <ul>
-    <li>States</li>
-    <li aria-current="page">Pillar</li>
-  </ul>
-</nav>
 <div class="flex flex-wrap items-center gap-3 mb-4">
   <h1 class="text-2xl font-bold tracking-tight me-auto">Pillar</h1>
   <a class="btn btn-sm btn-primary" href="{{ url_for('pillar.diff') }}">Compare</a>
 </div>
 {% import "_macros.html" as m %}
-<form method="get" action="{{ url_for('pillar.index') }}" role="search" class="flex flex-wrap items-end gap-2 mb-4 sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2">
+<section class="card card-border bg-base-100 min-w-0" aria-label="Pillar snapshots by minion">
+<form method="get" action="{{ url_for('pillar.index') }}" role="search" class="flex flex-wrap items-end gap-2 border-b border-base-300 px-4 py-3" aria-label="Search pillar snapshots">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search minion…" aria-label="Search minion" class="input input-sm flex-1 min-w-48">
+  {{ m.table_search_field("pillar-search", "q", q, "Search minion", "Search minion…", "Search minion") }}
   <button class="btn btn-sm btn-primary">Filter</button>
   {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
 </form>
-<section class="card card-border bg-base-100 min-w-0" aria-label="Pillar snapshots by minion">
 {% if total %}
 <div class="max-w-full overflow-x-auto rounded-box">
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('pillar.index', 'minion', 'Minion', sort, direction, {'q': q}) }}{{ m.sort_th_plain('pillar.index', 'snapshots', 'Snapshots', sort, direction, {'q': q}) }}<th class="text-right"></th></tr></thead><tbody>
@@ -34,11 +28,7 @@
 </div>
 <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Pillar pages">
   <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} minions</span>
-  <div class="join">
-    {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('pillar.index', q=q, sort=sort, dir=direction, page=page-1) }}">Prev</a>{% endif %}
-    <span class="join-item btn btn-sm btn-disabled" aria-current="page">Page {{ page }} of {{ pages }}</span>
-    {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('pillar.index', q=q, sort=sort, dir=direction, page=page+1) }}">Next</a>{% endif %}
-  </div>
+  {{ m.pagination_plain('pillar.index', page, pages, {'q': q, 'sort': sort, 'dir': direction}, 'Pillar pages') }}
 </nav>
 {% else %}
 <div class="py-8 text-center">

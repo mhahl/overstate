@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @plugin "daisyui" {
-  themes: cmyk --default, dark;
+  themes: corporate --default, dark;
 }
 @plugin "@iconify/tailwind4";
 /* Dynamic OS brand icons (minion overview): force-generate every slug the
@@ -159,7 +159,7 @@
   opacity: 0.78;
 }
 
-/* App shell: CMYK only (built-in DaisyUI theme). L1/L2/content layout,
+/* App shell: Corporate (built-in DaisyUI theme). L1/L2/content layout,
    sticky tables, and focus states use Tailwind/DaisyUI utilities in markup.
    Only token-bound surfaces that utilities cannot express live here. */
 

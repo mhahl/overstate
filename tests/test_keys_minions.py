@@ -103,6 +103,8 @@ def fake_transport() -> httpx.MockTransport:
                                 "web-01": {
                                     "osfinger": "Fedora Linux 41",
                                     "ipv4": ["10.0.0.1"],
+                                    "fqdn_ip4": ["192.0.2.10", "192.0.2.11"],
+                                    "fqdn_ip6": ["2001:db8::10", "2001:db8::11"],
                                     "num_cpus": 4,
                                     "saltversion": "3006.5",
                                 }
@@ -934,6 +936,33 @@ def test_onboard_renders_form_and_pending(client):
     assert "Onboard minion" in client.get("/minions/").data.decode()
 
 
+def test_onboard_page_uses_cohesive_failover_workspace(client):
+    html = client.get("/minions/onboard").data.decode()
+    assert 'id="onboarding-workflow"' in html
+    assert 'aria-label="Onboarding steps"' in html
+    assert 'id="onboarding-step-describe"' in html
+    assert 'aria-label="Failover master configuration"' in html
+    assert 'id="onboarding-step-accept"' in html
+    assert 'id="onboarding-step-verify"' in html
+
+
+def test_onboard_description_fields_and_panels_align(client):
+    html = client.get("/minions/onboard").data.decode()
+    assert 'class="grid gap-4 xl:grid-cols-12 items-stretch"' in html
+    assert 'id="onboard-describe-form"' in html
+    assert 'class="grid gap-3 sm:grid-cols-2"' in html
+
+
+def test_onboard_page_uses_a_cohesive_enrollment_workspace(client):
+    html = client.get("/minions/onboard").data.decode()
+    assert 'id="onboarding-workflow"' in html
+    assert 'aria-label="Onboarding steps"' in html
+    assert 'id="onboarding-step-describe"' in html
+    assert 'aria-label="Failover master configuration"' in html
+    assert 'id="onboarding-step-accept"' in html
+    assert 'id="onboarding-step-verify"' in html
+
+
 def test_onboard_generates_failover_script(client):
     _configure_master_ips(client)
     client.app.config["PUBLIC_URL"] = "https://overstate.example.com/"
@@ -1180,12 +1209,21 @@ def test_minion_overview_dashboard(client):
         "Key",
         "Conformity",
         "Last seen",
-        "Machine",
+        "Identity",
+        "Network",
+        "Operating system",
+        "Compute",
+        "Virtualization",
+        "Salt agent",
         "Recent activity",
-        "All grain facts",
+        "All grain facts as JSON",
     ):
         assert heading in html
     assert "Fedora Linux 41" in html and "10.0.0.1" in html
+    assert 'badge badge-sm badge-ghost font-mono max-w-full break-all whitespace-normal">192.0.2.10</span>' in html
+    assert 'badge badge-sm badge-ghost font-mono max-w-full break-all whitespace-normal">2001:db8::10</span>' in html
+    assert "['192.0.2.10', '192.0.2.11']" not in html
+    assert "['2001:db8::10', '2001:db8::11']" not in html
     assert "icon-[simple-icons--fedora]" in html
     assert "Run job on this minion" in html
     assert "not in snapshot cache" in html
