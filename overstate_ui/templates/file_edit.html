@@ -11,7 +11,7 @@
     </ul>
   </nav>
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <h1 class="text-xl font-bold font-mono tracking-tight break-all mr-auto">{{ rel }}</h1>
+    <h1 class="text-xl font-bold font-mono tracking-tight break-all me-auto">{{ rel }}</h1>
   </div>
   <p class="text-sm opacity-70 mb-4">Saving commits this file locally{% if revision %} (checkout at <code class="font-mono">{{ revision }}</code>){% endif %}; an admin pushes it upstream separately.</p>
   <form method="post" action="{{ url_for('files.save') }}">
@@ -22,7 +22,7 @@
     <div class="card card-border mb-3">
       <div class="card-body p-3 sm:p-4">
         <div class="flex items-center gap-2 mb-2">
-          <span class="font-mono text-xs break-all opacity-70 mr-auto">{{ rel }}</span>
+          <span class="font-mono text-xs break-all opacity-70 me-auto">{{ rel }}</span>
           <span class="badge badge-sm badge-ghost">{{ lang }}</span>
           <span class="text-xs opacity-60 tabular-nums">{{ content.splitlines()|length }} lines</span>
         </div>

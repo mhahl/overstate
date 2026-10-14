@@ -3,7 +3,8 @@
 A minion pending on one pod but accepted on another (same fingerprint)
 is finished scale-up / outage drift: safe to accept. Everything else —
 globally pending, fingerprint mismatch, reject/deny anywhere, missing
-fingerprints — stays for a human.
+fingerprints, accepted-elsewhere-but-key-file-absent — stays for a human
+(the last one is reported, never silent).
 """
 
 import json
@@ -177,7 +178,10 @@ def test_missing_fingerprints_fail_closed():
     assert seen_a == seen_b == []
 
 
-def test_absent_elsewhere_is_noop():
+def test_absent_where_trusted_is_reported_not_silent():
+    # Accepted on pod-0, key file never arrived on pod-1: reconcile must
+    # not accept anything (trust is never created), but it must say so —
+    # the old silent noop hid a blind master behind "0 accepted, 0 skipped".
     seen_a, seen_b = [], []
     clients = _clients(
         seen_a,
@@ -189,7 +193,9 @@ def test_absent_elsewhere_is_noop():
         b={"listing": _listing(), "fingers": {}},
     )
     report = keys_mod.reconcile_keys(clients)
-    assert report["accepted"] == [] and report["skipped"] == []
+    assert report["accepted"] == [] and seen_a == seen_b == []
+    ((mid, reason),) = report["skipped"]
+    assert mid == "web1" and "absent on pod-1" in reason
 
 
 @pytest.fixture()

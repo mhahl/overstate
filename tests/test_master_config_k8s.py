@@ -392,7 +392,8 @@ def test_settings_tabs_switch_sides(mui):
     master = admin.get("/settings/master/").data.decode()
     assert "Master Settings" in master
     for page in (server, master):
-        assert page.index("<h1") < page.index('role="tablist"')
+        assert page.index("<h1") < page.index('aria-label="Settings areas"')
+        assert 'aria-current="page"' in page
     op = mui["login"]("op")
     ope = op.get("/settings/").data.decode()
     assert "Server Settings" in ope and "Master Settings" not in ope

@@ -109,6 +109,12 @@ def index():
             role = ""
     elif role not in LEVELS:
         role = ""
+    q = request.args.get("q", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
     sort = request.args.get("sort", "username")
     if sort not in ("username", "role"):
         sort = "username"
@@ -119,9 +125,17 @@ def index():
     query = session.query(User)
     if role:
         query = query.filter_by(role=role)
+    if q:
+        # Literal case-insensitive substring: escape LIKE wildcards so a
+        # username containing % or _ matches itself, not a pattern.
+        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.filter(User.username.ilike(f"%{escaped}%", escape="\\"))
     col = User.username if sort == "username" else User.role
     col = col.desc() if direction == "desc" else col.asc()
-    users = query.order_by(col, User.username).all()
+    total = query.count()
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
+    users = query.order_by(col, User.username).offset((page - 1) * per_page).limit(per_page).all()
     grants_by_user: dict[int, list] = {}
     if users:
         for grant in (
@@ -260,6 +274,11 @@ def index():
         role_groups=ROLE_GROUPS,
         service_rows=service_rows,
         saved_jobs=saved_jobs,
+        q=q,
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        total=total,
     )
 
 
@@ -298,6 +317,12 @@ def _delegate_index():
     role = request.args.get("role", "")
     if role not in SCOPED_ROLE_FILTERS:
         role = ""
+    q = request.args.get("q", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
     sort = request.args.get("sort", "username")
     if sort not in ("username", "role"):
         sort = "username"
@@ -321,12 +346,19 @@ def _delegate_index():
     users = [u for u in users if getattr(u, "kind", "human") != "service"]
     if role:
         users = [u for u in users if u.role == role]
+    if q:
+        ql = q.lower()
+        users = [u for u in users if ql in u.username.lower()]
     users.sort(
         key=lambda u: (
             u.username if sort == "username" else (u.role, u.username)
         ),
         reverse=(direction == "desc"),
     )
+    total = len(users)
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
+    users = users[(page - 1) * per_page:page * per_page]
     shown = {u.id for u in users}
     grants_by_user: dict[int, list] = {}
     for grant in user_grants:
@@ -469,6 +501,11 @@ def _delegate_index():
         saved_jobs=[],
         delegate_view=True,
         local_group_manageable=manageable,
+        q=q,
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        total=total,
     )
 
 

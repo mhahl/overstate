@@ -8,17 +8,17 @@
   </ul>
 </nav>
 <div class="flex flex-wrap items-end gap-3 mb-4">
-  <div class="mr-auto">
+  <div class="me-auto">
     <h1 class="text-2xl font-bold tracking-tight">Schedules</h1>
   </div>
 </div>
-<form method="get" class="card card-sm card-border bg-base-100 mb-4 sticky top-0 z-10" role="search">
+<form method="get" class="sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2 mb-4" role="search">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
-  <div class="card-body flex-row flex-wrap items-end gap-2">
+  <div class="flex flex-row flex-wrap items-end gap-2">
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Minion</legend>
-      <select name="minion" class="select select-sm select-bordered" onchange="this.form.submit()">
+      <label class="label" for="schedule-minion">Minion</label>
+      <select id="schedule-minion" name="minion" class="select select-sm" onchange="this.form.submit()">
         {% for m in minions %}
         <option value="{{ m }}"{% if m == mid %} selected{% endif %}>{{ m }}</option>
         {% endfor %}
@@ -37,28 +37,28 @@
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Name</legend>
-      <input name="name" placeholder="e.g. hourly-ping" class="input input-sm input-bordered" required>
+      <label class="label" for="schedule-name">Name</label>
+      <input id="schedule-name" name="name" placeholder="e.g. hourly-ping" class="input input-sm" required>
     </fieldset>
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Function</legend>
-      <input name="function" placeholder="test.ping" class="input input-sm input-bordered font-mono" required>
+      <label class="label" for="schedule-function">Function</label>
+      <input id="schedule-function" name="function" placeholder="test.ping" class="input input-sm font-mono" required>
     </fieldset>
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Every</legend>
-      <input name="value" type="number" min="1" value="60" class="input input-sm input-bordered w-24" required>
+      <label class="label" for="schedule-value">Every</label>
+      <input id="schedule-value" name="value" type="number" min="1" value="60" class="input input-sm w-24" required>
     </fieldset>
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Unit</legend>
-      <select name="unit" class="select select-sm select-bordered">
+      <label class="label" for="schedule-unit">Unit</label>
+      <select id="schedule-unit" name="unit" class="select select-sm">
         {% for u in ["seconds", "minutes", "hours", "days"] %}
         <option value="{{ u }}">{{ u }}</option>
         {% endfor %}
       </select>
     </fieldset>
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Enabled</legend>
-      <input type="checkbox" name="enabled" checked class="checkbox checkbox-sm mt-2">
+      <label class="label" for="schedule-enabled">Enabled</label>
+      <input id="schedule-enabled" type="checkbox" name="enabled" checked class="checkbox checkbox-sm mt-2">
     </fieldset>
     <button class="btn btn-sm btn-primary mb-1">Add schedule</button>
   </div>
@@ -74,11 +74,11 @@
 <td class="font-mono text-xs">{{ job.get("function", "–") }}</td>
 <td class="font-mono text-xs">{% if job.get("seconds") is not none %}<span title="seconds">{{ job.get("seconds") }}</span> seconds{% elif job.get("minutes") is not none %}<span title="minutes">{{ job.get("minutes") }}</span> minutes{% elif job.get("hours") is not none %}<span title="hours">{{ job.get("hours") }}</span> hours{% elif job.get("days") is not none %}<span title="days">{{ job.get("days") }}</span> days{% elif job.get("cron") %}{{ job.get("cron") }}{% else %}–{% endif %}</td>
 <td>{% if job.get("enabled") is false %}<span class="badge badge-sm badge-outline">no</span>{% else %}<span class="badge badge-sm badge-outline badge-success">yes</span>{% endif %}</td>
-{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}<td class="text-right"><span class="join join-horizontal">
+{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}<td class="text-right"><div class="join join-horizontal">
   <form method="post" action="{{ url_for('schedules.act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
   <form method="post" action="{{ url_for('schedules.act', mid=mid, action='disable') }}" data-confirm="Disable job '{{ name }}' on {{ mid }}? Runs pause and the job stays listed."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
   <form method="post" action="{{ url_for('schedules.act', mid=mid, action='delete') }}" data-confirm="Delete job '{{ name }}' on {{ mid }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="job" value="{{ name }}"><button class="btn btn-sm btn-error btn-outline join-item">Delete</button></form>
-</span></td>{% endif %}</tr>
+</div></td>{% endif %}</tr>
 {% endfor %}
 </tbody></table>
 </div>

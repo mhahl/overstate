@@ -8,7 +8,7 @@
   </ul>
 </nav>
 <div class="flex flex-wrap items-center gap-3 mb-4">
-  <h1 class="text-2xl font-bold tracking-tight mr-auto">States &amp; conformity</h1>
+  <h1 class="text-2xl font-bold tracking-tight me-auto">States &amp; conformity</h1>
   <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a>
   {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
   <form method="post" action="{{ url_for('states.recompute') }}">
@@ -20,7 +20,7 @@
 <div class="flex flex-wrap items-center gap-2 mb-4 text-sm">
   <span class="opacity-70">Watching:</span>
   {% for w in watched %}
-  <span class="badge badge-outline gap-1 font-mono">
+  <div class="badge badge-outline gap-1 font-mono">
     {{ w.sls }}
     {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
     <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" class="inline-flex" data-confirm="Stop watching '{{ w.sls }}'?">
@@ -28,14 +28,14 @@
       <button class="btn btn-xs btn-ghost opacity-60 hover:opacity-100" aria-label="Stop watching {{ w.sls }}">×</button>
     </form>
     {% endif %}
-  </span>
+  </div>
   {% else %}
   <span class="opacity-60">Nothing watched. Verdicts cover the whole run.</span>
   {% endfor %}
   {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
-  <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-1 ml-1">
+  <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-1 ms-1">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input name="sls" placeholder="Watch an SLS…" class="input input-bordered input-xs w-36" required aria-label="State name to watch">
+    <input name="sls" placeholder="Watch an SLS…" class="input input-xs w-36" required aria-label="State name to watch">
     <button class="btn btn-xs btn-primary">Watch</button>
   </form>
   {% endif %}
@@ -43,7 +43,7 @@
 <section class="card card-border" aria-label="Conformity">
   <div class="card-body">
     <div class="flex flex-wrap items-center gap-2">
-      <h2 class="card-title text-base mr-auto">Conformity</h2>
+      <h2 class="card-title text-base me-auto">Conformity</h2>
       <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by status">
         {% for opt in ["", "ok", "drifted", "unreachable", "unknown"] %}
         <a data-status-chip href="{{ url_for('states.index', status=opt, sort=sort, dir=direction) }}" class="btn btn-xs {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}">{{ opt or "all" }}</a>

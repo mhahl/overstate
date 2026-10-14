@@ -86,6 +86,7 @@ data:
           - beacons.disable_beacon
           - saltutil.sync_all
           - saltutil.refresh_pillar
+          - grains.item
           - grains.items
           - pillar.items
           - sys.*

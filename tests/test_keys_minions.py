@@ -153,6 +153,84 @@ def test_keys_tabs(client):
     assert "web-01" in html
 
 
+def test_keys_actions_follow_the_permission_of_each_button(client, monkeypatch):
+    from overstate_ui import authz
+    from overstate_ui.models import Grant, Setting, User
+
+    with client.app.app_context():
+        session = get_session()
+        user = session.query(User).filter_by(username="admin").one()
+        session.add_all([
+            Setting(key="rbac_mode", value="scoped"),
+            Setting(key="rbac_role_fallback", value="off"),
+            Grant(
+                subject_kind="user", subject_user_id=user.id, subject_group_id=None,
+                role="viewer", scope_kind="fleet", scope_value="", source="manual",
+            ),
+        ])
+        session.commit()
+
+    permitted = {"key.read", "key.accept"}
+    monkeypatch.setattr(
+        authz, "authorize",
+        lambda user, perm, **scope: perm in permitted
+        and (perm != "key.delete" or scope.get("minion") == "web-01"),
+    )
+    pending = client.get("/keys/?tab=pending").data.decode()
+    assert ">Accept</button>" in pending and ">Reject</button>" in pending
+    accepted = client.get("/keys/?tab=accepted").data.decode()
+    assert ">Delete</button>" not in accepted
+
+    cached = {
+        "data": {
+            "pending": [{"id": "new-01", "fingerprint": FP, "states": {}}],
+            "accepted": [{"id": "web-01", "fingerprint": FP, "states": {}}],
+            "rejected": [],
+            "denied": [{"id": "web-01", "fingerprint": FP, "states": {}}],
+        },
+        "failed": [],
+    }
+    monkeypatch.setattr("overstate_ui.tasks_queue.read_keys_cache", lambda: cached)
+    denied = client.get("/keys/?tab=denied").data.decode()
+    assert ">Accept</button>" in denied and ">Delete</button>" not in denied
+
+    permitted = {"key.read", "key.delete"}
+    pending = client.get("/keys/?tab=pending").data.decode()
+    assert ">Accept</button>" not in pending and ">Reject</button>" not in pending
+    accepted = client.get("/keys/?tab=accepted").data.decode()
+    assert ">Delete</button>" in accepted
+    denied = client.get("/keys/?tab=denied").data.decode()
+    assert ">Accept</button>" not in denied and ">Delete</button>" in denied
+
+
+def test_keys_action_column_hides_when_no_row_is_actionable(client, monkeypatch):
+    from overstate_ui import authz
+    from overstate_ui.models import Grant, Setting, User
+
+    with client.app.app_context():
+        session = get_session()
+        user = session.query(User).filter_by(username="admin").one()
+        session.add_all([
+            Setting(key="rbac_mode", value="scoped"),
+            Setting(key="rbac_role_fallback", value="off"),
+            Grant(
+                subject_kind="user", subject_user_id=user.id, subject_group_id=None,
+                role="viewer", scope_kind="fleet", scope_value="", source="manual",
+            ),
+        ])
+        session.commit()
+
+    monkeypatch.setattr(
+        authz, "authorize",
+        lambda user, perm, **scope: perm == "key.read",
+    )
+    for tab in ("pending", "accepted", "rejected", "denied"):
+        html = client.get(f"/keys/?tab={tab}").data.decode()
+        assert ">Action</th>" not in html, tab
+        assert ">Accept</button>" not in html
+        assert ">Delete</button>" not in html
+
+
 def test_keys_search_filters_within_tab(client):
     html = client.get("/keys/?tab=accepted&q=zzz-nope").data.decode()
     assert "No accepted keys" in html
@@ -164,6 +242,57 @@ def test_keys_sort_direction_flips(client):
     asc = client.get("/keys/?tab=accepted&sort=id&dir=asc").data.decode()
     desc = client.get("/keys/?tab=accepted&sort=id&dir=desc").data.decode()
     assert 'aria-sort="asc"' in asc and 'aria-sort="desc"' in desc
+
+
+def test_keys_large_roster_renders_only_one_page_and_keeps_filters(client, monkeypatch):
+    from html.parser import HTMLParser
+    from urllib.parse import parse_qs, urlsplit
+
+    rows = [
+        {"id": f"key-{i:04d}", "fingerprint": FP, "states": {"master": "accepted"}}
+        for i in range(121)
+    ]
+    monkeypatch.setattr(
+        "overstate_ui.tasks_queue.read_keys_cache",
+        lambda: {"data": {"pending": [], "accepted": rows, "rejected": [], "denied": []}, "failed": []},
+    )
+
+    class KeyLinks(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.keys = []
+            self.next_href = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag != "a":
+                return
+            href = dict(attrs).get("href", "")
+            if href.startswith("/minions/key-"):
+                self.keys.append(href)
+            if "page=3" in href and href.startswith("/keys/"):
+                self.next_href = href
+
+    first = client.get("/keys/?tab=accepted&sort=id&dir=desc&page=2").data.decode()
+    parsed = KeyLinks()
+    parsed.feed(first)
+    assert len(parsed.keys) == 50
+    assert parsed.keys[0] == "/minions/key-0070"
+    assert parsed.keys[-1] == "/minions/key-0021"
+    assert parse_qs(urlsplit(parsed.next_href).query) == {
+        "tab": ["accepted"], "sort": ["id"], "dir": ["desc"], "page": ["3"]
+    }
+
+    last = client.get("/keys/?tab=accepted&sort=id&dir=desc&page=999").data.decode()
+    parsed = KeyLinks()
+    parsed.feed(last)
+    assert len(parsed.keys) == 21
+    assert "Page 3 of 3" in last
+
+    filtered = client.get("/keys/?tab=accepted&q=key-010&page=2").data.decode()
+    parsed = KeyLinks()
+    parsed.feed(filtered)
+    assert len(parsed.keys) == 10
+    assert "Page 1 of 1" in filtered
 
 
 def test_keys_index_serves_cached_roster(client, fake_redis, monkeypatch):
@@ -188,7 +317,6 @@ def test_keys_act_clears_caches(client, fake_redis):
     from overstate_ui.tasks_queue import (
         KEYS_CACHE_KEY,
         MERGED_ROSTER_CACHE_KEY,
-        ROSTER_CACHE_KEY,
     )
 
     client.get("/keys/?tab=pending")

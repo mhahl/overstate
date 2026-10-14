@@ -3,41 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="{{ url_for('static', filename='theme.js') }}"></script>
   <title>{% block title %}Overstate{% endblock %}</title>
   <link href="{{ url_for('static', filename='app.css') }}" rel="stylesheet" type="text/css">
   <script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
   <script src="{{ url_for('static', filename='alpine.min.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='nav.js') }}" defer></script>
 </head>
 <body class="bg-base-200 min-h-screen">
+<a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:start-2 focus:z-50 focus:btn focus:btn-primary">Skip to content</a>
 <div class="drawer lg:drawer-open">
   <input id="nav" type="checkbox" class="drawer-toggle">
   <div class="drawer-content flex flex-col min-h-screen">
     <header class="navbar bg-base-100 border-b border-base-300 sticky top-0 z-30 px-3 lg:px-6 gap-2">
-      <label for="nav" class="btn btn-ghost btn-square lg:hidden" aria-label="Open navigation">
+      <button id="nav-open" type="button" class="btn btn-ghost btn-square lg:hidden" aria-label="Open navigation" aria-controls="nav-panel" aria-expanded="false">
         <span class="icon-[lucide--menu] size-5" aria-hidden="true"></span>
-      </label>
+      </button>
       <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2 lg:hidden">
         <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-7 h-7">
-        <span class="font-bold">Overstate</span>
+        <span class="hidden sm:inline font-semibold">Overstate</span>
       </a>
-      <div class="ml-auto flex items-center gap-2">
+      <div class="ms-auto flex items-center gap-1 sm:gap-2">
+        <label class="flex items-center gap-2 cursor-pointer text-sm" for="theme-toggle">
+          <span class="icon-[lucide--moon] size-4 hidden sm:inline" aria-hidden="true"></span>
+          <span class="hidden sm:inline">Dark theme</span>
+          <input id="theme-toggle" type="checkbox" value="dark" class="toggle toggle-sm theme-controller" aria-label="Dark theme">
+        </label>
         <button id="palette-btn" class="btn btn-ghost btn-sm gap-2 inline-flex" aria-label="Command palette">
           <span class="icon-[lucide--search] size-4 opacity-70" aria-hidden="true"></span>
-          <span class="opacity-70 font-normal">Jump to…</span>
-          <kbd class="kbd kbd-xs">⌘K</kbd>
+          <span class="opacity-70 font-normal hidden md:inline">Jump to…</span>
+          <kbd class="kbd kbd-xs hidden lg:inline">⌘K</kbd>
         </button>
         <a class="btn btn-primary btn-sm" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">
           <span class="icon-[lucide--plus] size-4" aria-hidden="true"></span>
           Run job
         </a>
         {% if current_user.is_authenticated %}
-        <details class="dropdown dropdown-end">
-          <summary class="btn btn-ghost btn-sm gap-2 list-none cursor-pointer" aria-label="Account">
-            <span class="avatar avatar-placeholder"><span class="bg-neutral text-neutral-content rounded-full w-7 text-xs font-semibold">{{ current_user.username[0]|upper }}</span></span>
+        <button type="button" class="btn btn-ghost btn-sm gap-2" popovertarget="account-menu" style="anchor-name:--account-menu" aria-label="Account">
+            <span class="avatar avatar-placeholder"><span class="bg-base-300 text-base-content rounded-full size-7 text-xs flex items-center justify-center">{{ current_user.username[0]|upper }}</span></span>
             <span class="hidden sm:inline font-medium">{{ current_user.username }}</span>
             <span class="badge badge-sm badge-outline hidden md:inline-flex">{{ current_user.role }}</span>
-          </summary>
-          <div class="dropdown-content card card-sm bg-base-100 border border-base-300 shadow-md w-56 z-50">
+        </button>
+          <div id="account-menu" popover class="dropdown dropdown-end card card-sm bg-base-100 shadow-md w-56 z-50" style="position-anchor:--account-menu">
             <div class="card-body gap-1">
               <p class="font-semibold text-sm">{{ current_user.username }}</p>
               <p class="text-xs opacity-70 mb-1">Role: {{ current_user.role }}</p>
@@ -47,11 +54,10 @@
               </form>
             </div>
           </div>
-        </details>
         {% endif %}
       </div>
     </header>
-    <main class="p-4 lg:p-6 w-full max-w-7xl mx-auto grow">
+    <main id="main-content" tabindex="-1" class="p-4 lg:p-6 w-full max-w-7xl mx-auto grow min-w-0">
       <div id="htmx-error-note" class="hidden" role="alert">
         <span>Refresh failed.</span>
       </div>
@@ -88,11 +94,16 @@
   </div>
   <div class="drawer-side z-40">
     <label for="nav" aria-label="Close navigation" class="drawer-overlay"></label>
-    <aside class="bg-base-100 border-r border-base-300 min-h-full w-64 flex flex-col">
-      <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2.5 px-5 h-16 border-b border-base-300">
-        <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-8 h-8">
-        <span class="font-bold text-lg tracking-tight">Overstate</span>
-      </a>
+    <aside id="nav-panel" class="bg-base-100 border-r border-base-300 min-h-full w-64 flex flex-col" aria-label="Primary navigation">
+      <div class="flex items-center border-b border-base-300">
+        <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2.5 px-5 h-16 grow">
+          <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-8 h-8">
+          <span class="font-bold text-lg tracking-tight">Overstate</span>
+        </a>
+        <button id="nav-close" type="button" class="btn btn-ghost btn-square lg:hidden me-2" aria-label="Close navigation">
+          <span class="icon-[lucide--x] size-5" aria-hidden="true"></span>
+        </button>
+      </div>
       <nav class="p-3 overflow-y-auto grow">
         <ul class="menu w-full gap-0.5">
           <li class="menu-title">Operate</li>
@@ -283,7 +294,7 @@
       {% set _ = palette_entries.append(("Master config", "page", url_for('masterconfig.index'))) %}
       {% endif %}
       {% for label, hint, href in palette_entries %}
-      <li data-palette-entry data-label="{{ label|lower }}" data-href="{{ href }}"><a href="{{ href }}"><span class="mr-auto">{{ label }}</span><span class="badge badge-sm badge-ghost">{{ hint }}</span></a></li>
+      <li data-palette-entry data-label="{{ label|lower }}" data-href="{{ href }}"><a href="{{ href }}"><span class="me-auto">{{ label }}</span><span class="badge badge-sm badge-ghost">{{ hint }}</span></a></li>
       {% endfor %}
     </ul>
   </div>
@@ -366,7 +377,7 @@
       var a = document.createElement("a");
       a.setAttribute("href", r.href);
       var label = document.createElement("span");
-      label.className = "mr-auto";
+      label.className = "me-auto";
       label.textContent = r.label;
       var badge = document.createElement("span");
       badge.className = "badge badge-sm badge-ghost";
@@ -429,7 +440,7 @@
             var a = document.createElement("a");
             a.setAttribute("href", minionBase + id);
             var label = document.createElement("span");
-            label.className = "mr-auto font-mono";
+            label.className = "me-auto font-mono";
             label.textContent = id;
             var badge = document.createElement("span");
             badge.className = "badge badge-sm badge-ghost";

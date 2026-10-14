@@ -18,6 +18,17 @@ RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
 # interface/id/cluster_node_id/peers to a PVC drop-in included from
 # the ConfigMap before handing over.
 COPY cluster-entrypoint.sh /usr/local/bin/cluster-entrypoint.sh
+# Custom master job-cache returner (docs/reference/returner.md): stock
+# pgjsonb bare-INSERTs every return, so in a 3-master cluster sharing one
+# Postgres table the two members that receive a return via bus
+# replication crash into the (jid, id) PK on every job. The upsert
+# variant absorbs those duplicates with ON CONFLICT DO NOTHING.
+# extension_modules is baked to /var/cache/salt/master/extmods (NOT on
+# any PVC and NOT under file_roots), so the module must ship in the
+# image — masters cannot pick it up from the srv share. Shipped inert:
+# activation is the `master_job_cache: pgjsonb_upsert` flip plus a
+# master restart, deliberately not yet applied.
+COPY salt-extmods/pgjsonb_upsert.py /var/cache/salt/master/extmods/pgjsonb_upsert.py
 # Sibling helper: API-backed peer discovery for the entrypoint's
 # self-healing (EndpointSlices with constructed-name fallback), stdlib only.
 COPY cluster-peers.py /usr/local/bin/cluster-peers.py

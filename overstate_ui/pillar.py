@@ -125,10 +125,20 @@ def index():
     if rbac_mode() == "scoped" and not has_fleet(current_user, "pillar.read"):
         allowed = minions_with(current_user, "pillar.read")
         mids = [m for m in mids if m in allowed]
-    counts = {
-        mid: get_session().query(PillarSnapshot).filter_by(minion_id=mid).count()
-        for mid in mids
-    }
+    # One GROUP BY instead of a COUNT per minion: the index stays fast
+    # with thousands of minions in the snapshot cache.
+    from sqlalchemy import func as _func
+
+    counts = {mid: 0 for mid in mids}
+    if mids:
+        for mid, n in (
+            get_session()
+            .query(PillarSnapshot.minion_id, _func.count(PillarSnapshot.id))
+            .filter(PillarSnapshot.minion_id.in_(mids))
+            .group_by(PillarSnapshot.minion_id)
+            .all()
+        ):
+            counts[mid] = n
     q = request.args.get("q", "").strip().lower()
     if q:
         mids = [m for m in mids if q in m.lower()]
@@ -144,13 +154,26 @@ def index():
         )
     elif direction == "desc":
         mids = sorted(mids, reverse=True)
+    per_page = 50
+    try:
+        requested_page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        requested_page = 1
+    total = len(mids)
+    pages = max(1, -(-total // per_page))
+    page = min(requested_page, pages)
+    page_mids = mids[(page - 1) * per_page:page * per_page]
     return render_template(
         "pillar.html",
-        mids=mids,
+        mids=page_mids,
         counts=counts,
         q=request.args.get("q", ""),
         sort=sort,
         direction=direction,
+        total=total,
+        page=page,
+        pages=pages,
+        per_page=per_page,
     )
 
 

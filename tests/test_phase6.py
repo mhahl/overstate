@@ -109,6 +109,30 @@ def test_settings_save_and_default(client):
     assert 'data-theme="cmyk"' in client.get("/").data.decode()
 
 
+def test_schedule_controls_have_visible_associated_labels(client):
+    from html.parser import HTMLParser
+
+    class Labels(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.labels = set()
+            self.controls = {}
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if tag == "label" and attributes.get("for"):
+                self.labels.add(attributes["for"])
+            if tag in ("input", "select") and attributes.get("name") in (
+                "minion", "name", "function", "value", "unit", "enabled"
+            ):
+                self.controls[attributes["name"]] = attributes.get("id")
+
+    parser = Labels()
+    parser.feed(client.get("/schedules/").data.decode())
+    assert set(parser.controls) == {"minion", "name", "function", "value", "unit", "enabled"}
+    assert all(control_id and control_id in parser.labels for control_id in parser.controls.values())
+
+
 def test_settings_invalid_options_fall_back_to_default(client):
     rv = client.post(
         "/settings/",

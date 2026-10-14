@@ -14,7 +14,7 @@ from overstate_ui.audit import log_event
 from overstate_ui.auth import seed_admin
 from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
-from overstate_ui.models import Job, Minion, MinionGroup
+from overstate_ui.models import Job, Minion, MinionGroup, User
 
 TEMPLATES = (
     pathlib.Path(__file__).resolve().parent.parent / "overstate_ui" / "templates"
@@ -76,6 +76,48 @@ def test_list_tables_pin_headers():
     # The Keys table only renders with live roster data.
     keys_src = (TEMPLATES / "keys.html").read_text()
     assert "table-pin-rows" in keys_src
+
+
+def test_users_list_searches_and_pages_without_rendering_every_account():
+    from html.parser import HTMLParser
+    from urllib.parse import parse_qs, urlsplit
+
+    c = make_client()
+    with c.application.app_context():
+        session = get_session()
+        session.add_all(User(username=f"person-{i:03d}", role="viewer") for i in range(121))
+        session.commit()
+
+    class NextLink(HTMLParser):
+        href = None
+        current = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                self.current = dict(attrs).get("href")
+
+        def handle_data(self, data):
+            if data.strip() == "Next":
+                self.href = self.current
+
+        def handle_endtag(self, tag):
+            if tag == "a":
+                self.current = None
+
+    page = c.get("/users/?role=viewer&sort=username&dir=asc&page=2").data.decode()
+    assert page.count('<td class="font-medium">person-') == 50
+    assert '<td class="font-medium">person-050</td>' in page
+    assert '<td class="font-medium">person-049</td>' not in page
+    parser = NextLink()
+    parser.feed(page)
+    assert parse_qs(urlsplit(parser.href).query) == {
+        "role": ["viewer"], "sort": ["username"], "dir": ["asc"], "page": ["3"]
+    }
+
+    filtered = c.get("/users/?role=viewer&q=person-10&page=99").data.decode()
+    assert filtered.count('<td class="font-medium">person-') == 10
+    assert "Page 1 of 1" in filtered
+    assert re.search(r'href="/users/\?sort=role[^\"]*q=person-10', filtered)
 
 
 def test_dashboard_heading_matches_page_headings():
@@ -150,6 +192,110 @@ def test_back_links_share_glyph_and_size():
             # Every "‹ ..." control is a back/prev link: small ghost style.
             if "‹ " in line:
                 assert "btn-sm" in line, f"{name.name}: {line.strip()}"
+
+
+def test_templates_use_canonical_daisyui_field_classes():
+    # daisyUI v5 dropped the `-bordered` field variants (bordered is the
+    # default) and the `label-text` helper: unknown classes are ignored,
+    # so pin the canonical names instead of shipping dead classes.
+    legacy = ("input-bordered", "select-bordered", "textarea-bordered", "label-text")
+    offenders = []
+    for name in sorted(TEMPLATES.glob("*.html")):
+        src = name.read_text()
+        found = sorted({token for token in legacy if token in src})
+        if found:
+            offenders.append(f"{name.name}: {', '.join(found)}")
+    assert not offenders, "legacy field classes: " + "; ".join(offenders)
+
+
+def test_clean_ui_rhythm_and_logical_properties():
+    # Clean UI reads as one system: a single breadcrumb pattern, one
+    # page-header rhythm, one filter-bar surface, hairline borders from
+    # one token, and logical (RTL-safe) spacing properties throughout.
+    offenders = []
+    physical = ("mr-auto", "ml-auto", "ml-1", "ml-2", "ml-5", "ml-14")
+    for name in sorted(TEMPLATES.glob("*.html")):
+        src = name.read_text()
+        for token in physical + ("border-base-200", '<div class="breadcrumbs', '<ol class="breadcrumbs', '<ul class="breadcrumbs'):
+            if token in src:
+                offenders.append(f"{name.name}: {token}")
+        for line in src.splitlines():
+            if "mb-5" in line and "tabs" not in line:
+                offenders.append(f"{name.name}: {line.strip()[:80]}")
+            if "gap-3 mt-1 mb-4" in line:
+                offenders.append(f"{name.name}: {line.strip()[:80]}")
+            if 'role="search"' in line and ("border-base-300" not in line or "rounded-lg" not in line):
+                offenders.append(f"{name.name}: {line.strip()[:80]}")
+    assert not offenders, "clean-ui rhythm: " + "; ".join(offenders)
+
+
+def test_templates_have_balanced_tags():
+    # A mismatched open/close tag silently reparents the rest of the page
+    # in the browser (e.g. drawer content escaping its container), so the
+    # HTML each route actually serves must nest cleanly. Rendered output
+    # is checked rather than raw templates so Jinja control flow and the
+    # spec's optional end tags (like <option>) cannot cause false alarms.
+    from html.parser import HTMLParser
+
+    void = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
+    # Tags the HTML spec auto-closes: every browser parses a missing end
+    # tag here identically, so it cannot reparent content.
+    autoclosed = {"option": ("option", "optgroup", "select", "datalist")}
+
+    class Balance(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.open = []
+            self.errors = []
+
+        def _close_through(self, tag):
+            while self.open and self.open[-1] in autoclosed and tag in autoclosed[self.open[-1]]:
+                self.open.pop()
+
+        def handle_starttag(self, tag, attrs):
+            self._close_through(tag)
+            if tag not in void:
+                self.open.append(tag)
+
+        def handle_startendtag(self, tag, attrs):
+            self._close_through(tag)
+
+        def handle_endtag(self, tag):
+            if tag in void:
+                return
+            # An explicit </option> matches its own opener; only a
+            # *different* closer (</select>, next <option>) sweeps it shut.
+            while self.open and self.open[-1] in autoclosed and tag != self.open[-1] and tag in autoclosed[self.open[-1]]:
+                self.open.pop()
+            if not self.open or self.open[-1] != tag:
+                self.errors.append(f"</{tag}> closes {self.open[-1] if self.open else 'nothing'}")
+            if tag in self.open:
+                self.open = self.open[:len(self.open) - 1 - self.open[::-1].index(tag)]
+
+    routes = [
+        "/", "/minions/", "/minions/web-00", "/keys/", "/jobs/?tab=history",
+        "/jobs/?tab=saved", "/jobs/hist-000", "/states/", "/pillar/",
+        "/pillar/diff", "/schedules/", "/events/", "/audit/", "/users/",
+        "/users/groups", "/settings/", "/settings/access", "/settings/rotation",
+        "/settings/sso", "/groups/", "/files/", "/files/repo", "/reactor/",
+        "/mine/", "/console/", "/jobs/new", "/minions/onboard",
+    ]
+    c = make_client()
+    offenders = []
+    for route in routes:
+        rv = c.get(route)
+        assert rv.status_code == 200, route
+        parser = Balance()
+        parser.feed(rv.data.decode())
+        if parser.errors or parser.open:
+            detail = "; ".join(parser.errors[:3])
+            if parser.open:
+                detail += f"; unclosed: {parser.open[-3:]}"
+            offenders.append(f"{route}: {detail}")
+    assert not offenders, "unbalanced tags: " + " | ".join(offenders)
 
 
 def test_shared_visual_system_covers_app_shell_settings_and_console():

@@ -13,7 +13,7 @@
     </ul>
   </nav>
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <h1 class="text-xl font-bold font-mono tracking-tight break-all mr-auto">{{ rel }}</h1>
+    <h1 class="text-xl font-bold font-mono tracking-tight break-all me-auto">{{ rel }}</h1>
     {% if content is not none and (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.write')) %}
     <a class="btn btn-sm btn-outline" href="{{ url_for('files.edit', path=rel) }}">Edit</a>
     {% endif %}

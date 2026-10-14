@@ -9,7 +9,7 @@
   </ul>
 </nav>
 <div class="flex flex-wrap items-center gap-2 mb-4">
-  <h1 class="text-2xl font-bold tracking-tight font-mono mr-auto">{{ mid }}</h1>
+  <h1 class="text-2xl font-bold tracking-tight font-mono me-auto">{{ mid }}</h1>
   {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('pillar.capture', minion=mid)) %}
   <form method="post" action="{{ url_for('pillar.capture', mid=mid) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -27,7 +27,7 @@
   <section class="card card-border">
     <div class="card-body">
       <div class="flex items-center gap-2 mb-1">
-        <h2 class="card-title text-base mr-auto">Live rendered pillar</h2>
+        <h2 class="card-title text-base me-auto">Live rendered pillar</h2>
         <a class="btn btn-xs btn-ghost" href="{{ url_for('jobs.new', preset='refresh-pillar') }}">Refresh pillar…</a>
       </div>
       {% if live is mapping %}
@@ -43,7 +43,7 @@
       {% if snaps %}
       <ul>
         {% for s in snaps %}
-        <li class="py-2 border-b border-base-200 last:border-0">
+        <li class="py-2 border-b border-base-300 last:border-0">
           <details class="collapse collapse-arrow bg-base-200">
             <summary class="collapse-title font-mono text-xs">#{{ s.id }} — {{ s.captured_at }}</summary>
             <div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ s.payload | tojson(indent=1) }}</code></pre></div>

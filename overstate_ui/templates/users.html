@@ -2,26 +2,26 @@
 {% import "_grant_dialog.html" as gd %}
 {% block title %}Users · Overstate{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb" class="breadcrumbs text-sm py-0 mb-1">
+<nav aria-label="Breadcrumb" class="breadcrumbs text-sm mb-1">
   <ul>
     <li>Admin</li>
     <li aria-current="page">Users</li>
   </ul>
 </nav>
 <div>
-  <div class="flex flex-wrap items-end gap-3 mb-5">
-    <div class="mr-auto">
+  <div class="flex flex-wrap items-end gap-3 mb-4">
+    <div class="me-auto">
       <h1 class="text-2xl font-bold tracking-tight">Users</h1>
     </div>
   </div>
   {% import "_macros.html" as m %}
-  <form method="get" action="{{ url_for('users.index') }}" class="sticky top-0 z-20 bg-base-100/95 backdrop-blur py-2 mb-4" role="search" aria-label="Filter users">
+  <form method="get" action="{{ url_for('users.index') }}" class="sticky top-0 z-10 bg-base-100/95 backdrop-blur border border-base-300 rounded-lg px-3 py-2 mb-4" role="search" aria-label="Filter users">
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
     <div class="flex flex-row flex-wrap items-end gap-2">
       <fieldset class="fieldset">
-        <legend class="fieldset-legend">Role</legend>
-        <select name="role" class="select select-sm select-bordered" onchange="this.form.requestSubmit()">
+        <label class="label" for="users-role">Role</label>
+        <select id="users-role" name="role" class="select select-sm" onchange="this.form.requestSubmit()">
           <option value="">All roles</option>
           {% for r in roles %}
           <option value="{{ r }}"{% if role == r %} selected{% endif %}>{{ r|capitalize }}</option>
@@ -33,13 +33,18 @@
           {% endif %}
         </select>
       </fieldset>
-      {% if role %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('users.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
+      <fieldset class="fieldset flex-1 min-w-48">
+        <label class="label" for="users-search">Username</label>
+        <input id="users-search" type="search" name="q" value="{{ q }}" placeholder="Search users…" class="input input-sm w-full">
+      </fieldset>
+      <button class="btn btn-sm btn-primary mb-1">Filter</button>
+      {% if role or q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('users.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
     </div>
   </form>
-  <div class="card card-border bg-base-100">
-  <div class="overflow-x-auto rounded-box">
+  <div class="card card-border bg-base-100 min-w-0">
+  <div class="max-w-full overflow-x-auto rounded-box">
   <table class="table table-sm table-zebra table-pin-rows w-full">
-    <thead><tr>{{ m.sort_th_plain('users.index', 'username', 'Username', sort, direction, {'role': role}) }}{{ m.sort_th_plain('users.index', 'role', 'Role', sort, direction, {'role': role}) }}<th>Auth</th>{% if rbac_scoped %}<th>Grants</th>{% endif %}<th class="text-right">Actions</th></tr></thead>
+    <thead><tr>{{ m.sort_th_plain('users.index', 'username', 'Username', sort, direction, {'role': role, 'q': q}) }}{{ m.sort_th_plain('users.index', 'role', 'Role', sort, direction, {'role': role, 'q': q}) }}<th>Auth</th>{% if rbac_scoped %}<th>Grants</th>{% endif %}<th class="text-right">Actions</th></tr></thead>
     <tbody>
     {% for u in users %}
       <tr>
@@ -57,11 +62,11 @@
         </td>
         {% endif %}
         <td class="text-right">
-          <span class="join join-horizontal">
+          <div class="join join-horizontal">
           {% if not delegate_view %}
           <form method="post" action="{{ url_for('users.set_role', uid=u.id) }}" class="join-item flex">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <select name="role" class="select select-sm select-bordered join-item" aria-label="Fleet role"{% if rbac_scoped and u.id == current_user.id %} disabled{% endif %}>
+            <select name="role" class="select select-sm join-item" aria-label="Fleet role"{% if rbac_scoped and u.id == current_user.id %} disabled{% endif %}>
               {% for r in roles %}
               <option value="{{ r }}" {% if r == u.role %}selected{% endif %}>{{ r }}</option>
               {% endfor %}
@@ -70,14 +75,14 @@
           </form>
           {% endif %}
           {% if rbac_scoped and (not delegate_view or u.id != current_user.id) %}
-          <span class="join-item flex">
+          <div class="join-item flex">
           {{ gd.grant_dialog(
             "grants-user-%d" % u.id,
             "Grants for %s" % u.username,
             url_for("users.create_grant", uid=u.id),
             user_grant_rows.get(u.id, []),
             local_groups, grain_keys, role_groups, delegate_view) }}
-          </span>
+          </div>
           {% endif %}
           {% if not delegate_view %}
           <form method="post" action="{{ url_for('users.delete', uid=u.id) }}" class="join-item flex" data-confirm="Delete user '{{ u.username }}'?">
@@ -85,14 +90,25 @@
             <button class="btn btn-sm btn-error btn-outline join-item">Delete</button>
           </form>
           {% endif %}
-          </span>
+          </div>
         </td>
       </tr>
     {% endfor %}
+    {% if not users %}<tr><td colspan="{{ 5 if rbac_scoped else 4 }}" class="text-center py-6">No users match. Change the search or role filter.</td></tr>{% endif %}
     </tbody>
   </table>
   </div>
   </div>
+  {% if total %}
+  <nav class="flex flex-wrap items-center gap-2 mt-3" aria-label="User pages">
+    <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} users</span>
+    <div class="join">
+      {% if page > 1 %}<a class="join-item btn btn-sm" href="{{ url_for('users.index', role=role, q=q, sort=sort, dir=direction, page=page-1) }}">Prev</a>{% endif %}
+      <span class="join-item btn btn-sm btn-disabled" aria-current="page">Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}<a class="join-item btn btn-sm" href="{{ url_for('users.index', role=role, q=q, sort=sort, dir=direction, page=page+1) }}">Next</a>{% endif %}
+    </div>
+  </nav>
+  {% endif %}
   {% if rbac_scoped and not delegate_view %}<p class="text-xs opacity-70 mt-2">Fleet role is the whole fleet, including pillar, and applies on top of scoped grants.</p>{% endif %}
   {% if rbac_scoped and not delegate_view %}
   <section class="card card-border bg-base-100 mt-4" aria-label="Service accounts">
@@ -123,14 +139,14 @@
         <form method="post" action="{{ url_for('users.create_token', uid=entry.user.id) }}" class="flex flex-wrap items-end gap-2 mt-2">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <fieldset class="fieldset"><legend class="fieldset-legend">Token name</legend>
-          <input name="name" class="input input-sm input-bordered" autocomplete="off" required></fieldset>
+          <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
           <fieldset class="fieldset"><legend class="fieldset-legend">Pin to saved job</legend>
-          <select name="saved_job_id" class="select select-sm select-bordered">
+          <select name="saved_job_id" class="select select-sm">
             <option value="">Unpinned (read class only)</option>
             {% for job in saved_jobs %}<option value="{{ job.id }}">{{ job.name }} · {{ job.fun }}</option>{% endfor %}
           </select></fieldset>
           <fieldset class="fieldset"><legend class="fieldset-legend">Expires in days</legend>
-          <input name="expires_days" type="number" min="1" max="3650" class="input input-sm input-bordered w-24" placeholder="never"></fieldset>
+          <input name="expires_days" type="number" min="1" max="3650" class="input input-sm w-24" placeholder="never"></fieldset>
           <button class="btn btn-sm btn-primary">Mint token</button>
         </form>
       </div>
@@ -138,7 +154,7 @@
       <form method="post" action="{{ url_for('users.create_service_account') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <fieldset class="fieldset"><legend class="fieldset-legend">New service account</legend>
-        <input name="name" class="input input-sm input-bordered" autocomplete="off" required></fieldset>
+        <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
         <button class="btn btn-sm btn-primary">Create account</button>
       </form>
     </div>

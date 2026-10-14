@@ -9,35 +9,35 @@
   </ul>
 </nav>
 <div class="flex flex-wrap items-center gap-3 mb-4">
-  <h1 class="text-2xl font-bold tracking-tight mr-auto">Pillar diff</h1>
+  <h1 class="text-2xl font-bold tracking-tight me-auto">Pillar diff</h1>
 </div>
 <form method="get" class="card card-border card-sm mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Left</legend>
-      <select name="a" class="select select-bordered select-sm">
+      <label class="label" for="pillar-left">Left minion</label>
+      <select id="pillar-left" name="a" class="select select-sm">
         <option value="">—</option>
         {% for m in mids %}<option value="{{ m }}"{% if m == mid_a %} selected{% endif %}>{{ m }}</option>{% endfor %}
       </select>
     </fieldset>
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Left revision</legend>
-      <select name="rev_a" class="select select-bordered select-sm">
+      <label class="label" for="pillar-left-revision">Left revision</label>
+      <select id="pillar-left-revision" name="rev_a" class="select select-sm">
         <option value="">newest snapshot</option>
         <option value="live"{% if rev_a == "live" %} selected{% endif %}>live</option>
         {% for s in snaps_a %}<option value="{{ s.id }}"{% if rev_a == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
       </select>
     </fieldset>
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Right</legend>
-      <select name="b" class="select select-bordered select-sm">
+      <label class="label" for="pillar-right">Right minion</label>
+      <select id="pillar-right" name="b" class="select select-sm">
         <option value="">—</option>
         {% for m in mids %}<option value="{{ m }}"{% if m == mid_b %} selected{% endif %}>{{ m }}</option>{% endfor %}
       </select>
     </fieldset>
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">Right revision</legend>
-      <select name="rev_b" class="select select-bordered select-sm">
+      <label class="label" for="pillar-right-revision">Right revision</label>
+      <select id="pillar-right-revision" name="rev_b" class="select select-sm">
         <option value="">newest snapshot</option>
         <option value="live"{% if rev_b == "live" %} selected{% endif %}>live</option>
         {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
@@ -57,8 +57,8 @@
   </div>
   <div class="px-4 py-3 border-b border-base-300 text-sm">
     <span class="font-mono">{{ mid_a }}</span> <span class="opacity-60">vs</span> <span class="font-mono">{{ mid_b }}</span>
-    {% if view == "full" %}<span class="badge badge-sm badge-outline badge-neutral ml-2">{{ ndiff }} of {{ rows|length }} differ</span>
-    {% else %}<span class="badge badge-sm badge-outline badge-neutral ml-2">{{ rows|length }} difference{{ "s" if rows|length != 1 }}</span>{% endif %}
+    {% if view == "full" %}<span class="badge badge-sm badge-outline badge-neutral ms-2">{{ ndiff }} of {{ rows|length }} differ</span>
+    {% else %}<span class="badge badge-sm badge-outline badge-neutral ms-2">{{ rows|length }} difference{{ "s" if rows|length != 1 }}</span>{% endif %}
   </div>
   {% if rows %}
   <div class="overflow-x-auto rounded-box">

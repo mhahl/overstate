@@ -8,7 +8,7 @@
   </ul>
 </nav>
 <div class="flex flex-wrap items-end gap-3 mb-4">
-  <div class="mr-auto">
+  <div class="me-auto">
     <h1 class="text-2xl font-bold tracking-tight">Reactor</h1>
   </div>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('reactor.export') }}">Export for git</a>
@@ -34,13 +34,13 @@
 </div></div>
 {% else %}
 <div class="alert alert-info mb-4" role="status"><span>Live mapping from {{ pod_count }} master pod{{ "s" if pod_count != 1 }}. Restarts restore the <code>master.conf</code> <code>reactor:</code> stanza, so record mappings you want to keep there{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %} (<a class="link" href="{{ url_for('masterconfig.index') }}">Master Config</a>){% endif %}. <a class="link" href="{{ url_for('reactor.export') }}">Export</a> renders the stanza.</span></div>
-<form method="get" action="{{ url_for('reactor.index') }}" class="card card-sm card-border bg-base-100 mb-4 sticky top-0 z-10" role="search">
+<form method="get" action="{{ url_for('reactor.index') }}" class="sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2 mb-4" role="search">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
-  <div class="card-body flex-row flex-wrap items-end gap-2">
+  <div class="flex flex-row flex-wrap items-end gap-2">
     <fieldset class="fieldset flex-1 min-w-48">
       <legend class="fieldset-legend">Filter events</legend>
-      <input name="q" value="{{ q }}" placeholder="Filter events…" class="input input-sm input-bordered" aria-label="Filter reactors">
+      <input name="q" value="{{ q }}" placeholder="Filter events…" class="input input-sm" aria-label="Filter reactors">
     </fieldset>
     <button class="btn btn-sm btn-primary mb-1">Filter</button>
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('reactor.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}

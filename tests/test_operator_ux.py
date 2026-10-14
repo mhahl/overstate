@@ -212,6 +212,17 @@ def test_ssh_forces_sync_and_batch_fields_are_numbers(client):
     assert "via === 'ssh'" in html
 
 
+def test_run_form_uses_no_alpine_directives(client):
+    # Alpine compiles templates with `new Function`, which the app CSP
+    # (no unsafe-eval) blocks: every directive below used to throw on
+    # /jobs/new. The transport/batch sync is vanilla JS instead.
+    html = client.get("/jobs/new").data.decode()
+    for directive in ("x-data", "x-model", "@change", ":disabled"):
+        assert directive not in html
+    assert "via === 'ssh'" in html
+    assert "syncTransport" in html
+
+
 def test_htmx_errors_keep_last_good_fragment(client):
     html = client.get("/jobs/").data.decode()
     assert "htmx:responseError" in html
@@ -272,3 +283,104 @@ def test_chrome_title_flash_tabs_schedule_bulk(client):
         )
     assert ">60<" in sched
     assert "seconds" in sched
+
+
+def test_navigation_and_list_controls_are_semantic(client):
+    html = client.get("/minions/").data.decode()
+    assert 'href="#main-content"' in html
+    assert 'id="main-content"' in html
+    assert 'aria-current="page"' in html
+    assert 'aria-label="Select all minions on this page"' in html
+    assert 'max-w-full overflow-x-auto' in html
+
+
+def test_theme_control_is_available_on_login_and_app_pages(client):
+    login = client.get("/login").data.decode()
+    app = client.get("/minions/").data.decode()
+    assert 'value="dark"' in app
+    assert 'aria-label="Dark theme"' in app
+    assert 'data-theme="cmyk"' in login
+    assert 'data-theme="cmyk"' in app
+
+
+def test_mobile_header_hides_secondary_labels(client):
+    html = client.get("/minions/").data.decode()
+    assert 'class="hidden sm:inline font-semibold">Overstate</span>' in html
+    assert 'font-normal hidden md:inline">Jump to…</span>' in html
+    assert 'class="flex flex-wrap gap-2 ms-auto items-center"' in html
+
+
+def test_mobile_drawer_has_keyboard_operable_controls(client):
+    from html.parser import HTMLParser
+
+    class DrawerControls(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.controls = {}
+
+        def handle_starttag(self, tag, attrs):
+            properties = dict(attrs)
+            if properties.get("id") in ("nav-open", "nav-close"):
+                self.controls[properties["id"]] = (tag, properties)
+
+    parser = DrawerControls()
+    html = client.get("/minions/").data.decode()
+    parser.feed(html)
+    assert parser.controls["nav-open"][0] == "button"
+    assert parser.controls["nav-open"][1]["aria-controls"] == "nav-panel"
+    assert parser.controls["nav-open"][1]["aria-expanded"] == "false"
+    assert parser.controls["nav-close"][0] == "button"
+    assert parser.controls["nav-close"][1]["aria-label"] == "Close navigation"
+    assert '/static/nav.js' in html
+
+
+def test_job_history_exposes_completion_state(client):
+    html = client.get("/jobs/?tab=history").data.decode()
+    assert "Status" in html
+    assert "Done" in html
+
+
+def test_action_forms_are_not_nested_in_inline_elements(client):
+    from html.parser import HTMLParser
+
+    class InlineForms(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.open_tags = []
+            self.invalid = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag in {"form", "dialog"} and "span" in self.open_tags:
+                self.invalid.append(tag)
+            if tag not in {"input", "img", "br", "meta", "link", "hr", "source"}:
+                self.open_tags.append(tag)
+
+        def handle_endtag(self, tag):
+            if tag in self.open_tags:
+                self.open_tags = self.open_tags[:len(self.open_tags) - 1 - self.open_tags[::-1].index(tag)]
+
+    from overstate_ui.models import LocalGroup
+
+    with client.app.app_context():
+        get_session().add(LocalGroup(name="operators"))
+        get_session().commit()
+
+    for route in ("/keys/?tab=pending", "/jobs/?tab=saved", "/states/", "/users/", "/users/groups", "/files/"):
+        parser = InlineForms()
+        response = client.get(route)
+        assert response.status_code == 200, route
+        parser.feed(response.data.decode())
+        assert not parser.invalid, (route, parser.invalid)
+
+
+def test_event_search_does_not_submit_watch_form(client):
+    html = client.get("/events/").data.decode()
+    watch_form = html[html.index('aria-label="Event tag filter"'):]
+    assert watch_form.index("</form>") < watch_form.index('id="event-filter"')
+
+
+def test_settings_sections_are_navigation_not_inert_aria_tabs(client):
+    html = client.get("/settings/").data.decode()
+    assert 'aria-label="Settings sections"' in html
+    assert 'role="tablist"' not in html
+    assert 'aria-current="page"' in html

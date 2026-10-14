@@ -4,11 +4,11 @@ and dashboard.panels (poll hydration). No Salt I/O feeds this template:
 When `probing` with a `poll_qs`, the wrapper re-polls itself via htmx;
 resolved renders drop those attributes so polling stops on its own. #}
 <div id="dashboard-live" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
-<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
   <ul>
     <li aria-current="page">Dashboard</li>
   </ul>
-</div>
+</nav>
 <div class="flex flex-wrap items-center gap-3">
   <h1 class="text-2xl font-bold tracking-tight">Fleet overview</h1>
   <div class="flex gap-2 ms-auto items-center">
@@ -36,7 +36,7 @@ already says so. Only claim "unreachable" once polling settled. #}
   <span>salt-api unreachable. Database history only.</span>
 </div>
 {% endif %}
-<section class="stats stats-vertical md:stats-horizontal bg-base-100 border border-base-300" aria-label="Fleet totals">
+<section class="stats stats-vertical md:stats-horizontal bg-base-100 border border-base-300 max-w-full overflow-x-auto" aria-label="Fleet totals">
   <div class="stat px-5 py-4">
     <div class="stat-title font-medium text-base-content">Accepted minions</div>
     <div class="stat-value text-3xl font-semibold tabular-nums">{{ stats.accepted if stats.keys_live else "–" }}</div>
@@ -122,7 +122,7 @@ already says so. Only claim "unreachable" once polling settled. #}
           <span class="badge badge-sm badge-outline {{ 'badge-success' if c.ok else 'badge-error' }}">{{ "ok" if c.ok else "failing" }}</span>
           <span><span class="font-medium">{{ c.feature }}</span> <span class="opacity-70 font-mono text-xs">{{ c.fun }}</span></span>
         </li>
-        <li class="text-xs opacity-70 -mt-1 ml-14">{{ c.grant }}</li>
+        <li class="text-xs opacity-70 -mt-1 ms-14">{{ c.grant }}</li>
         {% endfor %}
         {% endif %}
       </ul>

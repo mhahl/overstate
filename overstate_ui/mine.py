@@ -106,6 +106,16 @@ def index():
         if scoped and isinstance(entries, dict) and hit is not None:
             # A stale worker argument cannot add db-01 back.
             entries = {k: v for k, v in entries.items() if k in hit}
+    per_page = 50
+    try:
+        requested_page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        requested_page = 1
+    sorted_ids = sorted(entries, reverse=(direction == "desc"))
+    total = len(sorted_ids)
+    pages = max(1, -(-total // per_page))
+    page = min(requested_page, pages)
+    entries = {mid: entries[mid] for mid in sorted_ids[(page - 1) * per_page:page * per_page]}
     return render_template(
         "mine.html",
         tgt=tgt,
@@ -115,4 +125,8 @@ def index():
         entries=entries,
         error=error,
         direction=direction,
+        total=total,
+        page=page,
+        pages=pages,
+        per_page=per_page,
     )

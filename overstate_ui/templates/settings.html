@@ -15,15 +15,15 @@
       <div class="fieldset">
         <label class="fieldset-legend" for="setting-{{ section_name }}-{{ key }}">{{ meta.label }}</label>
         {% if meta.options %}
-        <select id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" class="select select-bordered w-full"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>
+        <select id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" class="select w-full"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>
           {% for opt in meta.options %}
           <option value="{{ opt }}"{% if values[key] == opt %} selected{% endif %}>{{ opt }}</option>
           {% endfor %}
         </select>
         {% elif meta.multiline %}
-        <textarea id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" rows="3" class="textarea textarea-bordered w-full font-mono"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>{{ values[key] }}</textarea>
+        <textarea id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" rows="3" class="textarea w-full font-mono"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>{{ values[key] }}</textarea>
         {% else %}
-        <input id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" value="{% if "secret" not in key %}{{ values[key] }}{% endif %}" placeholder="{% if "secret" in key %}Unchanged{% endif %}" type="{% if "secret" in key %}password{% else %}text{% endif %}" autocomplete="{% if "secret" in key %}new-password{% else %}off{% endif %}" class="input input-bordered w-full font-mono"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>
+        <input id="setting-{{ section_name }}-{{ key }}" name="{{ key }}" value="{% if "secret" not in key %}{{ values[key] }}{% endif %}" placeholder="{% if "secret" in key %}Unchanged{% endif %}" type="{% if "secret" in key %}password{% else %}text{% endif %}" autocomplete="{% if "secret" in key %}new-password{% else %}off{% endif %}" class="input w-full font-mono"{% if not is_admin %} disabled{% endif %}{% if rbac_scoped and key in ("oidc_admin_groups", "oidc_operator_groups") %} disabled{% endif %}>
         {% endif %}
         {% if "secret" in key and is_admin %}
         <label class="flex items-center gap-2 mt-1 text-xs opacity-70"><input type="checkbox" name="clear_{{ key }}" class="checkbox checkbox-xs"> Remove the stored secret (fall back to OIDC_CLIENT_SECRET)</label>
@@ -45,31 +45,31 @@
 </form>
 {% endmacro %}
 {% block content %}
-<nav aria-label="Breadcrumb" class="breadcrumbs text-sm py-0 mb-1">
+<nav aria-label="Breadcrumb" class="breadcrumbs text-sm mb-1">
   <ul>
     <li>Admin</li>
     <li aria-current="page">Settings</li>
   </ul>
 </nav>
 <div>
-  <div class="flex flex-wrap items-end gap-3 mb-5">
-    <div class="mr-auto">
+  <div class="flex flex-wrap items-end gap-3 mb-4">
+    <div class="me-auto">
       <h1 class="text-2xl font-bold tracking-tight">Settings</h1>
     </div>
   </div>
   {% with active="server" %}{% include "_settings_tabs.html" %}{% endwith %}
-  <div class="tabs tabs-border mb-5" role="tablist" aria-label="Settings sections">
-    <a role="tab" aria-selected="{{ 'true' if section == 'general' else 'false' }}" class="tab{% if section == 'general' %} tab-active{% endif %}" href="{{ url_for('settings.index') }}">General</a>
+  <nav class="tabs tabs-border max-w-full overflow-x-auto mb-5" aria-label="Settings sections">
+    <a{% if section == 'general' %} aria-current="page"{% endif %} class="tab{% if section == 'general' %} tab-active{% endif %}" href="{{ url_for('settings.index') }}">General</a>
     {% if sso_sections %}
-    <a role="tab" aria-selected="{{ 'true' if section == 'sso' else 'false' }}" class="tab{% if section == 'sso' %} tab-active{% endif %}" href="{{ url_for('settings.sso') }}">Single sign-on</a>
+    <a{% if section == 'sso' %} aria-current="page"{% endif %} class="tab{% if section == 'sso' %} tab-active{% endif %}" href="{{ url_for('settings.sso') }}">Single sign-on</a>
     {% endif %}
     {% if is_admin or show_oidc %}
-    <a role="tab" aria-selected="{{ 'true' if section == 'access' else 'false' }}" class="tab{% if section == 'access' %} tab-active{% endif %}" href="{{ url_for('settings.access') }}">Access control</a>
+    <a{% if section == 'access' %} aria-current="page"{% endif %} class="tab{% if section == 'access' %} tab-active{% endif %}" href="{{ url_for('settings.access') }}">Access control</a>
     {% endif %}
     {% if can_rotate %}
-    <a role="tab" aria-selected="{{ 'true' if section == 'rotation' else 'false' }}" class="tab{% if section == 'rotation' %} tab-active{% endif %}" href="{{ url_for('settings.rotation') }}">Rotation</a>
+    <a{% if section == 'rotation' %} aria-current="page"{% endif %} class="tab{% if section == 'rotation' %} tab-active{% endif %}" href="{{ url_for('settings.rotation') }}">Rotation</a>
     {% endif %}
-  </div>
+  </nav>
   {% if section == "sso" %}
   {% if sso_sections %}
   {{ setting_sections(sso_sections, values, is_admin, "sso") }}
@@ -97,12 +97,12 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="section" value="access">
         <label class="fieldset"><span class="fieldset-legend">Mode</span>
-        <select name="rbac_mode" class="select select-sm select-bordered">
+        <select name="rbac_mode" class="select select-sm">
           <option value="legacy"{% if rbac_mode_value != "scoped" %} selected{% endif %}>legacy</option>
           <option value="scoped"{% if rbac_mode_value == "scoped" %} selected{% endif %}>scoped</option>
         </select></label>
         <label class="fieldset"><span class="fieldset-legend">Role fallback</span>
-        <select name="rbac_role_fallback" class="select select-sm select-bordered">
+        <select name="rbac_role_fallback" class="select select-sm">
           <option value="on"{% if rbac_fallback_value != "off" %} selected{% endif %}>on</option>
           <option value="off"{% if rbac_fallback_value == "off" %} selected{% endif %}>off</option>
         </select></label>
@@ -146,9 +146,9 @@
       <form method="post" action="{{ url_for('settings.create_idp_mapping') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="fieldset"><span class="fieldset-legend">IdP group</span>
-        <input name="idp_group" class="input input-sm input-bordered" autocomplete="off" required></label>
+        <input name="idp_group" class="input input-sm" autocomplete="off" required></label>
         <label class="fieldset"><span class="fieldset-legend">Role</span>
-        <select name="role" class="select select-sm select-bordered">
+        <select name="role" class="select select-sm">
           {% for label, roles in role_groups %}
           <optgroup label="{{ label }}">
             {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
@@ -156,7 +156,7 @@
           {% endfor %}
         </select></label>
         <label class="fieldset"><span class="fieldset-legend">Scope kind</span>
-        <select name="scope_kind" class="select select-sm select-bordered">
+        <select name="scope_kind" class="select select-sm">
           <option value="fleet">fleet</option>
           <option value="group">group</option>
           <option value="list">list</option>
@@ -165,14 +165,14 @@
           <option value="prefix">prefix</option>
         </select></label>
         <label class="fieldset"><span class="fieldset-legend">Scope value (group id, ids, pattern, or path)</span>
-        <input name="scope_value" class="input input-sm input-bordered font-mono" autocomplete="off"></label>
+        <input name="scope_value" class="input input-sm font-mono" autocomplete="off"></label>
         <label class="fieldset"><span class="fieldset-legend">Grain key (grain scopes)</span>
-        <select name="grain_key" class="select select-sm select-bordered">
+        <select name="grain_key" class="select select-sm">
           <option value="">—</option>
           {% for gk in grain_keys %}<option value="{{ gk }}">{{ gk }}</option>{% endfor %}
         </select></label>
         <label class="fieldset"><span class="fieldset-legend">Grain value</span>
-        <input name="grain_value" class="input input-sm input-bordered font-mono" autocomplete="off"></label>
+        <input name="grain_value" class="input input-sm font-mono" autocomplete="off"></label>
         <button class="btn btn-sm btn-primary">Add mapping</button>
       </form>
       {% if rbac_scoped %}
@@ -214,7 +214,7 @@
       <form method="post" action="{{ url_for('settings.rotation_verify') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="fieldset flex-1 min-w-52"><span class="fieldset-legend">Candidate password</span>
-        <input type="password" name="password" class="input input-sm input-bordered w-full font-mono" autocomplete="new-password"></label>
+        <input type="password" name="password" class="input input-sm w-full font-mono" autocomplete="new-password"></label>
         <button class="btn btn-sm btn-primary">Verify</button>
       </form>
     </div>

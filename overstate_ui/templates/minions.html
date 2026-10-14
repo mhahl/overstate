@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Minions · Overstate{% endblock %}
 {% block content %}
-<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
   <ul>
     <li aria-current="page">Minions</li>
   </ul>
-</div>
+</nav>
 <div class="flex flex-wrap items-center gap-3">
   <h1 class="text-2xl font-bold tracking-tight">Minions ({{ total }})</h1>
-  <div class="flex gap-2 ms-auto items-center">
+  <div class="flex flex-wrap gap-2 ms-auto items-center">
     {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('minion.refresh')) %}
     <form method="post" action="{{ url_for('minions.refresh') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -26,11 +26,11 @@
   <span>Salt API is unreachable. Cached snapshot only.</span>
 </div>
 {% endif %}
-<form id="minions-filter" method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:400ms, submit" class="sticky top-0 z-10 bg-base-100 py-2 flex flex-wrap items-end gap-2" role="search" aria-label="Filter minions">
+<form id="minions-filter" method="get" action="{{ url_for('minions.index') }}" hx-get="{{ url_for('minions.index') }}" hx-target="#minion-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:400ms, submit" class="sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2 flex flex-wrap items-end gap-2" role="search" aria-label="Filter minions">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search id…" aria-label="Search minions" class="input input-sm input-bordered w-full max-w-xs">
-  <select name="status" aria-label="Key status" class="select select-sm select-bordered" onchange="this.form.requestSubmit()">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search id…" aria-label="Search minions" class="input input-sm w-full max-w-xs">
+  <select name="status" aria-label="Key status" class="select select-sm" onchange="this.form.requestSubmit()">
     <option value="">All statuses</option>
     {% for s in ["accepted", "pending", "rejected", "denied"] %}
     <option value="{{ s }}"{% if status == s %} selected{% endif %}>{{ s|capitalize }}</option>
@@ -68,7 +68,7 @@
     <h3 id="remove-modal-title" class="font-bold text-lg">Remove <span id="remove-modal-mid" class="font-mono"></span>?</h3>
     <div class="py-2 text-sm flex flex-col gap-2">
       <p>This will:</p>
-      <ul class="list-disc pl-5 flex flex-col gap-1">
+      <ul class="flex flex-col gap-1">
         <li>Delete the inventory row: grains, conformity verdict, last seen.</li>
         <li>Keep the job history.</li>
         <li>Leave the Salt key on the master, so the minion rejoins this list. Tick the box to delete the key too.</li>
@@ -77,7 +77,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="label cursor-pointer justify-start gap-2">
           <input type="checkbox" id="remove-modal-delete-key" name="delete_key" value="yes" class="checkbox checkbox-sm">
-          <span class="label-text">Also delete its Salt key on every master</span>
+          <span class="label">Also delete its Salt key on every master</span>
         </label>
         <p class="opacity-70">A minion that is still running asks for a new key and returns as pending. Stop the minion first to fully remove it.</p>
         <div class="modal-action">

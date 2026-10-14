@@ -87,3 +87,50 @@ def test_audit_reachable_for_viewer():
         get_session().commit()
     login_as(c, "vwr", "vpw")
     assert c.get("/audit/").status_code == 200
+
+
+def test_audit_pagination_preserves_outcome_and_permission_filters():
+    c = make_client()
+    with c.application.app_context():
+        from overstate_ui.models import Setting
+
+        get_session().add(Setting(key="page_size", value="10"))
+        for i in range(22):
+            log_event("admin", f"job-run-{i}", outcome="allow", permission="job.run")
+        get_session().commit()
+    html = c.get("/audit/?outcome=allow&permission=job.run").data.decode()
+    assert 'name="outcome"' in html
+    assert 'name="permission"' in html
+    from html.parser import HTMLParser
+
+    class NextLink(HTMLParser):
+        href = None
+        current = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                self.current = dict(attrs).get("href")
+
+        def handle_data(self, data):
+            if "Next" in data and self.current:
+                self.href = self.current
+
+        def handle_endtag(self, tag):
+            if tag == "a":
+                self.current = None
+
+    parser = NextLink()
+    parser.feed(html)
+    assert parser.href is not None
+    assert "outcome=allow" in parser.href
+    assert "permission=job.run" in parser.href
+
+
+def test_audit_rows_expose_outcome_permission_and_minion():
+    c = make_client()
+    with c.application.app_context():
+        log_event("admin", "key-accept", outcome="deny", permission="key.accept", minion_id="web-01")
+    html = c.get("/audit/?outcome=deny").data.decode()
+    assert "Denied" in html
+    assert "key.accept" in html
+    assert "web-01" in html

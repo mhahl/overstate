@@ -88,12 +88,78 @@ def test_pillar_index_lists_minions(client):
     assert "web-01" in html and ">Compare<" in html
 
 
+def test_pillar_compare_controls_have_associated_labels(client):
+    from html.parser import HTMLParser
+
+    class Labels(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.labels = set()
+            self.controls = {}
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if tag == "label" and attributes.get("for"):
+                self.labels.add(attributes["for"])
+            if tag == "select" and attributes.get("name") in ("a", "b", "rev_a", "rev_b"):
+                self.controls[attributes["name"]] = attributes.get("id")
+
+    parser = Labels()
+    parser.feed(client.get("/pillar/diff").data.decode())
+    assert set(parser.controls) == {"a", "b", "rev_a", "rev_b"}
+    assert all(control_id and control_id in parser.labels for control_id in parser.controls.values())
+
+
 def test_pillar_index_search_and_snapshot_sort(client):
     html = client.get("/pillar/?q=web-02").data.decode()
     assert 'href="/pillar/web-02"' in html
     assert 'href="/pillar/web-01"' not in html
     html = client.get("/pillar/?sort=snapshots&dir=desc").data.decode()
     assert 'aria-sort="desc"' in html
+
+
+def test_pillar_list_pages_large_filtered_results(client):
+    from html.parser import HTMLParser
+    from urllib.parse import parse_qs, urlsplit
+
+    with client.app.app_context():
+        session = get_session()
+        session.add_all(
+            Minion(id=f"cache-{i:03d}", key_status="accepted", grains={})
+            for i in range(105)
+        )
+        session.commit()
+
+    class PillarLinks(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.minions = []
+            self.next_href = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag != "a":
+                return
+            attributes = dict(attrs)
+            href = attributes.get("href", "")
+            if href.startswith("/pillar/cache-") and "link" in attributes.get("class", "").split():
+                self.minions.append(href)
+            if href.startswith("/pillar/?") and "page=3" in href:
+                self.next_href = href
+
+    page = client.get("/pillar/?q=cache-&sort=minion&dir=asc&page=2").data.decode()
+    links = PillarLinks()
+    links.feed(page)
+    assert len(links.minions) == 50
+    assert links.minions[0] == "/pillar/cache-050"
+    assert links.minions[-1] == "/pillar/cache-099"
+    assert parse_qs(urlsplit(links.next_href).query) == {
+        "q": ["cache-"], "sort": ["minion"], "dir": ["asc"], "page": ["3"]
+    }
+    last = client.get("/pillar/?q=cache-&page=999").data.decode()
+    links = PillarLinks()
+    links.feed(last)
+    assert links.minions == [f"/pillar/cache-{i:03d}" for i in range(100, 105)]
+    assert "Page 3 of 3" in last
 
 
 def test_capture_stores_and_prunes(client):

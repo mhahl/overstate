@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Job {{ job.jid }} · Overstate{% endblock %}
 {% block content %}
-<div class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
+<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
   <ul>
     <li><a href="{{ url_for('jobs.index', tab='history') }}">Jobs</a></li>
     <li aria-current="page" class="font-mono">{{ job.jid }}</li>
   </ul>
-</div>
+</nav>
 <div class="flex flex-wrap items-center gap-2 mb-4">
   <h1 class="text-xl font-bold font-mono tracking-tight">{{ job.jid }}</h1>
   <span class="badge badge-sm badge-outline {{ 'badge-success' if job.complete else 'badge-info' }}">{{ "complete" if job.complete else "running" }}</span>
-  <form method="post" action="{{ url_for('jobs.sync', jid=job.jid) }}" class="ml-auto">
+  <form method="post" action="{{ url_for('jobs.sync', jid=job.jid) }}" class="ms-auto">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-sm btn-primary">Sync results</button>
   </form>
@@ -37,7 +37,7 @@
 <div class="card card-border card-sm bg-base-100 mb-4">
   <div class="card-body flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
     <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ tgt_display.get(job.jid, job.tgt) }} <span class="opacity-60">, by {{ job.user }}</span></p>
-    <p class="ml-auto" aria-live="polite"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
+    <p class="ms-auto" aria-live="polite"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
   </div>
 </div>
 {% if batch_state %}
@@ -48,7 +48,7 @@
       <span class="badge badge-sm badge-outline {{ 'badge-success' if batch_state.status == 'complete' else ('badge-error' if batch_state.status in ('stopped', 'cancelled') else 'badge-info') }}">{{ batch_state.status }}</span>
       <span class="text-sm opacity-70">{{ batch_state.waves_done | default(0) }}/{{ batch_state.waves }} waves · {{ batch_state.failures | default(0) }} failures{% if batch_state.missing %} ({{ batch_state.missing }} missing){% endif %} · stop after {{ batch_state.stop_after }}</span>
       {% if batch_state.status == "running" and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('job.batch'))) %}
-      <form method="post" action="{{ url_for('jobs.cancel_batch', group=job.batch_group) }}" class="ml-auto" data-confirm="Stop batch {{ job.batch_group }}? Remaining waves will not run.">
+      <form method="post" action="{{ url_for('jobs.cancel_batch', group=job.batch_group) }}" class="ms-auto" data-confirm="Stop batch {{ job.batch_group }}? Remaining waves will not run.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-sm btn-error btn-outline">Stop batch</button>
       </form>

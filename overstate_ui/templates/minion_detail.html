@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ mid }} · Overstate{% endblock %}
 {% block content %}
-<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
   <ul>
     <li><a href="{{ url_for('minions.index') }}">Minions</a></li>
     <li aria-current="page" class="font-mono">{{ mid }}</li>
   </ul>
-</div>
+</nav>
 <div class="flex flex-wrap items-center gap-3">
   <h1 class="text-2xl font-bold tracking-tight font-mono">{{ mid }}</h1>
   {% if not snapshot %}<span class="badge badge-sm badge-outline badge-warning">not in snapshot cache</span>{% endif %}
@@ -222,10 +222,10 @@
 <td>{% if name in data.beacon_pillar %}<span class="badge badge-sm badge-outline">pillar</span>{% else %}<span class="badge badge-sm badge-ghost">minion</span>{% endif %}</td>
 <td class="text-right">
   {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('beacon.write', minion=mid)) %}
-  <span class="join join-horizontal">
+  <div class="join join-horizontal">
   <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='enable') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Enable</button></form>
   <form method="post" action="{{ url_for('minions.beacon_act', mid=mid, action='disable') }}" data-confirm="Disable beacon '{{ name }}' on {{ mid }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="beacon" value="{{ name }}"><button class="btn btn-sm join-item">Disable</button></form>
-  </span>
+  </div>
   {% endif %}
 </td></tr>
 {% endfor %}

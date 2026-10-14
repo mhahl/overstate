@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Onboard minion · Overstate{% endblock %}
 {% block content %}
-<div class="breadcrumbs text-sm py-0" aria-label="Breadcrumb">
+<nav class="breadcrumbs text-sm mb-1" aria-label="Breadcrumb">
   <ul>
     <li><a href="{{ url_for('minions.index') }}">Minions</a></li>
     <li aria-current="page">Onboard</li>
   </ul>
-</div>
+</nav>
 <div class="flex flex-wrap items-center gap-3">
   <h1 class="text-2xl font-bold tracking-tight">Onboard a minion</h1>
 </div>
@@ -28,11 +28,11 @@
       <form method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-wrap items-end gap-2">
         <label class="fieldset flex-1 min-w-40">
           <span class="fieldset-legend">Minion id</span>
-          <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm input-bordered font-mono" required>
+          <input name="mid" value="{{ request.args.get('mid', '') }}" placeholder="e.g. web-03" class="input input-sm font-mono" required>
         </label>
         <label class="fieldset">
           <span class="fieldset-legend">Distribution</span>
-          <select name="distro" class="select select-sm select-bordered">
+          <select name="distro" class="select select-sm">
             {% for d in ["rhel", "fedora", "suse"] %}
             <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE (OS repos)"}[d] }}</option>
             {% endfor %}
@@ -49,7 +49,7 @@
   <section class="card card-border bg-base-100">
     <div class="card-body">
       <div class="flex items-center gap-2">
-        <h2 class="card-title text-base mr-auto">Run this on the new machine as root</h2>
+        <h2 class="card-title text-base me-auto">Run this on the new machine as root</h2>
         <button type="button" class="btn btn-sm btn-ghost" data-copy="onboard-command">Copy</button>
       </div>
       <pre class="mockup-code text-xs overflow-x-auto p-4"><code id="onboard-command">{{ script_command }}</code></pre>

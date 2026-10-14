@@ -9,7 +9,7 @@
 </nav>
 <div class="w-full">
   <div class="flex flex-wrap items-center gap-3 mb-4">
-    <h1 class="text-2xl font-bold tracking-tight mr-auto">State files</h1>
+    <h1 class="text-2xl font-bold tracking-tight me-auto">State files</h1>
     {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
     <a class="btn btn-sm btn-outline" title="Clone, repoint, and repair the file-roots checkout" href="{{ url_for('files.repo') }}">Repo settings</a>
     {% endif %}
@@ -27,7 +27,7 @@
         {% if git.clean %}<span class="badge badge-sm badge-outline badge-success">clean</span>{% else %}<span class="badge badge-sm badge-outline badge-warning">{{ git.dirty_count }} uncommitted</span>{% endif %}
         {% if git.upstream %}<span class="opacity-70 font-mono text-xs">vs {{ git.upstream }}{% if git.ahead is not none %} · {{ git.ahead }} ahead, {{ git.behind }} behind{% endif %}</span>{% else %}<span class="opacity-70 text-xs">no upstream</span>{% endif %}
         {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.sync')) %}
-        <span class="ms-auto flex gap-1 max-sm:w-full max-sm:mt-1">
+        <div class="ms-auto flex flex-wrap gap-1 max-sm:w-full max-sm:mt-1">
           <form method="post" action="{{ url_for('files.fetch') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-outline" title="Fetch the remote without changing files">Check for updates</button>
@@ -46,7 +46,7 @@
             <button class="btn btn-sm btn-primary" title="Push committed changes upstream">Push</button>
           </form>
           {% endif %}
-        </span>
+        </div>
         {% endif %}
       </div>
       {% if git.log %}
@@ -108,9 +108,9 @@
     </ul>
   </nav>
   {% endif %}
-  <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex gap-2 mb-3 sticky top-0 z-10 bg-base-100 py-2">
+  <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex flex-wrap gap-2 mb-4 sticky top-0 z-10 bg-base-100 border border-base-300 rounded-lg px-3 py-2">
     <input type="hidden" name="dir" value="{{ d }}">
-    <input name="q" value="{{ q }}" placeholder="Search files…" class="input input-bordered input-sm flex-1" aria-label="Search files">
+    <input name="q" value="{{ q }}" placeholder="Search files…" class="input input-sm flex-1" aria-label="Search files">
     <button class="btn btn-sm btn-primary">Search</button>
     {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', dir=d) }}">Clear</a>{% endif %}
   </form>
@@ -129,7 +129,7 @@
     {% if r.group is defined and not d %}
     <li class="px-4 py-1.5 bg-base-200 font-mono text-xs opacity-70">{{ r.group }}/</li>
     {% elif r.group is not defined %}
-    <li class="border-b border-base-200 last:border-0">
+    <li class="border-b border-base-300 last:border-0">
       <a href="{{ url_for('files.view', path=r.rel) }}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-base-200">
         {% if r.rel.endswith((".sls", ".yaml", ".yml", ".jinja")) %}
         <span class="icon-[lucide--file-code] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
@@ -140,7 +140,7 @@
         {% else %}
         <span class="icon-[lucide--file-text] size-4 opacity-60 shrink-0" aria-hidden="true"></span>
         {% endif %}
-        <span class="font-mono text-sm mr-auto break-all">{{ r.rel }}</span>
+        <span class="font-mono text-sm me-auto break-all">{{ r.rel }}</span>
         <span class="badge badge-sm badge-ghost">{{ r.size }} B</span>
       </a>
     </li>

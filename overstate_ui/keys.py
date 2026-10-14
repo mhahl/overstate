@@ -281,6 +281,27 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
             continue
         pending_on = [name for name, tab in state.items() if tab == "pending"]
         if not pending_on:
+            # No pending key anywhere: either healthy (accepted on every
+            # pod that lists it) or key-file drift — accepted on one
+            # reachable pod while the key file never arrived on another
+            # (wheel key.accept only moves pending keys, so fan-out can
+            # never create trust there; the minion only auths to the
+            # master it is attached to, so the blind master never even
+            # files it as pending). Skipping silently here produced
+            # "0 accepted, 0 skipped" with a blind master in the fleet:
+            # report the drift, still accepting nothing by hand.
+            accepted_on = [name for name, tab in state.items() if tab == "accepted"]
+            absent_on = [name for name, tab in state.items() if tab is None]
+            if accepted_on and absent_on:
+                skipped.append(
+                    (
+                        mid,
+                        f"accepted on {', '.join(accepted_on)} but key file "
+                        + f"absent on {', '.join(absent_on)} — backfill the "
+                        + "accepted key by hand (reconcile cannot accept a "
+                        + "key that was never pending there)",
+                    )
+                )
             continue  # absent elsewhere or already accepted everywhere
         trusted = [
             (name, fingers["accepted"][mid])
@@ -370,6 +391,15 @@ def index():
     if direction not in ("asc", "desc"):
         direction = "asc"
     rows = sorted(rows, key=lambda r: r["id"], reverse=(direction == "desc"))
+    per_page = 50
+    try:
+        requested_page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        requested_page = 1
+    total = len(rows)
+    pages = max(1, -(-total // per_page))
+    page = min(requested_page, pages)
+    page_rows = rows[(page - 1) * per_page:page * per_page]
     # Scale-up drift signal: ids pending on one pod but accepted on
     # another are one Reconcile click from converging.
     by_id: dict[str, dict] = {}
@@ -386,7 +416,11 @@ def index():
     return render_template(
         "keys.html",
         tab=tab,
-        rows=rows,
+        rows=page_rows,
+        total=total,
+        page=page,
+        pages=pages,
+        per_page=per_page,
         counts=counts,
         syndic_masters=masters,
         completable=completable,

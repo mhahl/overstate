@@ -84,6 +84,18 @@ wedge the cluster (no committed voters → `cluster_retry` → salt-api
 
 ## Deliberately not patched
 
+- `salt/returners/pgjsonb.py` (`returner()`'s bare `INSERT INTO
+  salt_returns`): in the 3-master shared-cache topology every return is
+  written by all three members and the two losers raise
+  `UniqueViolation` against the `(jid, id)` PK. Upstream fixed the same
+  shape for `jids` (`save_load()` uses `ON CONFLICT`, issue #22171) but
+  never for returns. Fixed as a delegating wrapper instead —
+  `salt-extmods/pgjsonb_upsert.py` (one SQL clause, everything else
+  delegated, so upstream fixes keep flowing) — because an `INSERT`-line
+  build-time anchor would be churn-prone across Salt upgrades. Full
+  analysis in `docs/reference/returner.md` §2–3; vehicle is the image
+  `COPY` in `Containerfile.salt-master`, not this patcher.
+
 - `salt/cluster/consensus/raft/node.py` (`Candidacy.handle_reply`
   raising on same-term duplicates) and the pre-vote overlap behavior
   were investigated as the "double delivery" suspect and left alone:

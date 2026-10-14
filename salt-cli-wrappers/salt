@@ -96,13 +96,27 @@ def main():
 
     all_returns = {}
     success = False
+    # Per-endpoint outcomes: "ok", "denied" (HTTP 401 on the call —
+    # function unknown or not in the overstate eauth grants),
+    # "login-denied" (HTTP 401 on /login — bad API credentials), or
+    # "down" (unreachable / other HTTP error). Lumping these together
+    # produced "could not contact salt-master cluster" for a mere 401,
+    # hiding a typo'd function behind a cluster-down scare.
+    outcomes = []
 
     for master_url in MASTERS:
         try:
             req = urllib.request.Request(f"{master_url}/login", data=login_data, headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(req, context=ctx, timeout=4) as r:
                 token = json.loads(r.read())["return"][0]["token"]
+        except urllib.error.HTTPError as exc:
+            outcomes.append(("login-denied" if exc.code == 401 else "down", master_url))
+            continue
+        except Exception:
+            outcomes.append(("down", master_url))
+            continue
 
+        try:
             req2 = urllib.request.Request(master_url, data=call_data, headers={"Content-Type": "application/json", "X-Auth-Token": token})
             with urllib.request.urlopen(req2, context=ctx, timeout=10) as r:
                 res = json.loads(r.read())
@@ -110,11 +124,35 @@ def main():
                 if isinstance(ret, dict):
                     all_returns.update(ret)
                 success = True
+                outcomes.append(("ok", master_url))
+        except urllib.error.HTTPError as exc:
+            outcomes.append(("denied" if exc.code == 401 else "down", master_url))
+            continue
         except Exception:
+            outcomes.append(("down", master_url))
             continue
 
     if not success and not all_returns:
-        print(f"Error: could not contact salt-master cluster", file=sys.stderr)
+        states = {state for state, _ in outcomes}
+        if states <= {"down"}:
+            print(f"Error: could not contact salt-master cluster", file=sys.stderr)
+        elif "login-denied" in states and "denied" not in states:
+            print(
+                "Error: salt-api login rejected (HTTP 401) on every reachable "
+                "master — check SALT_API_USER / SALT_API_USER_PASS.",
+                file=sys.stderr,
+            )
+        else:
+            down = sorted(url for state, url in outcomes if state == "down")
+            print(
+                f"Error: {fun} was refused (HTTP 401) on every reachable master. "
+                "The function may not exist or the overstate user may not be "
+                "granted it in api.conf (e.g. highstate.apply is not a function "
+                "— use state.highstate / state.apply).",
+                file=sys.stderr,
+            )
+            if down:
+                print(f"Unreachable endpoints (not tried further): {', '.join(down)}", file=sys.stderr)
         sys.exit(1)
 
     if not all_returns:

@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @plugin "daisyui" {
-  themes: cmyk;
+  themes: cmyk --default, dark;
 }
 @plugin "@iconify/tailwind4";
 /* Dynamic OS brand icons (minion overview): force-generate every slug the

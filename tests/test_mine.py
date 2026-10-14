@@ -102,6 +102,47 @@ def test_values_table_and_staleness_note():
     assert CALLS and CALLS[0]["fun"] == "mine.get"
 
 
+def test_large_mine_result_renders_one_page_and_preserves_query(monkeypatch):
+    from html.parser import HTMLParser
+    from urllib.parse import parse_qs, urlsplit
+
+    rows = {f"mine-{i:03d}": [f"10.0.0.{i}"] for i in range(121)}
+    monkeypatch.setattr("overstate_ui.tasks.queue_or_none", lambda *args, **kwargs: None)
+    monkeypatch.setattr("overstate_ui.tasks.mine_get_now", lambda *args, **kwargs: rows)
+
+    class MineLinks(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.minions = []
+            self.next_href = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag != "a":
+                return
+            href = dict(attrs).get("href", "")
+            if href.startswith("/minions/mine-"):
+                self.minions.append(href)
+            if href.startswith("/mine/?") and "page=3" in href:
+                self.next_href = href
+
+    c = make_client()
+    page = query(c, page="2", dir="desc").data.decode()
+    links = MineLinks()
+    links.feed(page)
+    assert len(links.minions) == 50
+    assert links.minions[0] == "/minions/mine-070"
+    assert links.minions[-1] == "/minions/mine-021"
+    assert parse_qs(urlsplit(links.next_href).query) == {
+        "tgt": ["*"], "tgt_type": ["glob"], "fun": ["network.ip_addrs"],
+        "dir": ["desc"], "page": ["3"],
+    }
+    last = query(c, page="999", dir="desc").data.decode()
+    links = MineLinks()
+    links.feed(last)
+    assert len(links.minions) == 21
+    assert "Page 3 of 3" in last
+
+
 def test_minion_sort_direction_toggles():
     html = query(make_client(), dir="desc").data.decode()
     assert 'aria-sort="desc"' in html
@@ -123,6 +164,39 @@ def test_denial_flashes_error():
     finally:
         DENY_MINE = False
     assert "salt-api error" in html
+
+
+def test_mine_error_offers_retry_without_losing_lookup():
+    from html.parser import HTMLParser
+    from urllib.parse import parse_qs, urlsplit
+
+    class RetryLink(HTMLParser):
+        href = None
+        current = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                self.current = dict(attrs).get("href")
+
+        def handle_data(self, data):
+            if data.strip() == "Retry lookup":
+                self.href = self.current
+
+        def handle_endtag(self, tag):
+            if tag == "a":
+                self.current = None
+
+    global DENY_MINE
+    DENY_MINE = True
+    try:
+        html = query(make_client(), dir="desc").data.decode()
+    finally:
+        DENY_MINE = False
+    parser = RetryLink()
+    parser.feed(html)
+    assert parse_qs(urlsplit(parser.href).query) == {
+        "tgt": ["*"], "tgt_type": ["glob"], "fun": ["network.ip_addrs"], "dir": ["desc"]
+    }
 
 
 def test_group_target_resolves_to_list():

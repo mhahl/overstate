@@ -110,13 +110,16 @@ UI is the **union** of all three pods with per-pod state chips.
 
 **3.3 Job history lives in Postgres, not on any master.**
 Salt's default local job cache dies with its pod. All three masters run
-the stock `pgjsonb` returner (`master_job_cache: pgjsonb`, flat
-`returner.pgjsonb.*` keys) against the shared `overstate` database on
-the CNPG cluster — the same tables the app reads (`jids`,
-`salt_returns`, created by the app) — so returns from any pod land in
-the one store the UI renders. The returner credentials arrive as the
-`salt-master-db` Secret projected into the config dir as `returner.conf`
-— the owned ConfigMap never holds passwords (enforced by test).
+a Postgres job-cache returner (flat `returner.pgjsonb.*` keys) against
+the shared `overstate` database on the CNPG cluster — the same tables
+the app reads (`jids`, `salt_returns`, created by the app) — so returns
+from any pod land in the one store the UI renders. The returner
+credentials arrive as the `salt-master-db` Secret projected into the
+config dir as `returner.conf` — the owned ConfigMap never holds
+passwords (enforced by test). The cache writer is currently the stock
+`pgjsonb` returner (`master_job_cache: pgjsonb`); its idempotent
+successor `pgjsonb_upsert` (`salt-extmods/`, baked into the image but
+not yet activated) is documented in `docs/reference/returner.md`.
 
 ## 4. Data flows
 

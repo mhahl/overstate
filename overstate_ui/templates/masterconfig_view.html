@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}View {{ key }} · Master config{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb" class="breadcrumbs text-sm py-0 mb-1">
+<nav aria-label="Breadcrumb" class="breadcrumbs text-sm mb-1">
   <ul>
     <li>Admin</li>
     <li>Master config</li>
@@ -10,7 +10,7 @@
 </nav>
 <div>
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <h1 class="text-xl font-bold font-mono tracking-tight break-all mr-auto">{{ key }}</h1>
+    <h1 class="text-xl font-bold font-mono tracking-tight break-all me-auto">{{ key }}</h1>
     <a class="btn btn-sm btn-primary" href="{{ url_for('masterconfig.edit', key=key) }}">Edit</a>
   </div>
   {% with active="master" %}{% include "_settings_tabs.html" %}{% endwith %}
