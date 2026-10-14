@@ -179,23 +179,22 @@ def test_shared_visual_system_covers_app_shell_settings_and_console():
     shell = (TEMPLATES / "base.html").read_text()
     for marker in (
         'data-theme="cmyk"',
-        "h-screen w-screen overflow-hidden",
-        'aria-label="Primary"',
-        'id="content"',
-        "max-w-[1600px]",
-        "w-64",
-        "_nav.html",
+        "drawer lg:drawer-open",
+        "drawer-side",
+        "menu-title",
+        "Operate",
+        "Configure",
+        "Observe",
+        "System",
+        "menu-active",
+        "palette-btn",
         "⌘K",
+        "max-w-7xl",
+        "htmx-error-note",
+        "_confirm.html",
     ):
         assert marker in shell, marker
-    assert "drawer-side" not in shell
+    assert "_nav.html" not in shell
     assert 'aria-label="Secondary"' not in shell
-    nav = (TEMPLATES / "_nav.html").read_text()
-    for marker in (
-        "menu-title",
-        "All Minions",
-        "Groups</span>",
-        "menu-active",
-        "nav_counts",
-    ):
-        assert marker in nav, marker
+    assert 'id="content"' not in shell
+    assert not (TEMPLATES / "_nav.html").exists()

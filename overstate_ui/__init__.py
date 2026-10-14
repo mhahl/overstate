@@ -115,49 +115,6 @@ def create_app(config: type[Config] = Config) -> Flask:
         return resp
 
     @app.context_processor
-    def _nav():
-        """L1 section + DB-only L2 count badges. Salt is never queried:
-        badges stay cheap on every page render."""
-        from flask import request
-
-        ep = request.endpoint or ""
-        if ep.startswith(("minions", "groups", "keys")):
-            section = "fleet"
-        elif ep.startswith(("jobs", "console")):
-            section = "jobs"
-        elif ep.startswith(("states", "pillar", "mine")) or (
-            ep.startswith("files") and ep != "files.repo"
-        ):
-            section = "states"
-        elif ep.startswith(("schedules", "reactor")):
-            section = "automate"
-        elif ep.startswith(("events", "audit")):
-            section = "observe"
-        elif ep.startswith(("settings", "masterconfig", "users")) or ep == "files.repo":
-            section = "admin"
-        else:
-            section = "dashboard"
-
-        counts = {
-            "minion_total": 0,
-            "group_total": 0,
-            "job_running": 0,
-            "saved_total": 0,
-        }
-        try:
-            from .db import get_session
-            from .models import Job, Minion, MinionGroup, SavedJob
-
-            session = get_session()
-            counts["minion_total"] = session.query(Minion).count()
-            counts["group_total"] = session.query(MinionGroup).count()
-            counts["job_running"] = session.query(Job).filter_by(complete=False).count()
-            counts["saved_total"] = session.query(SavedJob).count()
-        except Exception:  # noqa: BLE001 — DB may not exist yet
-            pass
-        return {"l1_section": section, "nav_counts": counts}
-
-    @app.context_processor
     def _rbac():
         """Template globals for scoped mode. ``can`` is deny-by-default
         in legacy mode; every use is inside an ``rbac_scoped`` branch."""

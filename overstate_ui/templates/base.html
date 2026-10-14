@@ -8,142 +8,178 @@
   <script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
   <script src="{{ url_for('static', filename='alpine.min.js') }}" defer></script>
 </head>
-<body class="bg-base-200">
-<a href="#content" class="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:m-2 focus:btn focus:btn-sm">Skip to content</a>
-{% set show_files = not rbac_scoped or can('file.read') %}
-{% set show_reactor = not rbac_scoped or can('reactor.read') %}
-{% set show_events = not rbac_scoped or can('event.read') %}
-{% set show_pillar = not rbac_scoped or can('pillar.read') %}
-{% set show_mine = not rbac_scoped or can('mine.read') %}
-{% set show_audit = not rbac_scoped or can('audit.read') %}
-{% set show_settings = not rbac_scoped or can('settings.read') %}
-{% set show_admin = current_user.is_authenticated and (current_user.role == 'admin' or (rbac_scoped and can('user.read'))) %}
-{% set show_master = current_user.is_authenticated and (current_user.role == 'admin' or (rbac_scoped and can('master.read'))) %}
-{% set show_repo = show_settings or show_admin %}
-{% set show_observe = show_events or show_audit %}
-{% set show_admin_section = show_settings or show_master or show_admin or show_repo %}
-<div x-data="{ mobileNav: false }" class="h-screen w-screen overflow-hidden flex flex-col">
-  <header class="h-14 shrink-0 flex items-center gap-2 px-3 lg:px-4 bg-base-100 border-b border-base-300">
-    <button class="btn btn-ghost btn-square btn-sm lg:hidden" @click="mobileNav = true" aria-label="Open navigation">
-      <span class="icon-[lucide--menu] size-5" aria-hidden="true"></span>
-    </button>
-    <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2 lg:hidden" aria-label="Overstate home">
-      <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-7 h-7">
-    </a>
-    <button id="palette-btn" class="btn btn-ghost btn-sm gap-2" aria-label="Command palette">
-      <span class="icon-[lucide--search] size-4 opacity-70" aria-hidden="true"></span>
-      <span class="opacity-70 font-normal hidden sm:inline">Jump to…</span>
-      <kbd class="kbd kbd-xs">⌘K</kbd>
-    </button>
-    <div class="ml-auto flex items-center gap-1 sm:gap-2">
-      <details class="dropdown dropdown-end">
-        <summary class="btn btn-ghost btn-sm gap-2 list-none cursor-pointer" aria-label="Salt master">
-          <span class="icon-[lucide--server] size-4 opacity-70" aria-hidden="true"></span>
-          <span class="hidden md:inline font-medium">Salt master</span>
-        </summary>
-        <ul class="dropdown-content menu bg-base-100 border border-base-300 rounded-box w-52 p-2 shadow-md z-50">
-          {% if show_master %}<li><a href="{{ url_for('masterconfig.index') }}">Master config</a></li>{% endif %}
-          <li><a href="{{ url_for('console.index') }}">Console</a></li>
-        </ul>
-      </details>
-      <a class="btn btn-ghost btn-square btn-sm" href="https://docs.saltproject.io/en/latest/" target="_blank" rel="noopener" aria-label="Salt docs">
-        <span class="icon-[lucide--book-open] size-4" aria-hidden="true"></span>
+<body class="bg-base-200 min-h-screen">
+<div class="drawer lg:drawer-open">
+  <input id="nav" type="checkbox" class="drawer-toggle">
+  <div class="drawer-content flex flex-col min-h-screen">
+    <header class="navbar bg-base-100 border-b border-base-300 sticky top-0 z-30 px-3 lg:px-6 gap-2">
+      <label for="nav" class="btn btn-ghost btn-square lg:hidden" aria-label="Open navigation">
+        <span class="icon-[lucide--menu] size-5" aria-hidden="true"></span>
+      </label>
+      <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2 lg:hidden">
+        <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-7 h-7">
+        <span class="font-bold">Overstate</span>
       </a>
-      <a class="btn btn-primary btn-sm" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">
-        <span class="icon-[lucide--plus] size-4" aria-hidden="true"></span>
-        Run job
-      </a>
-      {% if current_user.is_authenticated %}
-      <details class="dropdown dropdown-end">
-        <summary class="btn btn-ghost btn-sm gap-2 list-none cursor-pointer" aria-label="Account">
-          <span class="avatar avatar-placeholder"><span class="bg-neutral text-neutral-content rounded-full w-7 text-xs font-semibold">{{ current_user.username[0]|upper }}</span></span>
-          <span class="hidden sm:inline font-medium">{{ current_user.username }}</span>
-          <span class="badge badge-sm badge-outline hidden md:inline-flex">{{ current_user.role }}</span>
-        </summary>
-        <div class="dropdown-content card card-sm bg-base-100 border border-base-300 shadow-md w-56 z-50">
-          <div class="card-body gap-1">
-            <p class="font-semibold text-sm">{{ current_user.username }}</p>
-            <p class="text-xs opacity-70 mb-1">Role: {{ current_user.role }}</p>
-            <form method="post" action="{{ url_for('auth.logout') }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-sm btn-ghost justify-start w-full">Logout</button>
-            </form>
+      <div class="ml-auto flex items-center gap-2">
+        <button id="palette-btn" class="btn btn-ghost btn-sm gap-2 inline-flex" aria-label="Command palette">
+          <span class="icon-[lucide--search] size-4 opacity-70" aria-hidden="true"></span>
+          <span class="opacity-70 font-normal">Jump to…</span>
+          <kbd class="kbd kbd-xs">⌘K</kbd>
+        </button>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">
+          <span class="icon-[lucide--plus] size-4" aria-hidden="true"></span>
+          Run job
+        </a>
+        {% if current_user.is_authenticated %}
+        <details class="dropdown dropdown-end">
+          <summary class="btn btn-ghost btn-sm gap-2 list-none cursor-pointer" aria-label="Account">
+            <span class="avatar avatar-placeholder"><span class="bg-neutral text-neutral-content rounded-full w-7 text-xs font-semibold">{{ current_user.username[0]|upper }}</span></span>
+            <span class="hidden sm:inline font-medium">{{ current_user.username }}</span>
+            <span class="badge badge-sm badge-outline hidden md:inline-flex">{{ current_user.role }}</span>
+          </summary>
+          <div class="dropdown-content card card-sm bg-base-100 border border-base-300 shadow-md w-56 z-50">
+            <div class="card-body gap-1">
+              <p class="font-semibold text-sm">{{ current_user.username }}</p>
+              <p class="text-xs opacity-70 mb-1">Role: {{ current_user.role }}</p>
+              <form method="post" action="{{ url_for('auth.logout') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-ghost justify-start w-full">Logout</button>
+              </form>
+            </div>
           </div>
-        </div>
-      </details>
-      {% endif %}
-    </div>
-  </header>
-  <div class="flex-1 min-h-0 flex flex-col lg:flex-row">
-    <nav class="hidden lg:flex w-64 shrink-0 flex-col border-r border-base-300 bg-base-100 overflow-y-auto" aria-label="Primary">
-      <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2.5 px-5 h-16 border-b border-base-300 shrink-0">
-        <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-8 h-8 shrink-0">
+        </details>
+        {% endif %}
+      </div>
+    </header>
+    <main class="p-4 lg:p-6 w-full max-w-7xl mx-auto grow">
+      <div id="htmx-error-note" class="hidden" role="alert">
+        <span>Refresh failed.</span>
+      </div>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, m in messages %}
+          {% if category == "success" %}
+          <div class="alert alert-success mb-4" role="alert">
+            <span class="icon-[lucide--circle-check] size-5 shrink-0" aria-hidden="true"></span>
+            <span>{{ m }}</span>
+          </div>
+          {% elif category == "warning" %}
+          <div class="alert alert-warning mb-4" role="alert">
+            <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+            <span>{{ m }}</span>
+          </div>
+          {% elif category in ("error", "danger") %}
+          <div class="alert alert-error mb-4" role="alert">
+            <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
+            <span>{{ m }}</span>
+          </div>
+          {% else %}
+          <div class="alert alert-info mb-4" role="alert">
+            <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
+            <span>{{ m }}</span>
+          </div>
+          {% endif %}
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+      <footer class="mt-8 text-center text-xs opacity-50">Overstate · Salt control plane</footer>
+    </main>
+  </div>
+  <div class="drawer-side z-40">
+    <label for="nav" aria-label="Close navigation" class="drawer-overlay"></label>
+    <aside class="bg-base-100 border-r border-base-300 min-h-full w-64 flex flex-col">
+      <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2.5 px-5 h-16 border-b border-base-300">
+        <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-8 h-8">
         <span class="font-bold text-lg tracking-tight">Overstate</span>
       </a>
-      {% include "_nav.html" %}
+      <nav class="p-3 overflow-y-auto grow">
+        <ul class="menu w-full gap-0.5">
+          <li class="menu-title">Operate</li>
+          <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'menu-active' if request.endpoint == 'dashboard.index' }}">
+            <span class="icon-[lucide--layout-dashboard] size-4.5" aria-hidden="true"></span>
+            Dashboard</a></li>
+          <li><a href="{{ url_for('minions.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('minions') }}">
+            <span class="icon-[lucide--cpu] size-4.5" aria-hidden="true"></span>
+            Minions</a></li>
+          <li><a href="{{ url_for('groups.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('groups') }}">
+            <span class="icon-[lucide--users] size-4.5" aria-hidden="true"></span>
+            Groups</a></li>
+          <li><a href="{{ url_for('keys.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('keys') }}">
+            <span class="icon-[lucide--key] size-4.5" aria-hidden="true"></span>
+            Keys</a></li>
+          <li><a href="{{ url_for('jobs.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('jobs') }}">
+            <span class="icon-[lucide--play] size-4.5" aria-hidden="true"></span>
+            Jobs</a></li>
+          <li><a href="{{ url_for('console.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('console') }}">
+            <span class="icon-[lucide--terminal] size-4.5" aria-hidden="true"></span>
+            Console</a></li>
+          <li class="menu-title mt-2">Configure</li>
+          <li><a href="{{ url_for('states.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('states') }}">
+            <span class="icon-[lucide--badge-check] size-4.5" aria-hidden="true"></span>
+            States</a></li>
+          {% if not rbac_scoped or can('file.read') %}
+          <li><a href="{{ url_for('files.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('files') }}">
+            <span class="icon-[lucide--file-text] size-4.5" aria-hidden="true"></span>
+            Files</a></li>
+          {% endif %}
+          {% if not rbac_scoped or can('reactor.read') %}
+          <li><a href="{{ url_for('reactor.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('reactor') }}">
+            <span class="icon-[lucide--workflow] size-4.5" aria-hidden="true"></span>
+            Reactor</a></li>
+          {% endif %}
+          <li><a href="{{ url_for('schedules.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('schedules') }}">
+            <span class="icon-[lucide--clock] size-4.5" aria-hidden="true"></span>
+            Schedules</a></li>
+          <li class="menu-title mt-2">Observe</li>
+          {% if not rbac_scoped or can('event.read') %}
+          <li><a href="{{ url_for('events.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('events') }}">
+            <span class="icon-[lucide--zap] size-4.5" aria-hidden="true"></span>
+            Events</a></li>
+          {% endif %}
+          {% if not rbac_scoped or can('pillar.read') %}
+          <li><a href="{{ url_for('pillar.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('pillar') }}">
+            <span class="icon-[lucide--tag] size-4.5" aria-hidden="true"></span>
+            Pillar</a></li>
+          {% endif %}
+          {% if not rbac_scoped or can('mine.read') %}
+          <li><a href="{{ url_for('mine.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('mine') }}">
+            <span class="icon-[lucide--database] size-4.5" aria-hidden="true"></span>
+            Mine</a></li>
+          {% endif %}
+          {% if not rbac_scoped or can('audit.read') %}
+          <li><a href="{{ url_for('audit.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('audit') }}">
+            <span class="icon-[lucide--scroll-text] size-4.5" aria-hidden="true"></span>
+            Audit</a></li>
+          {% endif %}
+          <li class="menu-title mt-2">System</li>
+          {% if not rbac_scoped or can('settings.read') %}
+          <li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith(('settings', 'masterconfig')) }}">
+            <span class="icon-[lucide--settings] size-4.5" aria-hidden="true"></span>
+            Settings</a></li>
+          {% endif %}
+          {% if current_user.is_authenticated and (current_user.role == 'admin' or (rbac_scoped and can('user.read'))) %}
+          <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint == 'users.index' }}">
+            <span class="icon-[lucide--users] size-4.5" aria-hidden="true"></span>
+            Users</a></li>
+          <li><a href="{{ url_for('users.groups') }}" class="{{ 'menu-active' if request.endpoint == 'users.groups' }}">
+            <span class="icon-[lucide--users-round] size-4.5" aria-hidden="true"></span>
+            Access groups</a></li>
+          {% endif %}
+        </ul>
+      </nav>
       {% if current_user.is_authenticated %}
       <div class="p-3 border-t border-base-300">
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-ghost btn-sm w-full justify-start gap-2" aria-label="Logout">
+          <button class="btn btn-ghost btn-sm w-full justify-start gap-2">
             <span class="icon-[lucide--log-out] size-4" aria-hidden="true"></span>
-            <span>Logout</span>
+            Logout
           </button>
         </form>
       </div>
       {% endif %}
-    </nav>
-    <div x-show="mobileNav" class="fixed inset-0 z-50 lg:hidden" x-cloak>
-      <div class="absolute inset-0 bg-black/50" @click="mobileNav = false" aria-hidden="true"></div>
-      <nav class="absolute left-0 top-0 bottom-0 w-72 bg-base-100 border-r border-base-300 overflow-y-auto p-3" aria-label="Primary">
-        <div class="flex items-center gap-2.5 px-2 h-12 mb-2">
-          <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-7 h-7">
-          <span class="font-bold tracking-tight">Overstate</span>
-          <button class="btn btn-ghost btn-square btn-sm ml-auto" @click="mobileNav = false" aria-label="Close navigation">
-            <span class="icon-[lucide--x] size-5" aria-hidden="true"></span>
-          </button>
-        </div>
-        <div @click="mobileNav = false">
-        {% include "_nav.html" %}
-        </div>
-      </nav>
-    </div>
-    <main id="content" class="flex-1 min-w-0 overflow-y-auto" aria-live="polite">
-      <div class="px-6 py-4 w-full max-w-[1600px] mx-auto">
-        <div id="htmx-error-note" class="hidden" role="alert">
-          <span>Refresh failed.</span>
-        </div>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, m in messages %}
-            {% if category == "success" %}
-            <div class="alert alert-success mb-4" role="alert">
-              <span class="icon-[lucide--circle-check] size-5 shrink-0" aria-hidden="true"></span>
-              <span>{{ m }}</span>
-            </div>
-            {% elif category == "warning" %}
-            <div class="alert alert-warning mb-4" role="alert">
-              <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
-              <span>{{ m }}</span>
-            </div>
-            {% elif category in ("error", "danger") %}
-            <div class="alert alert-error mb-4" role="alert">
-              <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
-              <span>{{ m }}</span>
-            </div>
-            {% else %}
-            <div class="alert alert-info mb-4" role="alert">
-              <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
-              <span>{{ m }}</span>
-            </div>
-            {% endif %}
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-        {% block content %}{% endblock %}
-        <footer class="mt-8 text-center text-xs opacity-50">Overstate · Salt control plane</footer>
-      </div>
-    </main>
+    </aside>
   </div>
 </div>
 <script>
