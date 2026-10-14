@@ -169,10 +169,10 @@ spec:
             failureThreshold: 3
           resources:
             requests:
-              memory: 1Gi
+              memory: 2Gi
               cpu: 500m
             limits:
-              memory: 2Gi
+              memory: 4Gi
       volumes:
         # One directory from three sources: the owned ConfigMap plus the
         # owner-held returner and cluster Secrets. Projected (not subPath
