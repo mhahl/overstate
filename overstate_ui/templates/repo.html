@@ -13,7 +13,7 @@
   </div>
 </div>
 
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Status</h2>
 {% if checkout and status and status.ok %}
@@ -43,7 +43,7 @@
 </div>
 
 {% if not checkout %}
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Clone</h2>
 <p class="text-sm opacity-70 mb-2">Clones the states repo at the shared roots with <span class="font-mono text-xs">salt/</span> and <span class="font-mono text-xs">pillar/</span> beside each other. An existing <span class="font-mono text-xs">salt/</span> seed tree is replaced only after you confirm. <span class="font-mono text-xs">reactor/</span> is always kept.</p>
@@ -74,7 +74,7 @@
 </div>
 </div>
 {% if srv_nonempty %}
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Re-clone from scratch</h2>
 <p class="text-sm opacity-70 mb-2">The shared roots are not empty, so plain clone refuses. Re-clone clears them first (keeping <span class="font-mono text-xs">reactor/</span>), then clones fresh.</p>
@@ -106,7 +106,7 @@
 </div>
 {% endif %}
 {% else %}
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Repoint origin</h2>
 <p class="text-sm opacity-70 mb-2">Refuses on dirty trees and unpushed commits. Repointing under either orphans work onto the wrong remote.</p>
@@ -119,7 +119,7 @@
 </div>
 </div>
 
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Reset to upstream</h2>
 <p class="text-sm opacity-70 mb-2">Abandons tracked working-tree changes. Refuses on unpushed commits. Untracked files survive unless you select the box.</p>
@@ -141,7 +141,7 @@
 </div>
 </div>
 
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Re-clone from scratch</h2>
 <p class="text-sm opacity-70 mb-2">Destroys the checkout and clones fresh. Use only for corrupt <code class="font-mono">.git</code>. Refuses on unpushed commits.</p>
@@ -172,7 +172,7 @@
 </div>
 </div>
 
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Push credentials</h2>
 <p class="text-sm opacity-70 mb-2">One token slot, stored 0600 at the shared roots outside the browsed salt/ tree. {% if token_configured %}Configured.{% else %}Empty.{% endif %}</p>

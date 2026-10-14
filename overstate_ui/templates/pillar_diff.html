@@ -11,7 +11,7 @@
 <div class="flex flex-wrap items-center gap-3 mb-4">
   <h1 class="text-2xl font-bold tracking-tight mr-auto">Pillar diff</h1>
 </div>
-<form method="get" class="card card-bordered card-sm mb-4">
+<form method="get" class="card card-border card-sm mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Left</legend>
@@ -48,18 +48,20 @@
   <p class="text-xs opacity-70 mt-2">Pick the same minion on both sides to compare two of its snapshots.</p>
 </form>
 {% if compared %}
-<div class="tabs tabs-bordered mb-4">
-  <a class="tab {{ 'tab-active' if view == 'changes' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='changes') }}">Changes</a>
-  <a class="tab {{ 'tab-active' if view == 'full' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='full') }}">Full</a>
-</div>
-<div class="card card-bordered">
+<div class="card card-border">
+  <div class="px-4 pt-3">
+    <div class="tabs tabs-border" aria-label="Diff view">
+      <a class="tab {{ 'tab-active' if view == 'changes' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='changes') }}">Changes</a>
+      <a class="tab {{ 'tab-active' if view == 'full' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='full') }}">Full</a>
+    </div>
+  </div>
   <div class="px-4 py-3 border-b border-base-300 text-sm">
     <span class="font-mono">{{ mid_a }}</span> <span class="opacity-60">vs</span> <span class="font-mono">{{ mid_b }}</span>
     {% if view == "full" %}<span class="badge badge-sm badge-outline badge-neutral ml-2">{{ ndiff }} of {{ rows|length }} differ</span>
     {% else %}<span class="badge badge-sm badge-outline badge-neutral ml-2">{{ rows|length }} difference{{ "s" if rows|length != 1 }}</span>{% endif %}
   </div>
   {% if rows %}
-  <div class="overflow-x-auto">
+  <div class="overflow-x-auto rounded-box">
   <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Path</th><th>Change</th><th>Left</th><th>Right</th></tr></thead><tbody>
   {% for r in rows %}
   <tr>
@@ -84,7 +86,7 @@
   {% endif %}
 </div>
 {% elif mid_a and mid_b %}
-<div class="card card-bordered">
+<div class="card card-border">
   <div class="py-8 text-center">
     <p class="font-medium">No pillar data to compare</p>
     <p class="text-sm opacity-70">Capture a snapshot or compare live for both minions.</p>

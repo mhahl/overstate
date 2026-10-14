@@ -181,11 +181,21 @@ def test_shared_visual_system_covers_app_shell_settings_and_console():
         'data-theme="cmyk"',
         "h-screen w-screen overflow-hidden",
         'aria-label="Primary"',
-        'aria-label="Secondary"',
         'id="content"',
         "max-w-[1600px]",
-        "lg:w-[270px]",
+        "w-64",
+        "_nav.html",
         "⌘K",
     ):
         assert marker in shell, marker
     assert "drawer-side" not in shell
+    assert 'aria-label="Secondary"' not in shell
+    nav = (TEMPLATES / "_nav.html").read_text()
+    for marker in (
+        "menu-title",
+        "All Minions",
+        "Groups</span>",
+        "menu-active",
+        "nav_counts",
+    ):
+        assert marker in nav, marker

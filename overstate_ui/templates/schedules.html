@@ -12,7 +12,7 @@
     <h1 class="text-2xl font-bold tracking-tight">Schedules</h1>
   </div>
 </div>
-<form method="get" class="card card-sm card-bordered bg-base-100 mb-4 sticky top-0 z-10" role="search">
+<form method="get" class="card card-sm card-border bg-base-100 mb-4 sticky top-0 z-10" role="search">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <div class="card-body flex-row flex-wrap items-end gap-2">
@@ -33,7 +33,7 @@
 </div>
 {% endif %}
 {% if mid and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write'))) %}
-<form method="post" action="{{ url_for('schedules.add', mid=mid) }}" class="card card-sm card-bordered bg-base-100 mb-4">
+<form method="post" action="{{ url_for('schedules.add', mid=mid) }}" class="card card-sm card-border bg-base-100 mb-4">
   <div class="card-body flex-row flex-wrap items-end gap-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset class="fieldset">
@@ -65,8 +65,8 @@
 </form>
 {% endif %}
 {% if entries is mapping and entries %}
-<div class="card card-bordered bg-base-100">
-<div class="overflow-x-auto">
+<div class="card card-border bg-base-100">
+<div class="overflow-x-auto rounded-box">
 {% import "_macros.html" as m %}
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('schedules.index', 'name', 'Job', sort, direction, {'minion': mid}) }}{{ m.sort_th_plain('schedules.index', 'function', 'Function', sort, direction, {'minion': mid}) }}<th>When</th><th>Enabled</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for name, job in entries.items() %}
@@ -86,7 +86,7 @@
 {% elif raw %}
 <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ raw }}</code></pre>
 {% else %}
-<div class="card card-bordered bg-base-100"><div class="py-8 text-center">
+<div class="card card-border bg-base-100"><div class="py-8 text-center">
   <p class="font-medium">{% if mid %}No schedules on {{ mid }}{% else %}No accepted minions{% endif %}</p>
   <p class="text-sm opacity-70">New scheduler entries appear here.</p>
 </div></div>

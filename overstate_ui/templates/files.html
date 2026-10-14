@@ -17,7 +17,7 @@
   <div class="w-full mb-4">
     {% if has_top %}<p class="text-sm"><a class="link" href="{{ url_for('files.view', path='top.sls') }}">top.sls</a> is the entry point: it maps minions to states.</p>{% else %}<p class="text-sm text-warning">No top.sls at file roots. The master serves nothing until you clone the states repo on the Repo tab.</p>{% endif %}
   </div>
-  <section class="card card-bordered mb-3" aria-label="Git checkout status">
+  <section class="card card-border mb-3" aria-label="Git checkout status">
     <div class="card-body py-3">
       {% if git.ok %}
       <div class="flex flex-wrap items-center gap-2 text-sm">
@@ -59,7 +59,7 @@
       {% endif %}
     </div>
   </section>
-  <section class="card card-bordered mb-3" aria-label="Scheduled file sync">
+  <section class="card card-border mb-3" aria-label="Scheduled file sync">
     <div class="card-body py-3">
       <div class="flex flex-wrap items-center gap-2 text-sm">
         <span class="font-semibold">Scheduled sync</span>
@@ -83,7 +83,7 @@
   </ul>
   {% endmacro %}
   <div class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] items-start">
-  <nav class="card card-bordered" aria-label="Folders">
+  <nav class="card card-border" aria-label="Folders">
     <div class="card-body p-3">
       <div class="flex items-center gap-2 px-1 pb-1">
         <h2 class="font-semibold text-sm">Folders</h2>
@@ -117,7 +117,7 @@
   {% if truncated %}
   <div class="alert alert-warning text-sm mb-3" role="status">Listing capped at {{ total }} of many files. Narrow it with search.</div>
   {% endif %}
-  <div class="card card-bordered">
+  <div class="card card-border">
   {% if not rows %}
   <div class="py-8 text-center">
     <p class="font-medium">{% if q %}No files match "{{ q }}"{% elif d %}No files under "{{ d }}"{% else %}No files found{% endif %}</p>

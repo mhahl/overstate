@@ -1,12 +1,14 @@
 {% import "_macros.html" as m %}
 <div id="jobs-region"{% if tab == "running" %} data-poll-url="{{ url_for('jobs.index', tab='running', sort=sort, dir=direction, q=q) }}"{% endif %}>
-<div class="tabs tabs-bordered mb-4" aria-label="Job lists">
+<div class="card card-border bg-base-100">
+<div class="px-4 pt-3">
+<div class="tabs tabs-border" aria-label="Job lists">
   {% for name in ["running", "history", "saved"] %}
   {% set href = url_for('jobs.index', tab=name, sort=sort, dir=direction, q=q) %}
   <a href="{{ href }}" hx-get="{{ href }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-outline ml-1">{{ running|length }}</span>{% endif %}</a>
   {% endfor %}
 </div>
-<div class="card card-bordered bg-base-100">
+</div>
 {% if tab == "saved" %}
 {% if saved %}
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Name</th><th>Function</th><th>Target</th><th class="text-right"></th></tr></thead><tbody>
@@ -28,7 +30,7 @@
 {% else %}
 {% set rows = running if tab == "running" else history %}
 {% if rows %}
-<div class="overflow-x-auto">
+<div class="overflow-x-auto rounded-box">
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th('jobs.index', 'jid', 'JID', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'fun', 'Function', sort, direction, {'tab': tab, 'q': q}) }}<th>Target</th>{{ m.sort_th('jobs.index', 'user', 'User', sort, direction, {'tab': tab, 'q': q}) }}{{ m.sort_th('jobs.index', 'started', 'Started', sort, direction, {'tab': tab, 'q': q}) }}</tr></thead><tbody>
 {% for j in rows %}
 <tr><td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=j.jid) }}">{{ j.jid }}</a></td>

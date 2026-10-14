@@ -10,7 +10,7 @@
 <div class="mb-5">
   <h1 class="text-2xl font-bold tracking-tight">Orchestrate</h1>
 </div>
-<form method="post" action="{{ url_for('jobs.orchestrate_run') }}" class="card card-bordered bg-base-100 max-w-2xl">
+<form method="post" action="{{ url_for('jobs.orchestrate_run') }}" class="card card-border bg-base-100 max-w-2xl">
   <div class="card-body gap-3">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset class="fieldset">

@@ -31,15 +31,17 @@
   <button class="btn btn-sm btn-primary">Filter</button>
   {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('keys.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
 </form>
-<div class="tabs tabs-bordered" aria-label="Key states">
+<div class="card card-border bg-base-100">
+<div class="px-4 pt-3">
+<div class="tabs tabs-border" aria-label="Key states">
   {% for name in ["pending", "accepted", "rejected", "denied"] %}
   <a href="{{ url_for('keys.index', tab=name, q=q, sort=sort, dir=direction) }}" class="tab{% if tab == name %} tab-active{% endif %}">{{ name|capitalize }} <span class="badge badge-sm badge-outline {{ 'badge-warning' if name == 'pending' else 'badge-neutral' }} ml-1">{{ counts[name] }}</span></a>
   {% endfor %}
 </div>
-<div class="card card-bordered bg-base-100">
+</div>
 <div>
 {% if rows %}
-<div class="overflow-x-auto">
+<div class="overflow-x-auto rounded-box">
 <table class="table table-sm table-zebra table-pin-rows w-full">
   <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q}) }}<th>Fingerprint</th><th>Pods</th><th class="w-48 text-right">Action</th></tr></thead>
   <tbody>

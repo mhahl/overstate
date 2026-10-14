@@ -1,6 +1,6 @@
 {% import "_macros.html" as m %}
 <div id="minion-table">
-  <div class="overflow-x-auto">
+  <div class="overflow-x-auto rounded-box">
   <table class="table table-sm table-zebra table-pin-rows w-full">
     <thead><tr>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}<th class="w-8"><input type="checkbox" id="bulk-all" class="checkbox checkbox-sm" aria-label="Select all minions"></th>{% endif %}{{ m.sort_th('minions.index', 'id', 'Id', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'key', 'Key', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'presence', 'Presence', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}{{ m.sort_th('minions.index', 'os', 'OS', sort, direction, {'q': q, 'status': status, 'per_page': per_page}, '#minion-table') }}<th>IP</th><th class="text-right">CPUs</th><th>Salt</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}<th class="w-10"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
     <tbody>

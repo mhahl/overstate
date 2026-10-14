@@ -19,9 +19,9 @@
   <button class="btn btn-sm btn-primary">Filter</button>
   {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
 </form>
-<div class="card card-bordered">
+<div class="card card-border">
 {% if mids %}
-<div class="overflow-x-auto">
+<div class="overflow-x-auto rounded-box">
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('pillar.index', 'minion', 'Minion', sort, direction, {'q': q}) }}{{ m.sort_th_plain('pillar.index', 'snapshots', 'Snapshots', sort, direction, {'q': q}) }}<th class="text-right"></th></tr></thead><tbody>
 {% for mid in mids %}
 <tr>

@@ -22,7 +22,7 @@
 </div>
 {% endif %}
 <div class="flex flex-col gap-4 max-w-3xl">
-  <section class="card card-bordered bg-base-100">
+  <section class="card card-border bg-base-100">
     <div class="card-body">
       <h2 class="card-title text-base">Describe the new minion</h2>
       <form method="get" action="{{ url_for('minions.onboard') }}" class="flex flex-wrap items-end gap-2">
@@ -46,7 +46,7 @@
     </div>
   </section>
   {% if script_url %}
-  <section class="card card-bordered bg-base-100">
+  <section class="card card-border bg-base-100">
     <div class="card-body">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base mr-auto">Run this on the new machine as root</h2>
@@ -56,7 +56,7 @@
     </div>
   </section>
   {% endif %}
-  <section class="card card-bordered bg-base-100">
+  <section class="card card-border bg-base-100">
     <div class="card-body">
       <h2 class="card-title text-base">Accept the key</h2>
       {% if pending %}
@@ -71,7 +71,7 @@
       <a class="btn btn-sm btn-primary self-start" href="{{ url_for('keys.index', tab='pending') }}">Review pending keys</a>
     </div>
   </section>
-  <section class="card card-bordered bg-base-100">
+  <section class="card card-border bg-base-100">
     <div class="card-body">
       <h2 class="card-title text-base">Verify</h2>
       <p class="text-sm opacity-70">Run a first command, then check history.</p>

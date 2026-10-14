@@ -22,13 +22,10 @@
 {% set show_repo = show_settings or show_admin %}
 {% set show_observe = show_events or show_audit %}
 {% set show_admin_section = show_settings or show_master or show_admin or show_repo %}
-<div x-data="{ l1Collapsed: localStorage.getItem('os-l1') === '1', mobileNav: false, toggleL1() { this.l1Collapsed = !this.l1Collapsed; localStorage.setItem('os-l1', this.l1Collapsed ? '1' : '0'); } }" class="h-screen w-screen overflow-hidden flex flex-col">
+<div x-data="{ mobileNav: false }" class="h-screen w-screen overflow-hidden flex flex-col">
   <header class="h-14 shrink-0 flex items-center gap-2 px-3 lg:px-4 bg-base-100 border-b border-base-300">
     <button class="btn btn-ghost btn-square btn-sm lg:hidden" @click="mobileNav = true" aria-label="Open navigation">
       <span class="icon-[lucide--menu] size-5" aria-hidden="true"></span>
-    </button>
-    <button class="btn btn-ghost btn-square btn-sm hidden lg:inline-flex" @click="toggleL1()" aria-label="Toggle sidebar">
-      <span class="icon-[lucide--panel-left] size-5" aria-hidden="true"></span>
     </button>
     <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2 lg:hidden" aria-label="Overstate home">
       <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-7 h-7">
@@ -78,45 +75,19 @@
     </div>
   </header>
   <div class="flex-1 min-h-0 flex flex-col lg:flex-row">
-    <nav class="hidden lg:flex flex-col shrink-0 border-r border-base-300 bg-base-100 overflow-y-auto" :class="l1Collapsed ? 'lg:w-16' : 'lg:w-60'" aria-label="Primary">
+    <nav class="hidden lg:flex w-64 shrink-0 flex-col border-r border-base-300 bg-base-100 overflow-y-auto" aria-label="Primary">
       <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2.5 px-5 h-16 border-b border-base-300 shrink-0">
         <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-8 h-8 shrink-0">
-        <span class="font-bold text-lg tracking-tight" :class="{ 'hidden': l1Collapsed }">Overstate</span>
+        <span class="font-bold text-lg tracking-tight">Overstate</span>
       </a>
-      <ul class="menu w-full gap-0.5 p-3 grow">
-        <li><a href="{{ url_for('dashboard.index') }}" title="Dashboard" class="{{ 'menu-active' if l1_section == 'dashboard' }}">
-          <span class="icon-[lucide--layout-dashboard] size-4.5" aria-hidden="true"></span>
-          <span :class="{ 'hidden': l1Collapsed }">Dashboard</span></a></li>
-        <li><a href="{{ url_for('minions.index') }}" title="Fleet" class="{{ 'menu-active' if l1_section == 'fleet' }}">
-          <span class="icon-[lucide--cpu] size-4.5" aria-hidden="true"></span>
-          <span :class="{ 'hidden': l1Collapsed }">Fleet</span></a></li>
-        <li><a href="{{ url_for('jobs.index') }}" title="Jobs" class="{{ 'menu-active' if l1_section == 'jobs' }}">
-          <span class="icon-[lucide--play] size-4.5" aria-hidden="true"></span>
-          <span :class="{ 'hidden': l1Collapsed }">Jobs</span></a></li>
-        <li><a href="{{ url_for('states.index') }}" title="States" class="{{ 'menu-active' if l1_section == 'states' }}">
-          <span class="icon-[lucide--badge-check] size-4.5" aria-hidden="true"></span>
-          <span :class="{ 'hidden': l1Collapsed }">States</span></a></li>
-        <li><a href="{{ url_for('schedules.index') }}" title="Automate" class="{{ 'menu-active' if l1_section == 'automate' }}">
-          <span class="icon-[lucide--workflow] size-4.5" aria-hidden="true"></span>
-          <span :class="{ 'hidden': l1Collapsed }">Automate</span></a></li>
-        {% if show_observe %}
-        <li><a href="{{ url_for('events.index') if show_events else url_for('audit.index') }}" title="Observe" class="{{ 'menu-active' if l1_section == 'observe' }}">
-          <span class="icon-[lucide--zap] size-4.5" aria-hidden="true"></span>
-          <span :class="{ 'hidden': l1Collapsed }">Observe</span></a></li>
-        {% endif %}
-        {% if show_admin_section %}
-        <li><a href="{{ url_for('settings.index') if show_settings else url_for('users.index') if show_admin else url_for('masterconfig.index') }}" title="Admin" class="{{ 'menu-active' if l1_section == 'admin' }}">
-          <span class="icon-[lucide--settings] size-4.5" aria-hidden="true"></span>
-          <span :class="{ 'hidden': l1Collapsed }">Admin</span></a></li>
-        {% endif %}
-      </ul>
+      {% include "_nav.html" %}
       {% if current_user.is_authenticated %}
       <div class="p-3 border-t border-base-300">
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-ghost btn-sm w-full justify-start gap-2" aria-label="Logout">
             <span class="icon-[lucide--log-out] size-4" aria-hidden="true"></span>
-            <span :class="{ 'hidden': l1Collapsed }">Logout</span>
+            <span>Logout</span>
           </button>
         </form>
       </div>
@@ -132,95 +103,11 @@
             <span class="icon-[lucide--x] size-5" aria-hidden="true"></span>
           </button>
         </div>
-        <ul class="menu w-full gap-0.5" @click="mobileNav = false">
-          <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'menu-active' if l1_section == 'dashboard' }}">Dashboard</a></li>
-          <li><a href="{{ url_for('minions.index') }}" class="{{ 'menu-active' if l1_section == 'fleet' }}">Fleet</a></li>
-          <li><a href="{{ url_for('jobs.index') }}" class="{{ 'menu-active' if l1_section == 'jobs' }}">Jobs</a></li>
-          <li><a href="{{ url_for('states.index') }}" class="{{ 'menu-active' if l1_section == 'states' }}">States</a></li>
-          <li><a href="{{ url_for('schedules.index') }}" class="{{ 'menu-active' if l1_section == 'automate' }}">Automate</a></li>
-          {% if show_observe %}<li><a href="{{ url_for('events.index') if show_events else url_for('audit.index') }}" class="{{ 'menu-active' if l1_section == 'observe' }}">Observe</a></li>{% endif %}
-          {% if show_admin_section %}<li><a href="{{ url_for('settings.index') if show_settings else url_for('users.index') if show_admin else url_for('masterconfig.index') }}" class="{{ 'menu-active' if l1_section == 'admin' }}">Admin</a></li>{% endif %}
-        </ul>
+        <div @click="mobileNav = false">
+        {% include "_nav.html" %}
+        </div>
       </nav>
     </div>
-    <aside class="w-full lg:w-[270px] shrink-0 border-b lg:border-b-0 lg:border-r border-base-300 bg-base-100 overflow-y-auto max-h-[40vh] lg:max-h-none" aria-label="Secondary" x-data="{ l2q: '' }">
-      {% if l1_section == 'dashboard' %}
-      <div class="p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
-        <h2 class="font-semibold text-sm px-2">Dashboard</h2>
-      </div>
-      <ul class="menu menu-sm w-full gap-0.5 p-3">
-        <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'menu-active' if request.endpoint == 'dashboard.index' }}">Overview</a></li>
-      </ul>
-      {% elif l1_section == 'fleet' %}
-      <div class="p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
-        <h2 class="font-semibold text-sm px-2 mb-2">Fleet</h2>
-        <input type="search" placeholder="Filter" class="input input-sm input-bordered w-full" x-model="l2q" aria-label="Filter fleet navigation">
-      </div>
-      <ul class="menu menu-sm w-full gap-0.5 p-3">
-        <li data-l2-label="all minions" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('minions.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('minions') and request.endpoint != 'minions.onboard' }}"><span class="mr-auto">All Minions</span><span class="badge badge-sm badge-ghost">{{ nav_counts.minion_total }}</span></a></li>
-        <li data-l2-label="groups" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('groups.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('groups') }}"><span class="mr-auto">Groups</span><span class="badge badge-sm badge-ghost">{{ nav_counts.group_total }}</span></a></li>
-        <li data-l2-label="keys" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('keys.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('keys') }}">Keys</a></li>
-        <li data-l2-label="onboard" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('minions.onboard') }}" class="{{ 'menu-active' if request.endpoint == 'minions.onboard' }}">Onboard</a></li>
-      </ul>
-      {% elif l1_section == 'jobs' %}
-      <div class="p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
-        <h2 class="font-semibold text-sm px-2 mb-2">Jobs</h2>
-        <input type="search" placeholder="Filter" class="input input-sm input-bordered w-full" x-model="l2q" aria-label="Filter jobs navigation">
-      </div>
-      <ul class="menu menu-sm w-full gap-0.5 p-3">
-        {% set _tab = request.args.get('tab', 'running') %}
-        <li data-l2-label="running" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('jobs.index', tab='running') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('jobs') and request.endpoint == 'jobs.index' and _tab == 'running' }}"><span class="mr-auto">Running</span><span class="badge badge-sm badge-ghost">{{ nav_counts.job_running }}</span></a></li>
-        <li data-l2-label="history" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('jobs.index', tab='history') }}" class="{{ 'menu-active' if request.endpoint == 'jobs.index' and _tab == 'history' }}">History</a></li>
-        <li data-l2-label="saved" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('jobs.index', tab='saved') }}" class="{{ 'menu-active' if request.endpoint == 'jobs.index' and _tab == 'saved' }}"><span class="mr-auto">Saved</span><span class="badge badge-sm badge-ghost">{{ nav_counts.saved_total }}</span></a></li>
-        <li data-l2-label="run job" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('jobs.new') }}" class="{{ 'menu-active' if request.endpoint == 'jobs.new' }}">Run job</a></li>
-        <li data-l2-label="orchestrate" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('jobs.orchestrate') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('jobs.orchestrate') }}">Orchestrate</a></li>
-        <li data-l2-label="console" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('console.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('console') }}">Console</a></li>
-      </ul>
-      {% elif l1_section == 'states' %}
-      <div class="p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
-        <h2 class="font-semibold text-sm px-2 mb-2">States</h2>
-        <input type="search" placeholder="Filter" class="input input-sm input-bordered w-full" x-model="l2q" aria-label="Filter states navigation">
-      </div>
-      <ul class="menu menu-sm w-full gap-0.5 p-3">
-        <li data-l2-label="conformity" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('states.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('states') }}">Conformity</a></li>
-        {% if show_files %}<li data-l2-label="files" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('files.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('files') and request.endpoint != 'files.repo' }}">Files</a></li>{% endif %}
-        {% if show_pillar %}<li data-l2-label="pillar" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('pillar.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('pillar') }}">Pillar</a></li>{% endif %}
-        {% if show_mine %}<li data-l2-label="mine" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('mine.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('mine') }}">Mine</a></li>{% endif %}
-      </ul>
-      {% elif l1_section == 'automate' %}
-      <div class="p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
-        <h2 class="font-semibold text-sm px-2 mb-2">Automate</h2>
-        <input type="search" placeholder="Filter" class="input input-sm input-bordered w-full" x-model="l2q" aria-label="Filter automate navigation">
-      </div>
-      <ul class="menu menu-sm w-full gap-0.5 p-3">
-        <li data-l2-label="schedules" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('schedules.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('schedules') }}">Schedules</a></li>
-        {% if show_reactor %}<li data-l2-label="reactor" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('reactor.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('reactor') }}">Reactor</a></li>{% endif %}
-      </ul>
-      {% elif l1_section == 'observe' %}
-      <div class="p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
-        <h2 class="font-semibold text-sm px-2 mb-2">Observe</h2>
-        <input type="search" placeholder="Filter" class="input input-sm input-bordered w-full" x-model="l2q" aria-label="Filter observe navigation">
-      </div>
-      <ul class="menu menu-sm w-full gap-0.5 p-3">
-        {% if show_events %}<li data-l2-label="events" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('events.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('events') }}">Events</a></li>{% endif %}
-        {% if show_audit %}<li data-l2-label="audit" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('audit.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('audit') }}">Audit</a></li>{% endif %}
-      </ul>
-      {% elif l1_section == 'admin' %}
-      <div class="p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
-        <h2 class="font-semibold text-sm px-2 mb-2">Admin</h2>
-        <input type="search" placeholder="Filter" class="input input-sm input-bordered w-full" x-model="l2q" aria-label="Filter admin navigation">
-      </div>
-      <ul class="menu menu-sm w-full gap-0.5 p-3">
-        {% if show_settings %}<li data-l2-label="settings" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('settings') }}">Settings</a></li>{% endif %}
-        {% if show_master %}<li data-l2-label="master config" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('masterconfig.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('masterconfig') }}">Master config</a></li>{% endif %}
-        {% if show_admin %}
-        <li data-l2-label="users" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint == 'users.index' }}">Users</a></li>
-        <li data-l2-label="access groups" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('users.groups') }}" class="{{ 'menu-active' if request.endpoint == 'users.groups' }}">Access groups</a></li>
-        {% endif %}
-        {% if show_repo %}<li data-l2-label="repo" x-show="!l2q || $el.dataset.l2Label.includes(l2q.toLowerCase())"><a href="{{ url_for('files.repo') }}" class="{{ 'menu-active' if request.endpoint == 'files.repo' }}">Repo</a></li>{% endif %}
-      </ul>
-      {% endif %}
-    </aside>
     <main id="content" class="flex-1 min-w-0 overflow-y-auto" aria-live="polite">
       <div class="px-6 py-4 w-full max-w-[1600px] mx-auto">
         <div id="htmx-error-note" class="hidden" role="alert">

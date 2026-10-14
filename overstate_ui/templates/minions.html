@@ -41,11 +41,11 @@
 <form id="bulk-form" method="get" action="{{ url_for('jobs.new') }}">
 <input type="hidden" name="bulk_run" value="1">
 </form>
-<div class="card card-bordered bg-base-100">
+<div class="card card-border bg-base-100">
 {% include "_minion_rows.html" %}
 </div>
 <noscript>
-<div class="card card-bordered bg-base-100 mt-4">
+<div class="card card-border bg-base-100 mt-4">
   <div class="card-body">
     <p class="font-medium text-sm">Remove a minion without JavaScript</p>
     <ul class="flex flex-col gap-2 mt-2">

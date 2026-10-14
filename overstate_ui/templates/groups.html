@@ -23,8 +23,8 @@
   {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
 </form>
 {% import "_macros.html" as m %}
-<div class="card card-bordered bg-base-100">
-  <div class="overflow-x-auto">
+<div class="card card-border bg-base-100">
+  <div class="overflow-x-auto rounded-box">
     <table class="table table-sm table-zebra table-pin-rows w-full">
       <thead><tr>{{ m.sort_th_plain('groups.index', 'name', 'Name', sort, direction, {'q': q}) }}{{ m.sort_th_plain('groups.index', 'members', 'Members', sort, direction, {'q': q}) }}<th>IDs</th><th class="text-right">Use</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}<th class="text-right">Actions</th>{% endif %}</tr></thead>
       <tbody>

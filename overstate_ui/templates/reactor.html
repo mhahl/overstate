@@ -25,7 +25,7 @@
 {% if divergent %}<div class="alert alert-warning mb-4" role="status"><span>Only on some pods: {{ divergent|join(", ") }}. Repeat the add or delete to converge, or restart to restore the file stanza.</span></div>{% endif %}
 {% if disabled %}
 <div class="alert alert-info mb-4" role="status"><span>Reactor not configured. <a class="link" href="https://docs.saltproject.io/en/latest/topics/event/index.html">Salt reactor docs</a></span></div>
-<div class="card card-bordered bg-base-100"><div class="py-8 text-center">
+<div class="card card-border bg-base-100"><div class="py-8 text-center">
   <p class="font-medium">Reactor disabled</p>
   <p class="text-sm opacity-70">No mappings until the master runs a reactor.</p>
   {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}
@@ -34,7 +34,7 @@
 </div></div>
 {% else %}
 <div class="alert alert-info mb-4" role="status"><span>Live mapping from {{ pod_count }} master pod{{ "s" if pod_count != 1 }}. Restarts restore the <code>master.conf</code> <code>reactor:</code> stanza, so record mappings you want to keep there{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %} (<a class="link" href="{{ url_for('masterconfig.index') }}">Master Config</a>){% endif %}. <a class="link" href="{{ url_for('reactor.export') }}">Export</a> renders the stanza.</span></div>
-<form method="get" action="{{ url_for('reactor.index') }}" class="card card-sm card-bordered bg-base-100 mb-4 sticky top-0 z-10" role="search">
+<form method="get" action="{{ url_for('reactor.index') }}" class="card card-sm card-border bg-base-100 mb-4 sticky top-0 z-10" role="search">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <div class="card-body flex-row flex-wrap items-end gap-2">
@@ -47,8 +47,8 @@
   </div>
 </form>
 {% if rows %}
-<div class="card card-bordered bg-base-100">
-<div class="overflow-x-auto">
+<div class="card card-border bg-base-100">
+<div class="overflow-x-auto rounded-box">
 {% import "_macros.html" as m %}
 <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('reactor.index', 'event', 'Event', sort, direction, {'q': q}) }}{{ m.sort_th_plain('reactor.index', 'sls', 'SLS', sort, direction, {'q': q}) }}<th>Watch</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for r in rows %}
@@ -64,7 +64,7 @@
 {% elif raw %}
 <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ raw }}</code></pre>
 {% else %}
-<div class="card card-bordered bg-base-100"><div class="py-8 text-center">
+<div class="card card-border bg-base-100"><div class="py-8 text-center">
   <p class="font-medium">No reactors configured</p>
   <p class="text-sm opacity-70">{% if error %}The master did not answer.{% else %}New mappings appear here.{% endif %}</p>
 </div></div>

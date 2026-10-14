@@ -25,7 +25,7 @@
 <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ body }}</code></pre>
 <p class="text-sm opacity-70 mt-3">{{ total }} reactor{{ "s" if total != 1 }} exported. Paste the block into the <code class="font-mono">reactor:</code> stanza in <code class="font-mono">master.conf</code> (Master Config page) and restart the masters.</p>
 {% else %}
-<div class="card card-bordered bg-base-100"><div class="py-8 text-center">
+<div class="card card-border bg-base-100"><div class="py-8 text-center">
   <p class="font-medium">Nothing to export</p>
   <p class="text-sm opacity-70">{% if error %}The master did not answer.{% else %}No reactors configured.{% endif %}</p>
 </div></div>

@@ -10,7 +10,7 @@
 <div class="max-w-xl mx-auto">
   <h1 class="text-2xl font-bold tracking-tight mb-1">Review before firing</h1>
   <p class="text-sm opacity-70 mb-4">Check the target. This runs immediately.</p>
-  <div class="card card-bordered bg-base-100 mb-4">
+  <div class="card card-border bg-base-100 mb-4">
     <div class="card-body gap-3">
       <div>
         <p class="text-xs opacity-70">Function</p>
@@ -39,7 +39,7 @@
     </div>
   </div>
   {% if preview or preview_note %}
-  <div class="card card-bordered bg-base-100 mb-4">
+  <div class="card card-border bg-base-100 mb-4">
     <div class="card-body gap-3">
       <div>
         <p class="text-xs opacity-70">SLS preview{% if preview_minion %}, rendered on <span class="font-mono">{{ preview_minion }}</span> (base saltenv){% endif %}</p>
@@ -62,7 +62,7 @@
     </div>
   </div>
   {% endif %}
-  <form method="post" action="{{ confirm_action or url_for('jobs.run') }}" class="card card-bordered bg-base-100">
+  <form method="post" action="{{ confirm_action or url_for('jobs.run') }}" class="card card-border bg-base-100">
     <div class="card-body">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% if extra_hidden %}

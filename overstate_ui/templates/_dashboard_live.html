@@ -59,14 +59,14 @@ already says so. Only claim "unreachable" once polling settled. #}
   </div>
 </section>
 <div class="grid gap-4 lg:grid-cols-2 items-start">
-  <section class="card card-bordered bg-base-100 min-w-0">
+  <section class="card card-border bg-base-100 min-w-0">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base whitespace-nowrap">Last failures</h2>
         <a class="btn btn-xs btn-ghost ms-auto" href="{{ url_for('jobs.index', tab='history') }}">History</a>
       </div>
       {% if stats.last_failures %}
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto rounded-box">
       <table class="table table-sm">
         <thead><tr><th>Minion</th><th>JID</th><th class="text-right">Retcode</th></tr></thead>
         <tbody>
@@ -90,7 +90,7 @@ already says so. Only claim "unreachable" once polling settled. #}
     </div>
   </section>
   <div class="flex flex-col gap-4 min-w-0">
-  <section class="card card-bordered bg-base-100">
+  <section class="card card-border bg-base-100">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base">salt-api health</h2>
@@ -128,7 +128,7 @@ already says so. Only claim "unreachable" once polling settled. #}
       </ul>
     </div>
   </section>
-  <section class="card card-bordered bg-base-100">
+  <section class="card card-border bg-base-100">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base">Salt masters</h2>
@@ -163,14 +163,14 @@ already says so. Only claim "unreachable" once polling settled. #}
       {% endif %}
     </div>
   </section>
-  <section class="card card-bordered bg-base-100">
+  <section class="card card-border bg-base-100">
     <div class="card-body p-4">
       <div class="flex items-center gap-2">
         <h2 class="card-title text-base">Salt versions</h2>
         <span class="badge badge-sm badge-outline ms-auto {{ 'badge-success' if stats.versions_live else 'badge-neutral' }}">{{ "live" if stats.versions_live else "snapshot" }}</span>
       </div>
       {% if stats.versions %}
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto rounded-box">
       <table class="table table-sm">
         <thead><tr><th>Version</th><th class="text-right">Minions</th></tr></thead>
         <tbody>
@@ -188,7 +188,7 @@ already says so. Only claim "unreachable" once polling settled. #}
       {% endif %}
     </div>
   </section>
-  <nav class="card card-bordered bg-base-100" aria-label="Operator shortcuts">
+  <nav class="card card-border bg-base-100" aria-label="Operator shortcuts">
     <div class="card-body p-4">
       <h2 class="card-title text-base">Operator shortcuts</h2>
       <ul class="menu menu-sm p-0">

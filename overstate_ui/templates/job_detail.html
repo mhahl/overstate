@@ -23,7 +23,7 @@
   {% endif %}
 </div>
 {% for kill_jid, kill_returns in kill_reports %}
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
   <div class="card-body gap-1">
     <p class="text-sm"><span class="font-medium">Kill {{ kill_jid }}</span> <span class="opacity-70">{{ kill_returns|length }} of them reported. A missing return means unknown, not dead. Check presence on the <a class="link" href="{{ url_for('minions.index') }}">Minions</a> page, then re-run against a narrower target.</span></p>
     <ul class="flex flex-wrap gap-2 text-xs font-mono">
@@ -34,14 +34,14 @@
   </div>
 </div>
 {% endfor %}
-<div class="card card-bordered card-sm bg-base-100 mb-4">
+<div class="card card-border card-sm bg-base-100 mb-4">
   <div class="card-body flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
     <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ tgt_display.get(job.jid, job.tgt) }} <span class="opacity-60">, by {{ job.user }}</span></p>
     <p class="ml-auto" aria-live="polite"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
   </div>
 </div>
 {% if batch_state %}
-<div class="card card-bordered bg-base-100 mb-4">
+<div class="card card-border bg-base-100 mb-4">
   <div class="card-body gap-2">
     <div class="flex flex-wrap items-center gap-2">
       <h2 class="card-title text-base">Batch</h2>
@@ -72,7 +72,7 @@
   {% include "_job_panel.html" %}
 {% endfor %}
 {% if not returns %}
-<div class="card card-bordered bg-base-100" id="no-returns"><div class="py-8 text-center">
+<div class="card card-border bg-base-100" id="no-returns"><div class="py-8 text-center">
   {% if job.complete %}
   <p class="font-medium">No returns recorded</p>
   <p class="text-sm opacity-70">No minion reported back for this job. If minions ran it, the master never stored their returns — check the returner (master job cache), then re-run. Live output stops once a job completes.</p>

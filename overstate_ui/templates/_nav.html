@@ -1,0 +1,40 @@
+{# Global navigation: one grouped sidebar (desktop + mobile drawer share this). #}
+{% set _tab = request.args.get('tab', 'running') %}
+<ul class="menu w-full gap-0.5 p-3 grow">
+  <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'menu-active' if request.endpoint == 'dashboard.index' }}">Dashboard</a></li>
+  <li class="menu-title">Fleet</li>
+  <li><a href="{{ url_for('minions.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('minions') and request.endpoint != 'minions.onboard' }}"><span class="mr-auto">All Minions</span><span class="badge badge-sm badge-ghost">{{ nav_counts.minion_total }}</span></a></li>
+  <li><a href="{{ url_for('groups.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('groups') }}"><span class="mr-auto">Groups</span><span class="badge badge-sm badge-ghost">{{ nav_counts.group_total }}</span></a></li>
+  <li><a href="{{ url_for('keys.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('keys') }}">Keys</a></li>
+  <li><a href="{{ url_for('minions.onboard') }}" class="{{ 'menu-active' if request.endpoint == 'minions.onboard' }}">Onboard</a></li>
+  <li class="menu-title">Jobs</li>
+  <li><a href="{{ url_for('jobs.index', tab='running') }}" class="{{ 'menu-active' if request.endpoint == 'jobs.index' and _tab == 'running' }}"><span class="mr-auto">Running</span><span class="badge badge-sm badge-ghost">{{ nav_counts.job_running }}</span></a></li>
+  <li><a href="{{ url_for('jobs.index', tab='history') }}" class="{{ 'menu-active' if request.endpoint == 'jobs.index' and _tab == 'history' }}">History</a></li>
+  <li><a href="{{ url_for('jobs.index', tab='saved') }}" class="{{ 'menu-active' if request.endpoint == 'jobs.index' and _tab == 'saved' }}"><span class="mr-auto">Saved</span><span class="badge badge-sm badge-ghost">{{ nav_counts.saved_total }}</span></a></li>
+  <li><a href="{{ url_for('jobs.new') }}" class="{{ 'menu-active' if request.endpoint == 'jobs.new' }}">Run job</a></li>
+  <li><a href="{{ url_for('jobs.orchestrate') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('jobs.orchestrate') }}">Orchestrate</a></li>
+  <li><a href="{{ url_for('console.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('console') }}">Console</a></li>
+  <li class="menu-title">States</li>
+  <li><a href="{{ url_for('states.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('states') }}">Conformity</a></li>
+  {% if show_files %}<li><a href="{{ url_for('files.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('files') and request.endpoint != 'files.repo' }}">Files</a></li>{% endif %}
+  {% if show_pillar %}<li><a href="{{ url_for('pillar.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('pillar') }}">Pillar</a></li>{% endif %}
+  {% if show_mine %}<li><a href="{{ url_for('mine.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('mine') }}">Mine</a></li>{% endif %}
+  <li class="menu-title">Automate</li>
+  <li><a href="{{ url_for('schedules.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('schedules') }}">Schedules</a></li>
+  {% if show_reactor %}<li><a href="{{ url_for('reactor.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('reactor') }}">Reactor</a></li>{% endif %}
+  {% if show_observe %}
+  <li class="menu-title">Observe</li>
+  {% if show_events %}<li><a href="{{ url_for('events.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('events') }}">Events</a></li>{% endif %}
+  {% if show_audit %}<li><a href="{{ url_for('audit.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('audit') }}">Audit</a></li>{% endif %}
+  {% endif %}
+  {% if show_admin_section %}
+  <li class="menu-title">Admin</li>
+  {% if show_settings %}<li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('settings') }}">Settings</a></li>{% endif %}
+  {% if show_master %}<li><a href="{{ url_for('masterconfig.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('masterconfig') }}">Master config</a></li>{% endif %}
+  {% if show_admin %}
+  <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint == 'users.index' }}">Users</a></li>
+  <li><a href="{{ url_for('users.groups') }}" class="{{ 'menu-active' if request.endpoint == 'users.groups' }}">Access groups</a></li>
+  {% endif %}
+  {% if show_repo %}<li><a href="{{ url_for('files.repo') }}" class="{{ 'menu-active' if request.endpoint == 'files.repo' }}">Repo</a></li>{% endif %}
+  {% endif %}
+</ul>

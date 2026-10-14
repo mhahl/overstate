@@ -16,7 +16,7 @@
   {% endif %}
   </div>
   {% if content is none %}
-  <div class="card card-bordered bg-base-100">
+  <div class="card card-border bg-base-100">
     <div class="card-body py-8 text-center">
       <p class="font-medium">Cannot display {{ rel }}</p>
       <p class="text-sm opacity-70">This file is {{ reason }} ({{ size }} bytes{% if max_bytes and reason.startswith("too large") %}; display limit is {{ max_bytes }} bytes{% endif %}).</p>

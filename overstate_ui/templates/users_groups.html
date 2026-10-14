@@ -14,7 +14,7 @@
       <h1 class="text-2xl font-bold tracking-tight">Access groups</h1>
     </div>
   </div>
-  <section class="card card-bordered bg-base-100" aria-label="Local groups">
+  <section class="card card-border bg-base-100" aria-label="Local groups">
     <div class="card-body gap-3">
       <h2 class="card-title text-base">Local groups</h2>
       {% for g in local_groups %}
@@ -83,11 +83,11 @@
     </div>
   </section>
   {% if not delegate_view %}
-  <section class="card card-bordered bg-base-100 mt-4" aria-label="IdP groups">
+  <section class="card card-border bg-base-100 mt-4" aria-label="IdP groups">
     <div class="card-body gap-3">
       <h2 class="card-title text-base">IdP groups</h2>
       {% if idp_groups %}
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto rounded-box">
       <table class="table table-sm table-zebra w-full">
         <thead><tr><th>IdP group</th><th class="text-right">Members</th><th>People</th><th>Mapped access</th></tr></thead>
         <tbody>

@@ -20,7 +20,7 @@
   </div>
   <p class="text-sm opacity-70 mb-4">Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
   {% if content is none %}
-  <div class="card card-bordered">
+  <div class="card card-border">
     <div class="card-body py-8 text-center">
       <p class="font-medium">Cannot display {{ rel }}</p>
       <p class="text-sm opacity-70">This file is {{ reason }} ({{ size }} bytes{% if max_bytes and reason.startswith("too large") %}; display limit is {{ max_bytes }} bytes{% endif %}). It exists in the checkout; open it in git instead. No content was changed.</p>

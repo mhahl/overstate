@@ -37,8 +37,8 @@
     {% if user or action or outcome or permission %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
-<div class="card card-bordered">
-  <div class="overflow-x-auto">
+<div class="card card-border">
+  <div class="overflow-x-auto rounded-box">
     <table class="table table-zebra table-sm table-pin-rows w-full">
       <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}<th>Job</th></tr></thead>
       <tbody>

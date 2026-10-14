@@ -36,8 +36,8 @@
       {% if role %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('users.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
     </div>
   </form>
-  <div class="card card-bordered bg-base-100">
-  <div class="overflow-x-auto">
+  <div class="card card-border bg-base-100">
+  <div class="overflow-x-auto rounded-box">
   <table class="table table-sm table-zebra table-pin-rows w-full">
     <thead><tr>{{ m.sort_th_plain('users.index', 'username', 'Username', sort, direction, {'role': role}) }}{{ m.sort_th_plain('users.index', 'role', 'Role', sort, direction, {'role': role}) }}<th>Auth</th>{% if rbac_scoped %}<th>Grants</th>{% endif %}<th class="text-right">Actions</th></tr></thead>
     <tbody>
@@ -95,7 +95,7 @@
   </div>
   {% if rbac_scoped and not delegate_view %}<p class="text-xs opacity-70 mt-2">Fleet role is the whole fleet, including pillar, and applies on top of scoped grants.</p>{% endif %}
   {% if rbac_scoped and not delegate_view %}
-  <section class="card card-bordered bg-base-100 mt-4" aria-label="Service accounts">
+  <section class="card card-border bg-base-100 mt-4" aria-label="Service accounts">
     <div class="card-body gap-3">
       <h2 class="card-title text-base">Service accounts</h2>
       <p class="text-sm opacity-70">CI identities for <code>POST /api/jobs/run</code>. No password, no login, no ladder role — a Bearer [REDACTED] fires as the account's grants. A token shows its secret once, at creation.</p>
