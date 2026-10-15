@@ -94,7 +94,7 @@
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-mono text-sm">Snapshot #{{ s.id }}</span>
               {% if loop.first %}<span class="badge badge-xs badge-ghost">Latest</span>{% endif %}
-              <time class="ms-auto text-xs text-base-content/70 tabular-nums" datetime="{{ s.captured_at.isoformat() }}">{{ s.captured_at }}</time>
+              <span class="ms-auto text-xs text-base-content/70 tabular-nums">{{ s.captured_at|reltime }}</span>
             </div>
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <details class="collapse collapse-arrow min-w-0 flex-1 rounded-box bg-base-200">

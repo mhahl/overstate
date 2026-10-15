@@ -113,7 +113,7 @@
           <span>{{ token.name }}</span>
           <span class="text-xs opacity-70 font-mono">{{ token.token_prefix }}…</span>
           {% if token.saved_job_id %}<span class="badge badge-sm badge-outline">pinned #{{ token.saved_job_id }}</span>{% else %}<span class="badge badge-sm badge-outline">unpinned reads</span>{% endif %}
-          {% if token.expires_at %}<span class="text-xs opacity-70">expires {{ token.expires_at }}</span>{% endif %}
+          {% if token.expires_at %}<span class="text-xs opacity-70">expires {{ token.expires_at|reltime }}</span>{% endif %}
           {% if token.revoked_at %}<span class="badge badge-sm badge-outline">revoked</span>
           {% else %}
           <form method="post" action="{{ url_for('users.revoke_token', uid=entry.user.id, tid=token.id) }}" class="inline" data-confirm="Revoke this token? Fires in flight are unaffected.">

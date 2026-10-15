@@ -95,7 +95,7 @@
       </div>
       {% endif %}
       {% if file_sync.last_message %}
-      <p class="text-sm text-base-content/70">{{ file_sync.last_message }}{% if file_sync.last_run %}<span class="block text-xs mt-1">{{ file_sync.last_run }}</span>{% endif %}</p>
+      <p class="text-sm text-base-content/70">{{ file_sync.last_message }}{% if file_sync.last_run %}<span class="block text-xs mt-1">{{ file_sync.last_run|reltime }}</span>{% endif %}</p>
       {% else %}
       <p class="text-sm text-base-content/70">No scheduled sync has run yet. Configure the schedule in Settings.</p>
       {% endif %}

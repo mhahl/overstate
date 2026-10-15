@@ -1,5 +1,8 @@
 import datetime as dt
+from flask import Flask
+
 from overstate_ui.timefmt import rel_label, render_time
+from overstate_ui.timefmt import register
 
 
 def test_buckets():
@@ -21,3 +24,10 @@ def test_old_has_hover_detail():
 
 def test_none_renders_dash():
     assert "–" in str(render_time(None))
+
+
+def test_reltime_text_old_date():
+    app = Flask(__name__)
+    register(app)
+    old = dt.datetime(2026, 9, 5, 12, 0, tzinfo=dt.UTC)
+    assert app.jinja_env.filters["reltime_text"](old) == "05/09/26"

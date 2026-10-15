@@ -115,7 +115,17 @@
     li.className = "grid grid-cols-1 gap-2 border-b border-base-300 px-4 py-3 last:border-0 sm:grid-cols-12 sm:items-center";
     var stamp = document.createElement("span");
     stamp.className = "break-all font-mono text-xs tabular-nums text-base-content/70 sm:col-span-3";
-    stamp.textContent = s.stamp || "Timestamp unavailable";
+    var t = s.stamp ? Date.parse(s.stamp) : NaN;
+    if (s.stamp && !isNaN(t)) {
+      var time = document.createElement("time");
+      time.setAttribute("datetime", new Date(t).toISOString());
+      time.setAttribute("data-rel", "");
+      time.textContent = s.stamp;
+      stamp.appendChild(time);
+      if (window.OverstateTime) window.OverstateTime.refresh(stamp);
+    } else {
+      stamp.textContent = "Timestamp unavailable";
+    }
     li.appendChild(stamp);
     var tag = document.createElement("span");
     tag.className = "badge badge-sm badge-ghost w-fit max-w-full break-all font-mono sm:col-span-9";

@@ -82,7 +82,7 @@
             </li>
             {% endfor %}
           </ul>
-          <p class="text-xs opacity-60 mt-2">Checked {{ checklist.checked_at }}{% if checklist.failing %} · {{ checklist.failing }} failing{% endif %}.</p>
+          <p class="text-xs opacity-60 mt-2">Checked {{ checklist.checked_at|reltime }}{% if checklist.failing %} · {{ checklist.failing }} failing{% endif %}.</p>
           {% endif %}
         </div>
       </div>

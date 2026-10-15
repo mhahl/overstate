@@ -72,3 +72,4 @@ def render_time(value, now=None):
 
 def register(app):
     app.jinja_env.filters["reltime"] = render_time
+    app.jinja_env.filters["reltime_text"] = lambda v: rel_label(v)

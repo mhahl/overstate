@@ -34,7 +34,7 @@
               <select id="pillar-left-revision" name="rev_a" class="select select-sm w-full">
                 <option value="">Newest snapshot</option>
                 <option value="live"{% if rev_a == "live" %} selected{% endif %}>Live render</option>
-                {% for s in snaps_a %}<option value="{{ s.id }}"{% if rev_a == s.id|string %} selected{% endif %}>#{{ s.id }} · {{ s.captured_at }}</option>{% endfor %}
+                {% for s in snaps_a %}<option value="{{ s.id }}"{% if rev_a == s.id|string %} selected{% endif %}>#{{ s.id }} · {{ s.captured_at|reltime_text }}</option>{% endfor %}
               </select>
             </div>
           </div>
@@ -55,7 +55,7 @@
               <select id="pillar-right-revision" name="rev_b" class="select select-sm w-full">
                 <option value="">Newest snapshot</option>
                 <option value="live"{% if rev_b == "live" %} selected{% endif %}>Live render</option>
-                {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} · {{ s.captured_at }}</option>{% endfor %}
+                {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} · {{ s.captured_at|reltime_text }}</option>{% endfor %}
               </select>
             </div>
           </div>
