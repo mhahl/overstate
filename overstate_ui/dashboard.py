@@ -76,7 +76,13 @@ def _age_label(seconds: float) -> str:
     hours = minutes // 60
     if hours < 48:
         return f"{hours}h ago"
-    return f"{hours // 24}d ago"
+    days = hours // 24
+    if days < 7:
+        return f"{days}d ago"
+    if days < 30:
+        return f"{days // 7}w ago"
+    # This is returner staleness, not a wall-clock timestamp; stay relative past 30 days.
+    return f"{days}d ago"
 
 
 def returns_health(now: dt.datetime | None = None) -> dict:

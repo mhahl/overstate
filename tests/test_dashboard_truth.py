@@ -256,6 +256,7 @@ def test_age_label_buckets():
     assert _age_label(90) == "1m ago"
     assert _age_label(3600) == "1h ago"
     assert _age_label(200000) == "2d ago"
+    assert _age_label(10 * 86400) == "1w ago"
 
 
 def test_check_now_queues_recheck_and_audits(monkeypatch):
