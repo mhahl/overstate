@@ -7069,6 +7069,12 @@
     width: calc(var(--spacing) * 8);
     height: calc(var(--spacing) * 8);
   }
+  @layer daisyui.l1.l2 {
+    .status-sm {
+      width: 0.25rem;
+      height: 0.25rem;
+    }
+  }
   .h-7 {
     height: calc(var(--spacing) * 7);
   }
@@ -7139,9 +7145,6 @@
   }
   .w-24 {
     width: calc(var(--spacing) * 24);
-  }
-  .w-36 {
-    width: calc(var(--spacing) * 36);
   }
   .w-40 {
     width: calc(var(--spacing) * 40);
@@ -7553,6 +7556,10 @@
       background-color: var(--color-info);
       color: var(--color-info);
     }
+    .status-neutral {
+      background-color: var(--color-neutral);
+      color: var(--color-neutral);
+    }
     .status-success {
       background-color: var(--color-success);
       color: var(--color-success);
@@ -7808,9 +7815,6 @@
   .pb-1 {
     padding-bottom: var(--spacing);
   }
-  .pb-2 {
-    padding-bottom: calc(var(--spacing) * 2);
-  }
   .pb-4 {
     padding-bottom: calc(var(--spacing) * 4);
   }
@@ -7897,9 +7901,6 @@
   }
   .break-all {
     word-break: break-all;
-  }
-  .whitespace-normal {
-    white-space: normal;
   }
   .whitespace-nowrap {
     white-space: nowrap;
@@ -8098,15 +8099,6 @@
       --top-mul: 4;
       --font-size: 0.75rem;
     }
-    .input-xs {
-      --in-size-mul: 6;
-      --font-size-min: 0.6875rem;
-      --spin-my: -1;
-    }
-    .floating-label:has(.input-xs) {
-      --top-mul: 3;
-      --font-size: 0.6875rem;
-    }
     .select-sm {
       --sl-size-mul: 8;
       --font-size-min: 0.75rem;
@@ -8232,9 +8224,6 @@
     }
     .hover\:underline:hover {
       text-decoration-line: underline;
-    }
-    .hover\:opacity-100:hover {
-      opacity: 100%;
     }
   }
   @layer daisyui.l1.l2.l3 {
@@ -8554,6 +8543,12 @@
     .sm\:grid-cols-\[1fr_7rem_8rem\] {
       grid-template-columns: 1fr 7rem 8rem;
     }
+    .sm\:flex-row {
+      flex-direction: row;
+    }
+    .sm\:items-end {
+      align-items: flex-end;
+    }
     .sm\:gap-2 {
       gap: calc(var(--spacing) * 2);
     }
@@ -8698,6 +8693,9 @@
     }
     .xl\:ms-auto {
       margin-inline-start: auto;
+    }
+    .xl\:grid-cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .xl\:grid-cols-3 {
       grid-template-columns: repeat(3, minmax(0, 1fr));

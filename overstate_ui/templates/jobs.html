@@ -15,7 +15,7 @@
   <input type="hidden" name="tab" value="{{ tab }}">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
-  <div class="flex flex-row flex-wrap items-end gap-2">
+  <div class="flex flex-row flex-wrap items-end justify-end gap-2">
     {{ m.table_search_field("jobs-search", "q", q, "Search", "Search JID, function, target, user…", "Search jobs") }}
     {{ m.table_search_field("jobs-jump", "jump", "", "Jump to JID", "Exact JID…", "Jump to JID") }}
     <button class="btn btn-sm btn-primary mb-1">Filter</button>

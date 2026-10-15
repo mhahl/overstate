@@ -180,6 +180,30 @@ def recompute_conformity() -> str | None:
 CONFORMITY_ORDER = {"ok": 0, "drifted": 1, "unreachable": 2, "unknown": 3}
 
 
+def _conformity_bucket(status: str | None) -> str:
+    if status in ("drifted", "failed"):
+        return "drifted"
+    if status in CONFORMITY_ORDER:
+        return status
+    return "unknown"
+
+
+def summarize_conformity(minions: list[Minion]) -> dict[str, int]:
+    summary = {
+        "total": len(minions),
+        "ok": 0,
+        "drifted": 0,
+        "unreachable": 0,
+        "unknown": 0,
+        "partial": 0,
+    }
+    for minion in minions:
+        conformity = minion.conformity or {}
+        summary[_conformity_bucket(conformity.get("status", "unknown"))] += 1
+        summary["partial"] += int(bool(conformity.get("partial")))
+    return summary
+
+
 @bp.route("/")
 @login_required
 def index():
@@ -194,6 +218,7 @@ def index():
     if rbac_mode() == "scoped" and not has_fleet(current_user, "state.read"):
         allowed = minions_with(current_user, "state.read")
         minions = [m for m in minions if m.id in allowed]
+    summary = summarize_conformity(minions)
     sort = request.args.get("sort", "id")
     if sort not in ("id", "status"):
         sort = "id"
@@ -205,7 +230,7 @@ def index():
         status_filter = ""
 
     def key(row):
-        status = (row.conformity or {}).get("status", "unknown")
+        status = _conformity_bucket((row.conformity or {}).get("status"))
         if sort == "status":
             return (CONFORMITY_ORDER.get(status, 2), row.id)
         return row.id
@@ -215,7 +240,8 @@ def index():
         ordered = [
             row
             for row in ordered
-            if (row.conformity or {}).get("status", "unknown") == status_filter
+            if _conformity_bucket((row.conformity or {}).get("status"))
+            == status_filter
         ]
     history: dict[str, list[dict]] = {}
     if ordered:
@@ -236,6 +262,7 @@ def index():
         "direction": direction,
         "status_filter": status_filter,
         "history": history,
+        "summary": summary,
     }
     if request.headers.get("HX-Request") == "true":
         return render_template("_conformity_rows.html", **ctx)

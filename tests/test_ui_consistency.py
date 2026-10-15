@@ -90,7 +90,12 @@ def test_table_searches_use_compact_shared_component():
 
     for template_name in TABLE_SEARCH_TEMPLATES:
         source = (TEMPLATES / template_name).read_text()
-        assert "m.table_search_field(" in source, template_name
+        search_form = re.search(
+            r'<form\b[^>]*role="search"[^>]*>.*?</form>', source, re.DOTALL
+        )
+        assert search_form, template_name
+        assert "m.table_search_field(" in search_form.group(0), template_name
+        assert "justify-end" in search_form.group(0), template_name
 
 
 def test_pagination_uses_join_component():

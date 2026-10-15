@@ -87,24 +87,6 @@
               </ul>
               {% else %}<p class="font-mono text-sm mt-1">–</p>{% endif %}
             </div>
-            {% if grains.get("fqdn_ip4") or grains.get("fqdn_ip6") %}
-            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {% for label, addresses in [("FQDN IPv4", grains.get("fqdn_ip4")), ("FQDN IPv6", grains.get("fqdn_ip6"))] %}
-              <div class="min-w-0">
-                <dt class="text-xs text-base-content/60">{{ label }}</dt>
-                <dd class="mt-1">
-                  {% if addresses %}
-                    {% if addresses is string %}
-                  <ul class="flex flex-wrap gap-1"><li><span class="badge badge-sm badge-ghost font-mono max-w-full break-all whitespace-normal">{{ addresses }}</span></li></ul>
-                    {% else %}
-                  <ul class="flex flex-wrap gap-1">{% for ip in addresses %}<li><span class="badge badge-sm badge-ghost font-mono max-w-full break-all whitespace-normal">{{ ip }}</span></li>{% endfor %}</ul>
-                    {% endif %}
-                  {% else %}<span class="font-mono text-sm">–</span>{% endif %}
-                </dd>
-              </div>
-              {% endfor %}
-            </dl>
-            {% endif %}
           </div>
         </section>
         <section aria-label="Operating system and platform" class="card card-border bg-base-100 min-w-0">
@@ -384,10 +366,10 @@
   </div>
 </div>
 {% if tab == "overview" and data.grains %}
-<section aria-label="All grain facts as JSON" class="card card-border bg-base-100 mt-4 min-w-0">
+<section aria-label="Grain facts as JSON" class="card card-border bg-base-100 mt-4 min-w-0">
   <div class="collapse collapse-arrow">
-    <input type="checkbox" aria-label="Toggle all grain facts as JSON">
-    <div class="collapse-title font-semibold">All grain facts as JSON ({{ data.grains|length }})</div>
+    <input type="checkbox" aria-label="Toggle grain facts as JSON">
+    <div class="collapse-title font-semibold">Grain facts as JSON ({{ data.grains|length }})</div>
     <div class="collapse-content">
       <div class="mockup-code text-xs overflow-x-auto"><pre><code>{{ data.grains | tojson(indent=1) }}</code></pre></div>
     </div>

@@ -1216,14 +1216,21 @@ def test_minion_overview_dashboard(client):
         "Virtualization",
         "Salt agent",
         "Recent activity",
-        "All grain facts as JSON",
+        "Grain facts as JSON",
     ):
         assert heading in html
     assert "Fedora Linux 41" in html and "10.0.0.1" in html
-    assert 'badge badge-sm badge-ghost font-mono max-w-full break-all whitespace-normal">192.0.2.10</span>' in html
-    assert 'badge badge-sm badge-ghost font-mono max-w-full break-all whitespace-normal">2001:db8::10</span>' in html
-    assert "['192.0.2.10', '192.0.2.11']" not in html
-    assert "['2001:db8::10', '2001:db8::11']" not in html
+    for removed_address in (
+        "FQDN IPv4",
+        "FQDN IPv6",
+        '"fqdn_ip4"',
+        '"fqdn_ip6"',
+        "192.0.2.10",
+        "192.0.2.11",
+        "2001:db8::10",
+        "2001:db8::11",
+    ):
+        assert removed_address not in html
     assert "icon-[simple-icons--fedora]" in html
     assert "Run job on this minion" in html
     assert "not in snapshot cache" in html

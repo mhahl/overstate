@@ -25,7 +25,7 @@
   <form id="groups-filter" method="get" action="{{ url_for('groups.index') }}" class="border-b border-base-300 px-4 py-3" role="search" aria-label="Search groups">
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
-    <div class="flex flex-wrap items-end gap-2">
+    <div class="flex flex-wrap items-end justify-end gap-2">
       {{ m.table_search_field("groups-search", "q", q, "Find a group", "Group name or minion ID", "Search group names and member IDs") }}
       <button class="btn btn-sm btn-outline mb-0.5">Filter groups</button>
       {% if q %}<a class="btn btn-sm btn-ghost mb-0.5" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear search</a>{% endif %}

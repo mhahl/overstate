@@ -1,44 +1,72 @@
-{% import "_macros.html" as m %}
-<div id="conformity-table">
+{% import "_macros.html" as macros %}
+<div id="conformity-table" class="min-w-0">
   {% if minions %}
   <div class="max-w-full overflow-x-auto rounded-box">
     <table class="table table-sm table-pin-rows w-full">
       <thead>
-        <tr>{{ m.sort_th('states.index', 'id', 'Minion', sort, direction, {"status": status_filter}, '#conformity-table', false) }}{{ m.sort_th('states.index', 'status', 'Status', sort, direction, {"status": status_filter}, '#conformity-table', false) }}<th>Checked</th><th>History</th><th>Source JID</th></tr>
+        <tr>
+          {{ macros.sort_th('states.index', 'id', 'Minion', sort, direction, {"status": status_filter}, '#conformity-table', false) }}
+          {{ macros.sort_th('states.index', 'status', 'Verdict', sort, direction, {"status": status_filter}, '#conformity-table', false) }}
+          <th class="whitespace-nowrap">Checked</th>
+          <th>Recent checks</th>
+          <th class="whitespace-nowrap">Source job</th>
+        </tr>
       </thead>
       <tbody>
-      {% for m in minions %}
-      {% set cstatus = (m.conformity or {}).get("status", "unknown") %}
-      <tr class="hover">
-        <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=m.id) }}">{{ m.id }}</a></td>
-        <td>
-          {% if cstatus == "ok" %}<span class="badge badge-sm badge-success" role="status" aria-label="Conformity: ok">ok</span>
-          {% elif cstatus in ["drifted", "failed"] %}<span class="badge badge-sm badge-error" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>
-          {% elif cstatus == "unreachable" %}<span class="badge badge-sm badge-error badge-outline" role="status" aria-label="Conformity: unreachable">unreachable</span>
-          {% else %}<span class="badge badge-sm badge-neutral" role="status" aria-label="Conformity: {{ cstatus }}">{{ cstatus }}</span>{% endif %}
-          {% if (m.conformity or {}).get("partial") %}<span class="badge badge-sm badge-warning" title="You see the whole-job verdict because this return did not isolate watched states.">partial</span>{% endif %}
-        </td>
-        {% set checked = (m.conformity or {}).get("checked_at", "") %}
-        <td class="font-mono text-xs whitespace-nowrap">{% if checked %}{{ checked[:16].replace("T", " ") }}{% else %}–{% endif %}</td>
-        <td><span class="inline-flex items-center gap-1">
-          {% for h in history.get(m.id, []) %}
-          {% if h.status == "ok" %}<span class="badge badge-xs badge-success" title="{{ h.jid }}" aria-label="History: ok"></span>
-          {% elif h.status in ["drifted", "failed"] %}<span class="badge badge-xs badge-error" title="{{ h.jid }}" aria-label="History: {{ h.status }}"></span>
-          {% elif h.status == "unreachable" %}<span class="badge badge-xs badge-error badge-outline" title="{{ h.jid }}" aria-label="History: unreachable"></span>
-          {% else %}<span class="badge badge-xs badge-neutral" title="{{ h.jid }}" aria-label="History: {{ h.status }}"></span>{% endif %}
-          {% else %}–{% endfor %}
-        </span></td>
-        {% set src_jid = (m.conformity or {}).get("jid") %}
-        <td class="font-mono text-xs">{% if src_jid and cstatus != "unknown" %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}–{% endif %}</td>
-      </tr>
-      {% endfor %}
+        {% for row in minions %}
+        {% set raw_status = (row.conformity or {}).get("status", "unknown") %}
+        {% set cstatus = "drifted" if raw_status in ["drifted", "failed"] else raw_status %}
+        {% if cstatus not in ["ok", "drifted", "unreachable", "unknown"] %}{% set cstatus = "unknown" %}{% endif %}
+        <tr class="hover">
+          <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=row.id) }}">{{ row.id }}</a></td>
+          <td>
+            <div class="flex flex-wrap items-center gap-1.5">
+              {% if cstatus == "ok" %}
+              <span class="status status-sm status-success" aria-hidden="true"></span><span class="badge badge-sm badge-success" role="status" aria-label="Conformity: ok">ok</span>
+              {% elif cstatus == "drifted" %}
+              <span class="status status-sm status-error" aria-hidden="true"></span><span class="badge badge-sm badge-error" role="status" aria-label="Conformity: drifted">drifted</span>
+              {% elif cstatus == "unreachable" %}
+              <span class="status status-sm status-error" aria-hidden="true"></span><span class="badge badge-sm badge-error badge-outline" role="status" aria-label="Conformity: unreachable">unreachable</span>
+              {% else %}
+              <span class="status status-sm status-neutral" aria-hidden="true"></span><span class="badge badge-sm badge-neutral" role="status" aria-label="Conformity: unknown">unknown</span>
+              {% endif %}
+              {% if (row.conformity or {}).get("partial") %}<span class="badge badge-sm badge-warning" title="The whole-job verdict is shown because this return did not isolate watched states." aria-label="Partial verdict">partial</span>{% endif %}
+            </div>
+          </td>
+          {% set checked = (row.conformity or {}).get("checked_at", "") %}
+          <td class="font-mono text-xs whitespace-nowrap">{% if checked %}<time datetime="{{ checked }}">{{ checked[:16].replace("T", " ") }}</time>{% else %}<span class="text-base-content/60" aria-label="No check recorded">–</span>{% endif %}</td>
+          <td>
+            {% if history.get(row.id) %}
+            <ul class="flex flex-wrap gap-1" aria-label="Recent state verdict history">
+              {% for entry in history.get(row.id, []) %}
+              {% set history_status = "drifted" if entry.status in ["drifted", "failed"] else entry.status %}
+              {% if history_status == "ok" %}<li><span class="badge badge-sm badge-success" title="Job {{ entry.jid }}" aria-label="History: passing, job {{ entry.jid }}">ok</span></li>
+              {% elif history_status == "drifted" %}<li><span class="badge badge-sm badge-error" title="Job {{ entry.jid }}" aria-label="History: drifted, job {{ entry.jid }}">drift</span></li>
+              {% elif history_status == "unreachable" %}<li><span class="badge badge-sm badge-error badge-outline" title="Job {{ entry.jid }}" aria-label="History: unreachable, job {{ entry.jid }}">down</span></li>
+              {% else %}<li><span class="badge badge-sm badge-neutral" title="Job {{ entry.jid }}" aria-label="History: unknown, job {{ entry.jid }}">unknown</span></li>{% endif %}
+              {% endfor %}
+            </ul>
+            {% else %}<span class="text-xs text-base-content/60">No history</span>{% endif %}
+          </td>
+          {% set src_jid = (row.conformity or {}).get("jid") %}
+          <td class="font-mono text-xs whitespace-nowrap">{% if src_jid and cstatus != "unknown" %}<a class="link link-primary" href="{{ url_for('jobs.detail', jid=src_jid) }}">{{ src_jid }}</a>{% else %}<span class="text-base-content/60">–</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <div class="py-8 text-center">
-    <p class="font-medium">No minions in cache</p>
-    <p class="text-sm opacity-70">Refresh the inventory to populate conformity.</p>
+  <div class="flex flex-col items-center gap-2 rounded-box border border-base-300 px-4 py-8 text-center">
+    <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-base-content/60"><span class="icon-[lucide--server] size-4" aria-hidden="true"></span></div>
+    {% if status_filter %}
+    <p class="font-medium">No minions match this verdict</p>
+    <p class="text-sm text-base-content/60">Clear the filter to see other stored state results.</p>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('states.index', sort=sort, dir=direction) }}">Clear verdict filter</a>
+    {% else %}
+    <p class="font-medium">No minion verdicts in scope</p>
+    <p class="text-sm text-base-content/60">Refresh the inventory or run a state job to populate conformity.</p>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.index') }}">Open minion inventory</a>
+    {% endif %}
   </div>
   {% endif %}
 </div>

@@ -1,60 +1,162 @@
 {% extends "base.html" %}
-{% block title %}States · Overstate{% endblock %}
+{% block title %}States &amp; conformity · Overstate{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-center gap-3 mb-4">
-  <h1 class="text-2xl font-bold tracking-tight me-auto">States &amp; conformity</h1>
-  <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='highstate-dry') }}">Dry-run highstate</a>
-  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
-  <form method="post" action="{{ url_for('states.recompute') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-sm btn-ghost">Recompute</button>
-  </form>
+{% set may_watch = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
+{% set status_labels = {"": "All", "ok": "Passing", "drifted": "Drifted", "unreachable": "Unreachable", "unknown": "Unknown"} %}
+<div class="flex flex-col gap-4">
+  <header class="flex flex-wrap items-end gap-3">
+    <div class="me-auto min-w-0">
+      <h1 class="text-2xl font-semibold tracking-tight">States &amp; conformity</h1>
+      <p class="text-sm text-base-content/70 mt-1">Latest state verdicts across {{ summary.total }} minion{% if summary.total != 1 %}s{% endif %} in your view. Each result links to its source job.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='highstate-dry') }}"><span class="flex items-center justify-center size-4"><span class="icon-[lucide--shield-check] size-4" aria-hidden="true"></span></span>Dry-run highstate</a>
+      {% if may_watch %}
+      <form method="post" action="{{ url_for('states.recompute') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline border-base-300" type="submit"><span class="flex items-center justify-center size-4"><span class="icon-[lucide--refresh-cw] size-4" aria-hidden="true"></span></span>Recompute verdicts</button>
+      </form>
+      {% endif %}
+    </div>
+  </header>
+
+  <section class="stats stats-vertical md:stats-horizontal w-full border border-base-300 bg-base-100" aria-label="Fleet conformity summary">
+    <div class="stat px-4 py-4">
+      <div class="stat-figure">
+        <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-base-content/60"><span class="icon-[lucide--server] size-4" aria-hidden="true"></span></div>
+      </div>
+      <p class="stat-title font-medium text-base-content">Minions in scope</p>
+      <p class="stat-value text-3xl font-semibold tabular-nums" data-summary="total">{{ summary.total }}</p>
+      <p class="stat-desc text-xs text-base-content/60">Visible to your role</p>
+    </div>
+    <div class="stat px-4 py-4">
+      <div class="stat-figure">
+        <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-success"><span class="icon-[lucide--circle-check] size-4" aria-hidden="true"></span></div>
+      </div>
+      <p class="stat-title font-medium text-base-content">Passing</p>
+      <p class="stat-value text-3xl font-semibold tabular-nums" data-summary="ok">{{ summary.ok }}</p>
+      <p class="stat-desc text-xs text-base-content/60">Latest verdict is ok</p>
+    </div>
+    <div class="stat px-4 py-4">
+      <div class="stat-figure">
+        <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-error"><span class="icon-[lucide--triangle-alert] size-4" aria-hidden="true"></span></div>
+      </div>
+      <p class="stat-title font-medium text-base-content">Drifted</p>
+      <p class="stat-value text-3xl font-semibold tabular-nums" data-summary="drifted">{{ summary.drifted }}</p>
+      <p class="stat-desc text-xs text-base-content/60">State changed or failed</p>
+    </div>
+    <div class="stat px-4 py-4">
+      <div class="stat-figure">
+        <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-warning"><span class="icon-[lucide--circle-x] size-4" aria-hidden="true"></span></div>
+      </div>
+      <p class="stat-title font-medium text-base-content">Needs review</p>
+      <p class="stat-value text-3xl font-semibold tabular-nums" data-summary="needs-review">{{ summary.unreachable + summary.unknown }}</p>
+      <p class="stat-desc text-xs text-base-content/60">{{ summary.unreachable }} unreachable · {{ summary.unknown }} unknown</p>
+    </div>
+  </section>
+
+  {% if summary.partial %}
+  <div class="alert alert-warning" role="status">
+    <span class="flex items-center justify-center size-5 shrink-0"><span class="icon-[lucide--triangle-alert] size-5" aria-hidden="true"></span></span>
+    <p><span class="font-medium"><span data-summary="partial">{{ summary.partial }}</span> partial verdict{% if summary.partial != 1 %}s{% endif %}.</span> A watched SLS could not be isolated, so the whole-job result is shown.</p>
+  </div>
   {% endif %}
-</div>
-<section class="card card-border mb-4" aria-label="Watched states">
-  <div class="card-body py-3">
-    <div class="flex flex-wrap items-center gap-2 text-sm">
-      <span class="font-semibold">Watching</span>
-      <div class="flex flex-wrap items-center gap-1">
-      {% for w in watched %}
-        <div class="badge badge-outline gap-1 font-mono">
-          {{ w.sls }}
-          {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
-          <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" class="inline-flex" data-confirm="Stop watching '{{ w.sls }}'?">
+
+  <div class="flex flex-col gap-4">
+    <section class="card card-border bg-base-100 min-w-0" aria-label="Conformity ledger">
+      <div class="card-body min-w-0 gap-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="me-auto min-w-0">
+            <h2 class="card-title text-base">Minion verdicts</h2>
+            <p class="text-sm text-base-content/60 mt-1">Most recent outcome, check time, and source job for each minion.</p>
+          </div>
+          <span class="badge badge-sm badge-ghost">{{ minions|length }} shown</span>
+        </div>
+        <nav class="flex flex-wrap items-center gap-2" aria-label="Filter conformity by status">
+          {% for opt in ["", "ok", "drifted", "unreachable", "unknown"] %}
+          {% set count = summary.total if not opt else summary[opt] %}
+          <a data-status-chip href="{{ url_for('states.index', status=opt, sort=sort, dir=direction) }}" class="btn btn-sm {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}"{% if status_filter == opt %} aria-current="page"{% endif %} aria-label="Show {{ status_labels[opt] }} minions: {{ count }}">
+            {{ status_labels[opt] }} <span class="tabular-nums text-xs" data-summary="{{ 'total' if not opt else opt }}">{{ count }}</span>
+          </a>
+          {% endfor %}
+        </nav>
+        {% include "_conformity_rows.html" %}
+      </div>
+    </section>
+
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <section class="card card-border bg-base-100 min-w-0" aria-label="Watched SLS coverage">
+        <div class="card-body gap-3">
+          <div class="flex items-center gap-2">
+            <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-base-content/60"><span class="icon-[lucide--file-code] size-4" aria-hidden="true"></span></div>
+            <h2 class="card-title text-base me-auto">Watch set</h2>
+            <span class="badge badge-sm badge-ghost">{{ watched|length }}</span>
+          </div>
+          {% if watched %}
+          <ul class="list">
+            {% for w in watched %}
+            <li class="list-row">
+              <div class="list-col-grow min-w-0">
+                <p class="font-mono text-sm break-all">{{ w.sls }}</p>
+                <p class="text-xs text-base-content/60">Included in verdict scope</p>
+              </div>
+              {% if may_watch %}
+              <form method="post" action="{{ url_for('states.unwatch', wid=w.id) }}" data-confirm="Stop watching '{{ w.sls }}'?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-ghost" type="submit" aria-label="Stop watching {{ w.sls }}">Remove</button>
+              </form>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          <p class="text-sm text-base-content/70">Watched SLS files narrow verdicts to matching state returns. If a return cannot be isolated, the whole-job result is used.</p>
+          {% else %}
+          <p class="text-sm text-base-content/70">No SLS files are watched. Verdicts use the whole state-job result.</p>
+          {% endif %}
+          {% if may_watch %}
+          <form method="post" action="{{ url_for('states.watch') }}" class="flex flex-col gap-2 sm:flex-row sm:items-end">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-xs btn-ghost opacity-60 hover:opacity-100" aria-label="Stop watching {{ w.sls }}">x</button>
+            <fieldset class="fieldset min-w-0 flex-1">
+              <label class="label" for="watch-sls">SLS name</label>
+              <input id="watch-sls" name="sls" placeholder="baseline.nginx" class="input input-sm w-full" autocomplete="off" required>
+            </fieldset>
+            <button class="btn btn-sm btn-primary" type="submit">Add to watch set</button>
           </form>
+          {% else %}
+          <p class="text-xs text-base-content/60">Watch set is read-only for your role.</p>
           {% endif %}
         </div>
-      {% else %}
-        <span class="opacity-60">Nothing watched. Verdicts cover the whole run.</span>
-      {% endfor %}
-      </div>
-      <div class="ms-auto">
-      {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
-        <form method="post" action="{{ url_for('states.watch') }}" class="flex gap-1">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input name="sls" placeholder="Watch an SLS..." class="input input-xs w-36" required aria-label="State name to watch">
-          <button class="btn btn-xs btn-primary">Watch</button>
-        </form>
-      {% endif %}
-      </div>
+      </section>
+
+      <section class="card card-border bg-base-100 min-w-0" aria-label="How verdicts work">
+        <div class="card-body gap-3">
+          <div class="flex items-center gap-2">
+            <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-base-content/60"><span class="icon-[lucide--activity] size-4" aria-hidden="true"></span></div>
+            <h2 class="card-title text-base">How verdicts work</h2>
+          </div>
+          <ul class="flex flex-col gap-3">
+            <li class="flex items-start gap-2">
+              <span class="badge badge-sm badge-success shrink-0">ok</span>
+              <p class="text-sm text-base-content/70">Every targeted return reports success.</p>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="badge badge-sm badge-error shrink-0">drifted</span>
+              <p class="text-sm text-base-content/70">A state changed or a state result failed.</p>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="badge badge-sm badge-error badge-outline shrink-0">unreachable</span>
+              <p class="text-sm text-base-content/70">The minion was targeted but returned nothing.</p>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="badge badge-sm badge-neutral shrink-0">unknown</span>
+              <p class="text-sm text-base-content/70">No state verdict has been recorded yet.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
     </div>
   </div>
-</section>
-<section class="card card-border bg-base-100" aria-label="Conformity">
-  <div class="card-body p-0">
-    <div class="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2">
-      <h2 class="card-title text-base me-auto">Conformity</h2>
-      <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by status">
-        {% for opt in ["", "ok", "drifted", "unreachable", "unknown"] %}
-        <a data-status-chip href="{{ url_for('states.index', status=opt, sort=sort, dir=direction) }}" class="btn btn-xs {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}">{{ opt or "all" }}</a>
-        {% endfor %}
-      </div>
-    </div>
-    {% include "_conformity_rows.html" %}
-  </div>
-</section>
+</div>
 <script>
 (function () {
   function syncChips() {

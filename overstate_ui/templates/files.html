@@ -187,7 +187,7 @@
     {% endif %}
     {% if not has_top %}<div class="alert alert-warning mb-3" role="status"><span>No top.sls file is present in the configured roots.</span>{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}<a class="link" href="{{ url_for('files.index', tab='repo') }}">Open repo settings</a>{% endif %}</div>{% endif %}
     <section class="card card-border bg-base-100" aria-label="State file listing">
-      <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex flex-wrap items-end gap-2 border-b border-base-300 px-4 py-3" aria-label="Search state files">
+      <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex flex-wrap items-end justify-end gap-2 border-b border-base-300 px-4 py-3" aria-label="Search state files">
         <input type="hidden" name="tab" value="files">
         <input type="hidden" name="dir" value="{{ d }}">
         {{ m.table_search_field("files-search", "q", q, "Search files", "Filter by file name", "Search files") }}

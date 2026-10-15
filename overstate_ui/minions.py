@@ -870,6 +870,12 @@ def detail(mid: str):
                 ].get(mid)
     except SaltApiError as exc:
         error = str(exc)
+    if tab == "overview":
+        data["grains"] = {
+            key: value
+            for key, value in data["grains"].items()
+            if key not in {"fqdn_ip4", "fqdn_ip6"}
+        }
     sort = request.args.get("sort", "jid")
     if sort not in ("jid", "status"):
         sort = "jid"
