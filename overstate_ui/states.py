@@ -240,8 +240,7 @@ def index():
         ordered = [
             row
             for row in ordered
-            if _conformity_bucket((row.conformity or {}).get("status"))
-            == status_filter
+            if _conformity_bucket((row.conformity or {}).get("status")) == status_filter
         ]
     history: dict[str, list[dict]] = {}
     if ordered:

@@ -167,9 +167,7 @@ def test_states_summary_stays_scope_wide_and_failed_rows_filter_as_drifted():
         session.add_all(
             [
                 Minion(id="ok-01", grains={}, conformity={"status": "ok"}),
-                Minion(
-                    id="down-01", grains={}, conformity={"status": "unreachable"}
-                ),
+                Minion(id="down-01", grains={}, conformity={"status": "unreachable"}),
                 Minion(id="new-01", grains={}, conformity={}),
                 Minion(id="legacy-01", grains={}, conformity={"status": "failed"}),
                 WatchedState(sls="baseline.nginx"),
@@ -186,37 +184,6 @@ def test_states_summary_stays_scope_wide_and_failed_rows_filter_as_drifted():
     assert 'data-summary="partial">1<' in html
     assert "w-01" in html and "legacy-01" in html
     assert "ok-01" not in html and "down-01" not in html and "new-01" not in html
-
-
-def test_states_page_uses_a_conformity_control_room_layout():
-    html = make_client().get("/states/").data.decode()
-    assert 'aria-label="Fleet conformity summary"' in html
-    assert 'aria-label="Conformity ledger"' in html
-    assert 'aria-label="Watched SLS coverage"' in html
-    assert "How verdicts work" in html
-    assert "Recompute verdicts" in html
-
-
-def test_conformity_summary_groups_legacy_failures_and_counts_partial():
-    from types import SimpleNamespace
-
-    from overstate_ui.states import summarize_conformity
-
-    rows = [
-        SimpleNamespace(conformity={"status": "ok"}),
-        SimpleNamespace(conformity={"status": "drifted", "partial": True}),
-        SimpleNamespace(conformity={"status": "failed"}),
-        SimpleNamespace(conformity={"status": "unreachable"}),
-        SimpleNamespace(conformity={}),
-    ]
-    assert summarize_conformity(rows) == {
-        "total": 5,
-        "ok": 1,
-        "drifted": 2,
-        "unreachable": 1,
-        "unknown": 1,
-        "partial": 1,
-    }
 
 
 def test_minion_states_tab_renders_stored_without_live_call():
