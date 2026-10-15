@@ -459,7 +459,7 @@ def test_unknown_verdict_never_links_a_job():
     client.post("/login", data={"username": "admin", "password": "pw"})
     detail = client.get("/minions/legacy-01").data.decode()
     assert "No highstate-style job recorded" in detail
-    assert "Last checked in" not in detail
+    assert 'Job <a class="link font-mono" href="/jobs/new"' not in detail
     states = client.get("/states/").data.decode()
     assert ">–<" in states
 
