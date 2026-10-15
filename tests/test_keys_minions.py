@@ -1289,7 +1289,8 @@ def test_minion_overview_snapshot_and_activity(client):
     html = client.get("/minions/web-01").data.decode()
     assert "not in snapshot cache" not in html
     assert ">accepted<" in html
-    assert "2026-09-01 12:00" in html
+    assert 'datetime="2026-09-01T12:00:00+00:00"' in html
+    assert "01/09/26" in html
     assert ">ok<" in html and "j1" in html
     assert "test.ping" in html
     assert "Nothing has run" not in html
