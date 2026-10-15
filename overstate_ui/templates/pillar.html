@@ -16,7 +16,7 @@
 </form>
 {% if total %}
 <div class="max-w-full overflow-x-auto rounded-box">
-<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('pillar.index', 'minion', 'Minion', sort, direction, {'q': q}) }}{{ m.sort_th_plain('pillar.index', 'snapshots', 'Snapshots', sort, direction, {'q': q}) }}<th class="text-right"></th></tr></thead><tbody>
+<table class="table table-sm table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('pillar.index', 'minion', 'Minion', sort, direction, {'q': q}) }}{{ m.sort_th_plain('pillar.index', 'snapshots', 'Snapshots', sort, direction, {'q': q}) }}<th class="text-right"></th></tr></thead><tbody>
 {% for mid in mids %}
 <tr>
   <td><a class="link font-mono text-xs" href="{{ url_for('pillar.detail', mid=mid) }}">{{ mid }}</a></td>

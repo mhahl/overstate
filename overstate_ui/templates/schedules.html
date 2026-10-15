@@ -62,7 +62,7 @@
 {% if entries is mapping and entries %}
 <div class="overflow-x-auto rounded-box">
 {% import "_macros.html" as m %}
-<table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('schedules.index', 'name', 'Job', sort, direction, {'minion': mid}) }}{{ m.sort_th_plain('schedules.index', 'function', 'Function', sort, direction, {'minion': mid}) }}<th>When</th><th>Enabled</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
+<table class="table table-sm table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('schedules.index', 'name', 'Job', sort, direction, {'minion': mid}) }}{{ m.sort_th_plain('schedules.index', 'function', 'Function', sort, direction, {'minion': mid}) }}<th>When</th><th>Enabled</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for name, job in entries.items() %}
 <tr><td class="font-mono text-xs">{{ name }}</td>
 <td class="font-mono text-xs">{{ job.get("function", "–") }}</td>

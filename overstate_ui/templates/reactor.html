@@ -41,7 +41,7 @@
   </div>
 </form>
 <div class="overflow-x-auto rounded-box">
- <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('reactor.index', 'event', 'Event', sort, direction, {'q': q}) }}{{ m.sort_th_plain('reactor.index', 'sls', 'SLS', sort, direction, {'q': q}) }}<th>Watch</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
+ <table class="table table-sm table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('reactor.index', 'event', 'Event', sort, direction, {'q': q}) }}{{ m.sort_th_plain('reactor.index', 'sls', 'SLS', sort, direction, {'q': q}) }}<th>Watch</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for r in rows %}
 <tr><td class="font-mono text-xs">{{ r.event }}</td>
 <td class="font-mono text-xs">{% for ref in r.refs %}{% set rel = r.rels[loop.index0] %}{% if rel %}<a class="link" href="{{ url_for('reactor.view', sls=rel) }}">{{ ref }}</a>{% else %}{{ ref }}{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>

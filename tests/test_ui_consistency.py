@@ -116,6 +116,17 @@ def test_list_tables_pin_headers():
     assert "table-pin-rows" in keys_src
 
 
+def test_list_tables_have_no_zebra_striping():
+    # Zebra striping bleeds into the page background on wide tables
+    # (Jobs history). Tables use plain rows with hover states instead.
+    offenders = [
+        path.name
+        for path in sorted(TEMPLATES.glob("*.html"))
+        if "table-zebra" in path.read_text()
+    ]
+    assert not offenders, "zebra striping still used: " + ", ".join(offenders)
+
+
 def test_users_list_searches_and_pages_without_rendering_every_account():
     from html.parser import HTMLParser
     from urllib.parse import parse_qs, urlsplit
