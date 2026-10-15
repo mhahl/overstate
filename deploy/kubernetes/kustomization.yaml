@@ -48,4 +48,4 @@ images:
   # base name `overstate-app` must keep matching `name:` here.
   - name: overstate-app
     newName: quay.io/sigaint/overstate
-    newTag: 007e51b
+    newTag: 44a5b3c
