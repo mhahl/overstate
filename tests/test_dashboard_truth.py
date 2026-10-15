@@ -111,6 +111,22 @@ def test_dashboard_uses_fleet_operations_workspace(monkeypatch):
     assert 'aria-label="Operator actions"' in html
 
 
+def test_dashboard_panels_share_aligned_grid_rows():
+    html = _dashboard_client().get("/").data.decode()
+    panels = html.split('class="grid gap-4 xl:grid-cols-12"', 1)[1].split(
+        '<nav class="flex flex-wrap items-center gap-3 border-t', 1
+    )[0]
+
+    assert 'class="flex flex-col gap-4 min-w-0 xl:col-span-7"' not in panels
+    assert 'class="flex flex-col gap-4 min-w-0 xl:col-span-5"' not in panels
+    assert 'class="card card-border bg-base-100 min-w-0 xl:col-span-7" aria-label="Attention queue"' in panels
+    assert 'class="card card-border bg-base-100 min-w-0 xl:col-span-5" aria-label="Control plane"' in panels
+    assert 'class="card card-border bg-base-100 min-w-0 xl:col-span-7" aria-label="Master rollout"' in panels
+    assert 'class="card card-border bg-base-100 min-w-0 xl:col-span-5" aria-label="Salt versions"' in panels
+    assert panels.index('aria-label="Attention queue"') < panels.index('aria-label="Control plane"')
+    assert panels.index('aria-label="Master rollout"') < panels.index('aria-label="Salt versions"')
+
+
 def test_shell_queues_capabilities_without_minions(monkeypatch):
     """Wheel/runner/history doors must probe before any minion is
     inventoried: gating the caps probe on a ping target leaves @wheel
