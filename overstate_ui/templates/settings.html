@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Settings · Overstate{% endblock %}
 {% macro setting_sections(sections, values, is_admin, section_name) %}
-<form method="post" class="flex flex-col gap-4">
+<form method="post" action="{{ url_for('settings.save') }}" class="flex flex-col gap-4">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="section" value="{{ section_name }}">
   {% for section in sections %}

@@ -95,6 +95,21 @@ def test_events_note_is_live_region(client):
     assert 'aria-live="polite"' in html
 
 
+def test_events_page_has_distinct_subscription_and_feed_regions(client):
+    client.post("/login", data={"username": "admin", "password": "test-password"})
+    html = client.get("/events/").data.decode()
+    assert 'id="events-workspace"' in html
+    assert 'aria-label="Event tag filter"' in html
+    assert 'aria-label="Salt event families"' in html
+    assert 'aria-label="Live event stream"' in html
+    assert 'aria-label="Newest Salt events first"' in html
+    assert 'id="event-filter"' in html
+    assert 'for="event-filter">Filter received events</label>' in html
+    assert 'aria-label="Search shown events"' not in html
+    assert 'id="event-count"' in html
+    assert 'id="event-status"' in html
+
+
 def test_bad_password_rejected(client):
     rv = client.post("/login", data={"username": "admin", "password": "wrong"})
     assert rv.status_code == 200
@@ -252,6 +267,27 @@ def test_oidc_settings_page_enables_sso():
         data={"oidc_issuer": "https://idp.example.com", "oidc_client_id": "cid"},
     )
     assert "Log in with SSO" in c.get("/login").data.decode()
+
+
+def test_sso_settings_form_posts_to_shared_save_endpoint(client):
+    from overstate_ui.settings import get_setting
+
+    client.post("/login", data={"username": "admin", "password": "test-password"})
+    html = client.get("/settings/sso").data.decode()
+    assert '<form method="post" action="/settings/"' in html
+
+    response = client.post(
+        "/settings/",
+        data={
+            "section": "sso",
+            "oidc_issuer": "https://idp.example.com",
+            "oidc_client_id": "overstate-ui",
+        },
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/settings/sso")
+    with client.application.app_context():
+        assert get_setting("oidc_issuer") == "https://idp.example.com"
 
 
 def test_oidc_db_overrides_and_clears_to_env():

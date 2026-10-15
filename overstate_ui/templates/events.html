@@ -1,34 +1,75 @@
 {% extends "base.html" %}
 {% block title %}Events · Overstate{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-center gap-3 mb-4">
-  <h1 class="text-2xl font-bold tracking-tight me-auto">Events</h1>
-</div>
-<section class="card card-border bg-base-100 min-w-0" aria-label="Live event stream">
-  <form method="get" class="px-4 py-3 border-b border-base-300" role="search" aria-label="Event tag filter">
-    <div class="flex flex-row flex-wrap items-center gap-x-4 gap-y-2">
-      {% for c in choices %}
-      <label class="flex items-center gap-2 text-sm font-mono cursor-pointer">
-        <input type="checkbox" name="tag" value="{{ c }}" class="checkbox checkbox-sm checkbox-primary"{% if c in selected %} checked{% endif %}> {{ c }}
-      </label>
-      {% endfor %}
-      <button class="btn btn-sm btn-primary ms-auto">Watch</button>
+<div id="events-workspace" class="flex flex-col gap-4">
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div class="flex min-w-0 items-start gap-3">
+      <div class="flex items-center justify-center size-10 shrink-0 rounded-box bg-base-200 text-base-content/70">
+        <span class="icon-[lucide--zap] size-5" aria-hidden="true"></span>
+      </div>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-semibold tracking-tight">Events</h1>
+        <p class="text-sm text-base-content/70 mt-1">Live Salt event summaries. Only the tag and timestamp are sent to this page.</p>
+      </div>
     </div>
-  </form>
-  <div class="flex flex-wrap items-end gap-2 p-4 border-b border-base-300">
-    <fieldset class="fieldset flex-1 min-w-48">
-      <legend class="fieldset-legend">Search stream</legend>
-      <input id="event-filter" type="search" placeholder="Filter shown events…" class="input input-sm w-full" autocomplete="off" aria-label="Search shown events" aria-describedby="event-count">
-    </fieldset>
-    <span id="event-count" class="text-xs opacity-70 pb-1" aria-label="Shown event count"></span>
-  </div>
-  <div class="flex items-center gap-2 px-4 py-2 border-b border-base-300">
-    <h2 class="text-sm font-medium me-auto">Live stream</h2>
-    <span id="event-status" class="badge badge-sm badge-ghost" role="status">connecting</span>
-  </div>
-  <ul id="event-list" class="max-h-96 overflow-y-auto" aria-label="Newest Salt events first"></ul>
-  <p id="event-note" class="px-4 py-3 text-sm opacity-70 border-t border-base-300" aria-live="polite">Connecting…</p>
-</section>
+    <span class="badge badge-sm badge-ghost tabular-nums">{{ selected|length }} of {{ choices|length }} families selected</span>
+  </header>
+
+  <section class="card card-border bg-base-100 min-w-0" aria-label="Live event stream">
+    <div class="card-body min-w-0 gap-0 p-0">
+      <form method="get" action="{{ url_for('events.index') }}" role="search" aria-label="Event tag filter" class="border-b border-base-300 px-4 py-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="font-medium">Event families</h2>
+            <p class="text-sm text-base-content/70 mt-1">Choose which Salt tag prefixes to watch.</p>
+          </div>
+          <button class="btn btn-sm btn-primary" type="submit">
+            <span class="icon-[lucide--radio] size-4" aria-hidden="true"></span>Watch
+          </button>
+        </div>
+        <fieldset aria-label="Salt event families" class="fieldset min-w-0 mt-4">
+          <legend class="sr-only">Salt event families</legend>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            {% for c in choices %}
+            <div class="flex min-w-0 items-start gap-3 rounded-box border border-base-300 bg-base-100 p-3">
+              <input id="event-tag-{{ loop.index }}" type="checkbox" name="tag" value="{{ c }}" class="checkbox checkbox-sm checkbox-primary mt-0.5"{% if c in selected %} checked{% endif %}>
+              <label for="event-tag-{{ loop.index }}" class="min-w-0 cursor-pointer">
+                <span class="block break-all font-mono text-xs">{{ c }}</span>
+                <span class="block text-xs text-base-content/70 mt-1">{% if c == "salt/job" %}Job lifecycle and returns{% elif c == "salt/auth" %}Authentication activity{% elif c == "salt/minion/" %}Minion state events{% elif c == "salt/key" %}Key changes{% else %}Runner events{% endif %}</span>
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+        </fieldset>
+      </form>
+
+      <div class="grid grid-cols-1 gap-4 border-b border-base-300 px-4 py-4 md:grid-cols-12 md:items-end">
+        <fieldset class="fieldset min-w-0 md:col-span-8">
+          <label class="label" for="event-filter">Filter received events</label>
+          <label class="input input-sm flex w-full min-w-0 gap-2">
+            <span class="icon-[lucide--search] size-4 text-base-content/60" aria-hidden="true"></span>
+            <input id="event-filter" type="search" placeholder="Filter by tag or timestamp…" class="grow min-w-0" autocomplete="off" aria-describedby="event-count">
+          </label>
+        </fieldset>
+        <div class="flex flex-wrap items-center justify-between gap-3 md:col-span-4 md:justify-end">
+          <p id="event-count" class="text-sm text-base-content/70 tabular-nums" aria-label="Shown event count"></p>
+          <span id="event-status" class="badge badge-sm badge-ghost" role="status">connecting</span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300 px-4 py-3">
+        <div>
+          <h2 class="font-medium">Received events</h2>
+          <p class="text-xs text-base-content/70 mt-1">Newest first · latest 50 summaries</p>
+        </div>
+        <span class="text-xs text-base-content/70">Raw event payloads stay off this page.</span>
+      </div>
+
+      <ul id="event-list" class="max-h-96 overflow-y-auto" aria-label="Newest Salt events first"></ul>
+      <p id="event-note" class="border-t border-base-300 px-4 py-3 text-sm text-base-content/70" role="status" aria-live="polite">Connecting…</p>
+    </div>
+  </section>
+</div>
 <script>
 (function () {
   var params = new URLSearchParams();
@@ -71,15 +112,15 @@
   src.onmessage = function (ev) {
     var s = JSON.parse(ev.data);
     var li = document.createElement("li");
-    li.className = "flex items-center gap-2 px-4 py-2 border-b border-base-300 last:border-0 font-mono text-xs";
-    var dot = document.createElement("span");
-    dot.className = "status status-info shrink-0";
-    dot.setAttribute("aria-hidden", "true");
-    li.appendChild(dot);
-    var text = document.createElement("span");
-    text.className = "break-all";
-    text.textContent = (s.stamp ? s.stamp + " " : "") + s.tag;
-    li.appendChild(text);
+    li.className = "grid grid-cols-1 gap-2 border-b border-base-300 px-4 py-3 last:border-0 sm:grid-cols-12 sm:items-center";
+    var stamp = document.createElement("span");
+    stamp.className = "break-all font-mono text-xs tabular-nums text-base-content/70 sm:col-span-3";
+    stamp.textContent = s.stamp || "Timestamp unavailable";
+    li.appendChild(stamp);
+    var tag = document.createElement("span");
+    tag.className = "badge badge-sm badge-ghost w-fit max-w-full break-all font-mono sm:col-span-9";
+    tag.textContent = s.tag;
+    li.appendChild(tag);
     list.prepend(li);
     while (list.children.length > 50) list.removeChild(list.lastChild);
     applyFilter();

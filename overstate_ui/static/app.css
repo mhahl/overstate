@@ -7180,6 +7180,9 @@
   .w-64 {
     width: calc(var(--spacing) * 64);
   }
+  .w-fit {
+    width: fit-content;
+  }
   .w-full {
     width: 100%;
   }
@@ -7574,10 +7577,6 @@
       background-color: var(--color-error);
       color: var(--color-error);
     }
-    .status-info {
-      background-color: var(--color-info);
-      color: var(--color-info);
-    }
     .status-neutral {
       background-color: var(--color-neutral);
       color: var(--color-neutral);
@@ -7830,9 +7829,6 @@
   }
   .pt-4 {
     padding-top: calc(var(--spacing) * 4);
-  }
-  .pb-1 {
-    padding-bottom: var(--spacing);
   }
   .pb-3 {
     padding-bottom: calc(var(--spacing) * 3);
@@ -8539,6 +8535,12 @@
     .sm\:col-span-2 {
       grid-column: span 2 / span 2;
     }
+    .sm\:col-span-3 {
+      grid-column: span 3 / span 3;
+    }
+    .sm\:col-span-9 {
+      grid-column: span 9 / span 9;
+    }
     .sm\:inline {
       display: inline;
     }
@@ -8569,6 +8571,9 @@
     .sm\:grid-cols-3 {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+    .sm\:grid-cols-12 {
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
     .sm\:grid-cols-\[1fr_7rem_8rem\] {
       grid-template-columns: 1fr 7rem 8rem;
     }
@@ -8577,6 +8582,9 @@
     }
     .sm\:flex-nowrap {
       flex-wrap: nowrap;
+    }
+    .sm\:items-center {
+      align-items: center;
     }
     .sm\:items-end {
       align-items: flex-end;
@@ -8594,6 +8602,12 @@
     }
     .md\:col-span-3 {
       grid-column: span 3 / span 3;
+    }
+    .md\:col-span-4 {
+      grid-column: span 4 / span 4;
+    }
+    .md\:col-span-8 {
+      grid-column: span 8 / span 8;
     }
     .md\:grid {
       display: grid;
@@ -8627,8 +8641,17 @@
     .md\:grid-cols-5 {
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
+    .md\:grid-cols-12 {
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
     .md\:grid-cols-\[minmax\(0\,1fr\)_13rem\] {
       grid-template-columns: minmax(0,1fr) 13rem;
+    }
+    .md\:items-end {
+      align-items: flex-end;
+    }
+    .md\:justify-end {
+      justify-content: flex-end;
     }
     .md\:border-e {
       border-inline-end-style: var(--tw-border-style);
@@ -8757,6 +8780,9 @@
     }
     .xl\:grid-cols-4 {
       grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .xl\:grid-cols-5 {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
     }
     .xl\:grid-cols-12 {
       grid-template-columns: repeat(12, minmax(0, 1fr));
