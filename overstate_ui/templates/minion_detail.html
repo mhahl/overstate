@@ -45,7 +45,7 @@
         <div class="stat px-5 py-4">
           <div class="stat-figure text-base-content/60"><span class="icon-[lucide--clock] size-5" aria-hidden="true"></span></div>
           <div class="stat-title font-medium text-base-content">Last seen</div>
-          <div class="stat-value text-2xl font-semibold tabular-nums">{{ last_seen.strftime("%Y-%m-%d %H:%M") if last_seen else "never" }}</div>
+          <div class="stat-value text-2xl font-semibold tabular-nums">{% if last_seen %}{{ last_seen|reltime }}{% else %}never{% endif %}</div>
           <div class="stat-desc">Snapshot cache</div>
         </div>
       </div>

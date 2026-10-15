@@ -32,7 +32,7 @@
         <tbody>
           {% for e in events %}
           <tr class="hover">
-            <td class="whitespace-nowrap text-xs opacity-70">{{ e.created_at }}</td>
+            <td class="whitespace-nowrap text-xs opacity-70">{{ e.created_at|reltime }}</td>
             <td class="font-medium">{{ e.user }}</td>
             <td class="font-mono text-xs">{{ e.action }}</td>
             <td><span class="badge badge-sm badge-soft {{ 'badge-error' if e.outcome == 'deny' else 'badge-success' if e.outcome == 'allow' else 'badge-ghost' }}">{{ 'Denied' if e.outcome == 'deny' else 'Allowed' if e.outcome == 'allow' else 'Legacy' }}</span></td>

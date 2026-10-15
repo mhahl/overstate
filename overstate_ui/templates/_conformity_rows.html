@@ -34,7 +34,7 @@
             </div>
           </td>
           {% set checked = (row.conformity or {}).get("checked_at", "") %}
-          <td class="font-mono text-xs whitespace-nowrap">{% if checked %}<time datetime="{{ checked }}">{{ checked[:16].replace("T", " ") }}</time>{% else %}<span class="text-base-content/60" aria-label="No check recorded">–</span>{% endif %}</td>
+          <td class="font-mono text-xs whitespace-nowrap">{% if checked %}{{ checked|reltime }}{% else %}<span class="text-base-content/60" aria-label="No check recorded">–</span>{% endif %}</td>
           <td>
             {% if history.get(row.id) %}
             <ul class="flex flex-wrap gap-1" aria-label="Recent state verdict history">

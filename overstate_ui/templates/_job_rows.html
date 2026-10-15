@@ -34,7 +34,7 @@
 {% for j in rows %}
 <tr><td><a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=j.jid) }}">{{ j.jid }}</a></td>
 <td class="font-mono text-xs">{{ j.fun }}</td><td class="font-mono text-xs">{{ j.tgt_type }}: {{ tgt_display.get(j.jid, j.tgt) }}</td>
-<td>{{ j.user }}</td><td class="text-sm whitespace-nowrap">{{ j.started_at }}</td><td><span class="badge badge-sm badge-soft {{ 'badge-success' if j.complete else 'badge-warning' }}">{{ 'Done' if j.complete else 'Running' }}</span></td></tr>
+<td>{{ j.user }}</td><td class="text-sm whitespace-nowrap">{{ j.started_at|reltime }}</td><td><span class="badge badge-sm badge-soft {{ 'badge-success' if j.complete else 'badge-warning' }}">{{ 'Done' if j.complete else 'Running' }}</span></td></tr>
 {% endfor %}
 </tbody></table>
 </div>
