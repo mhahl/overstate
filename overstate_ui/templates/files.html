@@ -3,15 +3,23 @@
 {% block title %}Files · Overstate{% endblock %}
 {% block content %}
 {% set active_tab = ftab|default("files") %}
-<div class="flex flex-wrap items-center gap-3 mb-4">
-  <div class="me-auto">
-    <h1 class="text-2xl font-bold tracking-tight">State files</h1>
-    {% if active_tab == "files" %}<p class="text-sm text-base-content/70 mt-1">Browse and edit the Salt fileserver roots.</p>{% endif %}
+<div class="flex flex-col gap-4">
+<header class="flex flex-wrap items-end justify-between gap-3">
+  <div class="me-auto min-w-0">
+    <h1 class="text-2xl font-semibold tracking-tight">State files</h1>
+    {% if active_tab == "files" %}<p class="text-sm text-base-content/70 mt-1">Browse the shared Salt roots and open state files for review or editing.</p>
+    {% elif active_tab == "updates" %}<p class="text-sm text-base-content/70 mt-1">Check, sync, and inspect the shared file checkout.</p>
+    {% elif active_tab == "repo" %}<p class="text-sm text-base-content/70 mt-1">Configure the Git source for the shared state roots.</p>{% endif %}
   </div>
-  {% if active_tab == "files" %}<span class="badge badge-sm badge-outline">{{ total }} files</span>{% endif %}
-</div>
+  {% if active_tab == "files" %}
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="badge badge-sm badge-ghost tabular-nums">{{ total }} file{% if total != 1 %}s{% endif %}</span>
+    {% if revision %}<span class="badge badge-sm badge-ghost font-mono" title="Current checkout revision">{{ revision }}</span>{% endif %}
+  </div>
+  {% endif %}
+</header>
 
-<nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" aria-label="File page sections">
+<nav class="tabs tabs-border max-w-full overflow-x-auto" aria-label="File page sections">
   <a href="{{ url_for('files.index', tab='files') }}" class="tab{% if active_tab == 'files' %} tab-active{% endif %}"{% if active_tab == 'files' %} aria-current="page"{% endif %}>
     <span class="icon-[lucide--file-text] size-4" aria-hidden="true"></span>Files
   </a>
@@ -26,8 +34,8 @@
 </nav>
 
 {% if active_tab == "updates" %}
-<div class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)] items-start">
-  <section class="card card-border bg-base-100" aria-label="Git checkout status">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+  <section class="card card-border bg-base-100 min-w-0 lg:col-span-7" aria-label="Git checkout status">
     <div class="card-body gap-4">
       <div class="flex flex-wrap items-start gap-3">
         <div class="me-auto">
@@ -68,7 +76,7 @@
     </div>
   </section>
 
-  <section class="card card-border bg-base-100" aria-label="Scheduled file sync">
+  <section class="card card-border bg-base-100 min-w-0 lg:col-span-5" aria-label="Scheduled file sync">
     <div class="card-body gap-3">
       <div class="flex items-start gap-3">
         <span class="icon-[lucide--calendar-clock] size-5 mt-0.5 text-base-content/60" aria-hidden="true"></span>
@@ -94,7 +102,7 @@
     </div>
   </section>
 
-  <section id="file-update-actions" class="card card-border bg-base-100 xl:col-span-2" aria-label="File update actions">
+  <section id="file-update-actions" class="card card-border bg-base-100 min-w-0 lg:col-span-12" aria-label="File update actions">
     <div class="card-body gap-4">
       <div>
         <h2 class="card-title text-base">Update actions</h2>
@@ -150,17 +158,21 @@
 {% elif active_tab == "repo" %}
 {% include "repo.html" %}
 {% else %}
-<div class="grid gap-4 lg:grid-cols-[250px_minmax(0,1fr)] items-start">
-  <nav class="card card-border bg-base-100" aria-label="Folders">
-    <div class="card-body p-3">
-      <div class="flex items-center gap-2 px-1 pb-1">
-        <h2 class="font-semibold text-sm">Folders</h2>
-        <a class="btn btn-xs btn-ghost ms-auto" href="{{ url_for('files.index', tab='files') }}">All files</a>
+<section id="file-workspace" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" aria-label="State files workspace">
+  <nav class="card card-border bg-base-100 min-w-0 lg:col-span-3" aria-label="Folder navigation">
+    <div class="card-body min-w-0 gap-3 p-3">
+      <div class="flex items-center gap-2">
+        <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-base-content/60"><span class="icon-[lucide--folder-tree] size-4" aria-hidden="true"></span></div>
+        <div>
+          <h2 class="font-medium text-sm">Folders</h2>
+          <p class="text-xs text-base-content/60">Salt roots</p>
+        </div>
+        <a class="btn btn-sm btn-ghost ms-auto" href="{{ url_for('files.index', tab='files') }}">All files</a>
       </div>
-      <div id="file-tree" class="rounded-box border border-base-300 bg-base-200/60 p-2" data-index-url="{{ url_for('files.index') }}"></div>
-      <div id="file-tree-fallback" class="rounded-box border border-base-300 bg-base-200/60 p-2">
+      <div id="file-tree" role="tree" aria-label="Salt folder tree" class="max-w-full overflow-auto rounded-box border border-base-300 bg-base-200/50 p-2" data-index-url="{{ url_for('files.index') }}"></div>
+      <div id="file-tree-fallback" class="max-w-full overflow-auto rounded-box border border-base-300 bg-base-200/50 p-2" aria-label="Folder links">
         {% macro dir_tree(nodes) %}
-        <ul class="menu menu-sm p-0">
+        <ul class="menu menu-sm w-full p-0">
           {% for n in nodes %}
           <li>
             {% if n.key == d %}<a href="{{ url_for('files.index', dir=n.key, q=q, tab='files') }}" class="font-mono menu-active">
@@ -172,44 +184,67 @@
           {% endfor %}
         </ul>
         {% endmacro %}
-        {{ dir_tree(tree_nodes) }}
+        {% if tree_nodes %}{{ dir_tree(tree_nodes) }}{% else %}<p class="px-2 py-3 text-xs text-base-content/60">No subfolders in this root.</p>{% endif %}
       </div>
       <script type="application/json" id="file-tree-data">{{ tree_nodes|tojson }}</script>
     </div>
   </nav>
-  <div class="min-w-0">
-    {% if d %}
-    <p class="text-sm font-mono mb-3 text-base-content/70">
-      {% for c in crumbs %}
-      {% if loop.last %}{{ c.label }}/{% else %}<a class="link font-mono" href="{{ url_for('files.index', dir=c.dir, q=q, tab='files') }}">{{ c.label }}</a> /{% endif %}
-      {% endfor %}
-    </p>
-    {% endif %}
-    {% if not has_top %}<div class="alert alert-warning mb-3" role="status"><span>No top.sls file is present in the configured roots.</span>{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}<a class="link" href="{{ url_for('files.index', tab='repo') }}">Open repo settings</a>{% endif %}</div>{% endif %}
-    <section class="card card-border bg-base-100" aria-label="State file listing">
-      <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex flex-wrap items-end justify-end gap-2 border-b border-base-300 px-4 py-3" aria-label="Search state files">
-        <input type="hidden" name="tab" value="files">
-        <input type="hidden" name="dir" value="{{ d }}">
-        {{ m.table_search_field("files-search", "q", q, "Search files", "Filter by file name", "Search files") }}
-        <button class="btn btn-sm btn-primary mb-0.5">Search</button>
-        {% if q %}<a class="btn btn-sm btn-ghost mb-0.5" href="{{ url_for('files.index', dir=d, tab='files') }}">Clear</a>{% endif %}
-      </form>
-      {% if truncated %}<div class="alert alert-warning text-sm m-3 mb-0" role="status">Listing capped at {{ total }} files. Narrow the search to see more.</div>{% endif %}
-      <div class="card-body p-0">
-        <div class="max-w-full overflow-x-auto rounded-box">
-        {% if not rows %}
-        <div class="py-10 px-4 text-center">
-          <span class="icon-[lucide--files] size-6 text-base-content/50" aria-hidden="true"></span>
-          <p class="font-medium mt-2">{% if q %}No files match “{{ q }}”{% elif d %}No files under “{{ d }}”{% else %}No files found{% endif %}</p>
-          <p class="text-sm text-base-content/70 mt-1">{% if q %}Try a shorter search.{% elif d %}<a class="link" href="{{ url_for('files.index', tab='files') }}">Back to all files</a>.{% else %}The configured roots are empty.{% endif %}</p>
+
+  <section class="card card-border bg-base-100 min-w-0 lg:col-span-9" aria-label="State file results">
+    <div class="card-body min-w-0 gap-0 p-0">
+      <div id="file-browser-toolbar" class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300 px-4 py-3">
+        <div class="min-w-0">
+          {% if d %}
+          <nav class="breadcrumbs max-w-full text-sm" aria-label="Current folder">
+            <ul>
+              {% for c in crumbs %}
+              {% if loop.last %}<li><span class="font-mono">{{ c.label }}/</span></li>{% else %}<li><a class="font-mono" href="{{ url_for('files.index', dir=c.dir, q=q, tab='files') }}">{{ c.label }}</a></li>{% endif %}
+              {% endfor %}
+            </ul>
+          </nav>
+          {% else %}
+          <h2 class="font-medium">All state files</h2>
+          <p class="text-xs text-base-content/60 mt-1">Files available in the shared Salt roots</p>
+          {% endif %}
         </div>
-        {% else %}
+        <form method="get" action="{{ url_for('files.index') }}" role="search" class="flex w-full flex-wrap items-end justify-end gap-2 sm:w-auto sm:flex-nowrap" aria-label="Search state files">
+          <input type="hidden" name="tab" value="files">
+          <input type="hidden" name="dir" value="{{ d }}">
+          {{ m.table_search_field("files-search", "q", q, "Search files", "Name or path…", "Search state files") }}
+          <button class="btn btn-sm btn-outline border-base-300 mb-1">Search</button>
+          {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('files.index', dir=d, tab='files') }}">Clear</a>{% endif %}
+        </form>
+      </div>
+
+      {% if not has_top %}
+      <div class="px-4 pt-4">
+        <div class="alert alert-warning text-sm" role="status">
+          <span class="flex items-center justify-center size-5 shrink-0"><span class="icon-[lucide--triangle-alert] size-5" aria-hidden="true"></span></span>
+          <p>No <span class="font-mono">top.sls</span> entry point is present in the configured roots.{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %} <a class="link" href="{{ url_for('files.index', tab='repo') }}">Open repo settings</a> to inspect the checkout.{% endif %}</p>
+        </div>
+      </div>
+      {% endif %}
+      {% if truncated %}<div class="px-4 pt-4"><div class="alert alert-warning text-sm" role="status"><span class="flex items-center justify-center size-5 shrink-0"><span class="icon-[lucide--triangle-alert] size-5" aria-hidden="true"></span></span><p>Listing capped at {{ total }} files. Narrow the search to see more.</p></div></div>{% endif %}
+
+      {% if not rows %}
+      <div class="flex flex-col items-center gap-2 px-4 py-10 text-center">
+        <div class="flex items-center justify-center size-10 rounded-full bg-base-200 text-base-content/60"><span class="icon-[lucide--files] size-5" aria-hidden="true"></span></div>
+        <p class="font-medium">{% if q %}No files match “{{ q }}”{% elif d %}No files under “{{ d }}”{% else %}No state files found{% endif %}</p>
+        <p class="text-sm text-base-content/70">{% if q %}Try a shorter query or clear the search.{% elif d %}This folder has no files. Browse another folder or return to the root.{% else %}The configured roots are empty. Sync a repository or check the root configuration.{% endif %}</p>
+        <div class="flex flex-wrap justify-center gap-2">
+          {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', dir=d, tab='files') }}">Clear search</a>{% elif d %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', tab='files') }}">Back to all files</a>{% elif (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}<a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', tab='repo') }}">Open repo settings</a>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="max-w-full overflow-x-auto rounded-box">
         <table class="table table-sm table-pin-rows w-full">
           <thead><tr><th>File</th><th class="text-right w-24">Size</th></tr></thead>
           <tbody>
             {% for r in rows %}
             {% if r.group is defined and not d %}
-            <tr class="hover"><td colspan="2" class="font-mono text-xs text-base-content/70"><a href="{{ url_for('files.index', dir=r.group, q=q, tab='files') }}" class="inline-flex items-center gap-2"><span class="icon-[lucide--folder] size-4" aria-hidden="true"></span>{{ r.group }}/</a></td></tr>
+            {% set group_dir = "" if r.group == "/" else r.group %}
+            {% set group_label = "Root files" if r.group == "/" else r.group + "/" %}
+            <tr class="bg-base-200/40"><th colspan="2"><a href="{{ url_for('files.index', dir=group_dir, q=q, tab='files') }}" class="inline-flex items-center gap-2 font-mono text-xs font-medium text-base-content/70" aria-label="Open {{ group_label }}">{% if r.group == "/" %}<span class="icon-[lucide--files] size-4" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--folder] size-4" aria-hidden="true"></span>{% endif %}{{ group_label }}</a></th></tr>
             {% elif r.group is not defined %}
             <tr class="hover">
               <td><a href="{{ url_for('files.view', path=r.rel) }}" class="flex items-center gap-3">
@@ -225,19 +260,22 @@
             {% endfor %}
           </tbody>
         </table>
-        {% endif %}
-        </div>
-        {% if pages > 1 %}
-        <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-t border-base-300">
-          <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} files</span>
-          {{ m.pagination_plain('files.index', page, pages, {'q': q, 'dir': d, 'per_page': per_page, 'tab': 'files'}, 'File pages') }}
-        </div>
-        {% elif total %}<p class="text-sm text-base-content/70 px-4 py-3 border-t border-base-300">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching “{{ q }}”{% endif %}{% if d %} under “{{ d }}”{% endif %}.</p>{% endif %}
       </div>
-    </section>
-  </div>
-</div>
+      {% endif %}
+
+      {% if pages > 1 %}
+      <div class="flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-4 py-3">
+        <p class="text-sm text-base-content/70">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} files{% if q %} matching “{{ q }}”{% endif %}{% if d %} under “{{ d }}”{% endif %}</p>
+        {{ m.pagination_plain('files.index', page, pages, {'q': q, 'dir': d, 'per_page': per_page, 'tab': 'files'}, 'File pages') }}
+      </div>
+      {% elif total %}
+      <p class="border-t border-base-300 px-4 py-3 text-sm text-base-content/70">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching “{{ q }}”{% endif %}{% if d %} under “{{ d }}”{% endif %}</p>
+      {% endif %}
+    </div>
+  </section>
+</section>
 <link href="{{ url_for('static', filename='browser.bundle.css') }}" rel="stylesheet" type="text/css">
 <script src="{{ url_for('static', filename='browser.bundle.js') }}"></script>
 {% endif %}
+ </div>
 {% endblock %}

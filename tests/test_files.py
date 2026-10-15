@@ -49,6 +49,17 @@ def test_index_lists_files(rooted):
     assert b"web.sls" in rv.data and b"sub/db.sls" in rv.data
 
 
+def test_files_page_uses_a_cohesive_browser_workspace(rooted):
+    html = rooted.get("/files/").data.decode()
+    assert 'id="file-workspace"' in html
+    assert 'aria-label="State files workspace"' in html
+    assert 'aria-label="Folder navigation"' in html
+    assert 'aria-label="State file results"' in html
+    assert 'id="file-browser-toolbar"' in html
+    assert 'class="flex w-full flex-wrap items-end justify-end gap-2 sm:w-auto sm:flex-nowrap"' in html
+    assert 'id="file-tree-fallback"' in html
+
+
 def test_view_renders_content(rooted):
     rv = rooted.get("/files/view", query_string={"path": "web.sls"})
     assert rv.status_code == 200
@@ -114,6 +125,7 @@ def test_group_headers_and_top_hint(rooted, tmp_path):
     assert rv.status_code == 200
     assert b"sub/" in rv.data  # directory header row
     assert b"top.sls" in rv.data  # file remains visible in the listing
+    assert b"Root files" in rv.data
     assert b"Entry point: maps minions to states" not in rv.data
 
 
@@ -604,7 +616,7 @@ def test_index_dir_filters_listing_and_shows_current_path(rooted):
     assert rv.status_code == 200
     html = rv.data.decode()
     assert "sub/db.sls" in html and "web.sls" not in html
-    assert 'class="text-sm font-mono mb-3 text-base-content/70"' in html
+    assert 'aria-label="Current folder"' in html
     assert "Back to all files" not in html  # non-empty needs no escape hatch
     assert 'name="dir" value="sub"' in html  # search stays in the folder
 
