@@ -25,6 +25,7 @@ from . import (
     schedules,
     settings,
     states,
+    timefmt,
     users,
 )
 from .config import Config
@@ -65,6 +66,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.teardown_appcontext(close_session)
 
     csrf.init_app(app)
+    timefmt.register(app)
     # The token API authenticates with a Bearer header, not a browser
     # session, so its single view is CSRF-exempt. Cookie sessions are
     # ignored there, never accepted.
