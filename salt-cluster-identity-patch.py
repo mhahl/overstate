@@ -36,6 +36,33 @@ SELF_NODE_ID = '(self.opts.get("cluster_node_id") or self.opts["interface"])'
 # occur exactly once in its file; anything else is a hard error.
 PATCHES = [
     (
+        "salt/cluster/consensus/storage.py",
+        """\
+Implements :class:`salt.cluster.consensus.raft.BaseStorage` using the
+``salt.cache.Cache`` abstraction so that whatever ``cache_driver`` the
+operator has configured (``localfs`` today, ``mmapcache`` tomorrow) is used
+automatically.
+""",
+        """\
+Implements :class:`salt.cluster.consensus.raft.BaseStorage` using the
+``localfs`` cache driver for durable per-master Raft state. The global Salt
+``cache:`` option is reserved for minion data and may point to shared Redis;
+it must not redirect consensus logs to a shared cache.
+""",
+    ),
+    (
+        "salt/cluster/consensus/storage.py",
+        """\
+        self._cache = salt.cache.Cache(opts)
+""",
+        """\
+        # Raft state belongs to this master's PVC. Keep it on localfs even
+        # when Salt's global cache driver is changed for shared minion data.
+        # The durability helper below fsyncs the localfs log and metadata.
+        self._cache = salt.cache.Cache(opts, driver="localfs")
+""",
+    ),
+    (
         "salt/cluster/consensus/service.py",
         """\
         # Use the interface address as the Raft node-id so it matches the
@@ -234,7 +261,7 @@ PATCHES = [
     ),
     (
         "salt/master.py",
-        "bootstrap_pool[0] == self.opts[\"interface\"]",
+        'bootstrap_pool[0] == self.opts["interface"]',
         f"bootstrap_pool[0] == {SELF_NODE_ID}",
     ),
     (

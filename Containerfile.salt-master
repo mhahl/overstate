@@ -36,9 +36,10 @@ COPY salt-extmods/pgjsonb_upsert.py /var/cache/salt/master/extmods/pgjsonb_upser
 # self-healing (EndpointSlices with constructed-name fallback), stdlib only.
 COPY cluster-peers.py /usr/local/bin/cluster-peers.py
 COPY cluster-ready.py /usr/local/bin/cluster-ready.py
-# Build-time Salt patch: stable DNS node identities. Resolves the
-# installed tree (not a hardcoded python version path) and aborts
-# the build on any anchor mismatch.
+# Build-time Salt patches: stable DNS node identities and per-master
+# localfs Raft storage (independent of the global minion-data cache).
+# Resolve the installed tree rather than hardcoding a Python path, and
+# abort the build on any upstream anchor mismatch.
 COPY salt-cluster-identity-patch.py /usr/local/bin/salt-cluster-identity-patch.py
 RUN SALT_PY="$(ls /opt/saltstack/salt/bin/python3* | grep -v -e config -e -dbg | head -1)" \
     && "$SALT_PY" /usr/local/bin/salt-cluster-identity-patch.py \

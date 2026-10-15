@@ -129,6 +129,12 @@ and the existing Redis password are projected as `cache.conf` from the
 owner-held `salt-master-cache` Secret; this is separate from the Postgres
 job-cache returner. Redis cache prefixes are scoped to this Overstate
 cluster to avoid key collisions with other Redis consumers.
+The Raft log and vote state remain on each master's localfs-backed PVC:
+Salt's global `cache:` option also feeds the cluster's Raft storage, so the
+master image explicitly pins that storage to localfs for per-node isolation
+and fsync durability. Roll out that image to all three masters while the
+global cache is still localfs before enabling Redis; see the staged procedure
+in the Kubernetes install guide.
 
 ## 4. Data flows
 

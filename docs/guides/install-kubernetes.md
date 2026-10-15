@@ -73,6 +73,27 @@ Salt group. Salt 3008's Redis cache plugin does not support the example
 `cache.redis.timeout` option, so it is omitted. With `minion_data_cache`
 enabled, this backend stores grains and Pillar as well as Mine data.
 
+For an existing three-master cluster, activate Redis in two stages. The
+cluster's Raft log and vote state also use Salt's global cache abstraction,
+but must remain on each master's localfs PVC for isolation and fsync
+durability. The master image pins Raft storage to localfs independently of
+`cache: redis`; all three masters must run that image before the Redis
+backend is enabled. Do not apply the whole Kustomization for this upgrade:
+
+1. Keep the live master ConfigMap on its current `localfs` setting. Apply
+   only `deploy/kubernetes/salt-master.yaml` with the new image and the
+   owner-held `salt-master-cache` Secret in place. Wait for the StatefulSet
+   to report `3/3` Ready, and verify all three pods run the new image.
+2. Apply `deploy/kubernetes/salt-master-config.yaml`, wait for its projected
+   files to update on all pods, then run
+   `kubectl -n overstate rollout restart statefulset/salt-master` and wait
+   again for `3/3` Ready. The OrderedReady strategy restarts the masters one
+   at a time while Raft remains on per-pod localfs.
+
+The Redis cache starts empty; existing per-master localfs minion data is not
+bulk-migrated. Minions repopulate grains, Pillar, and Mine on their normal
+refresh/update cycle.
+
 ## 2. Apply
 
 ```sh

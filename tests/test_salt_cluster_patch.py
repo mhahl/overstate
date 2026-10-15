@@ -114,6 +114,28 @@ def test_reconcile_replays_post_snapshot_config(tmp_path):
     assert old not in text and "LogEntryType.CONFIG" in text
 
 
+def test_raft_storage_uses_per_master_localfs_not_global_cache(tmp_path):
+    """Raft persistence must stay on each master's PVC when minion data uses Redis."""
+    mod = _load()
+    entry = next(
+        (
+            e
+            for e in mod.PATCHES
+            if e[0] == "salt/cluster/consensus/storage.py"
+            and 'driver="localfs"' in e[2]
+        ),
+        None,
+    )
+    assert entry is not None, "Raft storage must not follow Salt's global cache driver"
+    rel, old, new = entry
+    assert 'salt.cache.Cache(opts, driver="localfs")' in new
+    _tree(tmp_path, {rel: f"# prefix\n{old}# suffix\n"})
+    mod.apply_patches(tmp_path, [entry])
+    text = (tmp_path / rel).read_text(encoding="utf-8")
+    assert old not in text
+    assert 'salt.cache.Cache(opts, driver="localfs")' in text
+
+
 def test_patch_table_is_well_formed():
     mod = _load()
     assert mod.PATCHES, "no patches declared"
@@ -129,11 +151,14 @@ def test_patch_table_is_well_formed():
             or "joining, not founding" in new
             or "_consensus_async_client" in new
             or "replay" in new
+            or 'driver="localfs"' in new
+            or "``localfs`` cache driver" in new
         ), (
-            f"{rel}: replacement must use cluster_node_id, ready sentinel, join-existing, transport recovery, or log replay"
+            f"{rel}: replacement must cover cluster identity/readiness/recovery or per-master localfs Raft storage"
         )
         files.add(rel)
-    # Raft identity, join sentinel + founder, and ring ownership.
+    # Raft identity, join sentinel + founder, ring ownership, and storage.
+    assert "salt/cluster/consensus/storage.py" in files
     assert "salt/cluster/consensus/service.py" in files
     assert "salt/channel/server.py" in files
     assert "salt/master.py" in files
