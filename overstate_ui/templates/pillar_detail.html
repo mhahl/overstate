@@ -1,56 +1,125 @@
 {% extends "base.html" %}
 {% block title %}{{ mid }} pillar · Overstate{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-center gap-2 mb-4">
-  <h1 class="text-2xl font-bold tracking-tight font-mono me-auto">{{ mid }}</h1>
-  {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('pillar.capture', minion=mid)) %}
-  <form method="post" action="{{ url_for('pillar.capture', mid=mid) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-sm btn-primary">Capture snapshot</button>
-  </form>
+{% set can_capture = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('pillar.capture', minion=mid)) %}
+<div id="pillar-detail" class="flex flex-col gap-4">
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div class="min-w-0">
+      <nav class="breadcrumbs text-sm" aria-label="Breadcrumb">
+        <ul>
+          <li><a href="{{ url_for('pillar.index') }}">Pillar</a></li>
+          <li><span class="font-mono">{{ mid }}</span></li>
+        </ul>
+      </nav>
+      <h1 class="text-2xl font-semibold tracking-tight">Pillar <span class="font-mono">{{ mid }}</span></h1>
+      <p class="text-sm text-base-content/70 mt-1">Live rendered values alongside the latest saved snapshots.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a class="btn btn-sm btn-outline border-base-300" href="{{ url_for('pillar.diff', a=mid) }}">
+        <span class="icon-[lucide--file-json] size-4" aria-hidden="true"></span>Compare Pillar
+      </a>
+      {% if can_capture %}
+      <form method="post" action="{{ url_for('pillar.capture', mid=mid) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-primary" type="submit">Capture snapshot</button>
+      </form>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if error %}
+  <div class="alert alert-error" role="alert">
+    <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+    <div>
+      <p class="font-medium">Live Pillar could not be loaded</p>
+      <p class="text-sm">{{ error }} Snapshot history remains available below.</p>
+    </div>
+  </div>
   {% endif %}
-</div>
-{% if error %}
-<div class="alert alert-error mb-4" role="alert">
-  <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
-  <span>{{ error }}</span>
-</div>
-{% endif %}
-<div class="grid lg:grid-cols-2 gap-4">
-  <section class="card card-border">
-    <div class="card-body">
-      <div class="flex items-center gap-2 mb-1">
-        <h2 class="card-title text-base me-auto">Live rendered pillar</h2>
-        <a class="btn btn-xs btn-ghost" href="{{ url_for('jobs.new', preset='refresh-pillar') }}">Refresh pillar…</a>
+
+  <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+    <section class="card card-border bg-base-100 min-w-0 xl:col-span-7" aria-label="Live Pillar data">
+      <div class="card-body min-w-0 gap-0 p-0">
+        <header class="flex flex-wrap items-center gap-3 border-b border-base-300 px-4 py-3">
+          <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-base-content/70">
+            <span class="icon-[lucide--file-json] size-4" aria-hidden="true"></span>
+          </div>
+          <div class="me-auto">
+            <h2 class="font-medium">Live rendered pillar</h2>
+            <p class="text-xs text-base-content/70">Current values returned for this minion</p>
+          </div>
+          {% if live is mapping %}
+          <span class="badge badge-sm badge-soft badge-success">Available</span>
+          {% else %}
+          <span class="badge badge-sm badge-ghost">Unavailable</span>
+          {% endif %}
+          <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.new', preset='refresh-pillar') }}">
+            <span class="icon-[lucide--refresh-cw] size-4" aria-hidden="true"></span>Refresh Pillar
+          </a>
+        </header>
+        {% if live is mapping %}
+        <div class="min-w-0 p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-3">
+            <p class="text-sm text-base-content/70">{{ live|length }} top-level key{% if live|length != 1 %}s{% endif %}</p>
+            <p class="text-xs text-base-content/70">Rendered JSON</p>
+          </div>
+          <pre class="max-h-128 max-w-full overflow-auto rounded-box bg-base-200 p-4 font-mono text-xs leading-relaxed text-base-content"><code>{{ live|tojson(indent=2) }}</code></pre>
+        </div>
+        {% else %}
+        <div class="flex flex-col items-start gap-2 px-4 py-8">
+          <p class="font-medium">No live values available</p>
+          <p class="text-sm text-base-content/70">Refresh Pillar to request a new render. Any saved snapshots remain available in the history panel.</p>
+          <a class="btn btn-sm btn-outline border-base-300 mt-2" href="{{ url_for('jobs.new', preset='refresh-pillar') }}">Refresh Pillar</a>
+        </div>
+        {% endif %}
       </div>
-      {% if live is mapping %}
-      <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ live | tojson(indent=1) }}</code></pre>
-      {% else %}
-      <p class="text-sm opacity-70">salt-api unreachable or no data. Snapshots below still work.</p>
-      {% endif %}
-    </div>
-  </section>
-  <section class="card card-border">
-    <div class="card-body">
-      <h2 class="card-title text-base">Snapshots <span class="badge badge-sm badge-outline badge-neutral">{{ snaps|length }}</span></h2>
-      {% if snaps %}
-      <ul>
-        {% for s in snaps %}
-        <li class="py-2 border-b border-base-300 last:border-0">
-          <details class="collapse collapse-arrow bg-base-200">
-            <summary class="collapse-title font-mono text-xs">#{{ s.id }} — {{ s.captured_at }}</summary>
-            <div class="collapse-content"><pre class="mockup-code text-xs overflow-x-auto"><code>{{ s.payload | tojson(indent=1) }}</code></pre></div>
-          </details>
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <div class="py-4 text-center">
-        <p class="font-medium">No snapshots yet</p>
-        <p class="text-sm opacity-70">Capture one to start a history (keeps the last 10).</p>
+    </section>
+
+    <section class="card card-border bg-base-100 min-w-0 xl:col-span-5" aria-label="Snapshot history">
+      <div class="card-body min-w-0 gap-0 p-0">
+        <header class="flex flex-wrap items-center gap-3 border-b border-base-300 px-4 py-3">
+          <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-base-content/70">
+            <span class="icon-[lucide--history] size-4" aria-hidden="true"></span>
+          </div>
+          <div class="me-auto">
+            <h2 class="font-medium">Snapshot history</h2>
+            <p class="text-xs text-base-content/70">Newest first · up to 10 retained</p>
+          </div>
+          <span class="badge badge-sm badge-ghost tabular-nums">{{ snaps|length }} / 10</span>
+        </header>
+        {% if snaps %}
+        <ol class="divide-y divide-base-300">
+          {% for s in snaps %}
+          <li class="min-w-0 px-4 py-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-mono text-sm">Snapshot #{{ s.id }}</span>
+              {% if loop.first %}<span class="badge badge-xs badge-ghost">Latest</span>{% endif %}
+              <time class="ms-auto text-xs text-base-content/70 tabular-nums" datetime="{{ s.captured_at.isoformat() }}">{{ s.captured_at }}</time>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <details class="collapse collapse-arrow min-w-0 flex-1 rounded-box bg-base-200">
+                <summary class="collapse-title min-h-0 py-2 text-sm">Inspect captured values</summary>
+                <div class="collapse-content min-w-0">
+                  <pre class="max-h-64 max-w-full overflow-auto rounded-box bg-base-100 p-3 font-mono text-xs leading-relaxed text-base-content"><code>{{ s.payload|tojson(indent=2) }}</code></pre>
+                </div>
+              </details>
+              <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.diff', a=mid, b=mid, rev_a=s.id) }}">Compare</a>
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <div class="flex flex-col items-start gap-2 px-4 py-8">
+          <p class="font-medium">No snapshots captured</p>
+          {% if can_capture %}
+          <p class="text-sm text-base-content/70">Capture the current render to create a point-in-time reference for future comparisons. The latest 10 captures are retained.</p>
+          {% else %}
+          <p class="text-sm text-base-content/70">A user with snapshot-capture permission can save a point-in-time reference. The latest 10 captures are retained.</p>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
-      {% endif %}
-    </div>
-  </section>
+    </section>
+  </div>
 </div>
 {% endblock %}

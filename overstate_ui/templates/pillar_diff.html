@@ -1,89 +1,165 @@
 {% extends "base.html" %}
 {% block title %}Pillar diff · Overstate{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-center gap-3 mb-4">
-  <h1 class="text-2xl font-bold tracking-tight me-auto">Pillar diff</h1>
-</div>
-<form method="get" class="card card-border card-sm mb-4">
-  <div class="card-body flex-row flex-wrap items-end gap-2">
-    <fieldset class="fieldset">
-      <label class="label" for="pillar-left">Left minion</label>
-      <select id="pillar-left" name="a" class="select select-sm">
-        <option value="">—</option>
-        {% for m in mids %}<option value="{{ m }}"{% if m == mid_a %} selected{% endif %}>{{ m }}</option>{% endfor %}
-      </select>
-    </fieldset>
-    <fieldset class="fieldset">
-      <label class="label" for="pillar-left-revision">Left revision</label>
-      <select id="pillar-left-revision" name="rev_a" class="select select-sm">
-        <option value="">newest snapshot</option>
-        <option value="live"{% if rev_a == "live" %} selected{% endif %}>live</option>
-        {% for s in snaps_a %}<option value="{{ s.id }}"{% if rev_a == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
-      </select>
-    </fieldset>
-    <fieldset class="fieldset">
-      <label class="label" for="pillar-right">Right minion</label>
-      <select id="pillar-right" name="b" class="select select-sm">
-        <option value="">—</option>
-        {% for m in mids %}<option value="{{ m }}"{% if m == mid_b %} selected{% endif %}>{{ m }}</option>{% endfor %}
-      </select>
-    </fieldset>
-    <fieldset class="fieldset">
-      <label class="label" for="pillar-right-revision">Right revision</label>
-      <select id="pillar-right-revision" name="rev_b" class="select select-sm">
-        <option value="">newest snapshot</option>
-        <option value="live"{% if rev_b == "live" %} selected{% endif %}>live</option>
-        {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} — {{ s.captured_at }}</option>{% endfor %}
-      </select>
-    </fieldset>
-    <button class="btn btn-sm btn-primary mb-1">Compare</button>
-  </div>
-  <p class="text-xs opacity-70 mt-2">Pick the same minion on both sides to compare two of its snapshots.</p>
-</form>
-{% if compared %}
-<div class="card card-border">
-  <div class="px-4 pt-3">
-    <div class="tabs tabs-border" aria-label="Diff view">
-      <a class="tab {{ 'tab-active' if view == 'changes' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='changes') }}">Changes</a>
-      <a class="tab {{ 'tab-active' if view == 'full' }}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='full') }}">Full</a>
+<div id="pillar-comparison" class="flex flex-col gap-4">
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div class="min-w-0">
+      <nav class="breadcrumbs text-sm" aria-label="Breadcrumb">
+        <ul>
+          <li><a href="{{ url_for('pillar.index') }}">Pillar</a></li>
+          <li><span>Compare</span></li>
+        </ul>
+      </nav>
+      <h1 class="text-2xl font-semibold tracking-tight">Compare Pillar</h1>
+      <p class="text-sm text-base-content/70 mt-1">Compare nested values from two minions or two revisions of one minion.</p>
     </div>
-  </div>
-  <div class="px-4 py-3 border-b border-base-300 text-sm">
-    <span class="font-mono">{{ mid_a }}</span> <span class="opacity-60">vs</span> <span class="font-mono">{{ mid_b }}</span>
-    {% if view == "full" %}<span class="badge badge-sm badge-outline badge-neutral ms-2">{{ ndiff }} of {{ rows|length }} differ</span>
-    {% else %}<span class="badge badge-sm badge-outline badge-neutral ms-2">{{ rows|length }} difference{{ "s" if rows|length != 1 }}</span>{% endif %}
-  </div>
-  {% if rows %}
-  <div class="overflow-x-auto rounded-box">
-  <table class="table table-sm table-zebra table-pin-rows w-full"><thead><tr><th>Path</th><th>Change</th><th>Left</th><th>Right</th></tr></thead><tbody>
-  {% for r in rows %}
-  <tr>
-    <td class="font-mono text-xs">{{ r.path }}</td>
-    <td>
-      {% if r.kind == "added" %}<span class="badge badge-sm badge-outline badge-success">added</span>
-      {% elif r.kind == "removed" %}<span class="badge badge-sm badge-outline badge-error">removed</span>
-      {% elif r.kind == "same" %}<span class="badge badge-sm badge-outline badge-ghost">same</span>
-      {% else %}<span class="badge badge-sm badge-outline badge-warning">changed</span>{% endif %}
-    </td>
-    <td class="font-mono text-xs break-all">{{ render_value(r.old) if r.old is not none else "–" }}</td>
-    <td class="font-mono text-xs break-all">{{ render_value(r.new) if r.new is not none else "–" }}</td>
-  </tr>
-  {% endfor %}
-  </tbody></table>
-  </div>
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.index') }}">Pillar inventory</a>
+  </header>
+
+  <form method="get" action="{{ url_for('pillar.diff') }}" class="card card-border bg-base-100 min-w-0" aria-label="Pillar comparison sources">
+    <div class="card-body min-w-0 gap-4">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <fieldset class="fieldset min-w-0 rounded-box border border-base-300 bg-base-200/40 p-4">
+          <legend class="fieldset-legend">Left source</legend>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="fieldset min-w-0">
+              <label class="label" for="pillar-left">Left minion</label>
+              <select id="pillar-left" name="a" class="select select-sm w-full">
+                <option value="">Choose a minion</option>
+                {% for m in mids %}<option value="{{ m }}"{% if m == mid_a %} selected{% endif %}>{{ m }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="fieldset min-w-0">
+              <label class="label" for="pillar-left-revision">Left revision</label>
+              <select id="pillar-left-revision" name="rev_a" class="select select-sm w-full">
+                <option value="">Newest snapshot</option>
+                <option value="live"{% if rev_a == "live" %} selected{% endif %}>Live render</option>
+                {% for s in snaps_a %}<option value="{{ s.id }}"{% if rev_a == s.id|string %} selected{% endif %}>#{{ s.id }} · {{ s.captured_at }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="fieldset min-w-0 rounded-box border border-base-300 bg-base-200/40 p-4">
+          <legend class="fieldset-legend">Right source</legend>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="fieldset min-w-0">
+              <label class="label" for="pillar-right">Right minion</label>
+              <select id="pillar-right" name="b" class="select select-sm w-full">
+                <option value="">Choose a minion</option>
+                {% for m in mids %}<option value="{{ m }}"{% if m == mid_b %} selected{% endif %}>{{ m }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="fieldset min-w-0">
+              <label class="label" for="pillar-right-revision">Right revision</label>
+              <select id="pillar-right-revision" name="rev_b" class="select select-sm w-full">
+                <option value="">Newest snapshot</option>
+                <option value="live"{% if rev_b == "live" %} selected{% endif %}>Live render</option>
+                {% for s in snaps_b %}<option value="{{ s.id }}"{% if rev_b == s.id|string %} selected{% endif %}>#{{ s.id }} · {{ s.captured_at }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+
+      <input type="hidden" name="view" value="{{ view }}">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm text-base-content/70">Pick the same minion on both sides to compare two of its snapshots.</p>
+        <button class="btn btn-sm btn-primary" type="submit">
+          <span class="icon-[lucide--file-json] size-4" aria-hidden="true"></span>Compare sources
+        </button>
+      </div>
+    </div>
+  </form>
+
+  {% if compared %}
+  <section class="card card-border bg-base-100 min-w-0" aria-label="Pillar comparison results">
+    <div class="card-body min-w-0 gap-0 p-0">
+      <header class="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
+        <div>
+          <h2 class="font-medium">Path-level comparison</h2>
+          {% if view == "full" %}
+          <p class="text-sm text-base-content/70 mt-1">{{ ndiff }} of {{ rows|length }} differ</p>
+          {% else %}
+          <p class="text-sm text-base-content/70 mt-1">{{ rows|length }} difference{{ "s" if rows|length != 1 }}</p>
+          {% endif %}
+        </div>
+        <nav class="tabs tabs-border max-w-full overflow-x-auto" aria-label="Comparison display">
+          <a class="tab{% if view == 'changes' %} tab-active{% endif %}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='changes') }}"{% if view == "changes" %} aria-current="page"{% endif %}>Changes</a>
+          <a class="tab{% if view == 'full' %} tab-active{% endif %}" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='full') }}"{% if view == "full" %} aria-current="page"{% endif %}>Full</a>
+        </nav>
+      </header>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 border-b border-base-300">
+        <div class="min-w-0 border-b border-base-300 px-4 py-3 md:border-b-0 md:border-e">
+          <p class="text-xs text-base-content/70">Left source</p>
+          <p class="font-mono text-sm break-all">{{ mid_a }}</p>
+          <span class="badge badge-sm badge-ghost mt-2">{% if rev_a == "live" %}Live render{% elif rev_a %}Snapshot #{{ rev_a }}{% else %}Newest snapshot{% endif %}</span>
+        </div>
+        <div class="min-w-0 px-4 py-3">
+          <p class="text-xs text-base-content/70">Right source</p>
+          <p class="font-mono text-sm break-all">{{ mid_b }}</p>
+          <span class="badge badge-sm badge-ghost mt-2">{% if rev_b == "live" %}Live render{% elif rev_b %}Snapshot #{{ rev_b }}{% else %}Newest snapshot{% endif %}</span>
+        </div>
+      </div>
+
+      {% if rows %}
+      <div class="max-w-full overflow-x-auto rounded-box">
+        <table class="table table-sm table-zebra table-pin-rows w-full">
+          <thead><tr><th>Nested key path</th><th>Change</th><th>Left value</th><th>Right value</th></tr></thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <th class="font-mono text-xs break-all">{{ r.path }}</th>
+              <td>
+                {% if r.kind == "added" %}<span class="badge badge-sm badge-soft badge-success">added</span>
+                {% elif r.kind == "removed" %}<span class="badge badge-sm badge-soft badge-error">removed</span>
+                {% elif r.kind == "same" %}<span class="badge badge-sm badge-ghost">same</span>
+                {% else %}<span class="badge badge-sm badge-soft badge-warning">changed</span>{% endif %}
+              </td>
+              <td class="max-w-md">
+                {% if r.kind != "added" %}<pre class="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs"><code>{{ render_value(r.old) }}</code></pre>
+                {% else %}<span class="text-base-content/70" aria-label="No value on left">—</span>{% endif %}
+              </td>
+              <td class="max-w-md">
+                {% if r.kind != "removed" %}<pre class="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs"><code>{{ render_value(r.new) }}</code></pre>
+                {% else %}<span class="text-base-content/70" aria-label="No value on right">—</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% elif view == "changes" %}
+      <div class="flex flex-col items-center gap-2 px-4 py-10 text-center" role="status">
+        <div class="flex items-center justify-center size-10 rounded-full bg-base-200 text-success"><span class="icon-[lucide--circle-check] size-5" aria-hidden="true"></span></div>
+        <p class="font-medium">Identical pillar</p>
+        <p class="text-sm text-base-content/70">No differences at the selected revisions.</p>
+        <a class="btn btn-sm btn-ghost mt-2" href="{{ url_for('pillar.diff', a=mid_a, b=mid_b, rev_a=rev_a, rev_b=rev_b, view='full') }}">Show all paths</a>
+      </div>
+      {% else %}
+      <div class="flex flex-col items-center gap-2 px-4 py-10 text-center" role="status">
+        <p class="font-medium">No rendered Pillar keys</p>
+        <p class="text-sm text-base-content/70">Both selected sources contain no values to display.</p>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% elif mid_a and mid_b %}
+  <section class="card card-border bg-base-100" aria-label="Pillar comparison results">
+    <div class="flex flex-col items-center gap-2 px-4 py-10 text-center">
+      <div class="flex items-center justify-center size-10 rounded-full bg-base-200 text-base-content/70"><span class="icon-[lucide--file-json] size-5" aria-hidden="true"></span></div>
+      <p class="font-medium">No pillar data to compare</p>
+      <p class="text-sm text-base-content/70">Capture a snapshot or choose Live render for both minions.</p>
+    </div>
+  </section>
   {% else %}
-  <div class="py-8 text-center">
-    <p class="font-medium">Identical pillar</p>
-    <p class="text-sm opacity-70">No differences at the compared revisions.</p>
-  </div>
+  <section class="card card-border bg-base-100" aria-label="Pillar comparison guidance">
+    <div class="flex flex-col items-center gap-2 px-4 py-8 text-center">
+      <p class="font-medium">Choose two Pillar sources</p>
+      <p class="text-sm text-base-content/70">Select a minion and revision on each side, then compare nested key paths and rendered values.</p>
+    </div>
+  </section>
   {% endif %}
 </div>
-{% elif mid_a and mid_b %}
-<div class="card card-border">
-  <div class="py-8 text-center">
-    <p class="font-medium">No pillar data to compare</p>
-    <p class="text-sm opacity-70">Capture a snapshot or compare live for both minions.</p>
-  </div>
-</div>
-{% endif %}
 {% endblock %}

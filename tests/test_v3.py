@@ -88,6 +88,25 @@ def test_pillar_index_lists_minions(client):
     assert "web-01" in html and ">Compare<" in html
 
 
+def test_pillar_detail_has_live_and_snapshot_workspaces(client):
+    client.post("/pillar/web-01/capture")
+    html = client.get("/pillar/web-01").data.decode()
+    assert 'id="pillar-detail"' in html
+    assert 'aria-label="Live Pillar data"' in html
+    assert 'aria-label="Snapshot history"' in html
+    assert 'href="/pillar/diff?a=web-01&amp;b=web-01&amp;rev_a=' in html
+
+
+def test_pillar_compare_has_source_and_delta_workspaces(client):
+    client.post("/pillar/web-01/capture")
+    client.post("/pillar/web-02/capture")
+    html = client.get("/pillar/diff?a=web-01&b=web-02").data.decode()
+    assert 'id="pillar-comparison"' in html
+    assert 'aria-label="Pillar comparison sources"' in html
+    assert 'aria-label="Pillar comparison results"' in html
+    assert 'aria-label="Comparison display"' in html
+
+
 def test_pillar_compare_controls_have_associated_labels(client):
     from html.parser import HTMLParser
 
@@ -181,6 +200,21 @@ def test_diff_shows_changed_added_removed(client):
     html = client.get("/pillar/diff?a=web-01&b=web-02").data.decode()
     assert "ntp.servers" in html
     assert "changed" in html and "added" in html and "removed" in html
+
+
+def test_diff_renders_null_values_separately_from_missing_paths(client):
+    with client.app.app_context():
+        session = get_session()
+        left = PillarSnapshot(minion_id="web-01", payload={"nullable": None})
+        right = PillarSnapshot(minion_id="web-02", payload={"nullable": "configured"})
+        session.add_all([left, right])
+        session.commit()
+        left_id, right_id = left.id, right.id
+    html = client.get(
+        f"/pillar/diff?a=web-01&rev_a={left_id}&b=web-02&rev_b={right_id}"
+    ).data.decode()
+    assert '<code>null</code>' in html
+    assert "configured" in html
 
 
 def test_diff_with_no_snapshots_shows_no_data(client):
