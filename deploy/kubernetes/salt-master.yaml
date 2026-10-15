@@ -57,7 +57,7 @@ spec:
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
           # Pin the validated build so a mutable tag cannot change a rollout.
-          image: quay.io/sigaint/overstate-salt-master@sha256:042b862437f196aae9a2dbd002a51e8bfc54ec874fc11de5be000c291478e186
+          image: quay.io/sigaint/overstate-salt-master@sha256:a7f2e11d4052d325170245482e3f967516dd406814218cb0ab87f173858d689f
           # Pull the pinned image on each restart; no floating tag is used.
           imagePullPolicy: Always
           env:

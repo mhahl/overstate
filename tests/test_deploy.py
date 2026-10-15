@@ -146,7 +146,7 @@ def test_master_image_uses_the_validated_digest():
     (container,) = sts["spec"]["template"]["spec"]["containers"]
     assert container["image"] == (
         "quay.io/sigaint/overstate-salt-master@sha256:"
-        "042b862437f196aae9a2dbd002a51e8bfc54ec874fc11de5be000c291478e186"
+        "a7f2e11d4052d325170245482e3f967516dd406814218cb0ab87f173858d689f"
     )
     # Pinning a digest prevents a mutable tag from changing the running build.
     assert container["imagePullPolicy"] == "Always"
