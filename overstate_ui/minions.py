@@ -69,6 +69,7 @@ DETAIL_TABS = [
     "pillar",
     "beacons",
     "mine",
+    "vulns",
     "raw",
 ]
 BEACON_ACTIONS = {
@@ -705,7 +706,7 @@ def detail(mid: str):
             abort(403)
         if tab == "schedule":
             require("schedule.read", minion=mid)
-        elif tab == "mine":
+        elif tab in ("mine", "vulns"):
             require("mine.read", minion=mid)
         elif tab == "beacons":
             require("beacon.read", minion=mid)
@@ -779,6 +780,62 @@ def detail(mid: str):
                 if value is not None:
                     data["mine_found"] = True
                     data["mine_value"] = value
+        elif tab == "vulns":
+            # Grype CVE data from the mine. Full findings live under
+            # grype.scan_detail; the old combined grype.scan_summary
+            # format (with embedded detailed_report) is the fallback.
+            # A slim top list is shown marked partial when neither
+            # carries the full report. Error payloads carry "error".
+            vuln_q = request.args.get("q", "").strip()
+            data["vuln_q"] = vuln_q
+            data["vuln_meta"] = {}
+            data["vuln_findings"] = []
+            data["vuln_error"] = None
+            data["vuln_partial"] = False
+            if not skip_live:
+                stored = client.local(
+                    mid, "mine.get", arg=[mid, "grype.scan_summary"],
+                    tgt_type="list",
+                )[0].get(mid, {})
+                summary = stored.get(mid) if isinstance(stored, dict) else None
+                if not isinstance(summary, dict):
+                    summary = {}
+                if summary.get("error") and not isinstance(
+                    summary.get("counts"), dict
+                ):
+                    data["vuln_error"] = str(summary["error"])
+                data["vuln_meta"] = summary
+                findings = summary.get("detailed_report")
+                if not isinstance(findings, list):
+                    stored = client.local(
+                        mid, "mine.get", arg=[mid, "grype.scan_detail"],
+                        tgt_type="list",
+                    )[0].get(mid, {})
+                    detail_value = (
+                        stored.get(mid) if isinstance(stored, dict) else None
+                    )
+                    if isinstance(detail_value, dict):
+                        findings = detail_value.get("detailed_report")
+                if not isinstance(findings, list):
+                    top = summary.get("top")
+                    if isinstance(top, list) and top:
+                        findings = top
+                        data["vuln_partial"] = True
+                if isinstance(findings, list):
+                    if vuln_q:
+                        needle = vuln_q.lower()
+                        findings = [
+                            f
+                            for f in findings
+                            if isinstance(f, dict)
+                            and (
+                                needle in str(f.get("cve", "")).lower()
+                                or needle in str(f.get("pkg", "")).lower()
+                            )
+                        ]
+                    data["vuln_findings"] = [
+                        f for f in findings if isinstance(f, dict)
+                    ]
         elif tab == "beacons":
             # return_yaml=False keeps this a real mapping (see
             # schedules.index). A second pillar-excluded call

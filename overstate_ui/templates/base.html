@@ -164,6 +164,12 @@
             <span class="icon-[lucide--scroll-text] size-4.5" aria-hidden="true"></span>
             Audit</a></li>
           {% endif %}
+          <li class="menu-title mt-2">Security</li>
+          {% if not rbac_scoped or can('mine.read') %}
+          <li><a href="{{ url_for('vulns.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('vulns') }}">
+            <span class="icon-[lucide--shield-alert] size-4.5" aria-hidden="true"></span>
+            Vulnerabilities</a></li>
+          {% endif %}
           <li class="menu-title mt-2">System</li>
           {% if not rbac_scoped or can('settings.read') %}
           <li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith(('settings', 'masterconfig')) }}">

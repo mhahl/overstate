@@ -331,6 +331,7 @@ def test_templates_have_balanced_tags():
         "/users/groups", "/settings/", "/settings/access", "/settings/rotation",
         "/settings/sso", "/groups/", "/files/", "/files/?tab=repo", "/reactor/",
         "/mine/", "/console/", "/jobs/new", "/minions/onboard",
+        "/vulnerabilities/",
     ]
     c = make_client()
     offenders = []

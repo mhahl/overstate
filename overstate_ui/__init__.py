@@ -27,6 +27,7 @@ from . import (
     states,
     timefmt,
     users,
+    vulns,
 )
 from .config import Config
 from .db import close_session, init_db
@@ -99,6 +100,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.register_blueprint(audit.bp)
     app.register_blueprint(users.bp)
     app.register_blueprint(files.bp)
+    app.register_blueprint(vulns.bp)
     app.register_blueprint(api.bp)
 
     @app.after_request

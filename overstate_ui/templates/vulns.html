@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Vulnerabilities · Overstate{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  <h1 class="text-2xl font-bold tracking-tight me-auto">Vulnerabilities</h1>
+</div>
+{% if error %}
+<div class="alert alert-error alert-vertical sm:alert-horizontal mb-4" role="alert">
+  <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
+<section class="card card-border bg-base-100 min-w-0" aria-label="Vulnerability summaries">
+<form method="get" role="search" class="flex flex-wrap items-end gap-2 px-3 py-2 border-b border-base-300" aria-label="Vulnerability filters">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
+  {% import "_macros.html" as m %}
+  {{ m.table_search_field("vuln-q", "q", q, "Minion", "Filter by minion…", "Filter by minion") }}
+  <button class="btn btn-sm btn-primary">Filter</button>
+</form>
+{% if rows %}
+<div class="max-w-full overflow-x-auto rounded-box">
+<table class="table table-sm table-pin-rows w-full"><thead><tr>
+  <th aria-sort="{{ direction if sort == 'minion' else 'none' }}"><a href="{{ url_for('vulns.index', sort='minion', dir='desc' if sort != 'minion' or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">Minion {% if sort == 'minion' %}{% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
+  {% for sev in severities %}
+  {{ m.sort_th_plain('vulns.index', sev, sev|capitalize, sort, direction, {'q': q}) }}
+  {% endfor %}
+  {{ m.sort_th_plain('vulns.index', 'total', 'Total', sort, direction, {'q': q}) }}
+  {{ m.sort_th_plain('vulns.index', 'fixable', 'Fixable', sort, direction, {'q': q}) }}
+  {{ m.sort_th_plain('vulns.index', 'scanned_at', 'Scanned', sort, direction, {'q': q}) }}
+</tr></thead><tbody>
+{% for r in rows %}
+<tr class="hover"><td class="font-mono text-xs"><a class="link" href="{{ url_for('minions.detail', mid=r.mid, tab='vulns') }}">{{ r.mid }}</a></td>
+  {% for sev in severities %}
+  <td class="text-right tabular-nums text-sm">{% if r.error %}–{% else %}{{ r.counts.get(sev, 0) }}{% endif %}</td>
+  {% endfor %}
+  <td class="text-right tabular-nums text-sm font-medium">{% if r.error %}<span class="badge badge-sm badge-outline badge-error whitespace-nowrap">{{ r.error[:60] }}</span>{% else %}{{ r.total }}{% endif %}</td>
+  <td class="text-right tabular-nums text-sm">{% if r.error %}–{% else %}{{ r.fixable }}{% endif %}</td>
+  <td class="text-sm whitespace-nowrap">{% if r.scanned_at %}{{ r.scanned_at|reltime }}{% else %}–{% endif %}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+<nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Vulnerability pages">
+  <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} minions</span>
+  {{ m.pagination_plain('vulns.index', page, pages, {'sort': sort, 'dir': direction, 'q': q}, 'Vulnerability pages') }}
+</nav>
+{% else %}
+<div class="py-8 px-4 text-center">
+  <p class="font-medium">No vulnerability data</p>
+  <p class="text-sm opacity-70">{% if q %}Nothing matches “{{ q }}”.{% else %}No minion has reported a grype scan yet. Scans publish daily through the <span class="font-mono">grype-cve-scan</span> schedule; <span class="font-mono">mine.update</span> does not refresh this data.{% endif %}</p>
+</div>
+{% endif %}
+<p class="text-xs opacity-70 px-4 py-3 border-t border-base-300">Summaries stay cached: minions push them on the daily schedule. Scanned ages come from each minion's own report.</p>
+</section>
+{% endblock %}
