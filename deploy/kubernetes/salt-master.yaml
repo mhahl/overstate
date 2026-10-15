@@ -130,9 +130,9 @@ spec:
             - name: cluster-keypair
               mountPath: /home/salt/data/cluster-keys
               readOnly: true
-            # (The returner drop-in arrives via the projected `config`
-            # volume below — never a subPath file mount into this
-            # read-only directory: these nodes reject that with ENOTDIR.)
+            # Returner, Redis cache, and cluster drop-ins arrive via the
+            # projected `config` volume below — never subPath file mounts
+            # into this read-only directory: these nodes reject those with ENOTDIR.
           # Ready means this node may serve traffic: a Raft leader is
           # visible (.cluster_ready, from persisted membership) AND
           # Salt itself opened its request gate (health/ready, written
@@ -174,11 +174,11 @@ spec:
             limits:
               memory: 4Gi
       volumes:
-        # One directory from three sources: the owned ConfigMap plus the
-        # owner-held returner and cluster Secrets. Projected (not subPath
-        # overlays): file mounts into a read-only ConfigMap mount fail on
-        # these nodes. The UI keeps editing the ConfigMap object itself;
-        # the Secrets never appear there.
+        # One directory from four sources: the owned ConfigMap plus the
+        # owner-held returner, Redis-cache, and cluster Secrets. Projected
+        # (not subPath overlays): file mounts into a read-only ConfigMap
+        # mount fail on these nodes. The UI edits only the ConfigMap;
+        # Secret files never appear there.
         - name: config
           projected:
             defaultMode: 0440
@@ -187,6 +187,8 @@ spec:
                   name: salt-master-config
               - secret:
                   name: salt-master-db
+              - secret:
+                  name: salt-master-cache
               - secret:
                   name: salt-master-cluster
         - name: master-keypair

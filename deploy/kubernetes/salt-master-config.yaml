@@ -32,6 +32,11 @@ data:
     cluster_pki_dir: /home/salt/data/keys/_cluster
     cachedir: /home/salt/data/keys/cache
     cluster_isolated_filesystem: true
+    # Share the complete Salt minion-data cache across the master trio via
+    # the namespace Redis service. This cache includes grains and Pillar as
+    # well as Mine; its connection credentials live only in cache.conf.
+    minion_data_cache: true
+    cache: redis
     # localfs_key (not mmap_key): mmap's master_keys bank was empty on
     # each PVC, so each pod generated its own cluster.pub for minion
     # auth. Traefik then flipped minions between three keys and they

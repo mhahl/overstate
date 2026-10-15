@@ -77,6 +77,7 @@ Component inventory (all in `deploy/kubernetes/`):
 | `salt-master-config-history` | ConfigMap | — | Last 20 config snapshots |
 | `key-reconcile` | CronJob, hourly | One Job at a time (`Forbid`) | Completes same-fingerprint key trust across pods; read-only on the cluster |
 | `salt-master-db` | Secret (owner-held) | — | `returner.conf` drop-in (PG password) |
+| `salt-master-cache` | Secret (owner-held) | — | `cache.conf` drop-in (Redis minion-data cache credentials) |
 | `salt-master-keys` | Secret (owner-held) | — | Shared master keypair (fleet identity) |
 | `overstate-secrets` | Secret (owner-held) | — | Flask, admin, Redis, salt-api passwords |
 | IngressRoute + Certificate | Traefik / cert-manager | — | Public HTTPS for the UI |
@@ -120,6 +121,14 @@ passwords (enforced by test). The cache writer is currently the stock
 `pgjsonb` returner (`master_job_cache: pgjsonb`); its idempotent
 successor `pgjsonb_upsert` (`salt-extmods/`, baked into the image but
 not yet activated) is documented in `docs/reference/returner.md`.
+
+**3.4 The minion-data cache is shared through the internal Redis service.**
+All three masters use the Redis cache driver for cached grains, Pillar, and
+Mine data (`minion_data_cache: true`, `cache: redis`). Connection settings
+and the existing Redis password are projected as `cache.conf` from the
+owner-held `salt-master-cache` Secret; this is separate from the Postgres
+job-cache returner. Redis cache prefixes are scoped to this Overstate
+cluster to avoid key collisions with other Redis consumers.
 
 ## 4. Data flows
 

@@ -1,11 +1,14 @@
 # Salt master: stock image plus the postgres driver the pgjsonb /
-# postgres_local_cache returners need (multi-master shared job cache).
+# postgres_local_cache returners need (multi-master shared job cache), and
+# redis-py for the shared Redis minion-data cache.
 # Used in local dev and production alike.
 # Pin :lts by digest so a retag cannot silently skip
 # salt-cluster-identity-patch.py anchors.
 FROM ghcr.io/cdalvaro/docker-salt-master:lts@sha256:df5bb4555108f21655f97f5be11f5404a5596bd475cb8181ab2c88bd91adb12c
 
-RUN /opt/saltstack/salt/bin/pip install --no-cache-dir "psycopg2-binary==2.9.13"
+RUN /opt/saltstack/salt/bin/pip install --no-cache-dir \
+    "psycopg2-binary==2.9.13" \
+    "redis==6.4.0"
 
 # Cluster identity is the stable pod DNS name (<POD_NAME>.<headless
 # service>), not the pod IP: upstream salt keys Raft membership, the

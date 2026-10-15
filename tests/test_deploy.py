@@ -420,6 +420,32 @@ def test_returner_credentials_ride_a_secret_not_the_configmap():
     assert not (K8S / "salt-master-db.yaml").exists()
 
 
+def test_mine_cache_uses_internal_redis_and_owner_secret():
+    sts = _salt_master_sts()
+    pod = sts["spec"]["template"]["spec"]
+    config_volume = next(v for v in pod["volumes"] if v["name"] == "config")
+    projected = config_volume["projected"]["sources"]
+    assert any(
+        "secret" in source and source["secret"]["name"] == "salt-master-cache"
+        for source in projected
+    )
+
+    config = _load("salt-master-config.yaml")[0]["data"]
+    master = yaml.safe_load(config["master.conf"])
+    assert master["minion_data_cache"] is True
+    assert master["cache"] == "redis"
+    assert "cache.redis.password" not in config["master.conf"]
+    assert "cache.redis.timeout" not in config["master.conf"]
+    kustomization = (K8S / "kustomization.yaml").read_text()
+    assert "salt-master-cache.yaml" not in kustomization
+    assert not (K8S / "salt-master-cache.yaml").exists()
+
+
+def test_salt_master_image_installs_redis_cache_client():
+    text = (REPO / "Containerfile.salt-master").read_text(encoding="utf-8")
+    assert '"redis==6.4.0"' in text
+
+
 def test_cluster_credential_rides_a_secret_not_the_configmap():
     sts = _salt_master_sts()
     pod = sts["spec"]["template"]["spec"]

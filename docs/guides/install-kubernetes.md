@@ -37,6 +37,41 @@ Master cluster (details in §4, §6):
 | `salt-master-cluster` | `cluster.conf` (`cluster_secret`) | Peer join authentication |
 | `salt-master-cluster-keys` | `cluster.pem`, `cluster.pub` | Pinned cluster identity (minion `minion_master.pub`) |
 | `salt-master-db` | `returner.conf` | Shared job cache (§5); can wait until after first apply if you do not need history yet |
+| `salt-master-cache` | `cache.conf` | Shared Redis-backed minion-data cache |
+
+The masters use the internal `redis` Service for their full minion-data
+cache: grains, Pillar, and Mine. The cache file reuses the password from
+`overstate-secrets`; no password is copied into Git or the master ConfigMap.
+Create it from a protected local file before applying the master changes:
+
+```sh
+set -eu
+umask 077
+cache_conf="$(mktemp)"
+trap 'rm -f "$cache_conf"' EXIT
+REDIS_PASSWORD="$(kubectl -n overstate get secret overstate-secrets \
+  -o jsonpath='{.data.REDIS_PASSWORD}' | base64 --decode)"
+test -n "$REDIS_PASSWORD"
+cat >"$cache_conf" <<EOF
+cache.redis.host: redis
+cache.redis.port: 6379
+cache.redis.db: '0'
+cache.redis.password: '$REDIS_PASSWORD'
+cache.redis.banks_prefix: overstate_prod_banks
+cache.redis.keys_prefix: overstate_prod_keys
+cache.redis.timestamp_prefix: overstate_prod_timestamps
+EOF
+chmod 600 "$cache_conf"
+kubectl -n overstate create secret generic salt-master-cache \
+  --from-file=cache.conf="$cache_conf" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset REDIS_PASSWORD
+```
+
+The source file is mode `0600`; Kubernetes projects it read-only to the
+Salt group. Salt 3008's Redis cache plugin does not support the example
+`cache.redis.timeout` option, so it is omitted. With `minion_data_cache`
+enabled, this backend stores grains and Pillar as well as Mine data.
 
 ## 2. Apply
 
