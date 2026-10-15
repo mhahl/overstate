@@ -141,11 +141,14 @@ def test_master_conf_seeds_reactor_stanza():
     assert isinstance(master_conf.get("reactor"), list)
 
 
-def test_master_image_always_pulls_floating_tag():
+def test_master_image_uses_the_validated_digest():
     sts = _salt_master_sts()
     (container,) = sts["spec"]["template"]["spec"]["containers"]
-    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg14"
-    # Same-tag rebuilds (entrypoint fixes) must reach the nodes.
+    assert container["image"] == (
+        "quay.io/sigaint/overstate-salt-master@sha256:"
+        "042b862437f196aae9a2dbd002a51e8bfc54ec874fc11de5be000c291478e186"
+    )
+    # Pinning a digest prevents a mutable tag from changing the running build.
     assert container["imagePullPolicy"] == "Always"
 
 
@@ -245,7 +248,9 @@ def test_master_trio_replicas_and_image():
     assert sts["spec"]["replicas"] == 3
     containers = sts["spec"]["template"]["spec"]["containers"]
     (master,) = [c for c in containers if c["name"] == "salt-master"]
-    assert master["image"].startswith("quay.io/sigaint/overstate-salt-master:")
+    assert master["image"].startswith(
+        "quay.io/sigaint/overstate-salt-master@sha256:"
+    )
     assert "ghcr.io" not in master["image"]
 
 
