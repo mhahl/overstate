@@ -127,6 +127,39 @@ def test_list_tables_have_no_zebra_striping():
     assert not offenders, "zebra striping still used: " + ", ".join(offenders)
 
 
+def test_form_controls_have_accessible_names():
+    # Every select/input/textarea needs its own accessible name: a
+    # fieldset legend names the group, not the control. Placeholders
+    # do not count. Hidden and button-type inputs are exempt, as are
+    # controls wrapped in a <label> or matched by a <label for>.
+    offenders = []
+    for path in sorted(TEMPLATES.glob("*.html")):
+        src = path.read_text()
+        src = re.sub(r"{#.*?#}", "", src, flags=re.DOTALL)
+        src = re.sub(r"{%.*?%}", "", src, flags=re.DOTALL)
+        for_ids = set(re.findall(r'<label\b[^>]*\bfor="([^"]+)"', src))
+        src = re.sub(r"<label\b[^>]*>.*?</label>", "", src, flags=re.DOTALL)
+        for match in re.finditer(r"<(select|textarea|input)\b(.*?)>", src, re.DOTALL):
+            tag, attrs = match.group(1), match.group(2)
+            if tag == "input":
+                kind = re.search(r'type="([^"]*)"', attrs)
+                if kind is not None and kind.group(1) in (
+                    "hidden",
+                    "submit",
+                    "button",
+                    "reset",
+                    "image",
+                ):
+                    continue
+            if "aria-label" in attrs or "aria-labelledby" in attrs:
+                continue
+            ident = re.search(r'id="([^"]+)"', attrs)
+            if ident and ident.group(1) in for_ids:
+                continue
+            offenders.append(f"{path.name}:{match.group(0)[:90]}")
+    assert not offenders, "unlabeled controls:\n" + "\n".join(offenders)
+
+
 def test_users_list_searches_and_pages_without_rendering_every_account():
     from html.parser import HTMLParser
     from urllib.parse import parse_qs, urlsplit

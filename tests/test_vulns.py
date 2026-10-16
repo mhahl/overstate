@@ -48,7 +48,7 @@ def _detail(mid, n=3):
     payload["detailed_report"] = [
         {
             "cve": f"CVE-2026-{i:04d}",
-            "pkg": "kernel",
+            "pkg": "kernel" if i % 2 == 0 else "openssl",
             "installed": "1.0",
             "fixed": "1.1" if i == 0 else "",
             "severity": "CRITICAL" if i == 0 else "HIGH",
@@ -146,6 +146,21 @@ def test_global_sort_orders_whole_fleet_not_just_page():
     assert html.index("web-01") < html.index("web-02")
 
 
+def test_global_numeric_headers_align_right_with_cells():
+    import re
+
+    html = make_client().get("/vulnerabilities/").data.decode()
+    thead = html.split("<tbody>")[0]
+    for label in ("Critical", "High", "Total", "Fixable"):
+        match = re.search(
+            rf"<th([ >][^>]*)>((?:(?!</th>).)*?{label}(?:(?!</th>).)*?)</th>",
+            thead,
+            re.DOTALL,
+        )
+        assert match, label
+        assert "text-right" in match.group(1), label
+
+
 def test_global_page_paginates_fifty_per_page(monkeypatch):
     rows = {f"mine-{i:03d}": _summary(f"mine-{i:03d}", i) for i in range(60)}
     monkeypatch.setattr("overstate_ui.vulns.queue_or_none", lambda *a, **k: None)
@@ -160,7 +175,7 @@ def test_global_page_paginates_fifty_per_page(monkeypatch):
 
 def test_minion_tab_renders_detail_report():
     html = make_client().get("/minions/web-01?tab=vulns").data.decode()
-    assert "Vulns" in html
+    assert "Vulnerabilities" in html
     assert "CVE-2026-0000" in html
     assert "fedora:42" in html
     assert "3" in html  # total findings card
@@ -185,3 +200,52 @@ def test_minion_tab_empty_state_without_data():
     html = make_client().get("/minions/web-09?tab=vulns").data.decode()
     assert "grype-cve-scan" in html
     assert "mine-update" not in html  # mine.refresh cannot refill this key
+
+
+def test_minion_tab_sorts_findings_globally():
+    html = (
+        make_client()
+        .get(
+            "/minions/web-01",
+            query_string={"tab": "vulns", "sort": "pkg", "dir": "desc"},
+        )
+        .data.decode()
+    )
+    assert html.index("openssl") < html.index("kernel")
+
+
+def test_minion_tab_cve_links_to_nvd():
+    html = make_client().get("/minions/web-01?tab=vulns").data.decode()
+    assert "https://nvd.nist.gov/vuln/detail/CVE-2026-0000" in html
+
+
+def test_minion_tab_has_no_cached_footer_note():
+    html = make_client().get("/minions/web-01?tab=vulns").data.decode()
+    assert "Findings stay cached" not in html
+
+
+def test_minion_tab_severity_badges_are_neutral():
+    html = make_client().get("/minions/web-01?tab=vulns").data.decode()
+    assert "badge-neutral" in html
+    assert "badge-error" not in html
+    assert "badge-warning" not in html
+    assert "badge-info" not in html
+
+
+def test_minion_tab_findings_table_not_nested_in_card():
+    html = make_client().get("/minions/web-01?tab=vulns").data.decode()
+    # One tab-level card only; the findings table scrolls without its own.
+    assert html.count("card card-border bg-base-100 min-w-0") == 1
+
+
+def test_minion_tab_table_has_icons():
+    html = make_client().get("/minions/web-01?tab=vulns").data.decode()
+    assert "icon-[lucide--shield" in html
+    assert "icon-[lucide--external-link]" in html
+
+
+def test_minion_overview_shows_vuln_summary_card():
+    html = make_client().get("/minions/web-01").data.decode()
+    # Nav carries one "Vulnerabilities"; the overview stat card adds more.
+    assert html.count("Vulnerabilities") >= 2
+    assert "/minions/web-01?tab=vulns" in html

@@ -17,7 +17,7 @@
 <div class="card card-border bg-base-100 min-w-0">
   <div class="tabs tabs-border px-4 pt-3" aria-label="Minion sections">
     {% for t in tabs %}
-    <a href="{{ url_for('minions.detail', mid=mid, tab=t) }}" class="tab{% if tab == t %} tab-active{% endif %}">{{ t|capitalize }}</a>
+    <a href="{{ url_for('minions.detail', mid=mid, tab=t) }}" class="tab{% if tab == t %} tab-active{% endif %}">{{ tab_labels.get(t, t|capitalize) }}</a>
     {% endfor %}
   </div>
   <div>
@@ -47,6 +47,12 @@
           <div class="stat-title font-medium text-base-content">Last seen</div>
           <div class="stat-value text-2xl font-semibold tabular-nums">{% if last_seen %}{{ last_seen|reltime }}{% else %}never{% endif %}</div>
           <div class="stat-desc">Snapshot cache</div>
+        </div>
+        <div class="stat px-5 py-4">
+          <div class="stat-figure text-base-content/60"><span class="icon-[lucide--shield-alert] size-5" aria-hidden="true"></span></div>
+          <div class="stat-title font-medium text-base-content">Vulnerabilities</div>
+          <div class="stat-value text-2xl font-semibold tabular-nums">{% if data.vuln_summary %}{{ data.vuln_summary.get("total", 0) }}{% else %}–{% endif %}</div>
+          <div class="stat-desc">{% if data.vuln_summary %}{% if data.vuln_summary.get("counts", {}).get("CRITICAL") %}{{ data.vuln_summary.get("counts", {}).get("CRITICAL") }} critical · {% endif %}<a class="link" href="{{ url_for('minions.detail', mid=mid, tab='vulns') }}">View report</a>{% else %}No scan reported yet{% endif %}</div>
         </div>
       </div>
       {% if data.grains %}
@@ -212,13 +218,11 @@
     </form>
     {% if data.mine_fun and not error %}
     {% if data.mine_found %}
-    <div class="card card-border bg-base-100 min-w-0">
-      <div class="max-w-full overflow-x-auto rounded-box min-h-56">
+    <div class="max-w-full overflow-x-auto rounded-box border border-base-300 min-h-56">
         <table class="table table-sm table-pin-rows w-full"><thead><tr><th>Function</th><th>Stored value</th></tr></thead><tbody>
           <tr class="hover"><td class="font-mono text-xs">{{ data.mine_fun }}</td>
             <td class="font-mono text-xs break-all whitespace-pre-wrap">{{ data.mine_value | tojson(indent=1) }}</td></tr>
         </tbody></table>
-      </div>
     </div>
     <p class="text-xs opacity-70">Mine data is cached. The minion reported it on its schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>.</p>
     {% else %}
@@ -252,13 +256,13 @@
       </div>
       <div class="stat px-5 py-4">
         <div class="stat-title font-medium text-base-content">By severity</div>
-        <div class="stat-value text-2xl font-semibold flex flex-wrap gap-1">{% for sev, n in (meta.get("counts") or {}).items() %}<span class="badge badge-sm badge-soft {% if sev == 'CRITICAL' %}badge-error{% elif sev == 'HIGH' %}badge-warning{% elif sev == 'MEDIUM' %}badge-info{% else %}badge-neutral{% endif %}">{{ sev|capitalize }} {{ n }}</span>{% endfor %}</div>
+        <div class="stat-value text-2xl font-semibold flex flex-wrap gap-1">{% for sev, n in (meta.get("counts") or {}).items() %}<span class="badge badge-sm badge-soft badge-neutral">{{ sev|capitalize }} {{ n }}</span>{% endfor %}</div>
         <div class="stat-desc">{% if meta.get("distro") %}{{ meta.get("distro").get("name", "") }} {{ meta.get("distro").get("version", "") }}{% endif %}{% if meta.get("grype_version") %} · grype {{ meta.get("grype_version") }}{% endif %}{% if meta.get("db_built_at") %} · db {{ meta.get("db_built_at")|reltime }}{% endif %}</div>
       </div>
     </div>
     {% endif %}
     {% if data.vuln_partial %}
-    <div class="alert alert-warning text-sm" role="status">Showing the slim top list: this minion has not published the full report yet.</div>
+    <div class="alert alert-warning text-sm" role="status">This minion has not published the full report yet.</div>
     {% endif %}
     <form method="get" action="{{ url_for('minions.detail', mid=mid) }}" class="flex flex-wrap items-end gap-2">
       <input type="hidden" name="tab" value="vulns">
@@ -269,22 +273,19 @@
       <button class="btn btn-sm btn-primary mb-1">Search</button>
     </form>
     {% if data.vuln_findings %}
-    <div class="card card-border bg-base-100 min-w-0">
-      <div class="max-w-full overflow-x-auto rounded-box min-h-56">
-        <table class="table table-sm table-pin-rows w-full"><thead><tr><th>CVE</th><th>Package</th><th>Installed</th><th>Fixed</th><th>Severity</th><th>Namespace</th><th>References</th></tr></thead><tbody>
+    <div class="max-w-full overflow-x-auto rounded-box border border-base-300 min-h-56">
+        <table class="table table-sm table-pin-rows w-full"><thead><tr><th aria-sort="{{ data.vuln_dir if data.vuln_sort == 'cve' else 'none' }}"><a href="{{ url_for('minions.detail', mid=mid, tab='vulns', sort='cve', dir='desc' if data.vuln_sort != 'cve' or data.vuln_dir == 'asc' else 'asc', q=data.vuln_q) }}" class="inline-flex items-center gap-1 hover:underline">CVE{% if data.vuln_sort == 'cve' %} {% if data.vuln_dir == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th><th aria-sort="{{ data.vuln_dir if data.vuln_sort == 'pkg' else 'none' }}"><a href="{{ url_for('minions.detail', mid=mid, tab='vulns', sort='pkg', dir='desc' if data.vuln_sort != 'pkg' or data.vuln_dir == 'asc' else 'asc', q=data.vuln_q) }}" class="inline-flex items-center gap-1 hover:underline">Package{% if data.vuln_sort == 'pkg' %} {% if data.vuln_dir == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th><th>Installed</th><th aria-sort="{{ data.vuln_dir if data.vuln_sort == 'fixed' else 'none' }}"><a href="{{ url_for('minions.detail', mid=mid, tab='vulns', sort='fixed', dir='desc' if data.vuln_sort != 'fixed' or data.vuln_dir == 'asc' else 'asc', q=data.vuln_q) }}" class="inline-flex items-center gap-1 hover:underline">Fixed{% if data.vuln_sort == 'fixed' %} {% if data.vuln_dir == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th><th aria-sort="{{ data.vuln_dir if data.vuln_sort == 'severity' else 'none' }}"><a href="{{ url_for('minions.detail', mid=mid, tab='vulns', sort='severity', dir='desc' if data.vuln_sort != 'severity' or data.vuln_dir == 'asc' else 'asc', q=data.vuln_q) }}" class="inline-flex items-center gap-1 hover:underline">Severity{% if data.vuln_sort == 'severity' %} {% if data.vuln_dir == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th><th>Namespace</th><th>References</th></tr></thead><tbody>
           {% for f in data.vuln_findings %}
-          <tr class="hover"><td class="font-mono text-xs whitespace-nowrap">{{ f.get("cve", "–") }}</td>
-            <td class="font-mono text-xs">{{ f.get("pkg", "–") }}</td>
+          <tr class="hover"><td class="font-mono text-xs whitespace-nowrap">{% set cve = f.get("cve", "") %}{% if cve.startswith("CVE-") %}<a class="link" href="https://nvd.nist.gov/vuln/detail/{{ cve }}" target="_blank" rel="noopener">{{ cve }}</a>{% elif cve %}{{ cve }}{% else %}–{% endif %}</td>
+            <td class="font-mono text-xs"><span class="icon-[lucide--package] size-3.5 text-base-content/60" aria-hidden="true"></span> {{ f.get("pkg", "–") }}</td>
             <td class="font-mono text-xs">{{ f.get("installed", "–") }}</td>
             <td class="font-mono text-xs">{% if f.get("fixed") %}{{ f.get("fixed") }}{% else %}–{% endif %}</td>
-            <td><span class="badge badge-sm badge-soft {% if f.get('severity') == 'CRITICAL' %}badge-error{% elif f.get('severity') == 'HIGH' %}badge-warning{% elif f.get('severity') == 'MEDIUM' %}badge-info{% else %}badge-neutral{% endif %}">{{ f.get("severity", "UNKNOWN")|capitalize }}</span></td>
+            <td><span class="badge badge-sm badge-soft badge-neutral">{% if f.get("severity") in ("CRITICAL", "HIGH") %}<span class="icon-[lucide--shield-alert] size-3" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--shield] size-3" aria-hidden="true"></span>{% endif %} {{ f.get("severity", "UNKNOWN")|capitalize }}</span></td>
             <td class="font-mono text-xs">{{ f.get("namespace", "–") }}</td>
-            <td class="text-xs break-all">{% set urls = f.get("urls") or [] %}{% if urls %}<a class="link font-mono" href="{{ urls[0] }}" target="_blank" rel="noopener">link</a>{% if urls|length > 1 %} <span class="opacity-70">+{{ urls|length - 1 }} more</span>{% endif %}{% else %}–{% endif %}</td></tr>
+            <td class="text-xs break-all">{% set urls = f.get("urls") or [] %}{% if urls %}<a class="link font-mono inline-flex items-center gap-1" href="{{ urls[0] }}" target="_blank" rel="noopener"><span class="icon-[lucide--external-link] size-3" aria-hidden="true"></span>link</a>{% if urls|length > 1 %} <span class="opacity-70">+{{ urls|length - 1 }} more</span>{% endif %}{% else %}–{% endif %}</td></tr>
           {% endfor %}
         </tbody></table>
-      </div>
     </div>
-    <p class="text-xs opacity-70">Findings stay cached: the minion pushes them on the daily <span class="font-mono">grype-cve-scan</span> schedule. <span class="font-mono">mine.update</span> does not refresh this data.</p>
     {% elif data.vuln_q %}
     <div class="py-8 text-center">
       <p class="font-medium">Nothing matches “{{ data.vuln_q }}”</p>
@@ -306,8 +307,7 @@
   </div>
   {% elif tab == "states" %}
   {% macro state_chip_rows(rows) %}
-  <div class="card card-border bg-base-100 min-w-0">
-    <div class="max-w-full overflow-x-auto rounded-box min-h-56">
+  <div class="max-w-full overflow-x-auto rounded-box border border-base-300 min-h-56">
       <table class="table table-sm table-pin-rows w-full"><thead><tr><th>State</th><th>SLS</th><th>Result</th><th>Comment</th></tr></thead><tbody>
         {% for s in rows %}
         <tr class="hover"><td class="font-mono text-xs break-all">{{ s.id }}</td>
@@ -317,7 +317,6 @@
         {% endfor %}
       </tbody></table>
     </div>
-  </div>
   {% endmacro %}
   <div class="p-4 flex flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2">
@@ -352,8 +351,7 @@
   {% elif tab == "beacons" %}
   <div class="p-4 flex flex-col gap-4">
     {% if data.beacon_entries %}
-    <div class="card card-border bg-base-100 min-w-0">
-      <div class="max-w-full overflow-x-auto rounded-box min-h-56">
+    <div class="max-w-full overflow-x-auto rounded-box border border-base-300 min-h-56">
         <table class="table table-sm table-pin-rows w-full"><thead><tr><th>Beacon</th><th>Configuration</th><th>Source</th><th class="text-right"></th></tr></thead><tbody>
           {% for name, conf in data.beacon_entries.items() %}
           <tr class="hover"><td class="font-mono text-xs">{{ name }}</td>
@@ -370,7 +368,6 @@
             {% endfor %}
         </tbody></table>
       </div>
-    </div>
     {% elif data.beacon_raw %}
     <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ data.beacon_raw }}</code></pre>
     {% else %}
@@ -388,8 +385,7 @@
       <a class="link text-xs" href="https://docs.saltproject.io/en/3006/ref/modules/all/salt.modules.schedule.html" target="_blank" rel="noopener">Salt schedule documentation</a>
     </div>
     {% if data.schedule_rows %}
-    <div class="card card-border bg-base-100 min-w-0">
-      <div class="max-w-full overflow-x-auto rounded-box min-h-56">
+    <div class="max-w-full overflow-x-auto rounded-box border border-base-300 min-h-56">
         <table class="table table-sm table-pin-rows w-full"><thead><tr><th>Job</th><th>Function</th><th>Runs</th><th>Arguments</th><th>Status</th></tr></thead><tbody>
           {% for row in data.schedule_rows %}
           <tr class="hover"><td class="font-mono text-xs">{{ row.name }}</td>
@@ -400,7 +396,6 @@
           {% endfor %}
         </tbody></table>
       </div>
-    </div>
     {% endif %}
     {% if data.schedule is string %}
     <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ data.schedule }}</code></pre>

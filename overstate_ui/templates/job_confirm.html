@@ -79,11 +79,11 @@
       {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state')) %}
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Type <code>{{ tgt }}</code> to confirm</legend>
-        <input name="confirm_tgt" class="input w-full font-mono" placeholder="{{ tgt }}" autocomplete="off" required>
+        <input name="confirm_tgt" aria-label="Confirmation target" class="input w-full font-mono" placeholder="{{ tgt }}" autocomplete="off" required>
       </fieldset>
       {% if matched is none %}
       <fieldset class="fieldset flex-row items-center gap-2">
-        <input name="no_preview_ok" type="checkbox" class="checkbox">
+        <input name="no_preview_ok" type="checkbox" class="checkbox" aria-label="Fire without a match preview">
         <span class="text-sm">Fire without a match preview</span>
       </fieldset>
       {% endif %}

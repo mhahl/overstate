@@ -21,7 +21,7 @@
         <span class="icon-[lucide--menu] size-5" aria-hidden="true"></span>
       </button>
       <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2 lg:hidden">
-        <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-7 h-7">
+        <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-7 h-7 object-contain">
         <span class="hidden sm:inline font-semibold">Overstate</span>
       </a>
       <div class="ms-auto flex items-center gap-1 sm:gap-2">
@@ -98,7 +98,7 @@
     <aside id="nav-panel" class="bg-base-100 border-r border-base-300 min-h-full w-64 flex flex-col" aria-label="Primary navigation">
       <div class="flex items-center border-b border-base-300">
         <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-2.5 px-5 h-16 grow">
-          <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-8 h-8">
+          <img src="{{ url_for('static', filename='overstate.svg') }}" alt="Overstate" class="w-8 h-8 object-contain">
           <span class="font-bold text-lg tracking-tight">Overstate</span>
         </a>
         <button id="nav-close" type="button" class="btn btn-ghost btn-square lg:hidden me-2" aria-label="Close navigation">

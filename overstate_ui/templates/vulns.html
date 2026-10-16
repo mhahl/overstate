@@ -23,10 +23,10 @@
 <table class="table table-sm table-pin-rows w-full"><thead><tr>
   <th aria-sort="{{ direction if sort == 'minion' else 'none' }}"><a href="{{ url_for('vulns.index', sort='minion', dir='desc' if sort != 'minion' or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">Minion {% if sort == 'minion' %}{% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
   {% for sev in severities %}
-  {{ m.sort_th_plain('vulns.index', sev, sev|capitalize, sort, direction, {'q': q}) }}
+  <th class="text-right" aria-sort="{{ direction if sort == sev else 'none' }}"><a href="{{ url_for('vulns.index', sort=sev, dir='desc' if sort != sev or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">{{ sev|capitalize }}{% if sort == sev %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
   {% endfor %}
-  {{ m.sort_th_plain('vulns.index', 'total', 'Total', sort, direction, {'q': q}) }}
-  {{ m.sort_th_plain('vulns.index', 'fixable', 'Fixable', sort, direction, {'q': q}) }}
+  <th class="text-right" aria-sort="{{ direction if sort == 'total' else 'none' }}"><a href="{{ url_for('vulns.index', sort='total', dir='desc' if sort != 'total' or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">Total{% if sort == 'total' %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
+  <th class="text-right" aria-sort="{{ direction if sort == 'fixable' else 'none' }}"><a href="{{ url_for('vulns.index', sort='fixable', dir='desc' if sort != 'fixable' or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">Fixable{% if sort == 'fixable' %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
   {{ m.sort_th_plain('vulns.index', 'scanned_at', 'Scanned', sort, direction, {'q': q}) }}
 </tr></thead><tbody>
 {% for r in rows %}

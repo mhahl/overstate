@@ -21,7 +21,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Event pattern</legend>
-      <input name="event" value="{{ event }}" list="reactor-event-presets" placeholder="salt/minion/*/start" class="input font-mono" required autocomplete="off">
+      <input name="event" value="{{ event }}" list="reactor-event-presets" placeholder="salt/minion/*/start" aria-label="Event pattern" class="input font-mono" required autocomplete="off">
       <datalist id="reactor-event-presets">
         <optgroup label="Common patterns">
           {% for p in presets %}<option value="{{ p }}">{% endfor %}
@@ -48,7 +48,7 @@
     {% elif files %}
     <fieldset class="fieldset">
       <legend class="fieldset-legend">SLS file</legend>
-      <select name="sls" class="select font-mono">
+      <select name="sls" aria-label="SLS file" class="select font-mono">
         <option value="">Custom reference…</option>
         {% for f in files %}<option value="salt://{{ f }}" {% if pick == "salt://" + f %}selected{% endif %}>{{ f }}</option>{% endfor %}
       </select>
@@ -56,7 +56,7 @@
     {% endif %}
     <fieldset class="fieldset">
       <legend class="fieldset-legend">{% if files %}Or custom reference{% else %}SLS reference{% endif %}</legend>
-      <input name="sls_custom" value="{{ custom }}" placeholder="salt://reactor/boot.sls" class="input font-mono"{% if files %} list="reactor-sls-files"{% endif %}>
+      <input name="sls_custom" value="{{ custom }}" placeholder="salt://reactor/boot.sls" aria-label="SLS reference" class="input font-mono"{% if files %} list="reactor-sls-files"{% endif %}>
       {% if files %}<datalist id="reactor-sls-files">
         {% for f in files %}<option value="salt://{{ f }}">{% endfor %}
       </datalist>{% endif %}

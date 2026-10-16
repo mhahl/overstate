@@ -126,14 +126,14 @@
         <form method="post" action="{{ url_for('users.create_token', uid=entry.user.id) }}" class="flex flex-wrap items-end gap-2 mt-2">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <fieldset class="fieldset"><legend class="fieldset-legend">Token name</legend>
-          <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
+          <input name="name" aria-label="Token name" class="input input-sm" autocomplete="off" required></fieldset>
           <fieldset class="fieldset"><legend class="fieldset-legend">Pin to saved job</legend>
-          <select name="saved_job_id" class="select select-sm">
+          <select name="saved_job_id" aria-label="Pin to saved job" class="select select-sm">
             <option value="">Unpinned (read class only)</option>
             {% for job in saved_jobs %}<option value="{{ job.id }}">{{ job.name }} · {{ job.fun }}</option>{% endfor %}
           </select></fieldset>
           <fieldset class="fieldset"><legend class="fieldset-legend">Expires in days</legend>
-          <input name="expires_days" type="number" min="1" max="3650" class="input input-sm w-24" placeholder="never"></fieldset>
+          <input name="expires_days" type="number" min="1" max="3650" aria-label="Expires in days" class="input input-sm w-24" placeholder="never"></fieldset>
           <button class="btn btn-sm btn-primary">Mint token</button>
         </form>
       </div>
@@ -141,7 +141,7 @@
       <form method="post" action="{{ url_for('users.create_service_account') }}" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <fieldset class="fieldset"><legend class="fieldset-legend">New service account</legend>
-        <input name="name" class="input input-sm" autocomplete="off" required></fieldset>
+        <input name="name" aria-label="New service account" class="input input-sm" autocomplete="off" required></fieldset>
         <button class="btn btn-sm btn-primary">Create account</button>
       </form>
     </div>

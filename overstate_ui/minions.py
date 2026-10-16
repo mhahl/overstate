@@ -57,6 +57,7 @@ from .minions_helpers import (
 )
 from .models import Job, JobReturn, Minion
 from .salt_client import SaltApiError
+from .vulns import SEVERITY_RANK
 
 bp = Blueprint("minions", __name__, url_prefix="/minions")
 
@@ -72,6 +73,10 @@ DETAIL_TABS = [
     "vulns",
     "raw",
 ]
+TAB_LABELS = {
+    "vulns": "Vulnerabilities",
+}
+"""Display names where capitalize() undersells the tab."""
 BEACON_ACTIONS = {
     "enable": "beacons.enable_beacon",
     "disable": "beacons.disable_beacon",
@@ -96,6 +101,7 @@ __all__ = [
     "PAGE_SIZES",
     "PRESENCE_ORDER",
     "SORT_COLUMNS",
+    "TAB_LABELS",
     "_beacon_refusal",
     "_exact_mid",
     "bp",
@@ -592,6 +598,7 @@ def states_refresh(mid: str):
         mid=mid,
         tab="states",
         tabs=DETAIL_TABS,
+        tab_labels=TAB_LABELS,
         data={
             "grains": grains,
             "stored": _redacted_stored(mid),
@@ -729,6 +736,22 @@ def detail(mid: str):
                 live = client.local(mid, "grains.items", tgt_type="list")[0].get(mid)
                 if isinstance(live, dict):
                     data["grains"] = normalize_grains(live)
+            # Vulnerability headline for the overview card: the slim
+            # summary only, never the detail key. Gated on mine.read in
+            # scoped mode like the vulns tab itself.
+            data["vuln_summary"] = None
+            if not skip_live and (
+                not scoped or authorize(current_user, "mine.read", minion=mid)
+            ):
+                stored = client.local(
+                    mid,
+                    "mine.get",
+                    arg=[mid, "grype.scan_summary"],
+                    tgt_type="list",
+                )[0].get(mid, {})
+                value = stored.get(mid) if isinstance(stored, dict) else None
+                if isinstance(value, dict) and isinstance(value.get("counts"), dict):
+                    data["vuln_summary"] = value
         elif tab == "states":
             # Stored first: the last persisted state-style return. Live
             # data arrives only via the explicit Refresh action below,
@@ -786,34 +809,43 @@ def detail(mid: str):
             # format (with embedded detailed_report) is the fallback.
             # A slim top list is shown marked partial when neither
             # carries the full report. Error payloads carry "error".
+            # Columns sort server-side over the full finding set.
             vuln_q = request.args.get("q", "").strip()
+            vuln_sort = request.args.get("sort", "severity")
+            if vuln_sort not in ("severity", "cve", "pkg", "fixed"):
+                vuln_sort = "severity"
+            vuln_dir = request.args.get("dir", "asc")
+            if vuln_dir not in ("asc", "desc"):
+                vuln_dir = "asc"
             data["vuln_q"] = vuln_q
+            data["vuln_sort"] = vuln_sort
+            data["vuln_dir"] = vuln_dir
             data["vuln_meta"] = {}
             data["vuln_findings"] = []
             data["vuln_error"] = None
             data["vuln_partial"] = False
             if not skip_live:
                 stored = client.local(
-                    mid, "mine.get", arg=[mid, "grype.scan_summary"],
+                    mid,
+                    "mine.get",
+                    arg=[mid, "grype.scan_summary"],
                     tgt_type="list",
                 )[0].get(mid, {})
                 summary = stored.get(mid) if isinstance(stored, dict) else None
                 if not isinstance(summary, dict):
                     summary = {}
-                if summary.get("error") and not isinstance(
-                    summary.get("counts"), dict
-                ):
+                if summary.get("error") and not isinstance(summary.get("counts"), dict):
                     data["vuln_error"] = str(summary["error"])
                 data["vuln_meta"] = summary
                 findings = summary.get("detailed_report")
                 if not isinstance(findings, list):
                     stored = client.local(
-                        mid, "mine.get", arg=[mid, "grype.scan_detail"],
+                        mid,
+                        "mine.get",
+                        arg=[mid, "grype.scan_detail"],
                         tgt_type="list",
                     )[0].get(mid, {})
-                    detail_value = (
-                        stored.get(mid) if isinstance(stored, dict) else None
-                    )
+                    detail_value = stored.get(mid) if isinstance(stored, dict) else None
                     if isinstance(detail_value, dict):
                         findings = detail_value.get("detailed_report")
                 if not isinstance(findings, list):
@@ -833,9 +865,35 @@ def detail(mid: str):
                                 or needle in str(f.get("pkg", "")).lower()
                             )
                         ]
-                    data["vuln_findings"] = [
-                        f for f in findings if isinstance(f, dict)
-                    ]
+                    rows = [f for f in findings if isinstance(f, dict)]
+                    if vuln_sort == "cve":
+                        rows.sort(key=lambda f: str(f.get("cve", "")))
+                    elif vuln_sort == "pkg":
+                        rows.sort(
+                            key=lambda f: (
+                                str(f.get("pkg", "")),
+                                str(f.get("cve", "")),
+                            )
+                        )
+                    elif vuln_sort == "fixed":
+                        rows.sort(
+                            key=lambda f: (
+                                0 if str(f.get("fixed", "")) else 1,
+                                str(f.get("cve", "")),
+                            )
+                        )
+                    else:
+                        rows.sort(
+                            key=lambda f: (
+                                SEVERITY_RANK.get(
+                                    str(f.get("severity", "UNKNOWN")).upper(), 99
+                                ),
+                                str(f.get("cve", "")),
+                            )
+                        )
+                    if vuln_dir == "desc":
+                        rows.reverse()
+                    data["vuln_findings"] = rows
         elif tab == "beacons":
             # return_yaml=False keeps this a real mapping (see
             # schedules.index). A second pillar-excluded call
@@ -977,6 +1035,7 @@ def detail(mid: str):
         "mid": mid,
         "tab": tab,
         "tabs": DETAIL_TABS,
+        "tab_labels": TAB_LABELS,
         "data": data,
         "error": error,
         "snapshot": bool(row),
