@@ -101,6 +101,45 @@ def _login(client, username):
     client.post("/login", data={"username": username, "password": PW})
 
 
+def test_schedules_search_and_pages_with_size_dropdown():
+    entries = {
+        f"job-{i:02d}": {
+            "function": "test.ping" if i % 2 else "state.highstate",
+            "seconds": 60,
+            "enabled": True,
+        }
+        for i in range(60)
+    }
+    app = _app(entries)
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/schedules/?per_page=10").data.decode()
+    assert html.count('class="font-mono text-xs">job-') == 10
+    assert 'name="per_page"' in html
+    page2 = client.get("/schedules/?per_page=10&page=2").data.decode()
+    assert "job-10" in page2 and "job-00" not in page2
+    searched = client.get("/schedules/?q=highstate").data.decode()
+    assert "job-00" in searched and "job-01" not in searched
+
+
+def test_states_pages_with_size_dropdown():
+    from overstate_ui.db import get_session
+    from overstate_ui.models import Minion
+
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    with app.app_context():
+        session = get_session()
+        for i in range(8):
+            session.add(Minion(id=f"extra-{i:02d}", grains={}))
+        session.commit()
+    html = client.get("/states/?per_page=10").data.decode()
+    assert 'name="per_page"' in html
+    page2 = client.get("/states/?per_page=10&page=2").data.decode()
+    assert "Page 2 of 2" in page2
+
+
 def test_unwatch_form_has_data_confirm():
     app = _app()
     client = app.test_client()

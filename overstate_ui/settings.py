@@ -85,9 +85,9 @@ DEFS = {
     },
     "page_size": {
         "label": "Page size",
-        "help": "Rows per page in the minion list.",
-        "options": ["10", "25", "50"],
-        "default": "25",
+        "help": "Default rows per page in lists.",
+        "options": ["10", "25", "50", "100"],
+        "default": "50",
     },
 }
 

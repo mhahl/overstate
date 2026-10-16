@@ -37,8 +37,7 @@ def test_audit_renders_newest_first():
     html = make_client().get("/audit/").data.decode()
     assert "Audit" in html
     assert html.find("action-29") < html.find("action-05")
-    assert "action-00" not in html  # page 2 at default page size
-    html = make_client().get("/audit/?page=2").data.decode()
+    html = make_client().get("/audit/?per_page=10&page=3").data.decode()
     assert "action-00" in html
     assert "/jobs/jid-00" in html  # JID links to job detail
 

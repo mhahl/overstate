@@ -84,6 +84,47 @@ def _login(client, username):
     client.post("/login", data={"username": username, "password": PW})
 
 
+def test_index_paginates_with_size_dropdown(tmp_path):
+    import json
+
+    big = [{f"salt/test/{i:02d}": ["salt://reactor/greet.sls"]} for i in range(25)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(
+                200, json={"return": [{"token": "tok", "expire": 99}]}
+            )
+        body = json.loads(request.content or b"{}")
+        if body.get("client") == "runner" and body.get("fun") == "reactor.list":
+            return httpx.Response(200, json={"return": [big]})
+        return httpx.Response(200, json={"return": [{}]})
+
+    (tmp_path / "greet.sls").write_text("greet-new-minion:\n  test.nop: []\n")
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    app.config["REACTOR_ROOTS"] = str(tmp_path)
+    app.extensions["salt_client"] = SaltClient(
+        "https://salt:8000", "u", "p", transport=httpx.MockTransport(handler)
+    )
+    with app.app_context():
+        create_all()
+        seed_admin(password="pw")
+        session = get_session()
+        session.add(
+            User(username="op", password_hash=authmod._ph.hash(PW), role="operator")
+        )
+        session.commit()
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/reactor/?per_page=10").data.decode()
+    assert html.count('<tr><td class="font-mono text-xs">salt/test/') == 10
+    assert 'name="per_page"' in html
+    assert "Page 1 of 3" in html
+    page3 = client.get("/reactor/?per_page=10&page=3").data.decode()
+    assert "salt/test/24" in page3 and "salt/test/00" not in page3
+
+
 def test_index_lists_mapping(tmp_path):
     app = _app(tmp_path)
     client = app.test_client()

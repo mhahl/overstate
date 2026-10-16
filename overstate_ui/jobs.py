@@ -224,7 +224,9 @@ def index():
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         page = 1
-    per_page = 50
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
 
     def matches(job) -> bool:
         if not ql:
@@ -311,6 +313,7 @@ def index():
         "q": q,
         "page": page,
         "pages": pages,
+        "per_page": per_page,
         "tgt_display": tgt_display,
     }
     if request.headers.get("HX-Request") == "true":

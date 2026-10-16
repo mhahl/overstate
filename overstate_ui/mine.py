@@ -106,7 +106,9 @@ def index():
         if scoped and isinstance(entries, dict) and hit is not None:
             # A stale worker argument cannot add db-01 back.
             entries = {k: v for k, v in entries.items() if k in hit}
-    per_page = 50
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
     try:
         requested_page = max(1, int(request.args.get("page", 1)))
     except ValueError:

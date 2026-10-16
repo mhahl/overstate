@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}{{ mid }} · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-center gap-3 mb-4">
@@ -256,7 +257,7 @@
       </div>
       <div class="stat px-5 py-4">
         <div class="stat-title font-medium text-base-content">By severity</div>
-        <div class="stat-value text-2xl font-semibold flex flex-wrap gap-1">{% for sev, n in (meta.get("counts") or {}).items() %}<span class="badge badge-sm badge-soft badge-neutral">{{ sev|capitalize }} {{ n }}</span>{% endfor %}</div>
+        <div class="stat-value text-2xl font-semibold flex flex-wrap gap-1">{% for sev, n in (meta.get("counts") or {}).items() %}<span class="badge badge-sm badge-soft {% if sev == 'CRITICAL' %}badge-error{% elif sev == 'HIGH' %}badge-warning{% elif sev == 'MEDIUM' %}badge-info{% else %}badge-neutral{% endif %}">{{ sev|capitalize }} {{ n }}</span>{% endfor %}</div>
         <div class="stat-desc">{% if meta.get("distro") %}{{ meta.get("distro").get("name", "") }} {{ meta.get("distro").get("version", "") }}{% endif %}{% if meta.get("grype_version") %} · grype {{ meta.get("grype_version") }}{% endif %}{% if meta.get("db_built_at") %} · db {{ meta.get("db_built_at")|reltime }}{% endif %}</div>
       </div>
     </div>
@@ -280,12 +281,17 @@
             <td class="font-mono text-xs"><span class="icon-[lucide--package] size-3.5 text-base-content/60" aria-hidden="true"></span> {{ f.get("pkg", "–") }}</td>
             <td class="font-mono text-xs">{{ f.get("installed", "–") }}</td>
             <td class="font-mono text-xs">{% if f.get("fixed") %}{{ f.get("fixed") }}{% else %}–{% endif %}</td>
-            <td><span class="badge badge-sm badge-soft badge-neutral">{% if f.get("severity") in ("CRITICAL", "HIGH") %}<span class="icon-[lucide--shield-alert] size-3" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--shield] size-3" aria-hidden="true"></span>{% endif %} {{ f.get("severity", "UNKNOWN")|capitalize }}</span></td>
+            <td><span class="badge badge-sm badge-soft {% if f.get('severity') == 'CRITICAL' %}badge-error{% elif f.get('severity') == 'HIGH' %}badge-warning{% elif f.get('severity') == 'MEDIUM' %}badge-info{% else %}badge-neutral{% endif %}">{% if f.get("severity") in ("CRITICAL", "HIGH") %}<span class="icon-[lucide--shield-alert] size-3" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--shield] size-3" aria-hidden="true"></span>{% endif %} {{ f.get("severity", "UNKNOWN")|capitalize }}</span></td>
             <td class="font-mono text-xs">{{ f.get("namespace", "–") }}</td>
             <td class="text-xs break-all">{% set urls = f.get("urls") or [] %}{% if urls %}<a class="link font-mono inline-flex items-center gap-1" href="{{ urls[0] }}" target="_blank" rel="noopener"><span class="icon-[lucide--external-link] size-3" aria-hidden="true"></span>link</a>{% if urls|length > 1 %} <span class="opacity-70">+{{ urls|length - 1 }} more</span>{% endif %}{% else %}–{% endif %}</td></tr>
           {% endfor %}
         </tbody></table>
     </div>
+    <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Finding pages">
+      <span class="text-sm text-base-content/70 me-auto">{{ (data.vuln_page - 1) * data.vuln_per_page + 1 }}–{{ [data.vuln_page * data.vuln_per_page, data.vuln_total]|min }} of {{ data.vuln_total }} findings</span>
+      {{ m.pagination_plain('minions.detail', data.vuln_page, data.vuln_pages, {'mid': mid, 'tab': 'vulns', 'sort': data.vuln_sort, 'dir': data.vuln_dir, 'q': data.vuln_q, 'per_page': data.vuln_per_page}, 'Finding pages') }}
+      {{ m.page_size_select('minions.detail', data.vuln_per_page, {'mid': mid, 'tab': 'vulns', 'sort': data.vuln_sort, 'dir': data.vuln_dir, 'q': data.vuln_q}, action_params={'mid': mid}) }}
+    </nav>
     {% elif data.vuln_q %}
     <div class="py-8 text-center">
       <p class="font-medium">Nothing matches “{{ data.vuln_q }}”</p>

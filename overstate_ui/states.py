@@ -242,9 +242,23 @@ def index():
             for row in ordered
             if _conformity_bucket((row.conformity or {}).get("status")) == status_filter
         ]
+    q = request.args.get("q", "").strip().lower()
+    if q:
+        ordered = [row for row in ordered if q in row.id.lower()]
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    total = len(ordered)
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
+    paged = ordered[(page - 1) * per_page : page * per_page]
     history: dict[str, list[dict]] = {}
-    if ordered:
-        ids = [row.id for row in ordered]
+    if paged:
+        ids = [row.id for row in paged]
         for trail in (
             session.query(StateConformityHistory)
             .filter(StateConformityHistory.minion_id.in_(ids))
@@ -256,12 +270,17 @@ def index():
                 entries.append({"status": trail.status, "jid": trail.jid})
     ctx = {
         "watched": watched,
-        "minions": ordered,
+        "minions": paged,
         "sort": sort,
         "direction": direction,
         "status_filter": status_filter,
         "history": history,
         "summary": summary,
+        "q": request.args.get("q", ""),
+        "page": page,
+        "pages": pages,
+        "per_page": per_page,
+        "total": total,
     }
     if request.headers.get("HX-Request") == "true":
         return render_template("_conformity_rows.html", **ctx)

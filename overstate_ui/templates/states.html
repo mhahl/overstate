@@ -70,16 +70,25 @@
             <h2 class="card-title text-base">Minion verdicts</h2>
             <p class="text-sm text-base-content/60 mt-1">Most recent outcome, check time, and source job for each minion.</p>
           </div>
-          <span class="badge badge-sm badge-ghost">{{ minions|length }} shown</span>
+          <span class="badge badge-sm badge-ghost">{{ total }} minions</span>
         </div>
         <nav class="flex flex-wrap items-center gap-2" aria-label="Filter conformity by status">
           {% for opt in ["", "ok", "drifted", "unreachable", "unknown"] %}
           {% set count = summary.total if not opt else summary[opt] %}
-          <a data-status-chip href="{{ url_for('states.index', status=opt, sort=sort, dir=direction) }}" class="btn btn-sm {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}"{% if status_filter == opt %} aria-current="page"{% endif %} aria-label="Show {{ status_labels[opt] }} minions: {{ count }}">
+          <a data-status-chip href="{{ url_for('states.index', status=opt, sort=sort, dir=direction, q=q, per_page=per_page) }}" class="btn btn-sm {% if status_filter == opt %}btn-primary{% else %}btn-ghost{% endif %}"{% if status_filter == opt %} aria-current="page"{% endif %} aria-label="Show {{ status_labels[opt] }} minions: {{ count }}">
             {{ status_labels[opt] }} <span class="tabular-nums text-xs" data-summary="{{ 'total' if not opt else opt }}">{{ count }}</span>
           </a>
           {% endfor %}
         </nav>
+        <form method="get" action="{{ url_for('states.index') }}" role="search" aria-label="Filter minions" class="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="status" value="{{ status_filter }}">
+          <input type="hidden" name="sort" value="{{ sort }}">
+          <input type="hidden" name="dir" value="{{ direction }}">
+          <input type="hidden" name="per_page" value="{{ per_page }}">
+          {% import "_macros.html" as m %}
+          {{ m.table_search_field("states-q", "q", q, "Minion", "Filter by minion…", "Filter by minion") }}
+          <button class="btn btn-sm btn-primary mb-1">Filter</button>
+        </form>
         {% include "_conformity_rows.html" %}
       </div>
     </section>

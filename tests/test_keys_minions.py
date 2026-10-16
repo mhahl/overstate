@@ -281,7 +281,11 @@ def test_keys_large_roster_renders_only_one_page_and_keeps_filters(client, monke
     assert parsed.keys[0] == "/minions/key-0070"
     assert parsed.keys[-1] == "/minions/key-0021"
     assert parse_qs(urlsplit(parsed.next_href).query) == {
-        "tab": ["accepted"], "sort": ["id"], "dir": ["desc"], "page": ["3"]
+        "tab": ["accepted"],
+        "sort": ["id"],
+        "dir": ["desc"],
+        "page": ["3"],
+        "per_page": ["50"],
     }
 
     last = client.get("/keys/?tab=accepted&sort=id&dir=desc&page=999").data.decode()
@@ -295,6 +299,7 @@ def test_keys_large_roster_renders_only_one_page_and_keeps_filters(client, monke
     parsed.feed(filtered)
     assert len(parsed.keys) == 10
     assert "Page 1 of 1" in filtered
+    assert 'name="per_page"' in filtered
 
 
 def test_keys_index_serves_cached_roster(client, fake_redis, monkeypatch):

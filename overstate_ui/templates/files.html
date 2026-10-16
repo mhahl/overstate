@@ -267,6 +267,7 @@
       <div class="flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-4 py-3">
         <p class="text-sm text-base-content/70">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} files{% if q %} matching “{{ q }}”{% endif %}{% if d %} under “{{ d }}”{% endif %}</p>
         {{ m.pagination_plain('files.index', page, pages, {'q': q, 'dir': d, 'per_page': per_page, 'tab': 'files'}, 'File pages') }}
+        {{ m.page_size_select('files.index', per_page, {'q': q, 'dir': d, 'tab': 'files'}) }}
       </div>
       {% elif total %}
       <p class="border-t border-base-300 px-4 py-3 text-sm text-base-content/70">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching “{{ q }}”{% endif %}{% if d %} under “{{ d }}”{% endif %}</p>

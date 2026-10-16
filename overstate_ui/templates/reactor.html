@@ -41,7 +41,7 @@
   </div>
 </form>
 <div class="overflow-x-auto rounded-box">
- <table class="table table-sm table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('reactor.index', 'event', 'Event', sort, direction, {'q': q}) }}{{ m.sort_th_plain('reactor.index', 'sls', 'SLS', sort, direction, {'q': q}) }}<th>Watch</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
+ <table class="table table-sm table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('reactor.index', 'event', 'Event', sort, direction, {'q': q, 'per_page': per_page}) }}{{ m.sort_th_plain('reactor.index', 'sls', 'SLS', sort, direction, {'q': q, 'per_page': per_page}) }}<th>Watch</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for r in rows %}
 <tr><td class="font-mono text-xs">{{ r.event }}</td>
 <td class="font-mono text-xs">{% for ref in r.refs %}{% set rel = r.rels[loop.index0] %}{% if rel %}<a class="link" href="{{ url_for('reactor.view', sls=rel) }}">{{ ref }}</a>{% else %}{{ ref }}{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
@@ -50,7 +50,11 @@
 {% endfor %}
 </tbody></table>
 </div>
-<p class="text-sm opacity-70 px-4 py-3 border-t border-base-300">{{ total }} reactor{{ "s" if total != 1 }}{% if q %} matching "{{ q }}"{% endif %}.</p>
+<p class="text-sm opacity-70 px-4 py-3 border-t border-base-300">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} reactor{{ "s" if total != 1 }}{% if q %} matching "{{ q }}"{% endif %}.</p>
+<nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Reactor pages">
+  {{ m.pagination_plain('reactor.index', page, pages, {'q': q, 'sort': sort, 'dir': direction, 'per_page': per_page}, 'Reactor pages') }}
+  {{ m.page_size_select('reactor.index', per_page, {'q': q, 'sort': sort, 'dir': direction}) }}
+</nav>
 </section>
 {% elif raw %}
 <pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ raw }}</code></pre>

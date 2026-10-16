@@ -172,13 +172,18 @@ def test_pillar_list_pages_large_filtered_results(client):
     assert links.minions[0] == "/pillar/cache-050"
     assert links.minions[-1] == "/pillar/cache-099"
     assert parse_qs(urlsplit(links.next_href).query) == {
-        "q": ["cache-"], "sort": ["minion"], "dir": ["asc"], "page": ["3"]
+        "q": ["cache-"],
+        "sort": ["minion"],
+        "dir": ["asc"],
+        "page": ["3"],
+        "per_page": ["50"],
     }
     last = client.get("/pillar/?q=cache-&page=999").data.decode()
     links = PillarLinks()
     links.feed(last)
     assert links.minions == [f"/pillar/cache-{i:03d}" for i in range(100, 105)]
     assert "Page 3 of 3" in last
+    assert 'name="per_page"' in last
 
 
 def test_capture_stores_and_prunes(client):

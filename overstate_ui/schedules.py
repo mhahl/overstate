@@ -113,13 +113,33 @@ def index():
     direction = request.args.get("dir", "asc")
     if direction not in ("asc", "desc"):
         direction = "asc"
+    q = request.args.get("q", "").strip().lower()
     if isinstance(entries, dict):
         key = (
             (lambda kv: kv[0])
             if sort == "name"
             else (lambda kv: (str(kv[1].get("function", "")), kv[0]))
         )
-        entries = dict(sorted(entries.items(), key=key, reverse=(direction == "desc")))
+        items = sorted(entries.items(), key=key, reverse=(direction == "desc"))
+        if q:
+            items = [
+                (name, job)
+                for name, job in items
+                if q in name.lower() or q in str(job.get("function", "")).lower()
+            ]
+    else:
+        items = []
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    total = len(items)
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
+    entries = dict(items[(page - 1) * per_page : page * per_page])
     return render_template(
         "schedules.html",
         minions=accepted,
@@ -129,6 +149,11 @@ def index():
         error=error,
         sort=sort,
         direction=direction,
+        q=request.args.get("q", ""),
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        total=total,
     )
 
 

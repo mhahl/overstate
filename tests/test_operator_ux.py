@@ -87,6 +87,23 @@ def client():
     return c
 
 
+def test_access_groups_search_and_pages_with_size_dropdown(client):
+    from overstate_ui.models import LocalGroup
+
+    with client.app.app_context():
+        for i in range(12):
+            get_session().add(LocalGroup(name=f"team-{i:02d}"))
+        get_session().commit()
+    html = client.get("/users/groups?per_page=10").data.decode()
+    assert html.count("team-") >= 10
+    assert 'name="per_page"' in html
+    assert "Page 1 of 2" in html
+    page2 = client.get("/users/groups?per_page=10&page=2").data.decode()
+    assert "team-11" in page2 and "team-00" not in page2
+    searched = client.get("/users/groups?q=team-01").data.decode()
+    assert "team-01" in searched and "team-00" not in searched
+
+
 def test_fun_combobox_enter_only_picks_when_open_and_selected(client):
     html = client.get("/jobs/new").data.decode()
     assert "funList.classList.contains('hidden')" in html
@@ -280,6 +297,11 @@ def test_chrome_title_flash_tabs_schedule_bulk(client):
             sort="name",
             direction="asc",
             error=None,
+            q="",
+            page=1,
+            pages=1,
+            per_page=50,
+            total=1,
         )
     assert ">60<" in sched
     assert "seconds" in sched

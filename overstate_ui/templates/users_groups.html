@@ -10,7 +10,14 @@
   </div>
   <section class="card card-border bg-base-100" aria-label="Local groups">
     <div class="card-body gap-3">
-      <h2 class="card-title text-base">Local groups</h2>
+      <div class="flex flex-wrap items-end gap-2">
+        <h2 class="card-title text-base me-auto">Local groups</h2>
+        <form method="get" action="{{ url_for('users.groups') }}" role="search" aria-label="Filter groups" class="flex flex-wrap items-end gap-2">
+          {% import "_macros.html" as m %}
+          {{ m.table_search_field("access-group-q", "q", q, "Group", "Filter groups…", "Filter groups") }}
+          <button class="btn btn-sm btn-primary mb-1">Filter</button>
+        </form>
+      </div>
       {% for g in local_groups %}
       <div class="border border-base-300 rounded-lg p-3">
         <div class="flex flex-wrap items-center gap-2">
@@ -74,6 +81,11 @@
         <input name="name" aria-label="New group name" class="input input-sm" autocomplete="off" required></fieldset>
         <button class="btn btn-sm btn-primary">Create group</button>
       </form>
+      <nav class="flex flex-wrap items-center gap-2 pt-1" aria-label="Group pages">
+        <span class="text-sm text-base-content/70 me-auto">{% if total %}{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} groups{% else %}0 groups{% endif %}</span>
+        {{ m.pagination_plain('users.groups', page, pages, {'q': q, 'per_page': per_page}, 'Group pages') }}
+        {{ m.page_size_select('users.groups', per_page, {'q': q}) }}
+      </nav>
     </div>
   </section>
   {% if not delegate_view %}

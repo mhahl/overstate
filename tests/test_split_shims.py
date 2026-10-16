@@ -87,7 +87,7 @@ def test_minions_shim_matches_canonical():
     ):
         assert getattr(minions, name) is getattr(minions_helpers, name), name
     # PAGE_SIZES stays defined on the routes module; groups.py imports it there.
-    assert minions.PAGE_SIZES == (10, 25, 50)
+    assert minions.PAGE_SIZES == (10, 25, 50, 100)
 
 
 def test_shim_patch_point_controls_workers(monkeypatch):

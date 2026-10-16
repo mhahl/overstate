@@ -50,7 +50,6 @@ def index():
     from flask_login import current_user
 
     from .authz import has_fleet, perm_scope_minions, rbac_mode, require
-    from .settings import get_setting
 
     require("audit.read")
     scoped = rbac_mode() == "scoped"
@@ -62,12 +61,9 @@ def index():
     if outcome not in ("allow", "deny"):
         outcome = ""
     permission = request.args.get("permission", "").strip()
-    try:
-        page_size = int(get_setting("page_size"))
-    except ValueError:
-        page_size = 25
-    if page_size not in (10, 25, 50):
-        page_size = 25
+    from .minions import default_page_size, resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"), default_page_size())
     try:
         page = max(1, int(request.args.get("page", "1")))
     except ValueError:
@@ -101,7 +97,7 @@ def index():
     if permission:
         query = query.filter(AuditEvent.permission.contains(permission))
     total = query.count()
-    pages = max(1, -(-total // page_size))
+    pages = max(1, -(-total // per_page))
     page = min(page, pages)
     sort = request.args.get("sort", "when")
     if sort not in ("when", "user", "action"):
@@ -115,7 +111,7 @@ def index():
         "action": AuditEvent.action,
     }[sort]
     order = order.desc() if direction == "desc" else order.asc()
-    events = query.order_by(order).offset((page - 1) * page_size).limit(page_size).all()
+    events = query.order_by(order).offset((page - 1) * per_page).limit(per_page).all()
     if scoped and not fleet_audit:
         # job-constrained detail names dropped (out-of-scope) minions for
         # fleet audit: redact to a count even on the actor's own rows.
@@ -135,6 +131,7 @@ def index():
         permission=permission,
         page=page,
         pages=pages,
+        per_page=per_page,
         total=total,
         sort=sort,
         direction=direction,

@@ -26,7 +26,6 @@ bp = Blueprint("vulns", __name__, url_prefix="/vulnerabilities")
 
 SUMMARY_KEY = "grype.scan_summary"
 DETAIL_KEY = "grype.scan_detail"
-PER_PAGE = 50
 
 SEVERITY_RANK = {
     "CRITICAL": 0,
@@ -163,14 +162,17 @@ def index():
     if sort not in allowed:
         sort, direction = "total", "desc"
     rows = sort_rows(rows, sort, direction)
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
     try:
         requested_page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         requested_page = 1
     total = len(rows)
-    pages = max(1, -(-total // PER_PAGE))
+    pages = max(1, -(-total // per_page))
     page = min(requested_page, pages)
-    rows = rows[(page - 1) * PER_PAGE : page * PER_PAGE]
+    rows = rows[(page - 1) * per_page : page * per_page]
     return render_template(
         "vulns.html",
         rows=rows,
@@ -181,6 +183,6 @@ def index():
         total=total,
         page=page,
         pages=pages,
-        per_page=PER_PAGE,
+        per_page=per_page,
         error=error,
     )

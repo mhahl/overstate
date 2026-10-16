@@ -100,7 +100,12 @@ def test_table_searches_use_compact_shared_component():
 
 def test_pagination_uses_join_component():
     c = make_client()
-    for path in ("/audit/", "/groups/", "/jobs/?tab=history", "/minions/"):
+    for path in (
+        "/audit/?per_page=10",
+        "/groups/?per_page=10",
+        "/jobs/?tab=history&per_page=10",
+        "/minions/?per_page=10",
+    ):
         html = c.get(path).data.decode()
         assert 'class="join' in html, path
         assert "join-item" in html, path
@@ -160,6 +165,22 @@ def test_form_controls_have_accessible_names():
     assert not offenders, "unlabeled controls:\n" + "\n".join(offenders)
 
 
+def test_list_pages_offer_page_size_dropdown():
+    # Mine/pillar/keys/files/vulns dropdowns are covered in their own
+    # suites with salt fixtures; these routes render on DB data alone.
+    c = make_client()
+    for path in (
+        "/audit/?per_page=10",
+        "/groups/?per_page=10",
+        "/jobs/?tab=history&per_page=10",
+        "/minions/?per_page=10",
+        "/users/?per_page=10",
+    ):
+        html = c.get(path).data.decode()
+        assert 'name="per_page"' in html, path
+        assert 'value="10" selected' in html, path
+
+
 def test_users_list_searches_and_pages_without_rendering_every_account():
     from html.parser import HTMLParser
     from urllib.parse import parse_qs, urlsplit
@@ -193,7 +214,11 @@ def test_users_list_searches_and_pages_without_rendering_every_account():
     parser = NextLink()
     parser.feed(page)
     assert parse_qs(urlsplit(parser.href).query) == {
-        "role": ["viewer"], "sort": ["username"], "dir": ["asc"], "page": ["3"]
+        "role": ["viewer"],
+        "sort": ["username"],
+        "dir": ["asc"],
+        "page": ["3"],
+        "per_page": ["50"],
     }
 
     filtered = c.get("/users/?role=viewer&q=person-10&page=99").data.decode()

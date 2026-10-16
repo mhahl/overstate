@@ -95,3 +95,13 @@
   </label>
 </fieldset>
 {% endmacro %}
+
+{% macro page_size_select(endpoint, per_page, params, sizes=(10, 25, 50, 100), action_params=none) %}
+<form method="get" action="{{ url_for(endpoint, **(action_params or {})) }}" class="flex items-center gap-2" aria-label="Rows per page">
+  {% for key, value in params.items() %}{% if key != "per_page" and key != "page" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+  <label class="text-sm text-base-content/70" for="per-page-select">Show</label>
+  <select id="per-page-select" name="per_page" class="select select-sm w-20" onchange="this.form.requestSubmit()">
+    {% for size in sizes %}<option value="{{ size }}"{% if size == per_page %} selected{% endif %}>{{ size }}</option>{% endfor %}
+  </select>
+</form>
+{% endmacro %}

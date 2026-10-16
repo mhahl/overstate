@@ -114,7 +114,9 @@ def index():
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         page = 1
-    per_page = 50
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
     sort = request.args.get("sort", "username")
     if sort not in ("username", "role"):
         sort = "username"
@@ -322,7 +324,9 @@ def _delegate_index():
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         page = 1
-    per_page = 50
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
     sort = request.args.get("sort", "username")
     if sort not in ("username", "role"):
         sort = "username"
@@ -747,9 +751,30 @@ def groups():
             }
             for g in rows
         ]
+    from .minions import resolve_page_size
+
+    q = request.args.get("q", "").strip().lower()
+    if q:
+        local_groups = [g for g in local_groups if q in g.name.lower()]
+        idp_groups = [g for g in idp_groups if q in g["name"].lower()]
+    per_page = resolve_page_size(request.args.get("per_page"))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    total = len(local_groups)
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
+    local_groups = local_groups[(page - 1) * per_page : page * per_page]
+    idp_groups = idp_groups[(page - 1) * per_page : page * per_page]
     return render_template(
         "users_groups.html",
         local_groups=local_groups,
+        q=request.args.get("q", ""),
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        total=total,
         group_names=group_names,
         group_grants=group_grants,
         group_grant_rows=group_grant_rows,

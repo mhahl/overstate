@@ -421,6 +421,17 @@ def index():
         else (lambda r: ",".join(r["refs"]).lower())
     )
     rows.sort(key=key, reverse=(direction == "desc"))
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    total = len(rows)
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
+    rows = rows[(page - 1) * per_page : page * per_page]
     return render_template(
         "reactor.html",
         rows=rows,
@@ -432,7 +443,10 @@ def index():
         q=request.args.get("q", ""),
         sort=sort,
         direction=direction,
-        total=len(entries),
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        total=total,
     )
 
 

@@ -61,7 +61,31 @@ from .vulns import SEVERITY_RANK
 
 bp = Blueprint("minions", __name__, url_prefix="/minions")
 
-PAGE_SIZES = (10, 25, 50)
+PAGE_SIZES = (10, 25, 50, 100)
+DEFAULT_PAGE_SIZE = 50
+"""Every data table pages 50 by default; the size dropdown offers these."""
+
+
+def resolve_page_size(raw, default=DEFAULT_PAGE_SIZE):
+    """Validated page size from a query arg: int in PAGE_SIZES else default."""
+    try:
+        size = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return size if size in PAGE_SIZES else default
+
+
+def default_page_size():
+    """Admin's Settings page_size when valid, else DEFAULT_PAGE_SIZE."""
+    from .settings import get_setting
+
+    try:
+        size = int(get_setting("page_size"))
+    except ValueError:
+        return DEFAULT_PAGE_SIZE
+    return size if size in PAGE_SIZES else DEFAULT_PAGE_SIZE
+
+
 DETAIL_TABS = [
     "overview",
     "states",
@@ -94,6 +118,7 @@ def _exact_mid(mid: str) -> str:
 
 __all__ = [
     "BEACON_ACTIONS",
+    "DEFAULT_PAGE_SIZE",
     "DETAIL_TABS",
     "HOST_RE",
     "ONBOARD_DISTROS",
@@ -107,6 +132,7 @@ __all__ = [
     "bp",
     "build_onboard_script",
     "cached_roster",
+    "default_page_size",
     "hydrate_entries",
     "live_roster",
     "merged_cached_roster",
@@ -119,6 +145,7 @@ __all__ = [
     "parse_beacon_list",
     "presence_of",
     "refresh_sync",
+    "resolve_page_size",
 ]
 
 
@@ -232,20 +259,8 @@ def index():
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         page = 1
-    from .settings import get_setting
-
-    try:
-        default_page_size = int(get_setting("page_size"))
-    except ValueError:
-        default_page_size = 25
-    if default_page_size not in PAGE_SIZES:
-        default_page_size = 25
-    try:
-        per_page = int(request.args.get("per_page", default_page_size))
-    except ValueError:
-        per_page = default_page_size
-    if per_page not in PAGE_SIZES:
-        per_page = default_page_size
+    default_size = default_page_size()
+    per_page = resolve_page_size(request.args.get("per_page"), default_size)
     sort = request.args.get("sort", "id")
     if sort not in SORT_COLUMNS:
         sort = "id"
@@ -893,7 +908,20 @@ def detail(mid: str):
                         )
                     if vuln_dir == "desc":
                         rows.reverse()
-                    data["vuln_findings"] = rows
+                    vuln_per_page = resolve_page_size(request.args.get("per_page"))
+                    try:
+                        vuln_page = max(1, int(request.args.get("page", 1)))
+                    except ValueError:
+                        vuln_page = 1
+                    vuln_pages = max(1, -(-len(rows) // vuln_per_page))
+                    vuln_page = min(vuln_page, vuln_pages)
+                    data["vuln_findings"] = rows[
+                        (vuln_page - 1) * vuln_per_page : vuln_page * vuln_per_page
+                    ]
+                    data["vuln_total"] = len(rows)
+                    data["vuln_page"] = vuln_page
+                    data["vuln_pages"] = vuln_pages
+                    data["vuln_per_page"] = vuln_per_page
         elif tab == "beacons":
             # return_yaml=False keeps this a real mapping (see
             # schedules.index). A second pillar-excluded call
@@ -1003,7 +1031,6 @@ def detail(mid: str):
             .query(JobReturn)
             .filter_by(minion_id=mid)
             .order_by(JobReturn.jid.desc())
-            .limit(20)
             .all()
         )
 
@@ -1012,7 +1039,20 @@ def detail(mid: str):
                 return (0 if r.success else 1, r.jid)
             return r.jid
 
-        data["returns"] = sorted(returns, key=ret_key, reverse=(direction == "desc"))
+        returns = sorted(returns, key=ret_key, reverse=(direction == "desc"))
+        per_page = resolve_page_size(request.args.get("per_page"))
+        try:
+            returns_page = max(1, int(request.args.get("page", 1)))
+        except ValueError:
+            returns_page = 1
+        returns_pages = max(1, -(-len(returns) // per_page))
+        returns_page = min(returns_page, returns_pages)
+        data["returns"] = returns[
+            (returns_page - 1) * per_page : returns_page * per_page
+        ]
+        data["returns_page"] = returns_page
+        data["returns_pages"] = returns_pages
+        data["returns_per_page"] = per_page
     recent = []
     if tab == "overview":
         recent_returns = (

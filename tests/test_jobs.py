@@ -178,6 +178,52 @@ def test_detail_and_history_render(client):
     assert "Sync results" in html
 
 
+def test_history_per_page_param_with_size_dropdown(client):
+    from overstate_ui.models import Job
+
+    with client.app.app_context():
+        session = get_session()
+        for i in range(12):
+            session.add(
+                Job(
+                    jid=f"202609101231{i:06d}",
+                    fun="test.ping",
+                    tgt="*",
+                    tgt_type="glob",
+                    user="admin",
+                    complete=True,
+                )
+            )
+        session.commit()
+    html = client.get("/jobs/?tab=history&per_page=10").data.decode()
+    assert html.count('href="/jobs/202609101231') == 10
+    assert 'name="per_page"' in html
+    assert 'value="10" selected' in html
+
+
+def test_minion_returns_paginate_with_size_dropdown(client):
+    from overstate_ui.models import JobReturn
+
+    with client.app.app_context():
+        session = get_session()
+        for i in range(12):
+            session.add(
+                JobReturn(
+                    jid=f"202609101230{i:06d}",
+                    minion_id="web01",
+                    success=True,
+                    retcode=0,
+                    payload={},
+                )
+            )
+        session.commit()
+    html = client.get("/minions/web01?tab=jobs&per_page=10").data.decode()
+    assert html.count('href="/jobs/202609101230') == 10
+    assert 'name="per_page"' in html
+    page2 = client.get("/minions/web01?tab=jobs&per_page=10&page=2").data.decode()
+    assert "202609101230000000" in page2 and "202609101230000011" not in page2
+
+
 def test_detail_recovery_links(client):
     from overstate_ui.models import AuditEvent
 

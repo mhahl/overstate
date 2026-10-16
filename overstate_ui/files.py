@@ -57,8 +57,8 @@ bp = Blueprint("files", __name__, url_prefix="/files")
 
 MAX_BYTES = 256 * 1024
 LIST_LIMIT = 5000
-PAGE_SIZES = (25, 50, 100)
-DEFAULT_PAGE_SIZE = 50
+# Pagination sizes live in minions.py (single source of truth);
+# files.py cannot import it at module level (minions imports files).
 YAML_SUFFIXES = (".sls", ".yaml", ".yml")
 
 
@@ -311,16 +311,13 @@ def _files_page_context():
         visible_prefixes(current_user) if rbac_mode() == "scoped" else None
     )
     q = request.args.get("q", "").strip().lower()
+    from .minions import resolve_page_size
+
     try:
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         page = 1
-    try:
-        per_page = int(request.args.get("per_page", DEFAULT_PAGE_SIZE))
-    except ValueError:
-        per_page = DEFAULT_PAGE_SIZE
-    if per_page not in PAGE_SIZES:
-        per_page = DEFAULT_PAGE_SIZE
+    per_page = resolve_page_size(request.args.get("per_page"))
     d = normalize_dir(request.args.get("dir", ""))
     entries = list_tree(limit=LIST_LIMIT + 1)
     if prefixes is not None:

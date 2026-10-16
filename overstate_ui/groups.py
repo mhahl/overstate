@@ -7,7 +7,7 @@ from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
-from .minions import PAGE_SIZES, merged_cached_roster
+from .minions import merged_cached_roster, resolve_page_size
 from .models import Minion, MinionGroup
 
 bp = Blueprint("groups", __name__, url_prefix="/groups")
@@ -17,12 +17,7 @@ bp = Blueprint("groups", __name__, url_prefix="/groups")
 @login_required
 def index():
     q = request.args.get("q", "").strip().lower()
-    try:
-        per_page = int(request.args.get("per_page", 25))
-    except ValueError:
-        per_page = 25
-    if per_page not in PAGE_SIZES:
-        per_page = 25
+    per_page = resolve_page_size(request.args.get("per_page"))
     try:
         page = int(request.args.get("page", 1))
     except ValueError:

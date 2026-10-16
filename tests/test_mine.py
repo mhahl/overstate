@@ -133,14 +133,29 @@ def test_large_mine_result_renders_one_page_and_preserves_query(monkeypatch):
     assert links.minions[0] == "/minions/mine-070"
     assert links.minions[-1] == "/minions/mine-021"
     assert parse_qs(urlsplit(links.next_href).query) == {
-        "tgt": ["*"], "tgt_type": ["glob"], "fun": ["network.ip_addrs"],
-        "dir": ["desc"], "page": ["3"],
+        "tgt": ["*"],
+        "tgt_type": ["glob"],
+        "fun": ["network.ip_addrs"],
+        "dir": ["desc"],
+        "page": ["3"],
+        "per_page": ["50"],
     }
     last = query(c, page="999", dir="desc").data.decode()
     links = MineLinks()
     links.feed(last)
     assert len(links.minions) == 21
     assert "Page 3 of 3" in last
+
+
+def test_per_page_param_with_size_dropdown(monkeypatch):
+    rows = {f"mine-{i:03d}": [f"10.0.0.{i}"] for i in range(25)}
+    monkeypatch.setattr("overstate_ui.tasks.queue_or_none", lambda *a, **k: None)
+    monkeypatch.setattr("overstate_ui.tasks.mine_get_now", lambda *a, **k: rows)
+    html = query(make_client(), per_page="10").data.decode()
+    assert html.count("/minions/mine-") == 10
+    assert 'name="per_page"' in html
+    assert 'value="10" selected' in html
+    assert "Page 1 of 3" in html
 
 
 def test_minion_sort_direction_toggles():
@@ -195,7 +210,11 @@ def test_mine_error_offers_retry_without_losing_lookup():
     parser = RetryLink()
     parser.feed(html)
     assert parse_qs(urlsplit(parser.href).query) == {
-        "tgt": ["*"], "tgt_type": ["glob"], "fun": ["network.ip_addrs"], "dir": ["desc"]
+        "tgt": ["*"],
+        "tgt_type": ["glob"],
+        "fun": ["network.ip_addrs"],
+        "dir": ["desc"],
+        "per_page": ["50"],
     }
 
 

@@ -21,13 +21,13 @@
 {% if rows %}
 <div class="max-w-full overflow-x-auto rounded-box">
 <table class="table table-sm table-pin-rows w-full"><thead><tr>
-  <th aria-sort="{{ direction if sort == 'minion' else 'none' }}"><a href="{{ url_for('vulns.index', sort='minion', dir='desc' if sort != 'minion' or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">Minion {% if sort == 'minion' %}{% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
+  <th aria-sort="{{ direction if sort == 'minion' else 'none' }}"><a href="{{ url_for('vulns.index', sort='minion', dir='desc' if sort != 'minion' or direction == 'asc' else 'asc', q=q, per_page=per_page) }}" class="inline-flex items-center gap-1 hover:underline">Minion {% if sort == 'minion' %}{% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
   {% for sev in severities %}
-  <th class="text-right" aria-sort="{{ direction if sort == sev else 'none' }}"><a href="{{ url_for('vulns.index', sort=sev, dir='desc' if sort != sev or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">{{ sev|capitalize }}{% if sort == sev %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
+  <th class="text-right" aria-sort="{{ direction if sort == sev else 'none' }}"><a href="{{ url_for('vulns.index', sort=sev, dir='desc' if sort != sev or direction == 'asc' else 'asc', q=q, per_page=per_page) }}" class="inline-flex items-center gap-1 hover:underline">{{ sev|capitalize }}{% if sort == sev %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
   {% endfor %}
-  <th class="text-right" aria-sort="{{ direction if sort == 'total' else 'none' }}"><a href="{{ url_for('vulns.index', sort='total', dir='desc' if sort != 'total' or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">Total{% if sort == 'total' %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
-  <th class="text-right" aria-sort="{{ direction if sort == 'fixable' else 'none' }}"><a href="{{ url_for('vulns.index', sort='fixable', dir='desc' if sort != 'fixable' or direction == 'asc' else 'asc', q=q) }}" class="inline-flex items-center gap-1 hover:underline">Fixable{% if sort == 'fixable' %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
-  {{ m.sort_th_plain('vulns.index', 'scanned_at', 'Scanned', sort, direction, {'q': q}) }}
+  <th class="text-right" aria-sort="{{ direction if sort == 'total' else 'none' }}"><a href="{{ url_for('vulns.index', sort='total', dir='desc' if sort != 'total' or direction == 'asc' else 'asc', q=q, per_page=per_page) }}" class="inline-flex items-center gap-1 hover:underline">Total{% if sort == 'total' %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
+  <th class="text-right" aria-sort="{{ direction if sort == 'fixable' else 'none' }}"><a href="{{ url_for('vulns.index', sort='fixable', dir='desc' if sort != 'fixable' or direction == 'asc' else 'asc', q=q, per_page=per_page) }}" class="inline-flex items-center gap-1 hover:underline">Fixable{% if sort == 'fixable' %} {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
+  {{ m.sort_th_plain('vulns.index', 'scanned_at', 'Scanned', sort, direction, {'q': q, 'per_page': per_page}) }}
 </tr></thead><tbody>
 {% for r in rows %}
 <tr class="hover"><td class="font-mono text-xs"><a class="link" href="{{ url_for('minions.detail', mid=r.mid, tab='vulns') }}">{{ r.mid }}</a></td>
@@ -42,7 +42,8 @@
 </div>
 <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Vulnerability pages">
   <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} minions</span>
-  {{ m.pagination_plain('vulns.index', page, pages, {'sort': sort, 'dir': direction, 'q': q}, 'Vulnerability pages') }}
+  {{ m.pagination_plain('vulns.index', page, pages, {'sort': sort, 'dir': direction, 'q': q, 'per_page': per_page}, 'Vulnerability pages') }}
+  {{ m.page_size_select('vulns.index', per_page, {'sort': sort, 'dir': direction, 'q': q}) }}
 </nav>
 {% else %}
 <div class="py-8 px-4 text-center">

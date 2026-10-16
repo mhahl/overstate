@@ -28,7 +28,7 @@
   <div class="card-body p-0">
     <div class="max-w-full overflow-x-auto rounded-box">
       <table class="table table-sm table-pin-rows w-full">
-        <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission}) }}<th>Outcome</th><th>Permission</th><th>Minion</th><th>Job</th></tr></thead>
+        <thead><tr>{{ m.sort_th_plain('audit.index', 'when', 'When', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'per_page': per_page}) }}{{ m.sort_th_plain('audit.index', 'user', 'User', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'per_page': per_page}) }}{{ m.sort_th_plain('audit.index', 'action', 'Action', sort, direction, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'per_page': per_page}) }}<th>Outcome</th><th>Permission</th><th>Minion</th><th>Job</th></tr></thead>
         <tbody>
           {% for e in events %}
           <tr class="hover">
@@ -48,7 +48,8 @@
     </div>
     {% if pages > 1 %}
     <div class="px-4 py-3 border-t border-base-300">
-    {{ m.pagination_plain('audit.index', page, pages, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'sort': sort, 'dir': direction}, 'Audit pages') }}
+    {{ m.pagination_plain('audit.index', page, pages, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'sort': sort, 'dir': direction, 'per_page': per_page}, 'Audit pages') }}
+    {{ m.page_size_select('audit.index', per_page, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'sort': sort, 'dir': direction}) }}
     </div>
     {% endif %}
   </div>

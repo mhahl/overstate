@@ -96,7 +96,7 @@ def client():
 
 def test_settings_save_and_default(client):
     with client.app.app_context():
-        assert get_setting("page_size") == "25"
+        assert get_setting("page_size") == "50"
     rv = client.post(
         "/settings/",
         data={"default_target": "web-*", "page_size": "10"},
@@ -122,15 +122,32 @@ def test_schedule_controls_have_visible_associated_labels(client):
             attributes = dict(attrs)
             if tag == "label" and attributes.get("for"):
                 self.labels.add(attributes["for"])
+            if attributes.get("type") == "hidden":
+                return
             if tag in ("input", "select") and attributes.get("name") in (
-                "minion", "name", "function", "value", "unit", "enabled"
+                "minion",
+                "name",
+                "function",
+                "value",
+                "unit",
+                "enabled",
             ):
                 self.controls[attributes["name"]] = attributes.get("id")
 
     parser = Labels()
     parser.feed(client.get("/schedules/").data.decode())
-    assert set(parser.controls) == {"minion", "name", "function", "value", "unit", "enabled"}
-    assert all(control_id and control_id in parser.labels for control_id in parser.controls.values())
+    assert set(parser.controls) == {
+        "minion",
+        "name",
+        "function",
+        "value",
+        "unit",
+        "enabled",
+    }
+    assert all(
+        control_id and control_id in parser.labels
+        for control_id in parser.controls.values()
+    )
 
 
 def test_settings_invalid_options_fall_back_to_default(client):
@@ -140,7 +157,7 @@ def test_settings_invalid_options_fall_back_to_default(client):
     )
     assert rv.status_code == 302
     with client.app.app_context():
-        assert get_setting("page_size") == "25"
+        assert get_setting("page_size") == "50"
 
 
 def test_settings_page_read_only_for_viewers(client):

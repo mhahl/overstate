@@ -196,6 +196,22 @@ def test_minion_tab_falls_back_to_combined_summary():
     assert "CVE-2026-0000" in html  # top list from summary fallback
 
 
+def test_minion_tab_findings_paginate_with_size_dropdown():
+    html = (
+        make_client()
+        .get("/minions/web-01", query_string={"tab": "vulns", "per_page": "10"})
+        .data.decode()
+    )
+    assert 'name="per_page"' in html
+    assert 'value="10" selected' in html
+    fallback = (
+        make_client()
+        .get("/minions/web-01", query_string={"tab": "vulns", "per_page": "999"})
+        .data.decode()
+    )
+    assert "CVE-2026-0000" in fallback
+
+
 def test_minion_tab_empty_state_without_data():
     html = make_client().get("/minions/web-09?tab=vulns").data.decode()
     assert "grype-cve-scan" in html
@@ -224,12 +240,10 @@ def test_minion_tab_has_no_cached_footer_note():
     assert "Findings stay cached" not in html
 
 
-def test_minion_tab_severity_badges_are_neutral():
+def test_minion_tab_severity_badges_carry_semantic_color():
     html = make_client().get("/minions/web-01?tab=vulns").data.decode()
-    assert "badge-neutral" in html
-    assert "badge-error" not in html
-    assert "badge-warning" not in html
-    assert "badge-info" not in html
+    assert "badge-error" in html  # CRITICAL
+    assert "badge-warning" in html  # HIGH
 
 
 def test_minion_tab_findings_table_not_nested_in_card():

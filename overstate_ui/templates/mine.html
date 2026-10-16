@@ -8,7 +8,7 @@
 <div class="alert alert-error alert-vertical sm:alert-horizontal mb-4" role="alert">
   <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
   <span>{{ error }}</span>
-  {% if tgt and fun %}<a class="btn btn-sm" href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir=direction) }}">Retry lookup</a>{% endif %}
+  {% if tgt and fun %}<a class="btn btn-sm" href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir=direction, per_page=per_page) }}">Retry lookup</a>{% endif %}
 </div>
 {% endif %}
 <section class="card card-border bg-base-100 min-w-0" aria-label="Mine lookup">
@@ -35,7 +35,7 @@
 {% if tgt and fun and not error %}
 {% if entries %}
 <div class="max-w-full overflow-x-auto rounded-box">
-<table class="table table-sm table-pin-rows w-full"><thead><tr><th aria-sort="{{ direction }}"><a href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir='desc' if direction == 'asc' else 'asc') }}" class="inline-flex items-center gap-1 hover:underline">Minion {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}</a></th><th>Value</th></tr></thead><tbody>
+<table class="table table-sm table-pin-rows w-full"><thead><tr><th aria-sort="{{ direction }}"><a href="{{ url_for('mine.index', tgt=tgt, tgt_type=tgt_type, fun=fun, dir='desc' if direction == 'asc' else 'asc', per_page=per_page) }}" class="inline-flex items-center gap-1 hover:underline">Minion {% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}</a></th><th>Value</th></tr></thead><tbody>
 {% for mid, value in entries.items() %}
 <tr><td class="font-mono text-xs"><a class="link" href="{{ url_for('minions.detail', mid=mid) }}">{{ mid }}</a></td>
 <td class="font-mono text-xs break-all whitespace-pre-wrap">{{ value | tojson(indent=1) }}</td></tr>
@@ -45,7 +45,8 @@
 {% import "_macros.html" as m %}
 <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Mine pages">
   <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} minions</span>
-  {{ m.pagination_plain('mine.index', page, pages, {'tgt': tgt, 'tgt_type': tgt_type, 'fun': fun, 'dir': direction}, 'Mine pages') }}
+  {{ m.pagination_plain('mine.index', page, pages, {'tgt': tgt, 'tgt_type': tgt_type, 'fun': fun, 'dir': direction, 'per_page': per_page}, 'Mine pages') }}
+  {{ m.page_size_select('mine.index', per_page, {'tgt': tgt, 'tgt_type': tgt_type, 'fun': fun, 'dir': direction}) }}
 </nav>
 <p class="text-xs opacity-70 px-4 py-3 border-t border-base-300">Mine data stays cached: minions push it on their own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a> to update it.</p>
 {% else %}

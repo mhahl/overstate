@@ -46,7 +46,7 @@
   {% endfor %}
   <div class="max-w-full overflow-x-auto rounded-box">
     <table class="table table-sm table-pin-rows w-full">
-      <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q}) }}<th>Fingerprint</th><th>Pods</th>{% if ns.show_actions %}<th class="w-48 text-right">Action</th>{% endif %}</tr></thead>
+      <thead><tr>{{ m.sort_th_plain('keys.index', 'id', 'Minion', sort, direction, {'tab': tab, 'q': q, 'per_page': per_page}) }}<th>Fingerprint</th><th>Pods</th>{% if ns.show_actions %}<th class="w-48 text-right">Action</th>{% endif %}</tr></thead>
       <tbody>
       {% for row in rows %}
       <tr class="hover">
@@ -88,7 +88,8 @@
   {% if total %}
   <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Keys pages">
     <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}&ndash;{{ [page * per_page, total]|min }} of {{ total }} {{ tab }} keys</span>
-    {{ m.pagination_plain('keys.index', page, pages, {'tab': tab, 'q': q, 'sort': sort, 'dir': direction}, 'Key pages') }}
+    {{ m.pagination_plain('keys.index', page, pages, {'tab': tab, 'q': q, 'sort': sort, 'dir': direction, 'per_page': per_page}, 'Key pages') }}
+    {{ m.page_size_select('keys.index', per_page, {'tab': tab, 'q': q, 'sort': sort, 'dir': direction}) }}
   </div>
   {% endif %}
   </div>
