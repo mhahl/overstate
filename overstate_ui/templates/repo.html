@@ -34,7 +34,7 @@
 <p class="text-sm opacity-70 mb-2">Clones the states repo at the shared roots with <span class="font-mono text-xs">salt/</span> and <span class="font-mono text-xs">pillar/</span> beside each other. An existing <span class="font-mono text-xs">salt/</span> seed tree is replaced only after you confirm. <span class="font-mono text-xs">reactor/</span> is always kept.</p>
 {% if replace_pending %}
 <div class="alert alert-warning mb-2" role="note"><span>Replacing the existing <span class="font-mono">salt/</span> tree with <span class="font-mono">{{ replace_pending.url }}</span>{% if replace_pending.branch %} (branch <span class="font-mono">{{ replace_pending.branch }}</span>){% endif %} will destroy: {{ replace_pending.files|join(", ") }}.</span></div>
-<form method="post" action="{{ url_for('files.repo_clone') }}" class="flex flex-wrap items-center gap-2">
+<form method="post" action="{{ url_for('state_repo.clone') }}" class="flex flex-wrap items-center gap-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="confirm" value="1">
   <input type="hidden" name="url" value="{{ replace_pending.url }}">
@@ -42,10 +42,10 @@
   <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
   <input type="password" name="token" class="input input-sm" autocomplete="off" aria-label="Token"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy the salt/ tree and clone?">Confirm replace and clone</button>
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('state_repo.index') }}">Cancel</a>
 </form>
 {% else %}
-<form method="post" action="{{ url_for('files.repo_clone') }}" class="flex flex-col gap-2 max-w-xl">
+<form method="post" action="{{ url_for('state_repo.clone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL (https or SSH)</legend>
   <input type="text" name="url" class="input input-sm" placeholder="https://git.example.com/salt/states.git" aria-label="Repo URL"></fieldset>
@@ -65,7 +65,7 @@
 <p class="text-sm opacity-70 mb-2">The shared roots are not empty, so plain clone refuses. Re-clone clears them first (keeping <span class="font-mono text-xs">reactor/</span>), then clones fresh.</p>
 {% if pending %}
 <div class="alert alert-warning mb-2" role="note"><span>This will destroy the current files and clone <span class="font-mono">{{ pending.url }}</span>{% if pending.branch %} (branch <span class="font-mono">{{ pending.branch }}</span>){% endif %}.</span></div>
-<form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-wrap items-center gap-2">
+<form method="post" action="{{ url_for('state_repo.reclone') }}" class="flex flex-wrap items-center gap-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="confirm" value="1">
   <input type="hidden" name="url" value="{{ pending.url }}">
@@ -73,10 +73,10 @@
   <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
   <input type="password" name="token" class="input input-sm" autocomplete="off" aria-label="Token for confirmed re-clone"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy these files and re-clone?">Confirm re-clone</button>
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('state_repo.index') }}">Cancel</a>
 </form>
 {% else %}
-<form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-col gap-2 max-w-xl">
+<form method="post" action="{{ url_for('state_repo.reclone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL</legend>
   <input type="text" name="url" class="input input-sm" aria-label="Repo URL"></fieldset>
@@ -95,7 +95,7 @@
 <div class="card-body">
 <h2 class="font-semibold">Repoint origin</h2>
 <p class="text-sm opacity-70 mb-2">Refuses on dirty trees and unpushed commits. Repointing under either orphans work onto the wrong remote.</p>
-<form method="post" action="{{ url_for('files.repo_set_remote') }}" class="flex flex-wrap items-end gap-2 max-w-xl">
+<form method="post" action="{{ url_for('state_repo.set_remote') }}" class="flex flex-wrap items-end gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset flex-1"><legend class="fieldset-legend">New origin URL</legend>
   <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm" aria-label="New origin URL"></fieldset>
@@ -110,15 +110,15 @@
 <p class="text-sm opacity-70 mb-2">Abandons tracked working-tree changes. Refuses on unpushed commits. Untracked files survive unless you select the box.</p>
 {% if preview %}
 <div class="alert alert-warning mb-2" role="note"><span>This will abandon: {% if preview.dirty %}{{ preview.dirty|join(", ") }}{% else %}nothing tracked{% endif %}{% if preview.behind %} · {{ preview.behind }} commit(s) behind {{ preview.upstream }}{% endif %}</span></div>
-<form method="post" action="{{ url_for('files.repo_reset') }}" class="flex flex-wrap items-center gap-2">
+<form method="post" action="{{ url_for('state_repo.reset') }}" class="flex flex-wrap items-center gap-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="confirm" value="1">
   <label class="label text-sm cursor-pointer gap-1"><input type="checkbox" name="clean" value="1" class="checkbox checkbox-sm"> also delete untracked files{% if preview.untracked %} ({{ preview.untracked|join(", ") }}){% endif %}</label>
   <button class="btn btn-sm btn-error" data-confirm="Abandon these changes?">Confirm reset</button>
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('state_repo.index') }}">Cancel</a>
 </form>
 {% else %}
-<form method="post" action="{{ url_for('files.repo_reset') }}">
+<form method="post" action="{{ url_for('state_repo.reset') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn btn-sm btn-outline">Preview reset…</button>
 </form>
@@ -132,7 +132,7 @@
 <p class="text-sm opacity-70 mb-2">Destroys the checkout and clones fresh. Use only for corrupt <code class="font-mono">.git</code>. Refuses on unpushed commits.</p>
 {% if pending %}
 <div class="alert alert-warning mb-2" role="note"><span>This will destroy the checkout and clone <span class="font-mono">{{ pending.url }}</span>{% if pending.branch %} (branch <span class="font-mono">{{ pending.branch }}</span>){% endif %}. Unpushed work blocks this step.</span></div>
-<form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-wrap items-center gap-2">
+<form method="post" action="{{ url_for('state_repo.reclone') }}" class="flex flex-wrap items-center gap-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="confirm" value="1">
   <input type="hidden" name="url" value="{{ pending.url }}">
@@ -140,10 +140,10 @@
   <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
   <input type="password" name="token" class="input input-sm" autocomplete="off" aria-label="Token for re-clone"></fieldset>
   <button class="btn btn-sm btn-error" data-confirm="Destroy the checkout and re-clone?">Confirm re-clone</button>
-  <a class="btn btn-sm btn-ghost" href="{{ url_for('files.repo') }}">Cancel</a>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('state_repo.index') }}">Cancel</a>
 </form>
 {% else %}
-<form method="post" action="{{ url_for('files.repo_reclone') }}" class="flex flex-col gap-2 max-w-xl">
+<form method="post" action="{{ url_for('state_repo.reclone') }}" class="flex flex-col gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL</legend>
   <input type="text" name="url" value="{{ origin or '' }}" class="input input-sm" aria-label="Repo URL"></fieldset>
@@ -162,13 +162,13 @@
 <h2 class="font-semibold">Push credentials</h2>
 <p class="text-sm opacity-70 mb-2">One token slot, stored 0600 at the shared roots outside the browsed salt/ tree. {% if token_configured %}Configured.{% else %}Empty.{% endif %}</p>
 <div class="flex flex-wrap gap-2">
-<form method="post" action="{{ url_for('files.repo_token_save') }}" class="flex flex-wrap items-end gap-2">
+<form method="post" action="{{ url_for('state_repo.token_save') }}" class="flex flex-wrap items-end gap-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Token for the current origin host</legend>
   <input type="password" name="token" class="input input-sm" autocomplete="off" aria-label="Token for push credentials"></fieldset>
   <button class="btn btn-sm mb-1">Save token</button>
 </form>
-<form method="post" action="{{ url_for('files.repo_token_clear') }}">
+<form method="post" action="{{ url_for('state_repo.token_clear') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn btn-sm btn-ghost" data-confirm="Forget the stored token?">Clear</button>
 </form>

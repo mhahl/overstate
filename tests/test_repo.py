@@ -13,8 +13,8 @@ import subprocess
 
 import pytest
 
-import overstate_ui.files as files_mod
 import overstate_ui.git_sync as gs
+import overstate_ui.state_repo as sr_mod
 from overstate_ui import auth as authmod
 from overstate_ui import create_app
 from overstate_ui.auth import seed_admin
@@ -287,7 +287,7 @@ def web_client(tmp_path, monkeypatch):
         session.commit()
     client = app.test_client()
     client.post("/login", data={"username": "admin", "password": "pw"})
-    monkeypatch.setattr(files_mod, "_refresh_fileserver", lambda: None)
+    monkeypatch.setattr(sr_mod, "_refresh_fileserver", lambda: None)
     return app, client, roots
 
 
@@ -303,17 +303,17 @@ def _actions(app):
 
 def test_repo_view_offers_clone_when_empty(web_client):
     _, client, _roots = web_client
-    rv = client.get("/files/repo", follow_redirects=True)
+    rv = client.get("/settings/repo/", follow_redirects=True)
     assert rv.status_code == 200
     assert b"Clone" in rv.data
-    assert b'aria-label="File page sections"' in rv.data
-    assert b'href="/files/?tab=files"' in rv.data
+    assert b'aria-label="Settings sections"' in rv.data
+    assert b"State repo" in rv.data
 
 
 def test_repo_clone_refuses_non_allowlisted_url(web_client):
     app, client, _roots = web_client
     rv = client.post(
-        "/files/repo/clone",
+        "/settings/repo/clone",
         data={"url": "file:///etc/passwd"},
         follow_redirects=True,
     )
@@ -324,9 +324,9 @@ def test_repo_clone_refuses_non_allowlisted_url(web_client):
 
 def test_repo_clone_success_audited(web_client, monkeypatch):
     app, client, _roots = web_client
-    monkeypatch.setattr(files_mod, "clone_repo", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(sr_mod, "clone_repo", lambda *a, **k: {"ok": True})
     rv = client.post(
-        "/files/repo/clone",
+        "/settings/repo/clone",
         data={"url": "https://git.example.com/s.git"},
     )
     assert rv.status_code == 302
@@ -336,9 +336,9 @@ def test_repo_clone_success_audited(web_client, monkeypatch):
 def test_repo_admin_only(web_client):
     _, client, _roots = web_client
     _login_as(client, "op")
-    assert client.get("/files/repo").status_code == 403
-    assert client.post("/files/repo/clone").status_code == 403
-    assert client.get("/files/repo/clone").status_code == 405
+    assert client.get("/settings/repo/").status_code == 403
+    assert client.post("/settings/repo/clone").status_code == 403
+    assert client.get("/settings/repo/clone").status_code == 405
 
 
 @needs_git
@@ -348,11 +348,11 @@ def test_repo_reset_preview_then_confirm(web_client, tmp_path):
     _seed(bare, tmp_path)
     subprocess.run(["git", "clone", "-q", str(bare), str(roots)], check=True)
     (roots / "top.sls").write_text("# vandalized\n")
-    preview = client.post("/files/repo/reset")
+    preview = client.post("/settings/repo/reset")
     assert preview.status_code == 200
     assert b"top.sls" in preview.data
     assert (roots / "top.sls").read_text() == "# vandalized\n"
-    done = client.post("/files/repo/reset", data={"confirm": "1"})
+    done = client.post("/settings/repo/reset", data={"confirm": "1"})
     assert done.status_code == 302
     assert (roots / "top.sls").read_text() == "# seed\n"
     assert "git-reset" in _actions(app)
@@ -366,7 +366,7 @@ def test_repo_reclone_preview_names_destruction(web_client, tmp_path):
     subprocess.run(["git", "clone", "-q", str(bare), str(roots)], check=True)
     (roots / "scratch.sls").write_text("# scratch\n")
     preview = client.post(
-        "/files/repo/reclone",
+        "/settings/repo/reclone",
         data={"url": "https://git.example.com/s.git"},
     )
     assert preview.status_code == 200
@@ -376,9 +376,9 @@ def test_repo_reclone_preview_names_destruction(web_client, tmp_path):
 @needs_git
 def test_repo_reclone_confirm_audited(web_client, tmp_path, monkeypatch):
     app, client, _roots = web_client
-    monkeypatch.setattr(files_mod, "reclone_repo", lambda *a: {"ok": True})
+    monkeypatch.setattr(sr_mod, "reclone_repo", lambda *a: {"ok": True})
     rv = client.post(
-        "/files/repo/reclone",
+        "/settings/repo/reclone",
         data={
             "url": "https://git.example.com/s.git",
             "confirm": "1",
@@ -477,7 +477,7 @@ def test_repo_view_offers_reclone_when_roots_nonempty(web_client):
     _, client, roots = web_client
     roots.mkdir(parents=True)
     (roots / "stray.sls").write_text("# leftover\n")
-    rv = client.get("/files/repo", follow_redirects=True)
+    rv = client.get("/settings/repo/", follow_redirects=True)
     assert rv.status_code == 200
     assert b"Re-clone from scratch" in rv.data
     assert b"not empty" in rv.data
@@ -485,7 +485,7 @@ def test_repo_view_offers_reclone_when_roots_nonempty(web_client):
 
 def test_repo_view_hides_reclone_when_empty(web_client):
     _, client, _roots = web_client
-    rv = client.get("/files/repo", follow_redirects=True)
+    rv = client.get("/settings/repo/", follow_redirects=True)
     assert rv.status_code == 200
     assert b"Clone" in rv.data
     assert b"Re-clone from scratch" not in rv.data
@@ -498,7 +498,7 @@ def test_repo_clone_refusal_prefills_reclone(web_client):
     roots.parent.mkdir(parents=True)
     (roots.parent / "foreign.sls").write_text("# leftover\n")
     rv = client.post(
-        "/files/repo/clone",
+        "/settings/repo/clone",
         data={"url": "https://git.example.com/salt/states.git"},
     )
     assert rv.status_code == 200  # stays on the page, not a redirect loop
@@ -516,7 +516,7 @@ def test_repo_clone_seed_replace_needs_confirm(web_client):
     roots.mkdir(parents=True)
     (roots / "demo.sls").write_text("# seed\n")
     rv = client.post(
-        "/files/repo/clone",
+        "/settings/repo/clone",
         data={"url": "https://git.example.com/salt/states.git"},
     )
     assert rv.status_code == 200
@@ -533,7 +533,7 @@ def test_repo_page_shows_entry_points(web_client, tmp_path):
     _seed(bare, tmp_path, files=("salt/top.sls", "pillar/top.sls"))
     with app.app_context():
         assert gs._clone(f"file://{bare}", None)["ok"]
-    rv = client.get("/files/repo", follow_redirects=True)
+    rv = client.get("/settings/repo/", follow_redirects=True)
     assert rv.status_code == 200
     assert b"salt/top.sls" in rv.data
     assert b"pillar/top.sls" in rv.data

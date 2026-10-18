@@ -14,6 +14,7 @@ from . import (
     dashboard,
     events,
     files,
+    formulas,
     groups,
     jobs,
     keys,
@@ -24,6 +25,7 @@ from . import (
     reactor,
     schedules,
     settings,
+    state_repo,
     states,
     timefmt,
     users,
@@ -100,6 +102,8 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.register_blueprint(audit.bp)
     app.register_blueprint(users.bp)
     app.register_blueprint(files.bp)
+    app.register_blueprint(formulas.bp)
+    app.register_blueprint(state_repo.bp)
     app.register_blueprint(vulns.bp)
     app.register_blueprint(api.bp)
 

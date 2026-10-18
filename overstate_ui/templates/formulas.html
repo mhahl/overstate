@@ -1,17 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Formulas · Overstate{% endblock %}
+{% block content %}
 {% set may_edit = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.write')) %}
 {% set may_store_shared = (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
 {% set fsub_active = fsub|default("tracked") %}
 
 <div class="flex flex-col gap-4">
-  <div class="flex flex-wrap items-start gap-3">
-    <div class="me-auto">
-      <h2 class="card-title text-base">Formulas</h2>
-      <p class="text-sm text-base-content/70 mt-1">{{ formula_summary.tracked }} tracked · {{ formula_summary.present }} present · {{ formula_summary.missing }} missing · {{ formula_summary.untracked }} untracked</p>
+  <header class="flex flex-wrap items-end justify-between gap-3">
+    <div class="me-auto min-w-0">
+      <h1 class="text-2xl font-semibold tracking-tight">Formulas</h1>
+      <p class="text-sm text-base-content/70 mt-1">Vendored Salt formulas under the shared roots. Adding updates the working tree; push (on the Files page) sends it upstream.</p>
     </div>
-    {% if may_edit %}
-    <button class="btn btn-sm btn-primary" onclick="document.getElementById('formula-add').showModal()">Add formula</button>
-    {% endif %}
-  </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a class="btn btn-sm btn-ghost" href="{{ url_for('files.index') }}">
+        <span class="icon-[lucide--file-text] size-4" aria-hidden="true"></span>Browse files
+      </a>
+      {% if may_store_shared %}
+      <a class="btn btn-sm btn-ghost" href="{{ url_for('state_repo.index') }}">
+        <span class="icon-[lucide--git-branch] size-4" aria-hidden="true"></span>State repo
+      </a>
+      {% endif %}
+      <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }} tracked</span>
+    </div>
+  </header>
 
   {% if remove_pending %}
   <div class="alert alert-warning" role="note">
@@ -20,26 +31,31 @@
       <p class="font-medium">Remove '{{ remove_pending.name }}/' and untrack it?</p>
       <p class="text-sm mt-1">This deletes: {{ remove_pending.files[:12]|join(", ") }}{% if remove_pending.files|length > 12 %} and {{ remove_pending.files|length - 12 }} more{% endif %}{% if not remove_pending.files %}nothing on disk (row only){% endif %}. Push sends the removal upstream.</p>
       <div class="flex flex-wrap gap-2 mt-2">
-        <form method="post" action="{{ url_for('files.formulas_remove', name=remove_pending.name) }}" data-confirm="Delete this formula's files?">
+        <form method="post" action="{{ url_for('formulas.remove', name=remove_pending.name) }}" data-confirm="Delete this formula's files?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="confirm" value="1">
           <button class="btn btn-sm btn-error">Confirm remove</button>
         </form>
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', tab='formulas') }}">Cancel</a>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('formulas.index') }}">Cancel</a>
       </div>
     </div>
   </div>
   {% endif %}
 
-  <div role="tablist" class="tabs tabs-border" aria-label="Formula views">
-    <a role="tab" href="{{ url_for('files.index', tab='formulas', fsub='tracked') }}" class="tab{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
-    <a role="tab" href="{{ url_for('files.index', tab='formulas', fsub='untracked') }}" class="tab{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>Untracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
-  </div>
+  <section class="card card-border bg-base-100 min-w-0" aria-label="Formula views">
+    <div class="card-body gap-4">
+      <div class="flex flex-wrap items-start gap-3">
+        <div role="tablist" class="tabs tabs-border" aria-label="Formula views">
+          <a role="tab" href="{{ url_for('formulas.index', fsub='tracked') }}" class="tab{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
+          <a role="tab" href="{{ url_for('formulas.index', fsub='untracked') }}" class="tab{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>Untracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
+        </div>
+        {% if may_edit %}
+        <button class="btn btn-sm btn-primary ms-auto" onclick="document.getElementById('formula-add').showModal()">Add formula</button>
+        {% endif %}
+        <span class="w-full text-xs text-base-content/60">{% if formula_summary.missing %}{{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing on disk.{% endif %} {% if formula_summary.untracked %}{{ formula_summary.untracked }} untracked dir{% if formula_summary.untracked != 1 %}s{% endif %} on disk.{% endif %}</span>
+      </div>
 
-  {% if fsub_active == 'untracked' %}
-  <section class="card card-border bg-base-100 min-w-0" aria-label="Untracked formula directories">
-    <div class="card-body gap-3">
-      <h3 class="card-title text-base">Untracked on disk</h3>
+      {% if fsub_active == 'untracked' %}
       {% if untracked %}
       <ul class="list">
         {% for u in untracked %}
@@ -49,7 +65,7 @@
             <p class="text-xs text-base-content/60">{% if u.in_top %}in top.sls{% else %}not in top.sls{% endif %}</p>
           </div>
           {% if may_edit %}
-          <form method="post" action="{{ url_for('files.formulas_track') }}" class="flex flex-wrap items-end gap-1">
+          <form method="post" action="{{ url_for('formulas.track') }}" class="flex flex-wrap items-end gap-1">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="name" value="{{ u.name }}">
             <input type="text" name="url" class="input input-xs w-44" placeholder="source URL" aria-label="Source URL for {{ u.name }}" required>
@@ -63,12 +79,7 @@
       {% else %}
       <p class="text-sm text-base-content/70">Every <span class="font-mono">init.sls</span> directory is tracked.</p>
       {% endif %}
-      <p class="text-xs text-base-content/60">Push credentials: {% if token_configured %}<span class="badge badge-sm badge-outline badge-success">shared token stored</span>{% else %}<span class="badge badge-sm badge-outline">none — SSH keys or a one-time token</span>{% endif %}</p>
-    </div>
-  </section>
-  {% else %}
-  <section class="card card-border bg-base-100 min-w-0" aria-label="Tracked formulas">
-    <div class="card-body gap-4">
+      {% else %}
       {% if formulas %}
       <div class="max-w-full overflow-x-auto rounded-box border border-base-300">
         <table class="table table-sm w-full">
@@ -91,7 +102,7 @@
                 <div class="flex flex-wrap justify-end gap-1">
                   <a class="btn btn-xs btn-ghost" href="{{ url_for('jobs.new', tgt='*', tgt_type='glob', fun='state.apply', args=f.name) }}">Apply</a>
                   {% if may_edit %}
-                  <form method="post" action="{{ url_for('files.formulas_update', name=f.name) }}" class="inline-flex items-center gap-1">
+                  <form method="post" action="{{ url_for('formulas.update', name=f.name) }}" class="inline-flex items-center gap-1">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <select name="auth" class="select select-xs w-24" aria-label="Auth for {{ f.name }} update">
                       <option value="shared" selected>shared</option>
@@ -101,7 +112,7 @@
                     <input type="password" name="token" class="input input-xs w-24" autocomplete="off" placeholder="token" aria-label="Token for {{ f.name }} update">
                     <button class="btn btn-xs btn-outline" data-confirm="Update '{{ f.name }}' to the latest upstream commit?">Update</button>
                   </form>
-                  <form method="post" action="{{ url_for('files.formulas_remove', name=f.name) }}" class="inline">
+                  <form method="post" action="{{ url_for('formulas.remove', name=f.name) }}" class="inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button class="btn btn-xs btn-ghost text-error">Remove</button>
                   </form>
@@ -113,13 +124,13 @@
           </tbody>
         </table>
       </div>
-      <p class="text-xs text-base-content/60">Vendoring commits locally. Push (Updates in the rail, admin) sends it upstream. Saving never applies anything.</p>
+      <p class="text-xs text-base-content/60">Vendoring commits locally. Push (Files page, admin) sends it upstream. Saving never applies anything.</p>
       {% else %}
       <p class="text-sm text-base-content/70">No formulas tracked yet.{% if may_edit %} Add one above, or pick up a directory under Untracked.{% endif %}</p>
       {% endif %}
+      {% endif %}
     </div>
   </section>
-  {% endif %}
 </div>
 
 {% if may_edit %}
@@ -127,7 +138,7 @@
   <div class="modal-box max-w-xl">
     <h3 id="formula-add-title" class="font-bold text-lg">Add formula</h3>
     <p class="text-sm text-base-content/70 mt-1">Clones the formula repo and vendors it at <span class="font-mono">salt/&lt;name&gt;/</span> in one local commit. Push sends it upstream.</p>
-    <form method="post" action="{{ url_for('files.formulas_add') }}" class="flex flex-col gap-3 mt-4">
+    <form method="post" action="{{ url_for('formulas.add') }}" class="flex flex-col gap-3 mt-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <fieldset class="fieldset"><legend class="fieldset-legend">Name (salt/&lt;name&gt;/)</legend>
       <input type="text" name="name" class="input input-sm w-full font-mono" placeholder="nginx" aria-label="Formula name" required autocomplete="off"></fieldset>
@@ -155,3 +166,4 @@
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
 {% endif %}
+{% endblock %}

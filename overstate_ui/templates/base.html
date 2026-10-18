@@ -135,6 +135,11 @@
             <span class="icon-[lucide--file-text] size-4.5" aria-hidden="true"></span>
             Files</a></li>
           {% endif %}
+          {% if not rbac_scoped or can('file.read') %}
+          <li><a href="{{ url_for('formulas.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('formulas') }}"{% if request.endpoint and request.endpoint.startswith('formulas') %} aria-current="page"{% endif %}>
+            <span class="icon-[lucide--package] size-4.5" aria-hidden="true"></span>
+            Formulas</a></li>
+          {% endif %}
           {% if not rbac_scoped or can('reactor.read') %}
           <li><a href="{{ url_for('reactor.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('reactor') }}">
             <span class="icon-[lucide--workflow] size-4.5" aria-hidden="true"></span>
@@ -280,6 +285,7 @@
         ("Run job", "page", url_for('jobs.new')),
         ("States", "page", url_for('states.index')),
         ("Files", "page", url_for('files.index')),
+        ("Formulas", "page", url_for('formulas.index')),
         ("Reactor", "page", url_for('reactor.index')),
         ("Schedules", "page", url_for('schedules.index')),
         ("Events", "page", url_for('events.index')),

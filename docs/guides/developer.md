@@ -50,6 +50,10 @@ overstate_ui/        Flask package. One module per blueprint.
   files.py           File-roots browser: operator edit/save (one commit
                      per save) plus admin push; listing/view stay
                      viewer-visible.
+  formulas.py        Vendored Salt formulas: tracked/untracked page,
+                     add/update/remove with shared or one-time auth.
+  state_repo.py      State git source under Settings: clone, repoint,
+                     reset, re-clone, token slot (admin-only).
   git_sync.py        Checkout status, ff-only sync, single-file commit,
                      upstream push. Fixed git argv, no shell, bounded
                      timeouts, one-at-a-time lock, fixed failure words.

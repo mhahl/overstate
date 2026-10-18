@@ -387,7 +387,7 @@ def test_templates_have_balanced_tags():
         "/jobs/?tab=saved", "/jobs/hist-000", "/states/", "/pillar/",
         "/pillar/diff", "/schedules/", "/events/", "/audit/", "/users/",
         "/users/groups", "/settings/", "/settings/access", "/settings/rotation",
-        "/settings/sso", "/groups/", "/files/", "/files/?tab=repo", "/reactor/",
+        "/settings/sso", "/groups/", "/files/", "/settings/repo/", "/reactor/",
         "/mine/", "/console/", "/jobs/new", "/minions/onboard",
         "/vulnerabilities/",
     ]

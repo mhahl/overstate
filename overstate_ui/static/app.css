@@ -10,7 +10,6 @@
       "Courier New", monospace;
     --color-black: #000;
     --spacing: 0.25rem;
-    --container-xs: 20rem;
     --container-md: 28rem;
     --container-lg: 32rem;
     --container-xl: 36rem;
@@ -5802,19 +5801,6 @@
     mask-size: 100% 100%;
     --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cg fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'%3E%3Cpath d='M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z'/%3E%3Cpath d='m3.3 7l8.7 5l8.7-5M12 22V12'/%3E%3C/g%3E%3C/svg%3E");
   }
-  .icon-\[lucide--calendar-clock\] {
-    display: inline-block;
-    width: 1em;
-    height: 1em;
-    background-color: currentColor;
-    -webkit-mask-image: var(--svg);
-    mask-image: var(--svg);
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
-    -webkit-mask-size: 100% 100%;
-    mask-size: 100% 100%;
-    --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cg fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'%3E%3Cpath d='M16 14v2.2l1.6 1M16 2v3m5 2.338V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2.338M3 9h5.859M8 2v3'/%3E%3Ccircle cx='16' cy='16' r='6'/%3E%3C/g%3E%3C/svg%3E");
-  }
   .icon-\[lucide--chevron-left\] {
     display: inline-block;
     width: 1em;
@@ -7905,9 +7891,6 @@
   .font-mono {
     font-family: var(--font-mono);
   }
-  .font-sans {
-    font-family: var(--font-sans);
-  }
   .text-2xl {
     font-size: var(--text-2xl);
     line-height: var(--tw-leading, var(--text-2xl--line-height));
@@ -8607,9 +8590,6 @@
       clip-path: none;
       white-space: normal;
     }
-    .sm\:col-span-2 {
-      grid-column: span 2 / span 2;
-    }
     .sm\:col-span-3 {
       grid-column: span 3 / span 3;
     }
@@ -8794,17 +8774,8 @@
     .lg\:col-span-3 {
       grid-column: span 3 / span 3;
     }
-    .lg\:col-span-5 {
-      grid-column: span 5 / span 5;
-    }
-    .lg\:col-span-7 {
-      grid-column: span 7 / span 7;
-    }
     .lg\:col-span-9 {
       grid-column: span 9 / span 9;
-    }
-    .lg\:col-span-12 {
-      grid-column: span 12 / span 12;
     }
     .lg\:hidden {
       display: none;

@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-import overstate_ui.files as files_mod
+import overstate_ui.formulas as formulas_mod
 import overstate_ui.git_sync as gs
 from overstate_ui import auth as authmod
 from overstate_ui import create_app
@@ -62,7 +62,7 @@ def web_client(tmp_path, monkeypatch):
         session.commit()
     client = app.test_client()
     client.post("/login", data={"username": "admin", "password": "pw"})
-    monkeypatch.setattr(files_mod, "_refresh_fileserver", lambda: None)
+    monkeypatch.setattr(formulas_mod, "_refresh_fileserver", lambda: None)
     return app, client, roots
 
 
@@ -85,23 +85,22 @@ def test_validate_formula_name():
     assert not gs.validate_formula_name("_modules")["ok"]
 
 
-def test_formulas_tab_renders_empty(web_client):
+def test_formulas_page_renders(web_client):
     _, client, _roots = web_client
-    rv = client.get("/files/", query_string={"tab": "formulas"})
+    rv = client.get("/formulas/")
     assert rv.status_code == 200
     assert b"Formulas" in rv.data
     assert b"Add formula" in rv.data
 
 
-def test_files_rail_lists_sections_with_status(web_client):
+def test_files_page_links_to_formulas_and_state_repo(web_client):
     _, client, _roots = web_client
     html = client.get("/files/").data.decode()
-    assert 'aria-label="File page sections"' in html
-    for section in ("Browse", "Formulas", "Updates", "Repo settings"):
-        assert section in html
-    assert "menu-active" in html
-    assert 'href="/files/?tab=repo"' in html
-    assert 'href="/files/?tab=files"' in html
+    assert 'id="file-update-actions"' in html
+    assert 'aria-label="Checkout status and sync"' in html
+    assert 'href="/formulas/"' in html
+    assert 'href="/settings/repo/"' in html
+    assert 'href="/files/?tab=files"' not in html
 
 
 def test_formulas_subtabs_split_tracked_and_untracked(web_client):
@@ -114,14 +113,10 @@ def test_formulas_subtabs_split_tracked_and_untracked(web_client):
             Formula(name="nginx", url="https://git.example.com/n.git", branch=None)
         )
         get_session().commit()
-    tracked = client.get(
-        "/files/", query_string={"tab": "formulas", "fsub": "tracked"}
-    ).data.decode()
+    tracked = client.get("/formulas/", query_string={"fsub": "tracked"}).data.decode()
     assert "nginx/" in tracked
     assert "redis/" not in tracked
-    untracked = client.get(
-        "/files/", query_string={"tab": "formulas", "fsub": "untracked"}
-    ).data.decode()
+    untracked = client.get("/formulas/", query_string={"fsub": "untracked"}).data.decode()
     assert "redis/" in untracked
     assert 'aria-label="Formula views"' in untracked
 
@@ -130,7 +125,7 @@ def test_formulas_viewer_cannot_add(web_client):
     _, client, _roots = web_client
     _login_as(client, "vie")
     rv = client.post(
-        "/files/formulas/add",
+        "/formulas/add",
         data={"name": "nginx", "url": "https://git.example.com/n.git"},
     )
     assert rv.status_code == 403
@@ -145,9 +140,9 @@ def test_formulas_operator_can_add_with_stub(web_client, monkeypatch):
         (roots / name / "init.sls").write_text("# stub\n")
         return {"ok": True, "name": name, "sha": "abc123def456"}
 
-    monkeypatch.setattr(files_mod, "vendor_formula", fake_vendor)
+    monkeypatch.setattr(formulas_mod, "vendor_formula", fake_vendor)
     rv = client.post(
-        "/files/formulas/add",
+        "/formulas/add",
         data={
             "name": "nginx",
             "url": "https://git.example.com/n.git",
@@ -168,7 +163,7 @@ def test_formulas_add_refuses_bad_url(web_client):
     app, client, _roots = web_client
     _login_as(client, "op")
     rv = client.post(
-        "/files/formulas/add",
+        "/formulas/add",
         data={"name": "nginx", "url": "file:///etc/passwd"},
         follow_redirects=True,
     )
@@ -187,9 +182,9 @@ def test_formulas_add_never_echoes_token(web_client, monkeypatch):
         seen["auth"] = auth
         return {"ok": True, "name": name, "sha": "abc"}
 
-    monkeypatch.setattr(files_mod, "vendor_formula", fake_vendor)
+    monkeypatch.setattr(formulas_mod, "vendor_formula", fake_vendor)
     rv = client.post(
-        "/files/formulas/add",
+        "/formulas/add",
         data={
             "name": "nginx",
             "url": "https://git.example.com/n.git",
@@ -208,12 +203,10 @@ def test_formulas_track_untracked_dir(web_client):
     _login_as(client, "op")
     (roots / "redis").mkdir()
     (roots / "redis" / "init.sls").write_text("# redis\n")
-    rv = client.get(
-        "/files/", query_string={"tab": "formulas", "fsub": "untracked"}
-    )
+    rv = client.get("/formulas/", query_string={"fsub": "untracked"})
     assert b"redis/" in rv.data
     rv = client.post(
-        "/files/formulas/track",
+        "/formulas/track",
         data={"name": "redis", "url": "https://git.example.com/r.git"},
         follow_redirects=True,
     )
@@ -232,12 +225,12 @@ def test_formulas_update_with_stub(web_client, monkeypatch):
         )
         get_session().commit()
     monkeypatch.setattr(
-        files_mod,
+        formulas_mod,
         "update_formula",
         lambda *a, **k: {"ok": True, "name": "nginx", "sha": "deedbeef1234"},
     )
     rv = client.post(
-        "/files/formulas/update/nginx",
+        "/formulas/update/nginx",
         data={"auth": "shared"},
         follow_redirects=True,
     )
@@ -260,12 +253,12 @@ def test_formulas_remove_preview_then_confirm(web_client):
         "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "vendor",
         cwd=roots,
     )
-    preview = client.post("/files/formulas/remove/nginx")
+    preview = client.post("/formulas/remove/nginx")
     assert preview.status_code == 200
     assert b"Remove" in preview.data and b"init.sls" in preview.data
     assert (roots / "nginx").is_dir()  # preview destroys nothing
     done = client.post(
-        "/files/formulas/remove/nginx",
+        "/formulas/remove/nginx",
         data={"confirm": "1"},
         follow_redirects=True,
     )

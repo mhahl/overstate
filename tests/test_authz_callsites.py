@@ -223,7 +223,7 @@ def test_files_sync_needs_file_sync(env):
 
 def test_files_repo_needs_file_git(env):
     login_as(env, "teamop")
-    rv = env.post("/files/repo/clone", data={"remote": "https://example.invalid/r.git"})
+    rv = env.post("/settings/repo/clone", data={"remote": "https://example.invalid/r.git"})
     assert rv.status_code == 403
 
 

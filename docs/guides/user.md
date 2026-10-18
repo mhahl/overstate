@@ -322,13 +322,14 @@ that a whole role shares identical secrets.
 
 ## Files
 
-The Files page is a console with a section rail on the left: **Browse**
-for the file listing, **Formulas** for vendored formulas, **Updates**
-for sync and push, and **Repo settings** (admins) for the git source.
-Each rail entry carries a status dot and a count — top.sls presence,
-tracked formulas, behind commits — so the navigation itself reports
-checkout health. The file browser shows the Salt file roots the app
-was pointed at:
+The Files page is the file explorer and nothing else: a folder tree
+beside the listing, with a compact strip above showing the git
+checkout — branch, revision, clean or uncommitted state, ahead/behind —
+and the **Check updates**, **Sync now**, **Sync modules**, and
+**Push** (admin) actions. Vendored formulas have their own page
+(**Formulas**), and the git source (clone, repoint, reset, re-clone)
+lives under Settings → **State repo**. The file browser shows the Salt
+file roots the app was pointed at:
 top files and SLS content, rendered as text with line numbers. Search
 narrows the listing, directories group the rows, and long listings
 page. Files too large or not readable as text show an explainer card
@@ -395,7 +396,7 @@ like saving, it applies nothing.
 
 ### Formulas
 
-The **Formulas** section lists Salt formulas vendored under `salt/` —
+The **Formulas** page lists Salt formulas vendored under `salt/` —
 directories with an `init.sls` — under **Tracked** and **Untracked**
 tabs. Tracked rows show
 the source URL, the pinned upstream commit, whether the directory is

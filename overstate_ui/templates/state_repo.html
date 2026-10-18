@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}State repo · Overstate{% endblock %}
+{% block content %}
+<div>
+  <div class="flex flex-wrap items-end gap-3 mb-4">
+    <h1 class="text-2xl font-bold tracking-tight">State repo</h1>
+    <span class="badge badge-sm badge-outline">Git source</span>
+  </div>
+  <div class="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)] items-start">
+    <nav class="card card-border bg-base-100 lg:sticky lg:top-24" aria-label="Settings sections">
+      <div class="p-2">
+        <ul class="menu menu-sm gap-0.5">
+          <li class="menu-title">Overstate</li>
+          <li><a href="{{ url_for('settings.index') }}"><span class="icon-[lucide--sliders-horizontal] size-4" aria-hidden="true"></span>General</a></li>
+          <li><a href="{{ url_for('settings.sso') }}"><span class="icon-[lucide--fingerprint] size-4" aria-hidden="true"></span>Single sign-on</a></li>
+          <li><a href="{{ url_for('settings.access') }}"><span class="icon-[lucide--lock-keyhole] size-4" aria-hidden="true"></span>Access control</a></li>
+          <li><a href="{{ url_for('settings.rotation') }}"><span class="icon-[lucide--rotate-ccw] size-4" aria-hidden="true"></span>Rotation</a></li>
+          <li class="menu-title mt-2">Infrastructure</li>
+          <li><a href="{{ url_for('state_repo.index') }}" class="menu-active" aria-current="page"><span class="icon-[lucide--git-branch] size-4" aria-hidden="true"></span>State repo</a></li>
+          <li><a href="{{ url_for('masterconfig.index') }}"><span class="icon-[lucide--server] size-4" aria-hidden="true"></span>Master settings</a></li>
+        </ul>
+      </div>
+    </nav>
+    <div>
+      {% include "repo.html" %}
+    </div>
+  </div>
+</div>
+{% endblock %}

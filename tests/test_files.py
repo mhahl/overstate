@@ -129,21 +129,21 @@ def test_group_headers_and_top_hint(rooted, tmp_path):
     assert b"Entry point: maps minions to states" not in rv.data
 
 
-def test_repo_settings_keeps_files_navigation(rooted):
-    rv = rooted.get("/files/repo", follow_redirects=True)
+def test_state_repo_renders_for_admin(rooted):
+    rv = rooted.get("/settings/repo/")
     html = rv.data.decode()
     assert rv.status_code == 200
-    assert 'aria-label="File page sections"' in html
-    assert "Repo settings" in html
+    assert 'aria-label="Settings sections"' in html
+    assert "State repo" in html
     assert "Clone" in html
 
 
 def test_updates_actions_are_grouped_in_a_named_panel(rooted):
-    rv = rooted.get("/files/", query_string={"tab": "updates"})
+    rv = rooted.get("/files/")
     html = rv.data.decode()
     assert rv.status_code == 200
     assert 'id="file-update-actions"' in html
-    assert "Check for updates" in html
+    assert "Check updates" in html
     assert "Sync now" in html
 
 
@@ -547,11 +547,12 @@ def test_third_party_licenses_list_the_editor():
     assert "codemirror" in text.lower()
 
 
-def test_index_links_repo_settings_for_admin(rooted):
+def test_index_links_state_repo_and_formulas_for_admin(rooted):
     rv = rooted.get("/files/")
     assert rv.status_code == 200
-    assert b"Repo settings" in rv.data
-    assert b'href="/files/?tab=repo"' in rv.data
+    assert b"State repo" in rv.data
+    assert b'href="/settings/repo/"' in rv.data
+    assert b'href="/formulas/"' in rv.data
 
 
 def test_normalize_dir_cleans_prefix():
