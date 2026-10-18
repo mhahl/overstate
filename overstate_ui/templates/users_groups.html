@@ -12,11 +12,12 @@
     <div class="card-body gap-3">
       <div class="flex flex-wrap items-end gap-2">
         <h2 class="card-title text-base me-auto">Local groups</h2>
+        {% import "_macros.html" as m %}
         <form method="get" action="{{ url_for('users.groups') }}" role="search" aria-label="Filter groups" class="flex flex-wrap items-end gap-2">
-          {% import "_macros.html" as m %}
           {{ m.table_search_field("access-group-q", "q", q, "Group", "Filter groups…", "Filter groups") }}
           <button class="btn btn-sm btn-primary mb-1">Filter</button>
         </form>
+        {{ m.page_size_select('users.groups', per_page, {'q': q}) }}
       </div>
       {% for g in local_groups %}
       <div class="border border-base-300 rounded-lg p-3">
@@ -84,7 +85,6 @@
       <nav class="flex flex-wrap items-center gap-2 pt-1" aria-label="Group pages">
         <span class="text-sm text-base-content/70 me-auto">{% if total %}{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} groups{% else %}0 groups{% endif %}</span>
         {{ m.pagination_plain('users.groups', page, pages, {'q': q, 'per_page': per_page}, 'Group pages') }}
-        {{ m.page_size_select('users.groups', per_page, {'q': q}) }}
       </nav>
     </div>
   </section>

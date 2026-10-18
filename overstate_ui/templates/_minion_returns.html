@@ -1,6 +1,9 @@
 {% import "_macros.html" as m %}
 <div id="minion-returns">
   {% if data.returns %}
+  <div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-base-300">
+    {{ m.page_size_select('minions.detail', data.returns_per_page, {'mid': mid, 'tab': 'jobs', 'sort': sort, 'dir': direction}, action_params={'mid': mid}) }}
+  </div>
   <div class="max-w-full overflow-x-auto rounded-box min-h-56">
   <table class="table table-sm table-pin-rows w-full"><thead><tr>{{ m.sort_th('minions.detail', 'jid', 'JID', sort, direction, {'mid': mid, 'tab': 'jobs', 'per_page': data.returns_per_page}, '#minion-returns', false) }}{{ m.sort_th('minions.detail', 'status', 'Result', sort, direction, {'mid': mid, 'tab': 'jobs', 'per_page': data.returns_per_page}, '#minion-returns', false) }}</tr></thead><tbody>
     {% for r in data.returns %}
@@ -14,7 +17,6 @@
   </div>
   <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300">
     {{ m.pagination_hx('minions.detail', data.returns_page, data.returns_pages, {'mid': mid, 'tab': 'jobs', 'sort': sort, 'dir': direction, 'per_page': data.returns_per_page}, '#minion-returns', 'Minion job pages') }}
-    {{ m.page_size_select('minions.detail', data.returns_per_page, {'mid': mid, 'tab': 'jobs', 'sort': sort, 'dir': direction}, action_params={'mid': mid}) }}
   </div>
   {% else %}
   <div class="py-8 text-center">

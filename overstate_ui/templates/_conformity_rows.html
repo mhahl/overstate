@@ -1,6 +1,9 @@
 {% import "_macros.html" as macros %}
 <div id="conformity-table" class="min-w-0">
   {% if minions %}
+  <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+    {{ macros.page_size_select('states.index', per_page, {"status": status_filter, "q": q, "sort": sort, "dir": direction}) }}
+  </div>
   <div class="max-w-full overflow-x-auto rounded-box">
     <table class="table table-sm table-pin-rows w-full">
       <thead>
@@ -58,7 +61,6 @@
   <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300">
     <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} minions</span>
     {{ macros.pagination_hx('states.index', page, pages, {"status": status_filter, "q": q, "sort": sort, "dir": direction, "per_page": per_page}, '#conformity-table', 'Conformity pages') }}
-    {{ macros.page_size_select('states.index', per_page, {"status": status_filter, "q": q, "sort": sort, "dir": direction}) }}
   </div>
   {% else %}
   <div class="flex flex-col items-center gap-2 rounded-box border border-base-300 px-4 py-8 text-center">

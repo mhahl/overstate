@@ -11,7 +11,8 @@
   <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists" aria-pressed="false">Pause live updates</button>
 </div>
 <section class="card card-border bg-base-100 min-w-0" aria-label="Job lists">
-<form id="jobs-filter" method="get" action="{{ url_for('jobs.index') }}" hx-get="{{ url_for('jobs.index') }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" role="search" aria-label="Filter jobs" class="px-4 py-3 border-b border-base-300">
+<div class="flex flex-row flex-wrap items-end justify-end gap-2 px-4 py-3 border-b border-base-300">
+<form id="jobs-filter" method="get" action="{{ url_for('jobs.index') }}" hx-get="{{ url_for('jobs.index') }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" role="search" aria-label="Filter jobs">
   <input type="hidden" name="tab" value="{{ tab }}">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
@@ -22,6 +23,8 @@
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('jobs.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
+{{ m.page_size_select('jobs.index', per_page, {'tab': tab, 'q': q, 'sort': sort, 'dir': direction}) }}
+</div>
 {% include "_job_rows.html" %}
 </section>
 <script>

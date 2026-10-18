@@ -265,6 +265,7 @@
     {% if data.vuln_partial %}
     <div class="alert alert-warning text-sm" role="status">This minion has not published the full report yet.</div>
     {% endif %}
+    <div class="flex flex-wrap items-end gap-2">
     <form method="get" action="{{ url_for('minions.detail', mid=mid) }}" class="flex flex-wrap items-end gap-2">
       <input type="hidden" name="tab" value="vulns">
       <fieldset class="fieldset">
@@ -273,6 +274,8 @@
       </fieldset>
       <button class="btn btn-sm btn-primary mb-1">Search</button>
     </form>
+    {{ m.page_size_select('minions.detail', data.vuln_per_page, {'mid': mid, 'tab': 'vulns', 'sort': data.vuln_sort, 'dir': data.vuln_dir, 'q': data.vuln_q}, action_params={'mid': mid}) }}
+    </div>
     {% if data.vuln_findings %}
     <div class="max-w-full overflow-x-auto rounded-box border border-base-300 min-h-56">
         <table class="table table-sm table-pin-rows w-full"><thead><tr><th aria-sort="{{ data.vuln_dir if data.vuln_sort == 'cve' else 'none' }}"><a href="{{ url_for('minions.detail', mid=mid, tab='vulns', sort='cve', dir='desc' if data.vuln_sort != 'cve' or data.vuln_dir == 'asc' else 'asc', q=data.vuln_q) }}" class="inline-flex items-center gap-1 hover:underline">CVE{% if data.vuln_sort == 'cve' %} {% if data.vuln_dir == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th><th aria-sort="{{ data.vuln_dir if data.vuln_sort == 'pkg' else 'none' }}"><a href="{{ url_for('minions.detail', mid=mid, tab='vulns', sort='pkg', dir='desc' if data.vuln_sort != 'pkg' or data.vuln_dir == 'asc' else 'asc', q=data.vuln_q) }}" class="inline-flex items-center gap-1 hover:underline">Package{% if data.vuln_sort == 'pkg' %} {% if data.vuln_dir == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th><th>Installed</th><th aria-sort="{{ data.vuln_dir if data.vuln_sort == 'fixed' else 'none' }}"><a href="{{ url_for('minions.detail', mid=mid, tab='vulns', sort='fixed', dir='desc' if data.vuln_sort != 'fixed' or data.vuln_dir == 'asc' else 'asc', q=data.vuln_q) }}" class="inline-flex items-center gap-1 hover:underline">Fixed{% if data.vuln_sort == 'fixed' %} {% if data.vuln_dir == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th><th aria-sort="{{ data.vuln_dir if data.vuln_sort == 'severity' else 'none' }}"><a href="{{ url_for('minions.detail', mid=mid, tab='vulns', sort='severity', dir='desc' if data.vuln_sort != 'severity' or data.vuln_dir == 'asc' else 'asc', q=data.vuln_q) }}" class="inline-flex items-center gap-1 hover:underline">Severity{% if data.vuln_sort == 'severity' %} {% if data.vuln_dir == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th><th>Namespace</th><th>References</th></tr></thead><tbody>
@@ -290,7 +293,6 @@
     <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Finding pages">
       <span class="text-sm text-base-content/70 me-auto">{{ (data.vuln_page - 1) * data.vuln_per_page + 1 }}–{{ [data.vuln_page * data.vuln_per_page, data.vuln_total]|min }} of {{ data.vuln_total }} findings</span>
       {{ m.pagination_plain('minions.detail', data.vuln_page, data.vuln_pages, {'mid': mid, 'tab': 'vulns', 'sort': data.vuln_sort, 'dir': data.vuln_dir, 'q': data.vuln_q, 'per_page': data.vuln_per_page}, 'Finding pages') }}
-      {{ m.page_size_select('minions.detail', data.vuln_per_page, {'mid': mid, 'tab': 'vulns', 'sort': data.vuln_sort, 'dir': data.vuln_dir, 'q': data.vuln_q}, action_params={'mid': mid}) }}
     </nav>
     {% elif data.vuln_q %}
     <div class="py-8 text-center">

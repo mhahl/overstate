@@ -6,10 +6,10 @@
 </div>
 {% import "_macros.html" as m %}
 <section class="card card-border bg-base-100 min-w-0" aria-label="Audit entries">
-  <form method="get" action="{{ url_for('audit.index') }}" class="border-b border-base-300 px-4 py-3" role="search" aria-label="Audit filters">
+  <div class="border-b border-base-300 px-4 py-3 flex flex-wrap items-end justify-end gap-2">
+  <form method="get" action="{{ url_for('audit.index') }}" role="search" aria-label="Audit filters" class="flex flex-row flex-wrap items-end justify-end gap-2">
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
-    <div class="flex flex-row flex-wrap items-end justify-end gap-2">
       {{ m.table_search_field("audit-user-search", "user", user, "User", "Search user…", "User") }}
       {{ m.table_search_field("audit-action-search", "action", action, "Action", "Search action…", "Action") }}
       <fieldset class="fieldset">
@@ -23,8 +23,9 @@
       {{ m.table_search_field("audit-permission-search", "permission", permission, "Permission", "Search permission…", "Permission") }}
       <button class="btn btn-sm btn-primary mb-1">Filter</button>
       {% if user or action or outcome or permission %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('audit.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
-    </div>
   </form>
+      {{ m.page_size_select('audit.index', per_page, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'sort': sort, 'dir': direction}) }}
+  </div>
   <div class="card-body p-0">
     <div class="max-w-full overflow-x-auto rounded-box">
       <table class="table table-sm table-pin-rows w-full">
@@ -49,7 +50,6 @@
     {% if pages > 1 %}
     <div class="px-4 py-3 border-t border-base-300">
     {{ m.pagination_plain('audit.index', page, pages, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'sort': sort, 'dir': direction, 'per_page': per_page}, 'Audit pages') }}
-    {{ m.page_size_select('audit.index', per_page, {'user': user, 'action': action, 'outcome': outcome, 'permission': permission, 'sort': sort, 'dir': direction}) }}
     </div>
     {% endif %}
   </div>

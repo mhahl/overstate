@@ -31,7 +31,8 @@
 <div class="alert alert-info mb-4" role="status"><span>Live mapping from {{ pod_count }} master pod{{ "s" if pod_count != 1 }}. Restarts restore the <code>master.conf</code> <code>reactor:</code> stanza, so record mappings you want to keep there{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %} (<a class="link" href="{{ url_for('masterconfig.index') }}">Master Config</a>){% endif %}. <a class="link" href="{{ url_for('reactor.export') }}">Export</a> renders the stanza.</span></div>
 {% if rows %}
 <section class="card card-border bg-base-100" aria-label="Reactor mappings">
-<form method="get" action="{{ url_for('reactor.index') }}" class="border-b border-base-300 px-4 py-3" role="search" aria-label="Filter reactor mappings">
+<div class="border-b border-base-300 px-4 py-3 flex flex-wrap items-end justify-end gap-2">
+<form method="get" action="{{ url_for('reactor.index') }}" role="search" aria-label="Filter reactor mappings">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <div class="flex flex-row flex-wrap items-end justify-end gap-2">
@@ -40,6 +41,8 @@
     {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('reactor.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </div>
 </form>
+{{ m.page_size_select('reactor.index', per_page, {'q': q, 'sort': sort, 'dir': direction}) }}
+</div>
 <div class="overflow-x-auto rounded-box">
  <table class="table table-sm table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('reactor.index', 'event', 'Event', sort, direction, {'q': q, 'per_page': per_page}) }}{{ m.sort_th_plain('reactor.index', 'sls', 'SLS', sort, direction, {'q': q, 'per_page': per_page}) }}<th>Watch</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('reactor.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for r in rows %}
@@ -53,7 +56,6 @@
 <p class="text-sm opacity-70 px-4 py-3 border-t border-base-300">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} reactor{{ "s" if total != 1 }}{% if q %} matching "{{ q }}"{% endif %}.</p>
 <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Reactor pages">
   {{ m.pagination_plain('reactor.index', page, pages, {'q': q, 'sort': sort, 'dir': direction, 'per_page': per_page}, 'Reactor pages') }}
-  {{ m.page_size_select('reactor.index', per_page, {'q': q, 'sort': sort, 'dir': direction}) }}
 </nav>
 </section>
 {% elif raw %}

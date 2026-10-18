@@ -248,8 +248,11 @@ def test_htmx_errors_keep_last_good_fragment(client):
 
 def test_confirm_snapshots_form_before_close(client):
     html = client.get("/jobs/").data.decode()
-    assert html.index("pendingForm = null") < html.index("dialog.close()")
-    assert html.index("dialog.close()") < html.index("requestSubmit")
+    # Scoped to the confirm-dialog script: the page_size_select dropdown
+    # also emits requestSubmit (its own form), which appears earlier.
+    script = html[html.index("pendingForm = null") :]
+    assert "pendingForm = null" in script
+    assert script.index("dialog.close()") < script.index("requestSubmit")
 
 
 def test_loading_links_swallow_double_clicks(client):

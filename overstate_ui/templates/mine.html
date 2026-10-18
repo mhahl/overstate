@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Mine · Overstate{% endblock %}
 {% block content %}
+{% import "_macros.html" as m %}
 <div class="flex flex-wrap items-center gap-3 mb-4">
   <h1 class="text-2xl font-bold tracking-tight me-auto">Mine</h1>
 </div>
@@ -12,7 +13,8 @@
 </div>
 {% endif %}
 <section class="card card-border bg-base-100 min-w-0" aria-label="Mine lookup">
-<form method="get" role="search" class="flex flex-wrap items-end gap-2 px-3 py-2 border-b border-base-300" aria-label="Mine lookup filters">
+<div class="flex flex-wrap items-end gap-2 px-3 py-2 border-b border-base-300">
+<form method="get" role="search" class="flex flex-wrap items-end gap-2" aria-label="Mine lookup filters">
   <input type="hidden" name="dir" value="{{ direction }}">
   <fieldset class="fieldset w-full sm:w-auto">
     <label class="label" for="mine-target">Target</label>
@@ -32,6 +34,8 @@
   </fieldset>
   <button class="btn btn-sm btn-primary">Look up</button>
 </form>
+{{ m.page_size_select('mine.index', per_page, {'tgt': tgt, 'tgt_type': tgt_type, 'fun': fun, 'dir': direction}) }}
+</div>
 {% if tgt and fun and not error %}
 {% if entries %}
 <div class="max-w-full overflow-x-auto rounded-box">
@@ -42,11 +46,9 @@
 {% endfor %}
 </tbody></table>
 </div>
-{% import "_macros.html" as m %}
 <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Mine pages">
   <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} minions</span>
   {{ m.pagination_plain('mine.index', page, pages, {'tgt': tgt, 'tgt_type': tgt_type, 'fun': fun, 'dir': direction, 'per_page': per_page}, 'Mine pages') }}
-  {{ m.page_size_select('mine.index', per_page, {'tgt': tgt, 'tgt_type': tgt_type, 'fun': fun, 'dir': direction}) }}
 </nav>
 <p class="text-xs opacity-70 px-4 py-3 border-t border-base-300">Mine data stays cached: minions push it on their own schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a> to update it.</p>
 {% else %}

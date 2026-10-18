@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Schedules · Overstate{% endblock %}
 {% block content %}
+{% import "_macros.html" as m %}
 <div class="flex flex-wrap items-end gap-3 mb-4">
   <div class="me-auto">
     <h1 class="text-2xl font-bold tracking-tight">Schedules</h1>
@@ -39,11 +40,11 @@
 </form>
 {% endif %}
 <section class="card card-border bg-base-100 min-w-0" aria-label="Minion schedules">
-<form method="get" class="px-3 py-2 border-b border-base-300" role="search" aria-label="Select minion">
+<div class="px-3 py-2 border-b border-base-300 flex flex-wrap items-end gap-2">
+<form method="get" role="search" aria-label="Select minion" class="flex flex-row flex-wrap items-end gap-2">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   <input type="hidden" name="per_page" value="{{ per_page }}">
-  <div class="flex flex-row flex-wrap items-end gap-2">
     <fieldset class="fieldset">
       <label class="label" for="schedule-minion">Minion</label>
       <select id="schedule-minion" name="minion" class="select select-sm" onchange="this.form.submit()">
@@ -57,8 +58,9 @@
       <input id="schedule-q" type="search" name="q" value="{{ q }}" placeholder="Job or function…" autocomplete="off" class="input input-sm">
     </fieldset>
     <button class="btn btn-sm btn-primary mb-1">Filter</button>
-  </div>
 </form>
+{{ m.page_size_select('schedules.index', per_page, {'minion': mid, 'q': q, 'sort': sort, 'dir': direction}) }}
+</div>
 {% if error %}
 <div class="alert alert-error mx-4 mt-3" role="alert">
   <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
@@ -67,7 +69,6 @@
 {% endif %}
 {% if entries is mapping and entries %}
 <div class="overflow-x-auto rounded-box">
-{% import "_macros.html" as m %}
 <table class="table table-sm table-pin-rows w-full"><thead><tr>{{ m.sort_th_plain('schedules.index', 'name', 'Job', sort, direction, {'minion': mid, 'q': q, 'per_page': per_page}) }}{{ m.sort_th_plain('schedules.index', 'function', 'Function', sort, direction, {'minion': mid, 'q': q, 'per_page': per_page}) }}<th>When</th><th>Enabled</th>{% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}<th class="text-right"></th>{% endif %}</tr></thead><tbody>
 {% for name, job in entries.items() %}
 <tr><td class="font-mono text-xs">{{ name }}</td>
@@ -85,7 +86,6 @@
 <nav class="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-base-300" aria-label="Schedule pages">
   <span class="text-sm text-base-content/70 me-auto">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} schedules{% if q %} matching “{{ q }}”{% endif %}</span>
   {{ m.pagination_plain('schedules.index', page, pages, {'minion': mid, 'q': q, 'sort': sort, 'dir': direction, 'per_page': per_page}, 'Schedule pages') }}
-  {{ m.page_size_select('schedules.index', per_page, {'minion': mid, 'q': q, 'sort': sort, 'dir': direction}) }}
 </nav>
 {% elif raw %}
 <div class="p-4"><pre class="mockup-code text-xs overflow-x-auto border border-base-300"><code>{{ raw }}</code></pre></div>

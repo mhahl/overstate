@@ -22,15 +22,16 @@
 
 {% import "_macros.html" as m %}
 <section id="groups-directory" class="card card-border bg-base-100" aria-labelledby="groups-directory-title">
-  <form id="groups-filter" method="get" action="{{ url_for('groups.index') }}" class="border-b border-base-300 px-4 py-3" role="search" aria-label="Search groups">
+  <div class="border-b border-base-300 px-4 py-3 flex flex-wrap items-end justify-end gap-2">
+  <form id="groups-filter" method="get" action="{{ url_for('groups.index') }}" role="search" aria-label="Search groups" class="flex flex-wrap items-end justify-end gap-2">
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
-    <div class="flex flex-wrap items-end justify-end gap-2">
       {{ m.table_search_field("groups-search", "q", q, "Find a group", "Group name or minion ID", "Search group names and member IDs") }}
       <button class="btn btn-sm btn-outline mb-0.5">Filter groups</button>
       {% if q %}<a class="btn btn-sm btn-ghost mb-0.5" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear search</a>{% endif %}
-    </div>
   </form>
+  {{ m.page_size_select('groups.index', per_page, {'q': q, 'sort': sort, 'dir': direction}) }}
+  </div>
   <div class="flex flex-wrap items-center gap-3 px-4 py-4 border-b border-base-300">
     <div class="me-auto">
       <h2 id="groups-directory-title" class="font-semibold">Fleet group directory</h2>
@@ -108,7 +109,6 @@
   <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-t border-base-300">
     <span class="text-sm text-base-content/70 me-auto">{% if total %}{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} groups{% else %}0 groups{% endif %}</span>
     {{ m.pagination_plain('groups.index', page, pages, {'q': q, 'per_page': per_page, 'sort': sort, 'dir': direction}, 'Group pages') }}
-    {{ m.page_size_select('groups.index', per_page, {'q': q, 'sort': sort, 'dir': direction}) }}
   </div>
 </section>
 
