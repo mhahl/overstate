@@ -201,6 +201,24 @@ def test_history_per_page_param_with_size_dropdown(client):
     assert 'value="10" selected' in html
 
 
+def test_history_sort_headers_target_jobs_region(client):
+    """Sort headers must swap the whole region, not themselves.
+
+    sort_th without a target renders hx-target="", and htmx then swaps
+    the region fragment into the clicked link — collapsing the table.
+    """
+    import re
+
+    html = client.get("/jobs/?tab=history").data.decode()
+    for label in ("JID", "Function", "User", "Started"):
+        targets = set(
+            re.findall(r'hx-target="([^"]*)"[^>]*>' + label, html)
+        )
+        assert targets, label
+        assert targets == {"#jobs-region"}, (label, targets)
+    assert 'hx-target=""' not in html
+
+
 def test_minion_returns_paginate_with_size_dropdown(client):
     from overstate_ui.models import JobReturn
 
