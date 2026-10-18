@@ -71,9 +71,15 @@
           <form method="post" action="{{ url_for('formulas.track') }}" class="flex flex-wrap items-end gap-1">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="name" value="{{ u.name }}">
+            {% if u.in_git %}
+            <input type="text" name="url" class="input input-xs w-44" placeholder="source URL" aria-label="Source URL for {{ u.name }}" required disabled>
+            <input type="text" name="branch" class="input input-xs w-24" placeholder="ref" aria-label="Ref for {{ u.name }}" disabled>
+            <button class="btn btn-xs btn-outline" disabled title="Source is the states repo; tracking is not needed.">Track</button>
+            {% else %}
             <input type="text" name="url" class="input input-xs w-44" placeholder="source URL" aria-label="Source URL for {{ u.name }}" required>
             <input type="text" name="branch" class="input input-xs w-24" placeholder="ref" aria-label="Ref for {{ u.name }}">
             <button class="btn btn-xs btn-outline">Track</button>
+            {% endif %}
           </form>
           {% endif %}
         </li>

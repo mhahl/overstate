@@ -303,6 +303,28 @@ def test_untracked_tab_labels_git_origin(web_client):
     assert "fromrepo/" in html
     assert "not committed yet" in html
     assert "stray/" in html
+    # in-repo formula: URL/ref/track disabled; stray dir: enabled
+    assert 'aria-label="Source URL for fromrepo" required disabled' in html
+    assert '>Track</button>' in html.replace(' disabled title="Source is the states repo; tracking is not needed.">Track</button>', ">Track</button>")
+    assert 'aria-label="Source URL for stray" required>' in html
+
+
+def test_track_refuses_from_repo_formula(web_client):
+    app, client, roots = web_client
+    _login_as(client, "op")
+    (roots / "fromrepo").mkdir()
+    (roots / "fromrepo" / "init.sls").write_text("# f\n")
+    _git("add", "-A", cwd=roots)
+    _git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fromrepo", cwd=roots)
+    rv = client.post(
+        "/formulas/track",
+        data={"name": "fromrepo", "url": "https://git.example.com/f.git"},
+        follow_redirects=True,
+    )
+    assert b"comes from the states repo" in rv.data
+    with app.app_context():
+        assert get_session().query(Formula).filter_by(name="fromrepo").first() is None
+    assert "formula-track-refused:fromrepo:from-repo" in _actions(app)
 
 
 @needs_git

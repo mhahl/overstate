@@ -258,6 +258,16 @@ def track():
     if slug["name"] not in {d["name"] for d in list_formula_dirs()}:
         flash(f"Track refused: '{slug['name']}/' is not installed.", "error")
         return redirect(url_for("formulas.index"))
+    if formula_committed(slug["name"]):
+        # Committed in the states repo: the source is the repo itself, so
+        # there is no external URL/ref to track. Mirror the disabled UI
+        # server-side so a forged POST cannot register it anyway.
+        flash(
+            f"Track refused: '{slug['name']}/' comes from the states repo.",
+            "error",
+        )
+        log_event(current_user.username, f"formula-track-refused:{slug['name']}:from-repo")
+        return redirect(url_for("formulas.index"))
     session.add(
         Formula(
             name=slug["name"],
