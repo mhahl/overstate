@@ -146,7 +146,7 @@ def test_sync_diverged_refuses_and_changes_nothing(tmp_path):
     with c.app.app_context():
         result = git_sync_now()
     assert result["ok"] is False
-    assert "reason" in result
+    assert result["reason"] == "branches have diverged"
     assert not (mine / "b.sls").is_file()  # nothing forced in
 
 
@@ -474,3 +474,16 @@ def test_git_failure_reason_never_carries_remote_secrets():
 
     assert _failure(Proc(), "git fetch failed") == "git fetch failed"
     assert "s3cr3t-token" not in _failure(Proc(), "git fetch failed")
+
+
+def test_git_failure_maps_fast_forward_refusal_to_diverged():
+    """`pull --ff-only` on a diverged checkout says 'Not possible to
+    fast-forward' — that must read as diverged, not a generic refusal."""
+    from overstate_ui.git_sync import _failure
+
+    class Proc:
+        stderr = "fatal: Not possible to fast-forward, aborting.\n"
+        stdout = ""
+        returncode = 128
+
+    assert _failure(Proc(), "git pull refused") == "branches have diverged"

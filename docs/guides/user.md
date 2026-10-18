@@ -357,12 +357,18 @@ fileserver so applies see the new states at once; if that refresh
 fails you get a warning, never a failed sync. Sync is fast-forward
 only: a diverged checkout or an uncommitted tree refuses with the git
 reason and changes nothing, and every attempt lands in the audit
-trail. If the page says the path is not a checkout, sync is
+trail. Diverged means ahead *and* behind at once (for example a local
+vendor commit plus new upstream work): neither Sync nor Push can fix
+it, and the app never merges or rebases for you. Resolve it in a
+shell on the checkout (`git fetch`, then `git rebase origin/main` or
+`git merge origin/main`), then Push and Sync from the UI as usual —
+or abandon the local commits via **Reset to upstream** under State
+repo. If the page says the path is not a checkout, sync is
 unavailable there; ask your admin.
 
 Local commits pile up as "ahead" on the status card. Admins get a
 **Push** button that sends them upstream: it refuses — never forces —
-on diverged branches (sync first), dirty trees, missing upstreams, or
+on diverged branches (merge or rebase outside the app first), dirty trees, missing upstreams, or
 missing push credentials, and every push or refusal is audited. Saving
 never applies anything to minions; the master serves the new states
 after its fileserver refresh, same as after a sync.

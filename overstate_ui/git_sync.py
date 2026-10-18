@@ -344,7 +344,12 @@ def _failure(proc: subprocess.CompletedProcess[str] | None, fallback: str) -> st
     lowered = raw.lower()
     if "not a git repository" in lowered:
         return "not a git checkout"
-    if "diverged" in lowered or "need to merge" in lowered:
+    if (
+        "diverged" in lowered
+        or "need to merge" in lowered
+        or "not possible to fast-forward" in lowered
+        or "cannot fast-forward" in lowered
+    ):
         return "branches have diverged"
     if (
         "local changes" in lowered
@@ -432,7 +437,10 @@ def _push_failure(proc: subprocess.CompletedProcess[str] | None) -> str:
     ):
         return "push credentials missing or rejected"
     if "fetch first" in lowered or "non-fast-forward" in lowered:
-        return "branches have diverged — sync first"
+        # A non-fast-forward push always means true divergence (local
+        # commits plus unseen upstream ones): sync can never fix it, so
+        # point at the shell instead of sending the operator in a loop.
+        return "branches have diverged — merge or rebase outside the app first"
     return "git push refused"
 
 
