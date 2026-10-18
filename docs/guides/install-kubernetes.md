@@ -101,7 +101,16 @@ kubectl apply -k deploy/kubernetes
 ```
 
 The kustomization pins the app/worker image tag (`images:`) — bump
-`newTag` per release and re-apply. The app Deployment resolves its
+`newTag` per release and re-apply. Build the image for `linux/amd64`
+explicitly — a native Apple-Silicon build produces arm64, which the
+cluster nodes cannot execute:
+
+```sh
+podman build --platform linux/amd64 -t quay.io/sigaint/overstate:<short-sha> -f Containerfile .
+podman push quay.io/sigaint/overstate:<short-sha>
+```
+
+The app Deployment resolves its
 database password from the CNPG-generated `overstate-db-app` secret;
 salt-api credentials come from `overstate-secrets`.
 

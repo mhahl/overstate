@@ -5,10 +5,21 @@
 set -eu
 try_migrate() {
   alembic upgrade head 2> /tmp/mig.log || {
-    # Databases created by create_all predate alembic bookkeeping: stamp
-    # the last table-creating revision, then upgrade applies later alters.
-    grep -q "already exists" /tmp/mig.log \
-      && alembic stamp 95ffc8849775 && alembic upgrade head
+    if grep -q "already exists" /tmp/mig.log \
+        && ! alembic current 2>/dev/null | grep -qE '^[0-9a-f]+'; then
+      # Version-less database created by create_all: its schema already
+      # matches head, so stamp it before upgrading. Never stamp a
+      # versioned database: replicas racing one migration also report
+      # "already exists", and stamping there rewinds version history and
+      # bricks later boots (2026-10-18: a stamp of 95ffc8849775 re-ran
+      # ADD role forever).
+      alembic stamp head && alembic upgrade head 2> /tmp/mig.log
+    else
+      # Versioned database, a different error, or a migration race:
+      # retry without stamping and let the winner advance the version.
+      sleep 2
+      alembic upgrade head 2> /tmp/mig.log
+    fi
   }
 }
 MIGRATED=""
