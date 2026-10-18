@@ -1,8 +1,8 @@
 """Tracked Salt formulas vendored under file roots, as their own page.
 
-DB rows are the index; ``salt/<name>/`` on disk plus git are truth.
-Operators vendor/update/remove (one local commit each); the Formauls
-push sends it upstream via the Files checkout. Secrets ride the shared
+DB rows are the index; ``salt/<name>/`` on disk plus the git-exclude
+file are truth.  Operators vendor/update/remove directly on disk
+without git commits. Secrets ride the shared
 0600 helper or an ephemeral per-clone token, never this module.
 """
 
@@ -224,7 +224,7 @@ def add():
     _note_refreshed("Vendored", result["name"])
     sha = (result.get("sha") or "")[:12] or "unknown"
     flash(
-        f"Vendored formula '{result['name']}' at {sha}. Push sends it upstream.",
+        f"Vendored formula '{result['name']}' at {sha}.",
         "success",
     )
     log_event(current_user.username, f"formula-add:{result['name']}:{sha}")
@@ -319,7 +319,7 @@ def update(name: str):
     )
     _note_refreshed("Updated", row.name)
     sha = (result.get("sha") or "")[:12] or "unknown"
-    flash(f"Updated formula '{row.name}' to {sha}. Push sends it upstream.", "success")
+    flash(f"Updated formula '{row.name}' to {sha}.", "success")
     log_event(current_user.username, f"formula-update:{row.name}:{sha}")
     return redirect(url_for("formulas.index"))
 
@@ -359,7 +359,7 @@ def remove(name: str):
     session.delete(row)
     session.commit()
     flash(
-        f"Removed formula '{slug['name']}'. Push sends the removal upstream.",
+        f"Removed formula '{slug['name']}'.",
         "success",
     )
     log_event(current_user.username, f"formula-remove:{slug['name']}")

@@ -27,7 +27,7 @@
     <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
     <div>
       <p class="font-medium">Remove '{{ remove_pending.name }}/' and untrack it?</p>
-      <p class="text-sm mt-1">This deletes: {{ remove_pending.files[:12]|join(", ") }}{% if remove_pending.files|length > 12 %} and {{ remove_pending.files|length - 12 }} more{% endif %}{% if not remove_pending.files %}nothing on disk (row only){% endif %}. Push sends the removal upstream.</p>
+      <p class="text-sm mt-1">This deletes: {{ remove_pending.files[:12]|join(", ") }}{% if remove_pending.files|length > 12 %} and {{ remove_pending.files|length - 12 }} more{% endif %}{% if not remove_pending.files %}nothing on disk (row only){% endif %}.</p>
       <div class="flex flex-wrap gap-2 mt-2">
         <form method="post" action="{{ url_for('formulas.remove', name=remove_pending.name) }}" data-confirm="Delete this formula's files?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -135,7 +135,7 @@
           </tbody>
         </table>
       </div>
-      <p class="text-xs text-base-content/60">Vendoring commits locally. Push (Files page, admin) sends it upstream. Saving never applies anything.</p>
+      <p class="text-xs text-base-content/60">Formulas live outside git (added to <span class="font-mono">.git/info/exclude</span>) so they never conflict with the states repo. The master and Files browser still see them.</p>
       {% else %}
       <p class="text-sm text-base-content/70">No formulas tracked yet.{% if may_edit %} Add one above, or pick up a directory under Untracked.{% endif %}</p>
       {% endif %}
@@ -148,7 +148,7 @@
 <dialog id="formula-add" class="modal" aria-labelledby="formula-add-title">
   <div class="modal-box max-w-xl">
     <h3 id="formula-add-title" class="font-bold text-lg">Add formula</h3>
-    <p class="text-sm text-base-content/70 mt-1">Clones the formula repo and vendors it at <span class="font-mono">salt/&lt;name&gt;/</span> in one local commit. Push sends it upstream.</p>
+    <p class="text-sm text-base-content/70 mt-1">Clones the formula repo and vendors it at <span class="font-mono">salt/&lt;name&gt;/</span>. From there it is visible to the master and the Files browser. Git ignores the directory so it never conflicts with the states repo.</p>
     <form method="post" action="{{ url_for('formulas.add') }}" class="flex flex-col gap-3 mt-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <fieldset class="fieldset"><legend class="fieldset-legend">Name (salt/&lt;name&gt;/)</legend>

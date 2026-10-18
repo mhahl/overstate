@@ -34,6 +34,7 @@ under roots to any logged-in user).
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import logging
 import os
 import re
@@ -1032,7 +1033,101 @@ def set_remote_origin(url: str) -> dict:
 
 # --- Formulas ----------------------------------------------------------
 
+_EXCLUDE_MARKER = "# overstate formulas"
 _FORMULA_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,127}$")
+
+
+def _exclude_file() -> Path:
+    """.git/info/exclude at the checkout root (the srv level)."""
+    return _srv() / ".git" / "info" / "exclude"
+
+
+def _read_excludes() -> list[str]:
+    """Lines from .git/info/exclude, or an empty list."""
+    try:
+        text = _exclude_file().read_text(encoding="utf-8")
+    except (OSError, FileNotFoundError):
+        return []
+    return text.splitlines()
+
+
+def _write_excludes(lines: list[str]) -> None:
+    """Write .git/info/exclude, preserving its trailing newline."""
+    ef = _exclude_file()
+    ef.parent.mkdir(parents=True, exist_ok=True)
+    ef.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _add_formula_exclude(name: str) -> bool:
+    """Add ``salt/<name>/`` to .git/info/exclude under the formulas section.
+
+    Creates the formulas section and the marker line if neither exists.
+    No-ops when the pattern is already present. Returns True.
+    """
+    pattern = f"salt/{name}/"
+    lines = _read_excludes()
+    if any(pattern in line for line in lines if line.strip() and not line.startswith("#")):
+        return True
+    # Find or create the formulas section.
+    section_idx: int | None = None
+    for i, line in enumerate(lines):
+        if line.strip() == _EXCLUDE_MARKER:
+            section_idx = i
+            break
+    if section_idx is not None:
+        # Insert after the marker, before the next section or end.
+        insert = section_idx + 1
+        while insert < len(lines) and not lines[insert].startswith("#"):
+            insert += 1
+        lines.insert(insert, pattern)
+    else:
+        lines.append("")
+        lines.append(_EXCLUDE_MARKER)
+        lines.append(f"# Added by Overstate on {dt.datetime.now(dt.UTC).strftime('%Y-%m-%d')}")
+        lines.append(pattern)
+    _write_excludes(lines)
+    return True
+
+
+def _remove_formula_exclude(name: str) -> bool:
+    """Remove ``salt/<name>/`` from .git/info/exclude.
+
+    Also tears down the formulas section when the pattern is the only
+    non-marker line in it. Returns True.
+    """
+    pattern = f"salt/{name}/"
+    lines = _read_excludes()
+    # Remove the pattern line and any blank line immediately before it.
+    result: list[str] = []
+    skip_next_blank = False
+    for i, line in enumerate(lines):
+        if line.strip() == pattern:
+            skip_next_blank = i > 0 and lines[i - 1].strip() == ""
+            continue
+        if skip_next_blank and line.strip() == "":
+            skip_next_blank = False
+            continue
+        skip_next_blank = False
+        result.append(line)
+    # If the section is now only the marker (no content lines after it),
+    # remove the marker and its preceding blank.
+    marker_idx = None
+    for i, line in enumerate(result):
+        if line.strip() == _EXCLUDE_MARKER:
+            marker_idx = i
+            break
+    if marker_idx is not None:
+        content = result[marker_idx + 1:]
+        if not content or all(
+            not l.strip() or l.startswith("#") for l in content
+        ):
+            # Trim blank before marker
+            while marker_idx > 0 and result[marker_idx - 1].strip() == "":
+                result.pop(marker_idx - 1)
+                marker_idx -= 1
+            del result[marker_idx:]
+    _write_excludes(result)
+    return True
 
 
 def validate_formula_name(name: str) -> dict:
@@ -1270,22 +1365,8 @@ def vendor_formula(
         installed = _install_formula_tree(cloned["tmp"], slug["name"])
         if not installed["ok"]:
             return installed
-        add = _run("add", "--", slug["name"])
-        if add is None or add.returncode != 0:
-            return {"ok": False, "reason": _failure(add, "git add failed")}
-        commit = _run(
-            "-c",
-            "user.name=overstate",
-            "-c",
-            "user.email=overstate@localhost",
-            "commit",
-            "-m",
-            f"overstate: vendor formula {slug['name']}",
-            "--",
-            slug["name"],
-        )
-        if commit is None or commit.returncode != 0:
-            return {"ok": False, "reason": _failure(commit, "git commit failed")}
+        if not _add_formula_exclude(slug["name"]):
+            return {"ok": False, "reason": "could not add the formula to git excludes"}
         return {"ok": True, "name": slug["name"], "sha": cloned["sha"]}
 
 
@@ -1351,28 +1432,7 @@ def update_formula(
             return {"ok": False, "reason": "cannot install the formula tree"}
         _drop_staged(cloned["tmp"])
         _ensure_world_readable(dest)
-        add = _run("add", "-A", "--", slug["name"])
-        if add is None or add.returncode != 0:
-            return {"ok": False, "reason": _failure(add, "git add failed")}
-        commit = _run(
-            "-c",
-            "user.name=overstate",
-            "-c",
-            "user.email=overstate@localhost",
-            "commit",
-            "-m",
-            f"overstate: update formula {slug['name']}",
-            "--",
-            slug["name"],
-        )
-        if commit is None or commit.returncode != 0:
-            # Nothing changed upstream: `git commit` exits nonzero with
-            # "nothing to commit" — that is success, not failure.
-            check = _run("status", "--porcelain", "--", slug["name"])
-            if check is not None and check.returncode == 0 and not check.stdout.strip():
-                return {"ok": True, "name": slug["name"], "sha": cloned["sha"],
-                        "unchanged": True}
-            return {"ok": False, "reason": _failure(commit, "git commit failed")}
+        _add_formula_exclude(slug["name"])
         return {"ok": True, "name": slug["name"], "sha": cloned["sha"]}
 
 
@@ -1393,32 +1453,12 @@ def remove_formula_files(name: str) -> dict:
             return {"ok": False, "reason": f"'{slug['name']}/' is not installed"}
         if not (dest / "init.sls").is_file():
             return {"ok": False, "reason": f"'{slug['name']}/' is not a formula"}
-        rm = _run("rm", "-r", "--", slug["name"])
-        if rm is None or rm.returncode != 0:
-            return {"ok": False, "reason": _failure(rm, "git rm failed")}
-        # Untracked leftovers inside the dir are not owned by git: delete
-        # them so removal always leaves no trace (decision 3).
-        if dest.exists() or dest.is_symlink():
-            try:
-                if dest.is_symlink() or dest.is_file():
-                    dest.unlink()
-                else:
-                    shutil.rmtree(dest, ignore_errors=True)
-            except OSError:
-                pass
-        commit = _run(
-            "-c",
-            "user.name=overstate",
-            "-c",
-            "user.email=overstate@localhost",
-            "commit",
-            "-m",
-            f"overstate: remove formula {slug['name']}",
-            "--",
-            slug["name"],
-        )
-        if commit is None or commit.returncode != 0:
-            return {"ok": False, "reason": _failure(commit, "git commit failed")}
+        try:
+            shutil.rmtree(dest, ignore_errors=True)
+        except OSError:
+            return {"ok": False, "reason": "cannot delete the formula tree"}
+        if not _remove_formula_exclude(slug["name"]):
+            return {"ok": False, "reason": "could not remove the formula from git excludes"}
         return {"ok": True, "name": slug["name"]}
 
 

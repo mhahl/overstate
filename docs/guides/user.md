@@ -417,13 +417,12 @@ name (`salt/<name>/`), repo URL, ref (blank means the remote
 default), and how to authenticate — shared credential/host keys
 (the default), an SSH deploy key, or a one-time https token that is
 never stored unless an admin ticks the box. Adding clones fresh,
-installs exactly that formula (never its `.git/`), and records one
-local commit; **Update** re-vendors at the latest upstream commit and
-**Remove** previews every doomed file before deleting the tree and
-untracking the row in one local commit. Like saving, none of this
-applies anything — push (admin, Updates tab) sends it upstream, and
-the **Apply** link on each row opens a dry-run-ready `state.apply`
-job. Viewers see the table and change nothing.
+installs exactly that formula (never its `.git/`), and adds
+`salt/<name>/` to `.git/info/exclude` so git ignores the directory;
+from there the master and the Files browser still see it, and Sync
+never fails over it. **Update** re-vendors at the latest upstream
+commit and **Remove** previews every doomed file before deleting the
+tree and untracking the row. Saving never applies anything.
 
 ## Events
 
