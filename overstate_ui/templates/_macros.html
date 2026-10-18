@@ -87,7 +87,7 @@
 {% endmacro %}
 
 {% macro table_search_field(id, name, value, field_label, placeholder, aria_label=none) %}
-<fieldset class="fieldset w-full max-w-xs sm:max-w-64 min-w-0">
+<fieldset class="fieldset min-w-0 w-full sm:w-64">
   <legend class="fieldset-legend">{{ field_label }}</legend>
   <label class="input input-sm w-full min-w-0 gap-2">
     <span class="icon-[lucide--search] size-4 text-base-content/60" aria-hidden="true"></span>

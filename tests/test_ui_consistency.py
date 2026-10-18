@@ -82,7 +82,7 @@ def test_table_searches_use_compact_shared_component():
         '{% import "_macros.html" as m %}'
         '{{ m.table_search_field("table-q", "q", "term", "Search", "Search table…", "Search table") }}'
     ).render()
-    assert 'class="fieldset w-full max-w-xs sm:max-w-64 min-w-0"' in rendered
+    assert 'class="fieldset min-w-0 w-full sm:w-64"' in rendered
     assert 'class="input input-sm w-full min-w-0 gap-2"' in rendered
     assert 'icon-[lucide--search]' in rendered
     assert 'id="table-q" type="search" name="q"' in rendered
