@@ -32,6 +32,7 @@ from .git_sync import (
     checkout_layout,
     clear_token,
     clone_repo,
+    formula_in_top,
     git_commit_file,
     git_fetch_now,
     git_head,
@@ -41,15 +42,20 @@ from .git_sync import (
     git_sync_now,
     has_token,
     is_checkout,
+    list_formula_dirs,
     paths_changed,
     reclone_repo,
+    remove_formula_files,
     reset_hard,
     reset_preview,
     roots_nonempty,
     save_token,
     set_remote_origin,
     srv_nonempty,
+    update_formula,
+    validate_formula_name,
     validate_repo_url,
+    vendor_formula,
 )
 from .salt_client import SaltApiError
 
@@ -291,6 +297,8 @@ def index():
 
     require("file.read")
     ftab = request.args.get("tab", "files")
+    if ftab not in ("files", "updates", "repo", "formulas"):
+        ftab = "files"
     if ftab == "repo":
         if rbac_mode() == "scoped":
             require("file.git")
@@ -299,7 +307,13 @@ def index():
     context = _files_page_context()
     if ftab == "repo":
         context.update(_repo_context())
-    return render_template("files.html", **context, ftab=ftab)
+    # Formulas context rides every tab: the rail badges report tracked /
+    # untracked / missing counts wherever the user stands.
+    context.update(_formulas_context())
+    fsub = request.args.get("fsub", "tracked")
+    if fsub not in ("tracked", "untracked"):
+        fsub = "tracked"
+    return render_template("files.html", **context, ftab=ftab, fsub=fsub)
 
 
 def _files_page_context():
@@ -630,6 +644,314 @@ def push():
     return redirect(url_for("files.index"))
 
 
+# --- Formulas --------------------------------------------------------
+
+def _formulas_context(remove_pending=None):
+    """Tracked formulas joined to on-disk ``salt/<name>/`` trees.
+
+    DB rows are the index; the filesystem is truth. Rows without a dir
+    report ``missing``; dirs without a row report ``untracked``.
+    """
+    from .db import get_session
+    from .models import Formula
+
+    session = get_session()
+    rows = session.query(Formula).order_by(Formula.name).all()
+    by_name = {r.name: r for r in rows}
+    dirs = {d["name"] for d in list_formula_dirs()}
+    formulas = []
+    for row in rows:
+        present = row.name in dirs
+        formulas.append(
+            {
+                "name": row.name,
+                "url": row.url,
+                "branch": row.branch,
+                "installed_sha": row.installed_sha,
+                "installed_short": (row.installed_sha or "")[:12] or None,
+                "present": present,
+                "tracked": True,
+                "status": "tracked" if present else "missing",
+                "in_top": formula_in_top(row.name) if present else False,
+            }
+        )
+    untracked = [
+        {
+            "name": name,
+            "present": True,
+            "tracked": False,
+            "status": "untracked",
+            "in_top": formula_in_top(name),
+        }
+        for name in sorted(dirs - set(by_name))
+    ]
+    return {
+        "formulas": formulas,
+        "untracked": untracked,
+        "formula_summary": {
+            "tracked": len(formulas),
+            "present": sum(1 for f in formulas if f["present"]),
+            "missing": sum(1 for f in formulas if not f["present"]),
+            "untracked": len(untracked),
+        },
+        "token_configured": has_token(),
+        "remove_pending": remove_pending,
+    }
+
+
+def _render_formulas_tab(**overrides):
+    context = _files_page_context()
+    context.update(_formulas_context(**overrides))
+    fsub = request.args.get("fsub", "tracked")
+    if fsub not in ("tracked", "untracked"):
+        fsub = "tracked"
+    return render_template("files.html", **context, ftab="formulas", fsub=fsub)
+
+
+def _formula_files_preview(name: str, limit: int = 12) -> list[str]:
+    """Relative file names inside ``salt/<name>/`` for remove previews."""
+    target = safe_join(name)
+    if target is None or not target.is_dir():
+        return []
+    names: list[str] = []
+    for base, _dirs, files in os.walk(target, followlinks=False):
+        for fname in files:
+            try:
+                rel = str((Path(base) / fname).relative_to(target))
+            except (OSError, ValueError):
+                continue
+            names.append(f"{name}/{rel}")
+            if len(names) >= 200:
+                return sorted(names)
+    return sorted(names)
+
+
+def _note_formula_refreshed(verb: str, name: str) -> None:
+    err = _refresh_fileserver()
+    if err is None:
+        log_event(current_user.username, "fileserver-update")
+    else:
+        flash(
+            f"{verb} {name}, but the master refresh failed ({err}); "
+            "applies may lag.",
+            "warning",
+        )
+        log_event(current_user.username, f"fileserver-update-failed:{err}")
+    dest = roots() / name
+    if (dest / "_modules").is_dir():
+        flash("Custom modules changed. Run Sync modules.", "info")
+
+
+def _maybe_persist_shared_token(token: str, url: str, requested: bool) -> None:
+    """Persist an https token into the shared slot. Admin-only by design:
+    operators vendor with the one-time token and leave shared creds alone.
+    """
+    if not requested or not (token or "").strip():
+        return
+    if not url.startswith("https://"):
+        return
+    from .authz import rbac_mode
+
+    if rbac_mode() == "scoped":
+        from .authz import authorize
+
+        if not authorize(current_user, "file.git"):
+            flash(
+                "Cloned with the one-time token. Only a file.git grant "
+                "can store shared credentials.",
+                "warning",
+            )
+            return
+    elif current_user.role != "admin":
+        flash(
+            "Cloned with the one-time token. Only admins store "
+            "shared credentials.",
+            "warning",
+        )
+        return
+    host = url.split("/", 3)[2] if "/" in url[8:] else ""
+    result = save_token(token.strip(), host)
+    if result["ok"]:
+        log_event(current_user.username, "git-token-saved")
+        flash(f"Token stored for {host}.", "success")
+    else:
+        flash(f"Shared token not stored ({result['reason']}).", "warning")
+
+
+@bp.post("/formulas/add")
+@roles_required("operator")
+def formulas_add():
+    from .authz import rbac_mode, require
+    from .db import get_session
+    from .models import Formula
+
+    name = (request.form.get("name") or "").strip().lower()
+    url = (request.form.get("url") or "").strip()
+    branch = (request.form.get("branch") or "").strip()
+    auth = (request.form.get("auth") or "shared").strip()
+    token = request.form.get("token", "") or None
+    if rbac_mode() == "scoped":
+        require("file.write", prefix=name or None)
+    slug = validate_formula_name(name)
+    if not slug["ok"]:
+        flash(f"Add refused: {slug['reason']}. Nothing changed.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    session = get_session()
+    if session.query(Formula).filter_by(name=slug["name"]).first() is not None:
+        flash(f"Add refused: '{slug['name']}' is already tracked.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    result = vendor_formula(slug["name"], url, branch or None, auth, token)
+    if not result["ok"]:
+        flash(f"Add refused: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"formula-add-refused:{slug['name']}")
+        return redirect(url_for("files.index", tab="formulas"))
+    session.add(
+        Formula(
+            name=result["name"],
+            url=url.strip(),
+            branch=(branch.strip() or None),
+            installed_sha=result.get("sha"),
+            created_by=current_user.username,
+        )
+    )
+    session.commit()
+    _maybe_persist_shared_token(
+        token or "", url.strip(), bool(request.form.get("save_shared"))
+    )
+    _note_formula_refreshed("Vendored", result["name"])
+    sha = (result.get("sha") or "")[:12] or "unknown"
+    flash(f"Vendored formula '{result['name']}' at {sha}. Push sends it upstream.", "success")
+    log_event(current_user.username, f"formula-add:{result['name']}:{sha}")
+    return redirect(url_for("files.index", tab="formulas"))
+
+
+@bp.post("/formulas/track")
+@roles_required("operator")
+def formulas_track():
+    from .authz import rbac_mode, require
+    from .db import get_session
+    from .models import Formula
+
+    name = (request.form.get("name") or "").strip().lower()
+    url = (request.form.get("url") or "").strip()
+    branch = (request.form.get("branch") or "").strip()
+    if rbac_mode() == "scoped":
+        require("file.write", prefix=name or None)
+    slug = validate_formula_name(name)
+    if not slug["ok"]:
+        flash(f"Track refused: {slug['reason']}.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    valid = validate_repo_url(url)
+    if not valid["ok"]:
+        flash(f"Track refused: {valid['reason']}.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    session = get_session()
+    if session.query(Formula).filter_by(name=slug["name"]).first() is not None:
+        flash(f"'{slug['name']}' is already tracked.", "info")
+        return redirect(url_for("files.index", tab="formulas"))
+    if slug["name"] not in {d["name"] for d in list_formula_dirs()}:
+        flash(f"Track refused: '{slug['name']}/' is not installed.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    session.add(
+        Formula(
+            name=slug["name"],
+            url=url.strip(),
+            branch=(branch.strip() or None),
+            installed_sha=None,
+            created_by=current_user.username,
+        )
+    )
+    session.commit()
+    flash(f"Tracking '{slug['name']}'. Update pins its upstream commit.", "success")
+    log_event(current_user.username, f"formula-track:{slug['name']}")
+    return redirect(url_for("files.index", tab="formulas"))
+
+
+@bp.post("/formulas/update/<name>")
+@roles_required("operator")
+def formulas_update(name: str):
+    from .authz import rbac_mode, require
+    from .db import get_session
+    from .models import Formula
+
+    slug = validate_formula_name(name)
+    if not slug["ok"]:
+        flash(f"Update refused: {slug['reason']}.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    if rbac_mode() == "scoped":
+        require("file.write", prefix=slug["name"])
+    session = get_session()
+    row = session.query(Formula).filter_by(name=slug["name"]).first()
+    if row is None:
+        flash(f"Update refused: '{slug['name']}' is not tracked.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    auth = (request.form.get("auth") or "shared").strip()
+    token = request.form.get("token", "") or None
+    result = update_formula(row.name, row.url, row.branch, auth, token)
+    if not result["ok"]:
+        flash(f"Update refused: {result['reason']}. Nothing changed.", "error")
+        log_event(current_user.username, f"formula-update-refused:{row.name}")
+        return redirect(url_for("files.index", tab="formulas"))
+    if result.get("unchanged"):
+        flash(f"'{row.name}' is already up to date.", "info")
+        log_event(current_user.username, f"formula-update-unchanged:{row.name}")
+        return redirect(url_for("files.index", tab="formulas"))
+    row.installed_sha = result.get("sha") or row.installed_sha
+    session.commit()
+    _maybe_persist_shared_token(
+        token or "", row.url, bool(request.form.get("save_shared"))
+    )
+    _note_formula_refreshed("Updated", row.name)
+    sha = (result.get("sha") or "")[:12] or "unknown"
+    flash(f"Updated formula '{row.name}' to {sha}. Push sends it upstream.", "success")
+    log_event(current_user.username, f"formula-update:{row.name}:{sha}")
+    return redirect(url_for("files.index", tab="formulas"))
+
+
+@bp.post("/formulas/remove/<name>")
+@roles_required("operator")
+def formulas_remove(name: str):
+    from .authz import rbac_mode, require
+    from .db import get_session
+    from .models import Formula
+
+    slug = validate_formula_name(name)
+    if not slug["ok"]:
+        flash(f"Remove refused: {slug['reason']}.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    if rbac_mode() == "scoped":
+        require("file.write", prefix=slug["name"])
+    session = get_session()
+    row = session.query(Formula).filter_by(name=slug["name"]).first()
+    if row is None:
+        flash(f"Remove refused: '{slug['name']}' is not tracked.", "error")
+        return redirect(url_for("files.index", tab="formulas"))
+    if request.form.get("confirm") != "1":
+        files = _formula_files_preview(slug["name"])
+        log_event(current_user.username, f"formula-remove-preview:{slug['name']}")
+        return _render_formulas_tab(
+            remove_pending={"name": slug["name"], "files": files}
+        )
+    present = (roots() / slug["name"]).is_dir()
+    if present:
+        result = remove_formula_files(slug["name"])
+        if not result["ok"]:
+            flash(f"Remove refused: {result['reason']}. Nothing changed.", "error")
+            log_event(
+                current_user.username, f"formula-remove-refused:{slug['name']}"
+            )
+            return redirect(url_for("files.index", tab="formulas"))
+        _note_formula_refreshed("Removed", slug["name"])
+    session.delete(row)
+    session.commit()
+    flash(
+        f"Removed formula '{slug['name']}'. Push sends the removal upstream.",
+        "success",
+    )
+    log_event(current_user.username, f"formula-remove:{slug['name']}")
+    return redirect(url_for("files.index", tab="formulas"))
+
+
 def _repo_context(preview=None, pending=None, replace_pending=None):
     checkout = is_checkout()
     return {
@@ -649,6 +971,7 @@ def _repo_context(preview=None, pending=None, replace_pending=None):
 def _render_repo_tab(**overrides):
     context = _files_page_context()
     context.update(_repo_context(**overrides))
+    context.update(_formulas_context())
     return render_template("files.html", **context, ftab="repo")
 
 

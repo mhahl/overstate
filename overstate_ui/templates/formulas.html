@@ -1,0 +1,157 @@
+{% set may_edit = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.write')) %}
+{% set may_store_shared = (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
+{% set fsub_active = fsub|default("tracked") %}
+
+<div class="flex flex-col gap-4">
+  <div class="flex flex-wrap items-start gap-3">
+    <div class="me-auto">
+      <h2 class="card-title text-base">Formulas</h2>
+      <p class="text-sm text-base-content/70 mt-1">{{ formula_summary.tracked }} tracked · {{ formula_summary.present }} present · {{ formula_summary.missing }} missing · {{ formula_summary.untracked }} untracked</p>
+    </div>
+    {% if may_edit %}
+    <button class="btn btn-sm btn-primary" onclick="document.getElementById('formula-add').showModal()">Add formula</button>
+    {% endif %}
+  </div>
+
+  {% if remove_pending %}
+  <div class="alert alert-warning" role="note">
+    <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+    <div>
+      <p class="font-medium">Remove '{{ remove_pending.name }}/' and untrack it?</p>
+      <p class="text-sm mt-1">This deletes: {{ remove_pending.files[:12]|join(", ") }}{% if remove_pending.files|length > 12 %} and {{ remove_pending.files|length - 12 }} more{% endif %}{% if not remove_pending.files %}nothing on disk (row only){% endif %}. Push sends the removal upstream.</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <form method="post" action="{{ url_for('files.formulas_remove', name=remove_pending.name) }}" data-confirm="Delete this formula's files?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="confirm" value="1">
+          <button class="btn btn-sm btn-error">Confirm remove</button>
+        </form>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('files.index', tab='formulas') }}">Cancel</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div role="tablist" class="tabs tabs-border" aria-label="Formula views">
+    <a role="tab" href="{{ url_for('files.index', tab='formulas', fsub='tracked') }}" class="tab{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
+    <a role="tab" href="{{ url_for('files.index', tab='formulas', fsub='untracked') }}" class="tab{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>Untracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
+  </div>
+
+  {% if fsub_active == 'untracked' %}
+  <section class="card card-border bg-base-100 min-w-0" aria-label="Untracked formula directories">
+    <div class="card-body gap-3">
+      <h3 class="card-title text-base">Untracked on disk</h3>
+      {% if untracked %}
+      <ul class="list">
+        {% for u in untracked %}
+        <li class="list-row">
+          <div class="list-col-grow min-w-0">
+            <p class="font-mono text-sm break-all">{{ u.name }}/</p>
+            <p class="text-xs text-base-content/60">{% if u.in_top %}in top.sls{% else %}not in top.sls{% endif %}</p>
+          </div>
+          {% if may_edit %}
+          <form method="post" action="{{ url_for('files.formulas_track') }}" class="flex flex-wrap items-end gap-1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="name" value="{{ u.name }}">
+            <input type="text" name="url" class="input input-xs w-44" placeholder="source URL" aria-label="Source URL for {{ u.name }}" required>
+            <input type="text" name="branch" class="input input-xs w-24" placeholder="ref" aria-label="Ref for {{ u.name }}">
+            <button class="btn btn-xs btn-outline">Track</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-sm text-base-content/70">Every <span class="font-mono">init.sls</span> directory is tracked.</p>
+      {% endif %}
+      <p class="text-xs text-base-content/60">Push credentials: {% if token_configured %}<span class="badge badge-sm badge-outline badge-success">shared token stored</span>{% else %}<span class="badge badge-sm badge-outline">none — SSH keys or a one-time token</span>{% endif %}</p>
+    </div>
+  </section>
+  {% else %}
+  <section class="card card-border bg-base-100 min-w-0" aria-label="Tracked formulas">
+    <div class="card-body gap-4">
+      {% if formulas %}
+      <div class="max-w-full overflow-x-auto rounded-box border border-base-300">
+        <table class="table table-sm w-full">
+          <thead><tr><th>Formula</th><th>Source</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
+          <tbody>
+            {% for f in formulas %}
+            <tr class="hover">
+              <td>
+                <a href="{{ url_for('files.view', path=f.name + '/init.sls') }}" class="font-mono text-sm break-all">{{ f.name }}/</a>
+                <span class="block text-xs text-base-content/60 font-mono">{% if f.installed_short %}{{ f.installed_short }}{% else %}unpinned{% endif %}{% if f.branch %} · {{ f.branch }}{% endif %}</span>
+              </td>
+              <td class="max-w-48"><span class="font-mono text-xs break-all">{{ f.url }}</span></td>
+              <td>
+                {% if f.status == "tracked" %}<span class="badge badge-sm badge-success badge-outline">present</span>
+                {% else %}<span class="badge badge-sm badge-warning badge-outline">missing</span>{% endif %}
+                {% if f.in_top %}<span class="badge badge-sm badge-ghost">in top.sls</span>
+                {% else %}<span class="badge badge-sm badge-ghost">not in top.sls</span>{% endif %}
+              </td>
+              <td class="text-right">
+                <div class="flex flex-wrap justify-end gap-1">
+                  <a class="btn btn-xs btn-ghost" href="{{ url_for('jobs.new', tgt='*', tgt_type='glob', fun='state.apply', args=f.name) }}">Apply</a>
+                  {% if may_edit %}
+                  <form method="post" action="{{ url_for('files.formulas_update', name=f.name) }}" class="inline-flex items-center gap-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="auth" class="select select-xs w-24" aria-label="Auth for {{ f.name }} update">
+                      <option value="shared" selected>shared</option>
+                      <option value="ssh">ssh</option>
+                      <option value="token">token</option>
+                    </select>
+                    <input type="password" name="token" class="input input-xs w-24" autocomplete="off" placeholder="token" aria-label="Token for {{ f.name }} update">
+                    <button class="btn btn-xs btn-outline" data-confirm="Update '{{ f.name }}' to the latest upstream commit?">Update</button>
+                  </form>
+                  <form method="post" action="{{ url_for('files.formulas_remove', name=f.name) }}" class="inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-xs btn-ghost text-error">Remove</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="text-xs text-base-content/60">Vendoring commits locally. Push (Updates in the rail, admin) sends it upstream. Saving never applies anything.</p>
+      {% else %}
+      <p class="text-sm text-base-content/70">No formulas tracked yet.{% if may_edit %} Add one above, or pick up a directory under Untracked.{% endif %}</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+{% if may_edit %}
+<dialog id="formula-add" class="modal" aria-labelledby="formula-add-title">
+  <div class="modal-box max-w-xl">
+    <h3 id="formula-add-title" class="font-bold text-lg">Add formula</h3>
+    <p class="text-sm text-base-content/70 mt-1">Clones the formula repo and vendors it at <span class="font-mono">salt/&lt;name&gt;/</span> in one local commit. Push sends it upstream.</p>
+    <form method="post" action="{{ url_for('files.formulas_add') }}" class="flex flex-col gap-3 mt-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <fieldset class="fieldset"><legend class="fieldset-legend">Name (salt/&lt;name&gt;/)</legend>
+      <input type="text" name="name" class="input input-sm w-full font-mono" placeholder="nginx" aria-label="Formula name" required autocomplete="off"></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL (https or SSH)</legend>
+      <input type="text" name="url" class="input input-sm w-full font-mono" placeholder="https://github.com/saltstack-formulas/nginx-formula" aria-label="Formula repo URL" required></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Ref (tag, branch, or SHA — blank = default)</legend>
+      <input type="text" name="branch" class="input input-sm w-full font-mono" aria-label="Formula ref" autocomplete="off"></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Authenticate with</legend>
+      <select name="auth" class="select select-sm w-full" aria-label="Authentication">
+        <option value="shared" selected>Shared credential / host keys{% if not token_configured %} (no shared token stored){% endif %}</option>
+        <option value="ssh">SSH deploy key on this host</option>
+        <option value="token">One-time token (https only, never stored unless ticked)</option>
+      </select></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Token (only for one-time auth)</legend>
+      <input type="password" name="token" class="input input-sm w-full" autocomplete="off" aria-label="Formula token"></fieldset>
+      {% if may_store_shared %}
+      <label class="label text-sm cursor-pointer gap-2"><input type="checkbox" name="save_shared" value="1" class="checkbox checkbox-sm"> also store this token as the shared credential</label>
+      {% endif %}
+      <div class="modal-action">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('formula-add').close()">Cancel</button>
+        <button class="btn btn-sm btn-primary" data-confirm="Vendor this formula into salt/?">Add formula</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endif %}

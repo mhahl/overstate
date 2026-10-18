@@ -1,0 +1,310 @@
+"""Tracked formulas: table reconcile, vendor/update/remove routes, RBAC, audit."""
+
+import shutil
+import subprocess
+
+import pytest
+
+import overstate_ui.files as files_mod
+import overstate_ui.git_sync as gs
+from overstate_ui import auth as authmod
+from overstate_ui import create_app
+from overstate_ui.auth import seed_admin
+from overstate_ui.config import TestConfig
+from overstate_ui.db import create_all, get_session, init_db
+from overstate_ui.models import AuditEvent, Formula, User
+
+needs_git = pytest.mark.skipif(
+    shutil.which("git") is None, reason="git binary required"
+)
+
+
+def _git(*args, cwd):
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+def _init_checkout(roots):
+    roots.mkdir(parents=True, exist_ok=True)
+    _git("init", "-q", cwd=roots)
+    _git("config", "user.email", "t@t", cwd=roots)
+    _git("config", "user.name", "t", cwd=roots)
+    (roots / "top.sls").write_text("base:\n  '*':\n    - demo\n")
+    _git("add", "-A", cwd=roots)
+    _git("commit", "-qm", "seed", cwd=roots)
+
+
+@pytest.fixture()
+def web_client(tmp_path, monkeypatch):
+    roots = tmp_path / "srv" / "salt"
+    _init_checkout(roots)
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    app.config["FILE_ROOTS"] = str(roots)
+    with app.app_context():
+        create_all()
+        seed_admin(password="pw")
+        session = get_session()
+        session.add(
+            User(
+                username="op",
+                password_hash=authmod._ph.hash("pw"),
+                role="operator",
+            )
+        )
+        session.add(
+            User(
+                username="vie",
+                password_hash=authmod._ph.hash("pw"),
+                role="viewer",
+            )
+        )
+        session.commit()
+    client = app.test_client()
+    client.post("/login", data={"username": "admin", "password": "pw"})
+    monkeypatch.setattr(files_mod, "_refresh_fileserver", lambda: None)
+    return app, client, roots
+
+
+def _login_as(client, username):
+    client.post("/logout")
+    client.post("/login", data={"username": username, "password": "pw"})
+
+
+def _actions(app):
+    with app.app_context():
+        return [e.action for e in get_session().query(AuditEvent).all()]
+
+
+def test_validate_formula_name():
+    assert gs.validate_formula_name("nginx")["ok"]
+    assert gs.validate_formula_name("my-formula_2")["ok"]
+    assert not gs.validate_formula_name("../escape")["ok"]
+    assert not gs.validate_formula_name("Top")["ok"]
+    assert not gs.validate_formula_name("")["ok"]
+    assert not gs.validate_formula_name("_modules")["ok"]
+
+
+def test_formulas_tab_renders_empty(web_client):
+    _, client, _roots = web_client
+    rv = client.get("/files/", query_string={"tab": "formulas"})
+    assert rv.status_code == 200
+    assert b"Formulas" in rv.data
+    assert b"Add formula" in rv.data
+
+
+def test_files_rail_lists_sections_with_status(web_client):
+    _, client, _roots = web_client
+    html = client.get("/files/").data.decode()
+    assert 'aria-label="File page sections"' in html
+    for section in ("Browse", "Formulas", "Updates", "Repo settings"):
+        assert section in html
+    assert "menu-active" in html
+    assert 'href="/files/?tab=repo"' in html
+    assert 'href="/files/?tab=files"' in html
+
+
+def test_formulas_subtabs_split_tracked_and_untracked(web_client):
+    app, client, roots = web_client
+    _login_as(client, "op")
+    (roots / "redis").mkdir()
+    (roots / "redis" / "init.sls").write_text("# redis\n")
+    with app.app_context():
+        get_session().add(
+            Formula(name="nginx", url="https://git.example.com/n.git", branch=None)
+        )
+        get_session().commit()
+    tracked = client.get(
+        "/files/", query_string={"tab": "formulas", "fsub": "tracked"}
+    ).data.decode()
+    assert "nginx/" in tracked
+    assert "redis/" not in tracked
+    untracked = client.get(
+        "/files/", query_string={"tab": "formulas", "fsub": "untracked"}
+    ).data.decode()
+    assert "redis/" in untracked
+    assert 'aria-label="Formula views"' in untracked
+
+
+def test_formulas_viewer_cannot_add(web_client):
+    _, client, _roots = web_client
+    _login_as(client, "vie")
+    rv = client.post(
+        "/files/formulas/add",
+        data={"name": "nginx", "url": "https://git.example.com/n.git"},
+    )
+    assert rv.status_code == 403
+
+
+def test_formulas_operator_can_add_with_stub(web_client, monkeypatch):
+    app, client, roots = web_client
+    _login_as(client, "op")
+
+    def fake_vendor(name, url, branch, auth, token):
+        (roots / name).mkdir(parents=True)
+        (roots / name / "init.sls").write_text("# stub\n")
+        return {"ok": True, "name": name, "sha": "abc123def456"}
+
+    monkeypatch.setattr(files_mod, "vendor_formula", fake_vendor)
+    rv = client.post(
+        "/files/formulas/add",
+        data={
+            "name": "nginx",
+            "url": "https://git.example.com/n.git",
+            "branch": "",
+            "auth": "shared",
+        },
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+    assert b"Vendored formula" in rv.data
+    with app.app_context():
+        row = get_session().query(Formula).filter_by(name="nginx").first()
+        assert row is not None and row.url == "https://git.example.com/n.git"
+    assert "formula-add:nginx:abc123def456" in _actions(app)
+
+
+def test_formulas_add_refuses_bad_url(web_client):
+    app, client, _roots = web_client
+    _login_as(client, "op")
+    rv = client.post(
+        "/files/formulas/add",
+        data={"name": "nginx", "url": "file:///etc/passwd"},
+        follow_redirects=True,
+    )
+    assert b"Add refused" in rv.data
+    with app.app_context():
+        assert get_session().query(Formula).filter_by(name="nginx").first() is None
+
+
+def test_formulas_add_never_echoes_token(web_client, monkeypatch):
+    _, client, _roots = web_client
+    _login_as(client, "op")
+    seen = {}
+
+    def fake_vendor(name, url, branch, auth, token):
+        seen["token"] = token
+        seen["auth"] = auth
+        return {"ok": True, "name": name, "sha": "abc"}
+
+    monkeypatch.setattr(files_mod, "vendor_formula", fake_vendor)
+    rv = client.post(
+        "/files/formulas/add",
+        data={
+            "name": "nginx",
+            "url": "https://git.example.com/n.git",
+            "auth": "token",
+            "token": "s3cr3t-token-value",
+        },
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+    assert b"s3cr3t-token-value" not in rv.data
+    assert seen == {"token": "s3cr3t-token-value", "auth": "token"}
+
+
+def test_formulas_track_untracked_dir(web_client):
+    app, client, roots = web_client
+    _login_as(client, "op")
+    (roots / "redis").mkdir()
+    (roots / "redis" / "init.sls").write_text("# redis\n")
+    rv = client.get(
+        "/files/", query_string={"tab": "formulas", "fsub": "untracked"}
+    )
+    assert b"redis/" in rv.data
+    rv = client.post(
+        "/files/formulas/track",
+        data={"name": "redis", "url": "https://git.example.com/r.git"},
+        follow_redirects=True,
+    )
+    assert b"Tracking" in rv.data
+    with app.app_context():
+        assert get_session().query(Formula).filter_by(name="redis").first() is not None
+    assert "formula-track:redis" in _actions(app)
+
+
+def test_formulas_update_with_stub(web_client, monkeypatch):
+    app, client, _roots = web_client
+    _login_as(client, "op")
+    with app.app_context():
+        get_session().add(
+            Formula(name="nginx", url="https://git.example.com/n.git", branch=None)
+        )
+        get_session().commit()
+    monkeypatch.setattr(
+        files_mod,
+        "update_formula",
+        lambda *a, **k: {"ok": True, "name": "nginx", "sha": "deedbeef1234"},
+    )
+    rv = client.post(
+        "/files/formulas/update/nginx",
+        data={"auth": "shared"},
+        follow_redirects=True,
+    )
+    assert b"Updated formula" in rv.data
+    assert "formula-update:nginx:deedbeef1234" in _actions(app)
+
+
+def test_formulas_remove_preview_then_confirm(web_client):
+    app, client, roots = web_client
+    _login_as(client, "op")
+    with app.app_context():
+        get_session().add(
+            Formula(name="nginx", url="https://git.example.com/n.git", branch=None)
+        )
+        get_session().commit()
+    (roots / "nginx").mkdir()
+    (roots / "nginx" / "init.sls").write_text("# nginx\n")
+    _git("add", "-A", cwd=roots)
+    _git(
+        "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "vendor",
+        cwd=roots,
+    )
+    preview = client.post("/files/formulas/remove/nginx")
+    assert preview.status_code == 200
+    assert b"Remove" in preview.data and b"init.sls" in preview.data
+    assert (roots / "nginx").is_dir()  # preview destroys nothing
+    done = client.post(
+        "/files/formulas/remove/nginx",
+        data={"confirm": "1"},
+        follow_redirects=True,
+    )
+    assert b"Removed formula" in done.data
+    assert not (roots / "nginx").exists()  # files deleted per decision 3
+    with app.app_context():
+        assert get_session().query(Formula).filter_by(name="nginx").first() is None
+    assert "formula-remove:nginx" in _actions(app)
+
+
+@needs_git
+def test_vendor_and_remove_files_roundtrip(tmp_path):
+    """Real git: clone a local formula repo, install, commit, remove."""
+    from flask import Flask
+
+    formula_repo = tmp_path / "upstream"
+    formula_repo.mkdir()
+    _git("init", "-q", cwd=formula_repo)
+    _git("config", "user.email", "t@t", cwd=formula_repo)
+    _git("config", "user.name", "t", cwd=formula_repo)
+    (formula_repo / "init.sls").write_text("# formula\n")
+    _git("add", "-A", cwd=formula_repo)
+    _git("commit", "-qm", "formula v1", cwd=formula_repo)
+
+    roots = tmp_path / "srv" / "salt"
+    _init_checkout(roots)
+    app = Flask(__name__)
+    app.config["FILE_ROOTS"] = str(roots)
+    with app.app_context():
+        result = gs._clone_formula_source(f"file://{formula_repo}", None, "shared", None)
+        assert result["ok"], result
+        installed = gs._install_formula_tree(result["tmp"], "nginx")
+        assert installed["ok"], installed
+        assert (roots / "nginx" / "init.sls").is_file()
+        _git("add", "-A", cwd=roots)
+        _git(
+            "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "vendor",
+            cwd=roots,
+        )
+        removed = gs.remove_formula_files("nginx")
+        assert removed["ok"], removed
+        assert not (roots / "nginx").exists()

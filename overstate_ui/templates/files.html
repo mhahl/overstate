@@ -9,6 +9,7 @@
     <h1 class="text-2xl font-semibold tracking-tight">State files</h1>
     {% if active_tab == "files" %}<p class="text-sm text-base-content/70 mt-1">Browse the shared Salt roots and open state files for review or editing.</p>
     {% elif active_tab == "updates" %}<p class="text-sm text-base-content/70 mt-1">Check, sync, and inspect the shared file checkout.</p>
+    {% elif active_tab == "formulas" %}<p class="text-sm text-base-content/70 mt-1">Vendored Salt formulas under the shared roots. Adding updates the working tree; pushing sends it upstream.</p>
     {% elif active_tab == "repo" %}<p class="text-sm text-base-content/70 mt-1">Configure the Git source for the shared state roots.</p>{% endif %}
   </div>
   {% if active_tab == "files" %}
@@ -19,19 +20,35 @@
   {% endif %}
 </header>
 
-<nav class="tabs tabs-border max-w-full overflow-x-auto" aria-label="File page sections">
-  <a href="{{ url_for('files.index', tab='files') }}" class="tab{% if active_tab == 'files' %} tab-active{% endif %}"{% if active_tab == 'files' %} aria-current="page"{% endif %}>
-    <span class="icon-[lucide--file-text] size-4" aria-hidden="true"></span>Files
-  </a>
-  <a href="{{ url_for('files.index', tab='updates') }}" class="tab{% if active_tab == 'updates' %} tab-active{% endif %}"{% if active_tab == 'updates' %} aria-current="page"{% endif %}>
-    <span class="icon-[lucide--refresh-cw] size-4" aria-hidden="true"></span>Updates
-  </a>
-  {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
-  <a href="{{ url_for('files.index', tab='repo') }}" class="tab{% if active_tab == 'repo' %} tab-active{% endif %}"{% if active_tab == 'repo' %} aria-current="page"{% endif %}>
-    <span class="icon-[lucide--git-branch] size-4" aria-hidden="true"></span>Repo settings
-  </a>
-  {% endif %}
-</nav>
+<div class="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)] items-start">
+  <nav class="card card-border bg-base-100 lg:sticky lg:top-24" aria-label="File page sections">
+    <div class="p-2">
+      <ul class="menu menu-sm gap-0.5">
+        <li class="menu-title">Content</li>
+        <li><a href="{{ url_for('files.index', tab='files') }}" class="{% if active_tab == 'files' %}menu-active{% endif %}"{% if active_tab == 'files' %} aria-current="page"{% endif %}>
+          <span class="status {% if has_top %}status-success{% else %}status-warning{% endif %}" aria-hidden="true"></span>
+          <span class="icon-[lucide--file-text] size-4" aria-hidden="true"></span>Browse
+          <span class="badge badge-sm badge-ghost tabular-nums">{{ total }}</span>
+          <span class="sr-only">{% if has_top %}top.sls present{% else %}top.sls missing{% endif %}</span></a></li>
+        <li><a href="{{ url_for('files.index', tab='formulas') }}" class="{% if active_tab == 'formulas' %}menu-active{% endif %}"{% if active_tab == 'formulas' %} aria-current="page"{% endif %}>
+          <span class="status {% if formula_summary.missing or formula_summary.untracked %}status-warning{% else %}status-success{% endif %}" aria-hidden="true"></span>
+          <span class="icon-[lucide--package] size-4" aria-hidden="true"></span>Formulas
+          <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span>
+          <span class="sr-only">{% if formula_summary.missing or formula_summary.untracked %}{{ formula_summary.missing }} missing, {{ formula_summary.untracked }} untracked{% else %}all tracked{% endif %}</span></a></li>
+        <li class="menu-title mt-2">Sync</li>
+        <li><a href="{{ url_for('files.index', tab='updates') }}" class="{% if active_tab == 'updates' %}menu-active{% endif %}"{% if active_tab == 'updates' %} aria-current="page"{% endif %}>
+          <span class="status {% if git.ok and git.clean and not git.behind %}status-success{% else %}status-warning{% endif %}" aria-hidden="true"></span>
+          <span class="icon-[lucide--refresh-cw] size-4" aria-hidden="true"></span>Updates
+          {% if git.ok and git.behind %}<span class="badge badge-sm badge-warning tabular-nums">{{ git.behind }} behind</span>{% endif %}
+          <span class="sr-only">{% if not git.ok %}status unavailable{% elif git.behind %}{{ git.behind }} behind{% elif not git.clean %}uncommitted changes{% else %}up to date{% endif %}</span></a></li>
+        {% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
+        <li><a href="{{ url_for('files.index', tab='repo') }}" class="{% if active_tab == 'repo' %}menu-active{% endif %}"{% if active_tab == 'repo' %} aria-current="page"{% endif %}>
+          <span class="icon-[lucide--git-branch] size-4" aria-hidden="true"></span>Repo settings</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </nav>
+  <div class="min-w-0">
 
 {% if active_tab == "updates" %}
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
@@ -157,6 +174,8 @@
 </div>
 {% elif active_tab == "repo" %}
 {% include "repo.html" %}
+{% elif active_tab == "formulas" %}
+{% include "formulas.html" %}
 {% else %}
 <section id="file-workspace" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" aria-label="State files workspace">
   <nav class="card card-border bg-base-100 min-w-0 lg:col-span-3" aria-label="Folder navigation">
@@ -280,5 +299,7 @@
 <link href="{{ url_for('static', filename='browser.bundle.css') }}" rel="stylesheet" type="text/css">
 <script src="{{ url_for('static', filename='browser.bundle.js') }}"></script>
 {% endif %}
- </div>
+  </div>
+  </div>
+  </div>
 {% endblock %}

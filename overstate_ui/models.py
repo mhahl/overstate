@@ -302,6 +302,29 @@ class WatchedState(Base):
     sls: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
 
+class Formula(Base):
+    """Tracked Salt formula vendored under file roots.
+
+    The DB row is an index only: ``salt/<name>/`` on disk plus git are
+    truth. ``installed_sha`` is the upstream formula-repo commit the
+    tree was vendored from, not the local checkout HEAD (which also
+    covers the vendor commit itself). Secrets never live here — auth
+    rides the shared 0600 helper or an ephemeral per-clone token.
+    """
+
+    __tablename__ = "formulas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    branch: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    installed_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class StateConformityHistory(Base):
     """Per-minion verdict trail. Newest rows answer "since when";
     retention is capped per minion at write time."""

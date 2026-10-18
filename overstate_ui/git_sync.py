@@ -39,6 +39,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 
@@ -1019,3 +1020,398 @@ def set_remote_origin(url: str) -> dict:
         if not free:
             return {"ok": False, "reason": "a sync is already running"}
         return _set_remote(valid_url(url))
+
+
+# --- Formulas ----------------------------------------------------------
+
+_FORMULA_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,127}$")
+
+
+def validate_formula_name(name: str) -> dict:
+    """Slug for ``salt/<name>/``. Lowercase only so the SLS name, the
+    directory, and the DB row can never disagree by case."""
+    slug = (name or "").strip().lower()
+    if not slug or not _FORMULA_RE.match(slug):
+        return {"ok": False, "reason": "use a short name: a-z, 0-9, - and _"}
+    if slug in ("top", "pillar", "reactor", "_modules"):
+        return {"ok": False, "reason": "that name is reserved"}
+    return {"ok": True, "name": slug}
+
+
+def list_formula_dirs() -> list[dict]:
+    """Top-level dirs under file roots that look like formulas.
+
+    A formula is a directory with an ``init.sls`` — the SLS name Salt
+    applies. Never raises; unreadable roots read as empty.
+    """
+    out: list[dict] = []
+    try:
+        base = _root()
+        if not base.is_dir():
+            return out
+        for entry in sorted(base.iterdir()):
+            try:
+                if not entry.is_dir() or entry.is_symlink():
+                    continue
+                if entry.name.startswith("."):
+                    continue
+                if not (entry / "init.sls").is_file():
+                    continue
+                out.append({"name": entry.name})
+            except OSError:
+                continue
+    except OSError:
+        return []
+    return out
+
+
+def formula_in_top(name: str) -> bool:
+    """Whether ``salt/top.sls`` mentions the formula. Substring check —
+    advisory only, the Jobs preview stays the real gate."""
+    try:
+        text = (_root() / "top.sls").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return name in text
+
+
+def _ephemeral_credential_file(host: str, token: str) -> Path | None:
+    """Write a one-shot credential helper file (0600). None on failure."""
+    try:
+        fd, tmp = tempfile.mkstemp(prefix="overstate-formula-creds-")
+        os.close(fd)
+        path = Path(tmp)
+        path.write_text(f"https://x:{token}@{host}\n", encoding="utf-8")
+        os.chmod(path, 0o600)
+        return path
+    except OSError:
+        return None
+
+
+def _clone_formula_source(
+    url: str, branch: str | None, auth: str, token: str | None
+) -> dict:
+    """Clone a formula repo into a tmp dir. Returns ``{"ok", "tmp", "sha"}``.
+
+    ``auth`` is ``shared`` (existing helper + host keys), ``token``
+    (ephemeral helper, never persisted here), or ``ssh`` (host keys
+    only). ``file://`` URLs work here for tests; the public wrapper
+    never lets them through.
+    """
+    srv = _srv()
+    tmp = srv.parent / (srv.name + ".__formula_tmp")
+    if tmp.exists() and not _clear_dir(tmp):
+        return {"ok": False, "reason": "cannot clear a previous attempt"}
+    if tmp.exists():
+        try:
+            tmp.rmdir()
+        except OSError:
+            return {"ok": False, "reason": "cannot clear a previous attempt"}
+    cred_file: Path | None = None
+    argv: list[str] = []
+    try:
+        if auth == "token":
+            if not token:
+                return {"ok": False, "reason": "enter a token for this clone"}
+            host = validate_repo_url(url).get("host") if url.startswith(
+                "https://"
+            ) else None
+            if not host:
+                return {
+                    "ok": False,
+                    "reason": "tokens are for https URLs — SSH uses deploy keys",
+                }
+            cred_file = _ephemeral_credential_file(host, token)
+            if cred_file is None:
+                return {"ok": False, "reason": "could not stage credentials"}
+            argv += ["-c", f"credential.helper=store --file {cred_file}"]
+        elif auth == "shared" and has_token():
+            argv += ["-c", f"credential.helper=store --file {_credentials_file()}"]
+        clone_argv = list(argv) + ["clone", "--depth", "1"]
+        if branch:
+            clone_argv += ["--branch", branch]
+        clone_argv += ["--", url, str(tmp)]
+        try:
+            srv.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return {"ok": False, "reason": "cannot prepare the checkout directory"}
+        proc = _run(*clone_argv, cwd=srv.parent, timeout=CLONE_TIMEOUT)
+        if proc is None or proc.returncode != 0:
+            _drop_staged(tmp)
+            return {"ok": False, "reason": _failure(proc, "git clone failed")}
+        sha = _run("rev-parse", "HEAD", cwd=tmp, timeout=GIT_TIMEOUT)
+        upstream = (
+            sha.stdout.strip()
+            if sha and sha.returncode == 0 and sha.stdout.strip()
+            else None
+        )
+        return {"ok": True, "tmp": tmp, "sha": upstream}
+    finally:
+        if cred_file is not None:
+            with contextlib.suppress(OSError):
+                cred_file.unlink()
+
+
+def _move_formula_contents(src: Path, dest: Path) -> bool:
+    """Move formula files into place, never the source ``.git/``.
+
+    A root-shaped clone carries its own ``.git`` at ``src/.git`` — moving
+    the directory itself would nest a repo inside the checkout (a gitlink
+    the master then reads as a submodule). Contents move instead; the
+    caller drops the staging dir afterwards.
+    """
+    try:
+        dest.mkdir(parents=True, exist_ok=False)
+        for entry in src.iterdir():
+            if entry.name == ".git":
+                continue
+            shutil.move(str(entry), str(dest / entry.name))
+    except (OSError, shutil.Error):
+        return False
+    return True
+
+
+def _install_formula_tree(tmp: Path, name: str) -> dict:
+    """Move the cloned tree (or its ``<name>/`` subdir) to ``salt/<name>/``.
+
+    Formula repos come in two shapes: the repo root *is* the formula
+    (has ``init.sls``), or it holds the formula in a subdir (the
+    saltstack-formulas layout). Prefer the subdir when it exists.
+    """
+    dest = _root() / name
+    if dest.exists() or dest.is_symlink():
+        _drop_staged(tmp)
+        return {"ok": False, "reason": f"'{name}/' already exists"}
+    candidate = tmp / name
+    if candidate.is_dir() and (candidate / "init.sls").is_file():
+        src = candidate
+    else:
+        src = tmp
+    if not (src / "init.sls").is_file():
+        _drop_staged(tmp)
+        return {"ok": False, "reason": "that repo has no init.sls at its root"}
+    try:
+        _root().mkdir(parents=True, exist_ok=True)
+        if not _move_formula_contents(src, dest):
+            raise OSError("move failed")
+    except (OSError, shutil.Error):
+        _drop_staged(tmp)
+        with contextlib.suppress(OSError):
+            if dest.is_dir() and not any(dest.iterdir()):
+                dest.rmdir()
+        return {"ok": False, "reason": "cannot install the formula tree"}
+    finally:
+        _drop_staged(tmp)
+    _ensure_world_readable(dest)
+    return {"ok": True}
+
+
+def vendor_formula(
+    name: str, url: str, branch: str | None, auth: str, token: str | None
+) -> dict:
+    """Clone + install + commit one formula. One local commit, never a push.
+
+    Validates name/URL/branch/token, serializes on the shared lock, and
+    refuses (never forces) outside a checkout or onto an existing dir.
+    Returns ``{"ok", "sha"}`` with the upstream formula commit.
+    """
+    slug = validate_formula_name(name)
+    if not slug["ok"]:
+        return slug
+    valid = validate_repo_url((url or "").strip())
+    if not valid["ok"]:
+        return valid
+    checked = validate_branch(branch or "")
+    if not checked["ok"]:
+        return checked
+    if auth not in ("shared", "token", "ssh"):
+        return {"ok": False, "reason": "pick how to authenticate"}
+    if auth == "token":
+        if valid["scheme"] != "https":
+            return {
+                "ok": False,
+                "reason": "tokens are for https URLs — SSH uses deploy keys",
+            }
+        if not validate_token(token or "")["ok"]:
+            return {"ok": False, "reason": "that token cannot be used safely"}
+    with _single_flight() as free:
+        if not free:
+            return {"ok": False, "reason": "a sync is already running"}
+        if not _is_checkout():
+            return {"ok": False, "reason": "not a git checkout"}
+        cloned = _clone_formula_source(
+            valid_url(url), checked["branch"], auth, (token or "").strip() or None
+        )
+        if not cloned["ok"]:
+            return cloned
+        installed = _install_formula_tree(cloned["tmp"], slug["name"])
+        if not installed["ok"]:
+            return installed
+        add = _run("add", "--", slug["name"])
+        if add is None or add.returncode != 0:
+            return {"ok": False, "reason": _failure(add, "git add failed")}
+        commit = _run(
+            "-c",
+            "user.name=overstate",
+            "-c",
+            "user.email=overstate@localhost",
+            "commit",
+            "-m",
+            f"overstate: vendor formula {slug['name']}",
+            "--",
+            slug["name"],
+        )
+        if commit is None or commit.returncode != 0:
+            return {"ok": False, "reason": _failure(commit, "git commit failed")}
+        return {"ok": True, "name": slug["name"], "sha": cloned["sha"]}
+
+
+def update_formula(
+    name: str, url: str, branch: str | None, auth: str, token: str | None
+) -> dict:
+    """Re-vendor a tracked formula at the latest upstream commit.
+
+    Same contract as vendor: clone fresh to tmp, replace the tree,
+    commit that path only. Untracked files inside the formula dir are
+    left alone when they are not part of the replacement — anything the
+    upstream removed is deleted, which is why the route previews first.
+    """
+    slug = validate_formula_name(name)
+    if not slug["ok"]:
+        return slug
+    valid = validate_repo_url((url or "").strip())
+    if not valid["ok"]:
+        return valid
+    checked = validate_branch(branch or "")
+    if not checked["ok"]:
+        return checked
+    if auth not in ("shared", "token", "ssh"):
+        return {"ok": False, "reason": "pick how to authenticate"}
+    if auth == "token":
+        if valid["scheme"] != "https":
+            return {
+                "ok": False,
+                "reason": "tokens are for https URLs — SSH uses deploy keys",
+            }
+        if not validate_token(token or "")["ok"]:
+            return {"ok": False, "reason": "that token cannot be used safely"}
+    with _single_flight() as free:
+        if not free:
+            return {"ok": False, "reason": "a sync is already running"}
+        if not _is_checkout():
+            return {"ok": False, "reason": "not a git checkout"}
+        dest = _root() / slug["name"]
+        if not dest.is_dir():
+            return {"ok": False, "reason": f"'{slug['name']}/' is not installed"}
+        cloned = _clone_formula_source(
+            valid_url(url), checked["branch"], auth, (token or "").strip() or None
+        )
+        if not cloned["ok"]:
+            return cloned
+        try:
+            candidate = cloned["tmp"] / slug["name"]
+            if candidate.is_dir() and (candidate / "init.sls").is_file():
+                src = candidate
+            else:
+                src = cloned["tmp"]
+            if not (src / "init.sls").is_file():
+                _drop_staged(cloned["tmp"])
+                return {"ok": False, "reason": "that repo has no init.sls at its root"}
+            if dest.is_symlink():
+                _drop_staged(cloned["tmp"])
+                return {"ok": False, "reason": "formula path is a symlink"}
+            shutil.rmtree(dest)
+            dest.mkdir(parents=True, exist_ok=True)
+            if not _move_formula_contents(src, dest):
+                raise OSError("move failed")
+        except (OSError, shutil.Error):
+            _drop_staged(cloned["tmp"])
+            return {"ok": False, "reason": "cannot install the formula tree"}
+        _drop_staged(cloned["tmp"])
+        _ensure_world_readable(dest)
+        add = _run("add", "-A", "--", slug["name"])
+        if add is None or add.returncode != 0:
+            return {"ok": False, "reason": _failure(add, "git add failed")}
+        commit = _run(
+            "-c",
+            "user.name=overstate",
+            "-c",
+            "user.email=overstate@localhost",
+            "commit",
+            "-m",
+            f"overstate: update formula {slug['name']}",
+            "--",
+            slug["name"],
+        )
+        if commit is None or commit.returncode != 0:
+            # Nothing changed upstream: `git commit` exits nonzero with
+            # "nothing to commit" — that is success, not failure.
+            check = _run("status", "--porcelain", "--", slug["name"])
+            if check is not None and check.returncode == 0 and not check.stdout.strip():
+                return {"ok": True, "name": slug["name"], "sha": cloned["sha"],
+                        "unchanged": True}
+            return {"ok": False, "reason": _failure(commit, "git commit failed")}
+        return {"ok": True, "name": slug["name"], "sha": cloned["sha"]}
+
+
+def remove_formula_files(name: str) -> dict:
+    """Delete ``salt/<name>/`` and commit the removal. Local commit only."""
+    slug = validate_formula_name(name)
+    if not slug["ok"]:
+        return slug
+    with _single_flight() as free:
+        if not free:
+            return {"ok": False, "reason": "a sync is already running"}
+        if not _is_checkout():
+            return {"ok": False, "reason": "not a git checkout"}
+        dest = _root() / slug["name"]
+        if dest.is_symlink():
+            return {"ok": False, "reason": "formula path is a symlink"}
+        if not dest.is_dir():
+            return {"ok": False, "reason": f"'{slug['name']}/' is not installed"}
+        if not (dest / "init.sls").is_file():
+            return {"ok": False, "reason": f"'{slug['name']}/' is not a formula"}
+        rm = _run("rm", "-r", "--", slug["name"])
+        if rm is None or rm.returncode != 0:
+            return {"ok": False, "reason": _failure(rm, "git rm failed")}
+        # Untracked leftovers inside the dir are not owned by git: delete
+        # them so removal always leaves no trace (decision 3).
+        if dest.exists() or dest.is_symlink():
+            try:
+                if dest.is_symlink() or dest.is_file():
+                    dest.unlink()
+                else:
+                    shutil.rmtree(dest, ignore_errors=True)
+            except OSError:
+                pass
+        commit = _run(
+            "-c",
+            "user.name=overstate",
+            "-c",
+            "user.email=overstate@localhost",
+            "commit",
+            "-m",
+            f"overstate: remove formula {slug['name']}",
+            "--",
+            slug["name"],
+        )
+        if commit is None or commit.returncode != 0:
+            return {"ok": False, "reason": _failure(commit, "git commit failed")}
+        return {"ok": True, "name": slug["name"]}
+
+
+def ls_remote_sha(url: str, branch: str | None) -> dict:
+    """Upstream commit for a formula URL without touching the checkout."""
+    argv = ["ls-remote", "--", url]
+    if branch:
+        argv += [branch]
+    proc = _run(*argv, timeout=GIT_TIMEOUT)
+    if proc is None or proc.returncode != 0:
+        return {"ok": False, "reason": _failure(proc, "cannot reach the remote")}
+    for line in (proc.stdout or "").splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and (not branch or parts[1].endswith(branch)):
+            return {"ok": True, "sha": parts[0]}
+    if proc.stdout.strip():
+        return {"ok": True, "sha": proc.stdout.split()[0]}
+    return {"ok": False, "reason": "branch not found on the remote"}

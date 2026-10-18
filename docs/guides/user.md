@@ -322,7 +322,13 @@ that a whole role shares identical secrets.
 
 ## Files
 
-The file browser shows the Salt file roots the app was pointed at:
+The Files page is a console with a section rail on the left: **Browse**
+for the file listing, **Formulas** for vendored formulas, **Updates**
+for sync and push, and **Repo settings** (admins) for the git source.
+Each rail entry carries a status dot and a count — top.sls presence,
+tracked formulas, behind commits — so the navigation itself reports
+checkout health. The file browser shows the Salt file roots the app
+was pointed at:
 top files and SLS content, rendered as text with line numbers. Search
 narrows the listing, directories group the rows, and long listings
 page. Files too large or not readable as text show an explainer card
@@ -386,6 +392,29 @@ pulled range touches custom Salt modules (`_modules/`) the page says
 so — press **Sync modules** (operators and admins, on the Files page)
 to publish them with `saltutil.sync_all`. That distributes files only;
 like saving, it applies nothing.
+
+### Formulas
+
+The **Formulas** section lists Salt formulas vendored under `salt/` —
+directories with an `init.sls` — under **Tracked** and **Untracked**
+tabs. Tracked rows show
+the source URL, the pinned upstream commit, whether the directory is
+present on disk, and whether `top.sls` mentions it. Directories on
+disk that nobody tracks appear under **Untracked on disk** with a
+**Track** button that records their source without touching files.
+
+Operators and admins see **Add formula**: a dialog with the formula
+name (`salt/<name>/`), repo URL, ref (blank means the remote
+default), and how to authenticate — shared credential/host keys
+(the default), an SSH deploy key, or a one-time https token that is
+never stored unless an admin ticks the box. Adding clones fresh,
+installs exactly that formula (never its `.git/`), and records one
+local commit; **Update** re-vendors at the latest upstream commit and
+**Remove** previews every doomed file before deleting the tree and
+untracking the row in one local commit. Like saving, none of this
+applies anything — push (admin, Updates tab) sends it upstream, and
+the **Apply** link on each row opens a dry-run-ready `state.apply`
+job. Viewers see the table and change nothing.
 
 ## Events
 
