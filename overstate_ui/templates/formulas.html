@@ -45,12 +45,12 @@
       <div class="flex flex-wrap items-start gap-3">
         <div role="tablist" class="tabs tabs-border" aria-label="Formula views">
           <a role="tab" href="{{ url_for('formulas.index', fsub='tracked') }}" class="tab{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
-          <a role="tab" href="{{ url_for('formulas.index', fsub='untracked') }}" class="tab{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>Untracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
+          <a role="tab" href="{{ url_for('formulas.index', fsub='untracked') }}" class="tab{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>On disk <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
         </div>
         {% if may_edit %}
         <button class="btn btn-sm btn-primary ms-auto" onclick="document.getElementById('formula-add').showModal()">Add formula</button>
         {% endif %}
-        <span class="w-full text-xs text-base-content/60">{% if formula_summary.missing %}{{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing on disk.{% endif %} {% if formula_summary.untracked %}{{ formula_summary.untracked }} untracked dir{% if formula_summary.untracked != 1 %}s{% endif %} on disk.{% endif %}</span>
+        <span class="w-full text-xs text-base-content/60">{% if formula_summary.missing %}{{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing on disk.{% endif %} {% if formula_summary.untracked %}{{ formula_summary.untracked }} dir{% if formula_summary.untracked != 1 %}s{% endif %} on disk without a row{% if formula_summary.from_git %} — {{ formula_summary.from_git }} from the states repo{% endif %}.{% endif %}</span>
       </div>
 
       {% if fsub_active == 'untracked' %}
@@ -60,7 +60,12 @@
         <li class="list-row">
           <div class="list-col-grow min-w-0">
             <p class="font-mono text-sm break-all">{{ u.name }}/</p>
-            <p class="text-xs text-base-content/60">{% if u.in_top %}in top.sls{% else %}not in top.sls{% endif %}</p>
+            <p class="mt-0.5 flex flex-wrap items-center gap-1">
+              {% if u.in_git %}<span class="badge badge-sm badge-ghost"><span class="icon-[lucide--git-branch] size-3" aria-hidden="true"></span>from states repo</span>
+              {% else %}<span class="badge badge-sm badge-ghost"><span class="icon-[lucide--file-plus] size-3" aria-hidden="true"></span>not committed yet</span>{% endif %}
+              {% if u.in_top %}<span class="badge badge-sm badge-ghost">in top.sls</span>
+              {% else %}<span class="badge badge-sm badge-ghost">not in top.sls</span>{% endif %}
+            </p>
           </div>
           {% if may_edit %}
           <form method="post" action="{{ url_for('formulas.track') }}" class="flex flex-wrap items-end gap-1">

@@ -270,6 +270,42 @@ def test_formulas_remove_preview_then_confirm(web_client):
 
 
 @needs_git
+def test_formula_committed_detects_git_origin(tmp_path):
+    from flask import Flask
+
+    roots = tmp_path / "srv" / "salt"
+    _init_checkout(roots)
+    app = Flask(__name__)
+    app.config["FILE_ROOTS"] = str(roots)
+    with app.app_context():
+        assert gs.formula_committed("missing") is False
+        (roots / "committed").mkdir()
+        (roots / "committed" / "init.sls").write_text("# c\n")
+        assert gs.formula_committed("committed") is False  # not yet added
+        _git("add", "-A", cwd=roots)
+        _git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "f", cwd=roots)
+        assert gs.formula_committed("committed") is True
+
+
+def test_untracked_tab_labels_git_origin(web_client):
+    _app, client, roots = web_client
+    _login_as(client, "op")
+    # committed formula: lands via git, no DB row
+    (roots / "fromrepo").mkdir()
+    (roots / "fromrepo" / "init.sls").write_text("# f\n")
+    _git("add", "-A", cwd=roots)
+    _git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fromrepo", cwd=roots)
+    # stray dir: on disk but never committed
+    (roots / "stray").mkdir()
+    (roots / "stray" / "init.sls").write_text("# s\n")
+    html = client.get("/formulas/", query_string={"fsub": "untracked"}).data.decode()
+    assert "from states repo" in html
+    assert "fromrepo/" in html
+    assert "not committed yet" in html
+    assert "stray/" in html
+
+
+@needs_git
 def test_vendor_and_remove_files_roundtrip(tmp_path):
     """Real git: clone a local formula repo, install, commit, remove."""
     from flask import Flask

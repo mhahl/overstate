@@ -1075,6 +1075,21 @@ def formula_in_top(name: str) -> bool:
     return name in text
 
 
+def formula_committed(name: str) -> bool:
+    """Whether ``salt/<name>/`` is committed in the checkout git repo.
+
+    Drives the "from the states repo" origin label on the Formulas page:
+    a formula dir that landed via a clone or a commit is tracked by git
+    even when it has no ``Formula`` row yet, so it must not read as a
+    stray untracked directory. ``git ls-files`` answers from file roots
+    and resolves upward into the srv checkout. Never raises.
+    """
+    if not _is_checkout():
+        return False
+    proc = _run("ls-files", "--", name)
+    return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
+
+
 def _ephemeral_credential_file(host: str, token: str) -> Path | None:
     """Write a one-shot credential helper file (0600). None on failure."""
     try:

@@ -20,6 +20,7 @@ from .audit import log_event
 from .auth import roles_required
 from .files import _refresh_fileserver, roots, safe_join
 from .git_sync import (
+    formula_committed,
     formula_in_top,
     has_token,
     list_formula_dirs,
@@ -70,6 +71,7 @@ def _formulas_context(remove_pending=None):
             "tracked": False,
             "status": "untracked",
             "in_top": formula_in_top(name),
+            "in_git": formula_committed(name),
         }
         for name in sorted(dirs - set(by_name))
     ]
@@ -81,6 +83,7 @@ def _formulas_context(remove_pending=None):
             "present": sum(1 for f in formulas if f["present"]),
             "missing": sum(1 for f in formulas if not f["present"]),
             "untracked": len(untracked),
+            "from_git": sum(1 for u in untracked if u["in_git"]),
         },
         "token_configured": has_token(),
         "remove_pending": remove_pending,

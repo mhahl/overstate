@@ -397,12 +397,14 @@ like saving, it applies nothing.
 ### Formulas
 
 The **Formulas** page lists Salt formulas vendored under `salt/` —
-directories with an `init.sls` — under **Tracked** and **Untracked**
+directories with an `init.sls` — under **Tracked** and **On disk**
 tabs. Tracked rows show
 the source URL, the pinned upstream commit, whether the directory is
-present on disk, and whether `top.sls` mentions it. Directories on
-disk that nobody tracks appear under **Untracked on disk** with a
-**Track** button that records their source without touching files.
+present on disk, and whether `top.sls` mentions it. Directories with
+no tracked row appear under **On disk**; a row that is committed in
+the states repo is labelled **from states repo**, a stray uncommitted
+directory **not committed yet**. The **Track** button records their
+source without touching files.
 
 Operators and admins see **Add formula**: a dialog with the formula
 name (`salt/<name>/`), repo URL, ref (blank means the remote
