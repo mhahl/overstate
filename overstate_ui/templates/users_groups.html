@@ -2,11 +2,10 @@
 {% import "_grant_dialog.html" as gd %}
 {% block title %}Access groups · Overstate{% endblock %}
 {% block content %}
+{% import "_macros.html" as m %}
 <div>
   <div class="flex flex-wrap items-end gap-3 mb-4">
-    <div class="me-auto">
-      <h1 class="text-2xl font-bold tracking-tight">Access groups</h1>
-    </div>
+    {{ m.page_heading("Access groups", "Named local groups you can grant roles to.", "#roles", admin=true) }}
   </div>
   <section class="card card-border bg-base-100" aria-label="Local groups">
     <div class="card-body gap-3">

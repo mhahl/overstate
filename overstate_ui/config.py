@@ -50,6 +50,20 @@ class Config:
     )
     MASTER_STATEFULSET = os.environ.get("MASTER_STATEFULSET", "salt-master")
     MASTER_HEADLESS_SERVICE = os.environ.get("MASTER_HEADLESS_SERVICE", "salt-master")
+    # Per-page "Docs" links in page headings point at the operator/admin
+    # guides. Point these at a self-hosted copy when the repo is private.
+    DOCS_USER_GUIDE = os.environ.get(
+        "DOCS_USER_GUIDE",
+        "https://github.com/mhahl/overstate/blob/main/docs/guides/user.md",
+    )
+    DOCS_ADMIN_GUIDE = os.environ.get(
+        "DOCS_ADMIN_GUIDE",
+        "https://github.com/mhahl/overstate/blob/main/docs/guides/admin.md",
+    )
+    DOCS_INDEX = os.environ.get(
+        "DOCS_INDEX",
+        "https://github.com/mhahl/overstate/blob/main/docs/README.md",
+    )
 
 
 class TestConfig(Config):

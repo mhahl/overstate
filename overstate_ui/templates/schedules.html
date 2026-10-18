@@ -3,9 +3,7 @@
 {% block content %}
 {% import "_macros.html" as m %}
 <div class="flex flex-wrap items-end gap-3 mb-4">
-  <div class="me-auto">
-    <h1 class="text-2xl font-bold tracking-tight">Schedules</h1>
-  </div>
+  {{ m.page_heading("Schedules", "Recurring jobs each minion runs on its own.", "#schedules") }}
 </div>
 {% if mid and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write'))) %}
 <form method="post" action="{{ url_for('schedules.add', mid=mid) }}" class="card card-sm card-border bg-base-100 mb-4">

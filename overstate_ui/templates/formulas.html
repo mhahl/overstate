@@ -1,16 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Formulas · Overstate{% endblock %}
 {% block content %}
+{% import "_macros.html" as m %}
 {% set may_edit = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.write')) %}
 {% set may_store_shared = (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
 {% set fsub_active = fsub|default("tracked") %}
 
 <div class="flex flex-col gap-4">
   <header class="flex flex-wrap items-end justify-between gap-3">
-    <div class="me-auto min-w-0">
-      <h1 class="text-2xl font-semibold tracking-tight">Formulas</h1>
-      <p class="text-sm text-base-content/70 mt-1">Vendored Salt formulas under the shared roots. Adding updates the working tree; push (on the Files page) sends it upstream.</p>
-    </div>
+    {{ m.page_heading("Formulas", "Vendored formulas under file roots, pinned to upstream commits.", "#formulas") }}
     <div class="flex flex-wrap items-center gap-2">
       <a class="btn btn-sm btn-ghost" href="{{ url_for('files.index') }}">
         <span class="icon-[lucide--file-text] size-4" aria-hidden="true"></span>Browse files

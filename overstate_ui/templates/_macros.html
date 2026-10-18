@@ -1,3 +1,18 @@
+{% macro page_heading(title, blurb=none, docs=none, admin=false) %}
+{% set base = config.DOCS_ADMIN_GUIDE if admin else config.DOCS_USER_GUIDE %}
+<div class="me-auto min-w-0">
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <h1 class="text-2xl font-bold tracking-tight">{{ title }}</h1>
+    {% if docs %}
+    <a class="link text-xs text-base-content/50 inline-flex items-center gap-1" href="{{ docs if docs.startswith('http') else base ~ docs }}" target="_blank" rel="noopener">
+      <span class="icon-[lucide--book-open] size-3.5" aria-hidden="true"></span>Docs
+    </a>
+    {% endif %}
+  </div>
+  {% if blurb %}<p class="text-sm text-base-content/70 mt-1">{{ blurb }}</p>{% endif %}
+</div>
+{% endmacro %}
+
 {% macro hx_link(href, target, text, cls="btn btn-sm btn-ghost") %}
 <a href="{{ href }}" hx-get="{{ href }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true" class="{{ cls }}">{{ text|safe }}</a>
 {% endmacro %}

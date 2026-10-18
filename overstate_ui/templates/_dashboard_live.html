@@ -2,10 +2,8 @@
    dashboard shell and by the inexpensive HTMX panel refresh endpoint. #}
 <div id="fleet-dashboard" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   <header class="flex flex-wrap items-center gap-4">
-    <div class="me-auto">
-      <h1 class="text-2xl font-bold tracking-tight">Fleet overview</h1>
-      <p class="text-sm text-base-content/70 mt-1">Keys, minion presence, jobs, and Salt control-plane health.</p>
-    </div>
+    {% import "_macros.html" as m %}
+    {{ m.page_heading("Fleet overview", "Keys, presence, recent failures, and salt-api health.", "#dashboard") }}
     <div class="flex flex-wrap items-center gap-2">
       <span role="status" class="inline-flex items-center gap-2 text-sm text-base-content/70{% if not probing %} opacity-60 invisible{% endif %}">
         <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>

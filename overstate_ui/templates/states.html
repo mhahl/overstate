@@ -3,12 +3,10 @@
 {% block content %}
 {% set may_watch = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('state.watch')) %}
 {% set status_labels = {"": "All", "ok": "Passing", "drifted": "Drifted", "unreachable": "Unreachable", "unknown": "Unknown"} %}
+{% import "_macros.html" as m %}
 <div class="flex flex-col gap-4">
   <header class="flex flex-wrap items-end gap-3">
-    <div class="me-auto min-w-0">
-      <h1 class="text-2xl font-semibold tracking-tight">States &amp; conformity</h1>
-      <p class="text-sm text-base-content/70 mt-1">Latest state verdicts across {{ summary.total }} minion{% if summary.total != 1 %}s{% endif %} in your view. Each result links to its source job.</p>
-    </div>
+    {{ m.page_heading("States &amp; conformity", "Latest state verdict per minion, from the most recent state job.", "#states-and-conformity") }}
     <div class="flex flex-wrap items-center gap-2">
       <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='highstate-dry') }}"><span class="flex items-center justify-center size-4"><span class="icon-[lucide--shield-check] size-4" aria-hidden="true"></span></span>Dry-run highstate</a>
       {% if may_watch %}

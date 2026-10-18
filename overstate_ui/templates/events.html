@@ -1,17 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Events · Overstate{% endblock %}
 {% block content %}
+{% import "_macros.html" as m %}
 <div id="events-workspace" class="flex flex-col gap-4">
   <header class="flex flex-wrap items-end justify-between gap-4">
-    <div class="flex min-w-0 items-start gap-3">
-      <div class="flex items-center justify-center size-10 shrink-0 rounded-box bg-base-200 text-base-content/70">
-        <span class="icon-[lucide--zap] size-5" aria-hidden="true"></span>
-      </div>
-      <div class="min-w-0">
-        <h1 class="text-2xl font-semibold tracking-tight">Events</h1>
-        <p class="text-sm text-base-content/70 mt-1">Live Salt event summaries. Only the tag and timestamp are sent to this page.</p>
-      </div>
-    </div>
+    {{ m.page_heading("Events", "Live Salt event summaries. Only the tag and timestamp are sent to this page.", "#events") }}
     <span class="badge badge-sm badge-ghost tabular-nums">{{ selected|length }} of {{ choices|length }} families selected</span>
   </header>
 

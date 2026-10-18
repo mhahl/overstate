@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Keys · Overstate{% endblock %}
 {% block content %}
+{% import "_macros.html" as m %}
 <div class="flex flex-wrap items-center gap-3 mb-4">
-  <h1 class="text-2xl font-bold tracking-tight me-auto">Keys</h1>
+  {{ m.page_heading("Keys", "Accept, reject, or delete minion keys.", "#keys") }}
   <span class="badge badge-sm badge-soft badge-warning">{{ counts.pending }} pending</span>
 </div>
 {% if syndic_masters %}
