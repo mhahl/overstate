@@ -10,6 +10,7 @@ Entry point for all documentation. Paths are repo-root-relative.
 | [`docs/guides/admin.md`](guides/admin.md) | Administrator guide: settings, users, roles, operations |
 | [`docs/guides/developer.md`](guides/developer.md) | Contributor guide: conventions, module layout, tests, lint, coverage, deps |
 | [`docs/guides/install-kubernetes.md`](guides/install-kubernetes.md) | Production install runbook: secrets → apply → verify → restore |
+| [`docs/guides/cloud-init-salt-minion.md`](guides/cloud-init-salt-minion.md) | cloud-init user-data for a Salt minion on Fedora 44 / openSUSE Tumbleweed |
 
 ## Reference — design and feature specifics
 
