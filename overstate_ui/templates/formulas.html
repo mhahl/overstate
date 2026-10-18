@@ -92,7 +92,7 @@
       {% if formulas %}
       <div class="max-w-full overflow-x-auto rounded-box border border-base-300">
         <table class="table table-sm w-full">
-          <thead><tr><th>Formula</th><th>Source</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
+          <thead><tr><th>Formula</th><th>Source</th><th class="w-32 whitespace-nowrap">Status</th><th class="text-right">Actions</th></tr></thead>
           <tbody>
             {% for f in formulas %}
             <tr class="hover">
@@ -100,12 +100,14 @@
                 <a href="{{ url_for('files.view', path=f.name + '/init.sls') }}" class="font-mono text-sm break-all">{{ f.name }}/</a>
                 <span class="block text-xs text-base-content/60 font-mono">{% if f.installed_short %}{{ f.installed_short }}{% else %}unpinned{% endif %}{% if f.branch %} · {{ f.branch }}{% endif %}</span>
               </td>
-              <td class="max-w-48"><span class="font-mono text-xs break-all">{{ f.url }}</span></td>
-              <td>
-                {% if f.status == "tracked" %}<span class="badge badge-sm badge-success badge-outline">present</span>
-                {% else %}<span class="badge badge-sm badge-warning badge-outline">missing</span>{% endif %}
-                {% if f.in_top %}<span class="badge badge-sm badge-ghost">in top.sls</span>
-                {% else %}<span class="badge badge-sm badge-ghost">not in top.sls</span>{% endif %}
+              <td class="max-w-xs min-w-0"><span class="font-mono text-xs break-all">{{ f.url }}</span></td>
+              <td class="whitespace-nowrap">
+                <span class="inline-flex items-center gap-1">
+                {% if f.status == "tracked" %}<span class="badge badge-xs badge-success badge-outline">present</span>
+                {% else %}<span class="badge badge-xs badge-warning badge-outline">missing</span>{% endif %}
+                {% if f.in_top %}<span class="badge badge-xs badge-ghost">in top.sls</span>
+                {% else %}<span class="badge badge-xs badge-ghost">not in top.sls</span>{% endif %}
+                </span>
               </td>
               <td class="text-right">
                 <div class="flex flex-wrap justify-end gap-1">
