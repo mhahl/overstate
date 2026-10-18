@@ -1336,7 +1336,6 @@ def update_formula(
                 _drop_staged(cloned["tmp"])
                 return {"ok": False, "reason": "formula path is a symlink"}
             shutil.rmtree(dest)
-            dest.mkdir(parents=True, exist_ok=True)
             if not _move_formula_contents(src, dest):
                 raise OSError("move failed")
         except (OSError, shutil.Error):

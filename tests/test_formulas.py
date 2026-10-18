@@ -327,6 +327,39 @@ def test_track_refuses_from_repo_formula(web_client):
     assert "formula-track-refused:fromrepo:from-repo" in _actions(app)
 
 
+def test_update_formula_replaces_tree(web_client, monkeypatch):
+    """Regression: update must replace the installed tree, not fail on a
+    pre-created dest dir (the old code mkdir'ed dest, then
+    _move_formula_contents refused because it already existed)."""
+    app, client, roots = web_client
+    _login_as(client, "op")
+    (roots / "nginx").mkdir()
+    (roots / "nginx" / "init.sls").write_text("# old\n")
+    _git("add", "-A", cwd=roots)
+    _git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "vendor", cwd=roots)
+
+    def fake_clone(url, branch, auth, token):
+        tmp = roots.parent / (roots.name + ".__formula_tmp")
+        if tmp.exists():
+            shutil.rmtree(tmp)
+        tmp.mkdir(parents=True)
+        (tmp / "init.sls").write_text("# updated\n")
+        (tmp / "config.sls").write_text("# new file\n")
+        return {"ok": True, "tmp": tmp, "sha": "c0ffee1234567890"}
+
+    monkeypatch.setattr(gs, "_clone_formula_source", fake_clone)
+    with app.app_context():
+        result = gs.update_formula("nginx", "https://git.example.com/n.git", None, "shared", None)
+    assert result["ok"], result
+    assert (roots / "nginx" / "init.sls").read_text() == "# updated\n"
+    assert (roots / "nginx" / "config.sls").is_file()
+    head = subprocess.run(
+        ["git", "-C", str(roots), "rev-parse", "--short", "HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert head
+
+
 @needs_git
 def test_vendor_and_remove_files_roundtrip(tmp_path):
     """Real git: clone a local formula repo, install, commit, remove."""
