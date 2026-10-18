@@ -4,7 +4,7 @@
 {% block content %}
 <div class="flex flex-wrap items-center gap-3 mb-4">
   {% set minion_title = "Minions (" ~ total ~ ")" %}
-  {{ m.page_heading(minion_title, "Every accepted minion, its grains, and its presence.", "#minions") }}
+  {{ m.page_heading(minion_title, "Every accepted minion, its grains, and its presence.") }}
   <div class="flex flex-wrap gap-2 items-center">
     {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('minion.refresh')) %}
     <form method="post" action="{{ url_for('minions.refresh') }}">

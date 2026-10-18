@@ -3,7 +3,7 @@
 {% block title %}Jobs · Overstate{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-end gap-3 mb-4">
-  {{ m.page_heading("Jobs", "Run salt functions and read their returns.", "#jobs") }}
+  {{ m.page_heading("Jobs", "Run salt functions and read their returns.") }}
   <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new') }}" data-loading-link data-loading-text="Loading…">Run job</a>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
   <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists" aria-pressed="false">Pause live updates</button>

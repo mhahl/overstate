@@ -3,7 +3,7 @@
 {% block content %}
 {% import "_macros.html" as m %}
 <div class="flex flex-wrap items-center gap-3 mb-4">
-  {{ m.page_heading("Keys", "Accept, reject, or delete minion keys.", "#keys") }}
+  {{ m.page_heading("Keys", "Accept, reject, or delete minion keys.") }}
   <span class="badge badge-sm badge-soft badge-warning">{{ counts.pending }} pending</span>
 </div>
 {% if syndic_masters %}

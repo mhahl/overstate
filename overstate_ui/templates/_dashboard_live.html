@@ -3,7 +3,7 @@
 <div id="fleet-dashboard" class="flex flex-col gap-4"{% if probing and poll_qs %} hx-get="{{ url_for('dashboard.panels') }}?{{ poll_qs }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   <header class="flex flex-wrap items-center gap-4">
     {% import "_macros.html" as m %}
-    {{ m.page_heading("Fleet overview", "Keys, presence, recent failures, and salt-api health.", "#dashboard") }}
+    {{ m.page_heading("Fleet overview", "Keys, presence, recent failures, and salt-api health.") }}
     <div class="flex flex-wrap items-center gap-2">
       <span role="status" class="inline-flex items-center gap-2 text-sm text-base-content/70{% if not probing %} opacity-60 invisible{% endif %}">
         <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>

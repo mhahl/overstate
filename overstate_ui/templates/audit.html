@@ -4,7 +4,7 @@
 {% import "_macros.html" as m %}
 {% set audit_title = "Audit (" ~ total ~ ")" %}
 <div class="flex flex-wrap items-center gap-3 mb-4">
-  {{ m.page_heading(audit_title, "Who changed what, in order.", "#audit", admin=true) }}
+  {{ m.page_heading(audit_title, "Who changed what, in order.") }}
 </div>
 <section class="card card-border bg-base-100 min-w-0" aria-label="Audit entries">
   <div class="border-b border-base-300 px-4 py-3 flex flex-wrap items-end justify-end gap-2">
