@@ -13,4 +13,7 @@ PLAN.md
 # Local tooling state (IDE, agent sessions). Never commit.
 .idea/
 .agents/
+.muse/
+.mypy_cache/
+.ruff_cache/
 kubectl

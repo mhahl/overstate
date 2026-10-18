@@ -34,7 +34,7 @@
         <span class="badge badge-sm badge-ghost">Git unavailable</span>
         <span class="text-xs text-base-content/60">{{ git.reason }}</span>
         {% endif %}
-        <span class="ms-auto text-xs text-base-content/60">Scheduled sync: <span class="font-mono">{{ file_sync.schedule }}</span>{% if file_sync.schedule|lower == "off" %} (disabled){% endif %}</span>
+        <span class="ms-auto text-xs text-base-content/60">Scheduled sync: <span class="font-mono">{{ file_sync.schedule }}</span>{% if file_sync.schedule|lower == "off" %} (disabled){% endif %}{% if file_sync.last_message %} · last run {{ file_sync.last_message }}{% if file_sync.last_run %} ({{ file_sync.last_run|reltime }}){% endif %}{% endif %}</span>
       </div>
       {% if may_sync %}
       <div class="flex flex-wrap items-center gap-2 border-t border-base-300 pt-3">

@@ -116,7 +116,7 @@ def test_files_page_displays_schedule_and_last_sync(client):
         _store(LAST_RUN_SETTING, "2026-10-12T08:00:00+00:00")
         _store(LAST_STATUS_SETTING, "success")
         _store(LAST_MESSAGE_SETTING, "file sync succeeded: abc -> def")
-        html = client.get("/files/?tab=updates").data.decode()
+        html = client.get("/files/").data.decode()
     assert "Scheduled sync" in html
     assert "*/20 * * * *" in html
     assert "file sync succeeded: abc -&gt; def" in html

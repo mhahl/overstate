@@ -9,7 +9,7 @@ keeps working; clone and re-clone always (re)build the srv-level
 layout, preserving the Overstate-owned ``reactor/`` sibling.
 
 Reads (status) stay free; writes are explicit and gated: ``fetch`` +
-``pull --ff-only`` (Sync, same flags as ``scripts/sync-file-roots.sh``),
+``pull --ff-only`` (Sync).
 single-file commits (edit saves), and upstream ``push`` (admin). Anything
 that is not clean — diverged branches, dirty tree, missing upstream,
 missing push credentials, not a checkout at all — refuses with a fixed
