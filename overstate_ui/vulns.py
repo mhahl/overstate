@@ -14,6 +14,8 @@ so instead of pointing at the generic mine-refresh preset.
 
 from __future__ import annotations
 
+import datetime as dt
+
 import httpx
 from flask import Blueprint, render_template, request
 from flask_login import login_required
@@ -36,6 +38,81 @@ SEVERITY_RANK = {
     "UNKNOWN": 5,
 }
 SORT_COLUMNS = ("minion", "total", "fixable", "scanned_at")
+# A summary older than this many days is flagged as a stale scan.
+VULN_STALE_DAYS = 7
+
+
+def scan_age_days(scanned_at: str | None) -> int | None:
+    """Whole days between now and a scan timestamp, or None when absent."""
+    if not scanned_at:
+        return None
+    try:
+        when = dt.datetime.fromisoformat(scanned_at)
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt.UTC)
+    return max(0, int((dt.datetime.now(dt.UTC) - when).total_seconds() // 86400))
+
+
+SNAPSHOT_LIMIT = 10
+
+
+def _snapshot_cves(entries: dict) -> dict[str, list[str]]:
+    """Per-minion CVE lists from the summary top lists (best effort)."""
+    out: dict[str, list[str]] = {}
+    for mid, value in entries.items():
+        if not isinstance(value, dict):
+            continue
+        top = value.get("top")
+        if not isinstance(top, list):
+            continue
+        cves = [
+            str(f.get("cve"))
+            for f in top
+            if isinstance(f, dict) and f.get("cve")
+        ]
+        out[mid] = sorted(set(cves))
+    return out
+
+
+def record_snapshot(entries: dict) -> dict[str, int]:
+    """Diff current top-list CVEs against the previous snapshot, then
+    record the new one. Returns {mid: new_cve_count}; never raises."""
+    from .db import get_session
+    from .models import VulnSnapshot
+
+    try:
+        session = get_session()
+        current = _snapshot_cves(entries)
+        previous = session.query(VulnSnapshot).order_by(VulnSnapshot.id.desc()).first()
+        prev_cves = (
+            previous.cves
+            if previous is not None and isinstance(previous.cves, dict)
+            else {}
+        )
+        # No baseline yet: the first snapshot only establishes one, so
+        # the whole fleet does not light up "+N new" on the first load.
+        new_by_minion: dict[str, int] = {}
+        if previous is not None:
+            new_by_minion = {
+                mid: len(set(cves) - set(prev_cves.get(mid, [])))
+                for mid, cves in current.items()
+                if set(cves) - set(prev_cves.get(mid, []))
+            }
+        session.add(VulnSnapshot(cves=current))
+        session.flush()
+        for stale in (
+            session.query(VulnSnapshot)
+            .order_by(VulnSnapshot.id.desc())
+            .offset(SNAPSHOT_LIMIT)
+            .all()
+        ):
+            session.delete(stale)
+        session.commit()
+        return new_by_minion
+    except Exception:  # noqa: BLE001 — the snapshot never blocks the page
+        return {}
 
 
 def summarize_entries(entries: dict) -> tuple[list[dict], list[str]]:
@@ -155,6 +232,7 @@ def index():
     if scoped and hit is not None:
         entries = {k: v for k, v in entries.items() if k in hit}
     rows, severities = summarize_entries(entries)
+    new_by_minion = record_snapshot(entries)
     if q:
         needle = q.lower()
         rows = [r for r in rows if needle in r["mid"].lower()]
@@ -162,6 +240,17 @@ def index():
     if sort not in allowed:
         sort, direction = "total", "desc"
     rows = sort_rows(rows, sort, direction)
+    # Fleet rollup + staleness: computed over the full (unpaged) set.
+    totals = {
+        "critical": sum(r["counts"].get("CRITICAL", 0) for r in rows if not r["error"]),
+        "high": sum(r["counts"].get("HIGH", 0) for r in rows if not r["error"]),
+        "fixable": sum(r["fixable"] for r in rows if not r["error"]),
+        "total": sum(r["total"] for r in rows if not r["error"]),
+    }
+    oldest = max((scan_age_days(r["scanned_at"]) for r in rows if not r["error"]), default=None)
+    stale = {
+        r["mid"] for r in rows if (scan_age_days(r["scanned_at"]) or 0) > VULN_STALE_DAYS
+    }
     from .minions import resolve_page_size
 
     per_page = resolve_page_size(request.args.get("per_page"))
@@ -185,4 +274,9 @@ def index():
         pages=pages,
         per_page=per_page,
         error=error,
+        totals=totals,
+        stale=stale,
+        stale_days=VULN_STALE_DAYS,
+        oldest_scan_days=oldest,
+        new_by_minion=new_by_minion,
     )

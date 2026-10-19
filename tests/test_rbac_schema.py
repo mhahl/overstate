@@ -19,8 +19,8 @@ from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.models import Grant, LocalGroup, User
 
 # The chain since RBAC: f1a2b3c4d5e6 (grant tables) -> f2b3c4d5e6f7
-# (backfill) -> a8b9c0d1e2f3 (formulas, head).
-HEAD = "a8b9c0d1e2f3"
+# (backfill) -> a8b9c0d1e2f3 (formulas) -> b4c9d1e2f3a6 (vuln snapshots, head).
+HEAD = "b4c9d1e2f3a6"
 
 
 def _alembic(db_path, *args):
@@ -75,19 +75,25 @@ def test_migration_upgrade_downgrade_roundtrip(tmp_path):
     for table in _RBAC_TABLES:
         assert table in tables
 
-    # -1 rolls back the formulas migration; grant tables stay.
+    # -1 rolls back the vuln snapshots; grant tables stay.
+    rv = _alembic(db, "downgrade", "-1")
+    assert rv.returncode == 0, rv.stderr
+    assert _version(db) == "a8b9c0d1e2f3"
+    assert "grants" in _tables(db)
+
+    # A second -1 rolls back formulas; grant tables stay.
     rv = _alembic(db, "downgrade", "-1")
     assert rv.returncode == 0, rv.stderr
     assert _version(db) == "f2b3c4d5e6f7"
     assert "grants" in _tables(db)
 
-    # A second -1 rolls back the backfill; tables still stay.
+    # A third -1 rolls back the backfill; tables still stay.
     rv = _alembic(db, "downgrade", "-1")
     assert rv.returncode == 0, rv.stderr
     assert _version(db) == "f1a2b3c4d5e6"
     assert "grants" in _tables(db)
 
-    # A third -1 drops the grant tables.
+    # A fourth -1 drops the grant tables.
     rv = _alembic(db, "downgrade", "-1")
     assert rv.returncode == 0, rv.stderr
     assert _version(db) == "e8f0a1b2c3d4"

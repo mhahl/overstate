@@ -291,3 +291,58 @@ it into your vault, log in, and consider replacing the account: create
 your named admin, verify it works, delete `admin`. If the users table
 already holds anyone, boot never seeds, so a restart cannot lock you
 out or reset credentials.
+
+## Vulnerability scans
+
+The Vulnerabilities pages read the `grype.scan_summary` /
+`grype.scan_detail` mine keys. `mine.update` does **not** refresh them:
+the scan data is produced by a minion-side grype job that writes its
+result into the mine. Provision that job on your fleet — for example,
+a state like:
+
+```sls
+grype-scan:
+  file.managed:
+    - name: /usr/local/bin/grype-scan.sh
+    - contents: |
+        #!/bin/sh
+        grype dir:/ --scope all-layers -o json \
+          > /var/cache/grype/report.json
+        salt-call mine.send grype.scan_detail \
+          value="$(python3 - <<'PY'
+import json
+with open('/var/cache/grype/report.json') as f:
+    r = json.load(f)
+print(json.dumps({
+  "counts": {"CRITICAL": 0, "HIGH": 0},
+  "total": len(r.get("matches", [])),
+  "fixable": 0,
+  "detailed_report": [{
+    "cve": m.get("vulnerability", {}).get("id"),
+    "pkg": m.get("artifact", {}).get("name"),
+    "installed": m.get("artifact", {}).get("version"),
+    "fixed": (m.get("fix", {}) or {}).get("versions", [None])[0],
+    "severity": m.get("vulnerability", {}).get("severity"),
+    "namespace": m.get("vulnerability", {}).get("namespace"),
+    "urls": m.get("vulnerability", {}).get("urls", []),
+  } for m in r.get("matches", [])],
+  "scanned_at": "{{ salt['date.strftime']('%Y-%m-%dT%H:%M:%S+00:00', utc=True) }}",
+}))
+PY
+)"
+```
+
+The exact key shape is up to you — the app accepts slim
+(`counts`/`total`/`fixable`/`top`/`scanned_at`) or detailed
+(`detailed_report`) forms and degrades gracefully. Refresh it on a
+schedule (for example a daily `schedule.present` running the script and
+a matching `grype-cve-scan` entry), and add `grype.scan_summary` /
+`grype.scan_detail` to the minion's `mine_functions`.
+
+To trigger the scan immediately from the UI, use **Run job → Security →
+Run the daily grype scan now** (the `vuln-scan` preset), which fires
+`schedule.run_job name=grype-cve-scan` on the fleet.
+
+The fleet page flags scans older than 7 days as **stale**, shows
+`+N new` for findings that appeared since the last recorded scan, and
+rolls up fixable/critical/high counts fleet-wide.

@@ -61,6 +61,40 @@ from .vulns import SEVERITY_RANK
 
 bp = Blueprint("minions", __name__, url_prefix="/minions")
 
+# Short TTL cache for the per-minion grype reads on the vulns tab. The
+# scan data only changes on the daily schedule; caching avoids two live
+# mine.get calls on every tab view.
+VULN_CACHE_TTL = 300
+
+
+def _vuln_cache_get(mid: str, key: str):
+    import json
+
+    import redis
+
+    try:
+        from .tasks_queue import get_redis_client
+
+        raw = get_redis_client().get(f"vuln-cache:{mid}:{key}")
+        return json.loads(raw) if raw else None
+    except (redis.exceptions.RedisError, ValueError):
+        return None
+
+
+def _vuln_cache_set(mid: str, key: str, value) -> None:
+    import json
+
+    import redis
+
+    try:
+        from .tasks_queue import get_redis_client
+
+        get_redis_client().set(
+            f"vuln-cache:{mid}:{key}", json.dumps(value), ex=VULN_CACHE_TTL
+        )
+    except (redis.exceptions.RedisError, TypeError):
+        pass
+
 PAGE_SIZES = (10, 25, 50, 100)
 DEFAULT_PAGE_SIZE = 50
 """Every data table pages 50 by default; the size dropdown offers these."""
@@ -840,13 +874,17 @@ def detail(mid: str):
             data["vuln_error"] = None
             data["vuln_partial"] = False
             if not skip_live:
-                stored = client.local(
-                    mid,
-                    "mine.get",
-                    arg=[mid, "grype.scan_summary"],
-                    tgt_type="list",
-                )[0].get(mid, {})
-                summary = stored.get(mid) if isinstance(stored, dict) else None
+                summary = _vuln_cache_get(mid, "summary")
+                if summary is None:
+                    stored = client.local(
+                        mid,
+                        "mine.get",
+                        arg=[mid, "grype.scan_summary"],
+                        tgt_type="list",
+                    )[0].get(mid, {})
+                    summary = stored.get(mid) if isinstance(stored, dict) else None
+                    if isinstance(summary, dict):
+                        _vuln_cache_set(mid, "summary", summary)
                 if not isinstance(summary, dict):
                     summary = {}
                 if summary.get("error") and not isinstance(summary.get("counts"), dict):
@@ -854,15 +892,21 @@ def detail(mid: str):
                 data["vuln_meta"] = summary
                 findings = summary.get("detailed_report")
                 if not isinstance(findings, list):
-                    stored = client.local(
-                        mid,
-                        "mine.get",
-                        arg=[mid, "grype.scan_detail"],
-                        tgt_type="list",
-                    )[0].get(mid, {})
-                    detail_value = stored.get(mid) if isinstance(stored, dict) else None
-                    if isinstance(detail_value, dict):
-                        findings = detail_value.get("detailed_report")
+                    detail = _vuln_cache_get(mid, "detail")
+                    if detail is None:
+                        stored = client.local(
+                            mid,
+                            "mine.get",
+                            arg=[mid, "grype.scan_detail"],
+                            tgt_type="list",
+                        )[0].get(mid, {})
+                        detail_value = (
+                            stored.get(mid) if isinstance(stored, dict) else None
+                        )
+                        detail = detail_value if isinstance(detail_value, dict) else {}
+                        if isinstance(detail_value, dict):
+                            _vuln_cache_set(mid, "detail", detail_value)
+                    findings = detail.get("detailed_report")
                 if not isinstance(findings, list):
                     top = summary.get("top")
                     if isinstance(top, list) and top:

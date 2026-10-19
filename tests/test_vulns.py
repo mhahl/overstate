@@ -260,6 +260,50 @@ def test_minion_tab_reference_urls_allowlisted():
         DETAILS["web-01"] = original
 
 
+def test_vuln_scan_preset_is_allowlisted():
+    from overstate_ui.jobs_helpers import ALLOWED_FUNS, FLEET_PRESETS
+
+    assert FLEET_PRESETS["vuln-scan"]["fun"] == "schedule.run_job"
+    assert FLEET_PRESETS["vuln-scan"]["args"] == "grype-cve-scan"
+    assert "schedule.run_job" in ALLOWED_FUNS
+
+
+def test_fleet_page_rollup_and_stale_badge():
+    original = SUMMARIES["web-01"]
+    SUMMARIES["web-01"] = dict(original, scanned_at="2026-10-01T00:00:00+00:00")
+    try:
+        html = make_client().get("/vulnerabilities/").data.decode()
+        assert "findings" in html  # rollup line
+        assert "stale" in html  # 19-day-old scan flagged
+    finally:
+        SUMMARIES["web-01"] = original
+
+
+def test_fleet_page_marks_new_since_last_scan():
+    from overstate_ui.db import get_session
+    from overstate_ui.models import VulnSnapshot
+
+    client = make_client()
+    app = client.application
+    with app.app_context():
+        assert get_session().query(VulnSnapshot).count() == 0
+    first = client.get("/vulnerabilities/").data.decode()
+    assert "new since the last scan" not in first  # first load: nothing to diff
+    with app.app_context():
+        assert get_session().query(VulnSnapshot).count() == 1
+    # Change the top list so the second load reports new CVEs.
+    original = SUMMARIES["web-01"]
+    extra = dict(original, top=original["top"] + [
+        {"cve": "CVE-2026-9999", "pkg": "kernel", "severity": "CRITICAL"}
+    ])
+    try:
+        SUMMARIES["web-01"] = extra
+        second = client.get("/vulnerabilities/").data.decode()
+        assert "+1 new" in second
+    finally:
+        SUMMARIES["web-01"] = original
+
+
 def test_minion_tab_has_no_cached_footer_note():
     html = make_client().get("/minions/web-01?tab=vulns").data.decode()
     assert "Findings stay cached" not in html

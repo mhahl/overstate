@@ -299,6 +299,12 @@ FLEET_PRESETS = {
         "args": "salt-minion",
     },
     "mine-update": {"tgt": "*", "tgt_type": "glob", "fun": "mine.update", "args": ""},
+    "vuln-scan": {
+        "tgt": "*",
+        "tgt_type": "glob",
+        "fun": "schedule.run_job",
+        "args": "grype-cve-scan",
+    },
     "refresh-pillar": {
         "tgt": "*",
         "tgt_type": "glob",
@@ -408,6 +414,17 @@ OPERATION_GROUPS = [
             },
         ],
     ),
+    (
+        "Security",
+        [
+            {
+                "preset": "vuln-scan",
+                "fun": "schedule.run_job",
+                "args": "grype-cve-scan",
+                "about": "Run the daily grype scan now on the fleet",
+            },
+        ],
+    ),
 ]
 
 _FUN_ABOUT: dict[str, str] = {}
@@ -439,6 +456,7 @@ ALLOWED_FUNS = frozenset(
         "state.show_highstate",
         "state.show_sls",
         "saltutil.kill_job",
+        "schedule.run_job",
     }
 )
 

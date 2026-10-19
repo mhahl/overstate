@@ -4,11 +4,19 @@
 {% import "_macros.html" as m %}
 <div class="flex flex-wrap items-center gap-3 mb-4">
   {{ m.page_heading("Vulnerabilities", "CVE summaries from the grype mine keys.") }}
+  <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', preset='vuln-scan') }}"><span class="icon-[lucide--shield-alert] size-4 shrink-0" aria-hidden="true"></span>Run scan now</a>
 </div>
 {% if error %}
 <div class="alert alert-error alert-vertical sm:alert-horizontal mb-4" role="alert">
   <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
   <span>{{ error }}</span>
+</div>
+{% endif %}
+{% if rows and not error %}
+<div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mb-4">
+  <span><span class="font-semibold tabular-nums">{{ totals.total }}</span> findings · <span class="font-semibold tabular-nums">{{ totals.fixable }}</span> fixable</span>
+  <span class="text-base-content/60">{{ totals.critical }} critical · {{ totals.high }} high</span>
+  {% if oldest_scan_days is not none %}<span class="text-base-content/60">newest scan {{ oldest_scan_days }}d old</span>{% endif %}
 </div>
 {% endif %}
 <section class="card card-border bg-base-100 min-w-0" aria-label="Vulnerability summaries">
@@ -34,13 +42,13 @@
   {{ m.sort_th_plain('vulns.index', 'scanned_at', 'Scanned', sort, direction, {'q': q, 'per_page': per_page}) }}
 </tr></thead><tbody>
 {% for r in rows %}
-<tr class="hover"><td class="font-mono text-xs"><a class="link" href="{{ url_for('minions.detail', mid=r.mid, tab='vulns') }}">{{ r.mid }}</a></td>
+<tr class="hover"><td class="font-mono text-xs"><a class="link" href="{{ url_for('minions.detail', mid=r.mid, tab='vulns') }}">{{ r.mid }}</a>{% if new_by_minion.get(r.mid) %} <span class="badge badge-sm badge-info" title="Findings new since the last scan">+{{ new_by_minion.get(r.mid) }} new</span>{% endif %}</td>
   {% for sev in severities %}
   <td class="text-right tabular-nums text-sm">{% if r.error %}–{% else %}{{ r.counts.get(sev, 0) }}{% endif %}</td>
   {% endfor %}
   <td class="text-right tabular-nums text-sm font-medium">{% if r.error %}<span class="badge badge-sm badge-outline badge-error whitespace-nowrap">{{ r.error[:60] }}</span>{% else %}{{ r.total }}{% endif %}</td>
   <td class="text-right tabular-nums text-sm">{% if r.error %}–{% else %}{{ r.fixable }}{% endif %}</td>
-  <td class="text-sm whitespace-nowrap">{% if r.scanned_at %}{{ r.scanned_at|reltime }}{% else %}–{% endif %}</td></tr>
+  <td class="text-sm whitespace-nowrap">{% if r.scanned_at %}{{ r.scanned_at|reltime }}{% if r.mid in stale %} <span class="badge badge-sm badge-warning" title="Scan is older than {{ stale_days }} days.">stale</span>{% endif %}{% else %}–{% endif %}</td></tr>
 {% endfor %}
 </tbody></table>
 </div>
@@ -51,7 +59,7 @@
 {% else %}
 <div class="py-8 px-4 text-center">
   <p class="font-medium">No vulnerability data</p>
-  <p class="text-sm opacity-70">{% if q %}Nothing matches “{{ q }}”.{% else %}No minion has reported a grype scan yet. Scans publish daily through the <span class="font-mono">grype-cve-scan</span> schedule; <span class="font-mono">mine.update</span> does not refresh this data.{% endif %}</p>
+  <p class="text-sm opacity-70">{% if q %}Nothing matches “{{ q }}”.{% else %}No minion has reported a grype scan yet. Scans publish through the <span class="font-mono">grype-cve-scan</span> schedule on each minion (see the admin guide); <span class="font-mono">mine.update</span> does not refresh this data. Trigger one now with <a class="link" href="{{ url_for('jobs.new', preset='vuln-scan') }}">Run scan now</a>.{% endif %}</p>
 </div>
 {% endif %}
 <p class="text-xs opacity-70 px-4 py-3 border-t border-base-300">Summaries stay cached: minions push them on the daily schedule. Scanned ages come from each minion's own report.</p>

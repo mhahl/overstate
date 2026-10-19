@@ -133,6 +133,24 @@ class MinionGroup(Base):
     )
 
 
+class VulnSnapshot(Base):
+    """One fleet vulnerability summary as seen on a page load.
+
+    The app only reads live mine keys; this row keeps the previous
+    summary so the fleet page can flag CVEs that are new since the
+    last scan (a diff of the grype top lists). Pruned to a small cap.
+    """
+
+    __tablename__ = "vuln_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # {minion_id: [cve, ...]} from the summary top lists.
+    cves: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
 class LocalGroup(Base):
     """Named local-user membership list. Grants on the group apply to members."""
 
