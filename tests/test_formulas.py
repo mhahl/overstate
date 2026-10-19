@@ -351,7 +351,7 @@ def test_re_vendor_restores_missing_formulas(web_client, monkeypatch):
         (roots / name / "init.sls").write_text(f"# {name}\n")
         return {"ok": True, "name": name, "sha": "deadbeef"}
 
-    monkeypatch.setattr(formulas_mod, "vendor_formula", fake_vendor)
+    monkeypatch.setattr(gs, "vendor_formula", fake_vendor)
     rv = client.post("/formulas/re-vendor", follow_redirects=True)
     assert b"Restored" in rv.data
     assert b"nginx" in rv.data or b"redis" in rv.data

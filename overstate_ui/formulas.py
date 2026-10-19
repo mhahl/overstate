@@ -324,7 +324,27 @@ def update(name: str):
     return redirect(url_for("formulas.index"))
 
 
-def _re_vendor_row(row, report: dict) -> None:
+def re_vendor_all() -> dict:
+    """Re-vendor every tracked formula missing from disk.
+
+    Used by the re-vendor route and automatically after clone/re-clone.
+    Returns a report dict with ``restored``, ``skipped``, ``failed``,
+    and ``failed_reasons``.
+    """
+    from .db import get_session
+    from .git_sync import vendor_formula
+    from .models import Formula
+
+    session = get_session()
+    rows = session.query(Formula).order_by(Formula.name).all()
+    report = {"restored": 0, "skipped": 0, "failed": [], "failed_reasons": []}
+    for row in rows:
+        _re_vendor_row(row, report, vendor_formula)
+    session.commit()
+    return report
+
+
+def _re_vendor_row(row, report: dict, vf=None) -> None:
     """Vendor one formula from its DB row, populating ``report``.
 
     Uses shared auth (credential helper or SSH host keys). Skips if the
@@ -335,7 +355,7 @@ def _re_vendor_row(row, report: dict) -> None:
     if dest.is_dir():
         report["skipped"] += 1
         return
-    result = vendor_formula(row.name, row.url, row.branch or None, "shared", None)
+    result = (vf or vendor_formula)(row.name, row.url, row.branch or None, "shared", None)
     if result["ok"]:
         report["restored"] += 1
     else:
@@ -353,17 +373,20 @@ def re_vendor():
     skipped — re-add those individually.
     """
     from .authz import rbac_mode, require
-    from .db import get_session
-    from .models import Formula
 
     if rbac_mode() == "scoped":
         require("file.write")
-    session = get_session()
-    rows = session.query(Formula).order_by(Formula.name).all()
-    report = {"restored": 0, "skipped": 0, "failed": [], "failed_reasons": []}
-    for row in rows:
-        _re_vendor_row(row, report)
-    session.commit()
+    report = re_vendor_all()
+    _flash_re_vendor_report(report)
+    log_event(
+        current_user.username,
+        f"formula-revendor:{report['restored']}:{len(report['failed'])}",
+    )
+    return redirect(url_for("formulas.index"))
+
+
+def _flash_re_vendor_report(report: dict) -> None:
+    """Flash a human summary of a re-vendor report."""
     msg = [f"Restored {report['restored']} formula{'s' if report['restored'] != 1 else ''}"]
     if report["skipped"]:
         msg.append(f"{report['skipped']} already present")
@@ -373,8 +396,6 @@ def re_vendor():
             msg.append(f"'{name}': {reason}")
             log_event(current_user.username, f"formula-revendor-failed:{name}:{reason}")
     flash(". ".join(msg), "info")
-    log_event(current_user.username, f"formula-revendor:{report['restored']}:{len(report['failed'])}")
-    return redirect(url_for("formulas.index"))
 
 
 @bp.post("/remove/<name>")

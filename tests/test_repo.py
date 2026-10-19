@@ -333,6 +333,60 @@ def test_repo_clone_success_audited(web_client, monkeypatch):
     assert "git-clone" in _actions(app)
 
 
+def test_repo_clone_triggers_formula_revendor(web_client, monkeypatch):
+    """Clone success must automatically re-vendor tracked formulas."""
+    app, client, _roots = web_client
+
+    from overstate_ui.db import get_session
+    from overstate_ui.models import Formula
+
+    with app.app_context():
+        get_session().add(Formula(name="nginx", url="https://x.com/n.git", installed_sha="a"))
+        get_session().commit()
+
+    called = 0
+
+    def track_rev(*a, **k):
+        nonlocal called
+        called += 1
+        return {"restored": 2, "skipped": 0, "failed": [], "failed_reasons": []}
+
+    monkeypatch.setattr(sr_mod, "clone_repo", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(sr_mod, "re_vendor_all", track_rev)
+    client.post(
+        "/settings/repo/clone",
+        data={"url": "https://git.example.com/s.git"},
+    )
+    assert called == 1
+
+
+def test_repo_reclone_triggers_formula_revendor(web_client, monkeypatch):
+    """Re-clone success must also auto-revendor."""
+    _app, client, _roots = web_client
+
+    from overstate_ui.db import get_session
+    from overstate_ui.models import Formula
+
+    with _app.app_context():
+        get_session().add(Formula(name="redis", url="https://x.com/r.git", installed_sha="b"))
+        get_session().commit()
+
+    called = 0
+
+    def track_rev(*a, **k):
+        nonlocal called
+        called += 1
+        return {"restored": 1, "skipped": 0, "failed": [], "failed_reasons": []}
+
+    monkeypatch.setattr(sr_mod, "reclone_repo", lambda *a: {"ok": True})
+    monkeypatch.setattr(sr_mod, "re_vendor_all", track_rev)
+    client.post(
+        "/settings/repo/reclone",
+        data={"url": "https://git.example.com/s.git", "confirm": "1"},
+    )
+    assert called == 1
+
+
 def test_repo_admin_only(web_client):
     _, client, _roots = web_client
     _login_as(client, "op")

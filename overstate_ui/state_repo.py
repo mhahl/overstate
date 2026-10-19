@@ -13,6 +13,7 @@ from flask_login import current_user
 from .audit import log_event
 from .auth import roles_required
 from .files import _refresh_fileserver
+from .formulas import _flash_re_vendor_report, re_vendor_all
 from .git_sync import (
     checkout_layout,
     clear_token,
@@ -108,6 +109,7 @@ def clone():
                 f"Replaced the existing salt/ tree: {_short_list(result['replaced'])}.",
                 "info",
             )
+        _formulas_auto_revendor()
     elif result.get("confirm_replace") is not None:
         # An existing salt/ tree (the deploy seed) is only ever replaced
         # on a second, explicit confirm — stay on the page naming it.
@@ -196,6 +198,7 @@ def reclone():
     if result["ok"]:
         log_event(current_user.username, "git-reclone")
         _note_refreshed("Re-cloned", git_head())
+        _formulas_auto_revendor()
     else:
         flash(f"Re-clone refused: {result['reason']}. Nothing changed.", "error")
         log_event(current_user.username, f"git-reclone-refused:{result['reason']}")
@@ -244,3 +247,19 @@ def token_clear():
     else:
         flash(f"Clear refused: {result['reason']}.", "error")
     return redirect(url_for("state_repo.index"))
+
+
+def _formulas_auto_revendor():
+    """Re-vendor tracked formulas after clone/re-clone destroyed them on disk.
+
+    Runs silently when there are no tracked formulas. Otherwise flashes a
+    summary of what was restored or failed.
+    """
+    from .db import get_session
+    from .models import Formula
+
+    count = get_session().query(Formula).count()
+    if not count:
+        return
+    report = re_vendor_all()
+    _flash_re_vendor_report(report)
