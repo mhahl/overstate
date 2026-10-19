@@ -149,22 +149,35 @@ spec:
           # hook. We poll for the regen file to appear, then overwrite
           # it and restart salt-api. The entrypoint only regens once
           # per boot, so copying after the poll never races a rewrite.
+          #
+          # The hook always exits 0 so a transient failure does NOT
+          # crashloop the pod (a failed swap leaves the pod on the
+          # image's self-signed cert — the same as before this hook
+          # existed). All output is tee'd to /tmp/tls-swap.log so the
+          # root cause can be read off any Ready pod.
           lifecycle:
             postStart:
               exec:
                 command:
-                  - /bin/sh
+                  - /bin/bash
                   - -c
                   - |
-                    set -eu
-                    for _ in $(seq 1 90); do
+                    set -ux
+                    exec >/tmp/tls-swap.log 2>&1
+                    for _ in $(seq 1 120); do
                       [ -s /etc/pki/tls/certs/localhost.crt ] && break
                       sleep 1
                     done
-                    cp /run/secrets/overstate-salt-api/tls.crt /etc/pki/tls/certs/localhost.crt
-                    cp /run/secrets/overstate-salt-api/tls.key /etc/pki/tls/certs/localhost.key
-                    chmod 600 /etc/pki/tls/certs/localhost.key
-                    supervisorctl restart salt-api
+                    cp /run/secrets/overstate-salt-api/tls.crt /etc/pki/tls/certs/localhost.crt \
+                      && cp /run/secrets/overstate-salt-api/tls.key /etc/pki/tls/certs/localhost.key \
+                      && chmod 600 /etc/pki/tls/certs/localhost.key \
+                      && for _ in $(seq 1 30); do
+                           [ -S /var/run/supervisor.sock ] && break
+                           sleep 1
+                         done \
+                      && /usr/bin/supervisorctl restart salt-api \
+                      || echo "cert-swap failed; pod is serving the image self-signed cert"
+                    exit 0
           # Ready means this node may serve traffic: a Raft leader is
           # visible (.cluster_ready, from persisted membership) AND
           # Salt itself opened its request gate (health/ready, written
