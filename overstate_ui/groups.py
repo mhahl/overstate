@@ -8,6 +8,8 @@ conflict-handling path as Master Config saves. A master restart is
 required for changes to take effect.
 """
 
+import time
+
 import yaml
 from flask import (
     Blueprint,
@@ -29,6 +31,12 @@ from .settings import get_setting, set_setting
 bp = Blueprint("groups", __name__, url_prefix="/groups")
 
 RESTART_KEY = "restart_pending"
+RESTART_GEN_KEY = "restart_pending_gen"
+# The self-heal below asks the API server whether a rollout has already
+# superseded the flag. Cache the answer briefly: the dashboard polls
+# every 2s, and the answer only changes when a rollout completes.
+_RESTART_CHECK_INTERVAL_S = 10.0
+_restart_check_cache: dict[str, float | bool] = {}
 
 NODEGROUP_HELP = {
     "L@": "List: L@minion1,minion2",
@@ -41,13 +49,58 @@ NODEGROUP_HELP = {
 
 
 def restart_needed() -> bool:
-    """Whether a restart is pending for ConfigMap-based changes."""
-    return get_setting(RESTART_KEY) == "1"
+    """Whether a restart is pending for ConfigMap-based changes.
+
+    Self-healing: a flag left behind by a restart the app did not drive
+    (``kubectl rollout restart``) — or by a finisher that died with its
+    worker — clears as soon as a completed rollout supersedes the
+    generation recorded when the flag was set. Without this the badge
+    stayed lit forever after a manual restart.
+    """
+    if get_setting(RESTART_KEY) != "1":
+        return False
+    if _rollout_superseded():
+        clear_restart_needed()
+        return False
+    return True
+
+
+def _rollout_superseded() -> bool:
+    """True when a converged rollout is newer than the recorded one."""
+    recorded = get_setting(RESTART_GEN_KEY)
+    if not recorded.isdigit():
+        return False
+    now = time.monotonic()
+    if now - float(_restart_check_cache.get("at", 0.0)) < _RESTART_CHECK_INTERVAL_S:
+        return bool(_restart_check_cache.get("result", False))
+    result = False
+    try:
+        snap = K8sClient().statefulset_rollout(
+            current_app.config["MASTER_STATEFULSET"]
+        )
+        replicas = snap["replicas"] or 1
+        result = (
+            int(snap["generation"]) > int(recorded)
+            and snap["observedGeneration"] == snap["generation"]
+            and snap["readyReplicas"] == replicas
+            and snap["updatedReplicas"] == replicas
+        )
+    except (K8sError, KeyError, TypeError, ValueError):
+        result = False
+    _restart_check_cache["at"] = now
+    _restart_check_cache["result"] = result
+    return result
 
 
 def set_restart_needed() -> None:
-    """Mark that a master restart is needed."""
+    """Mark that a master restart is needed.
+
+    Records the StatefulSet generation at flag-set time so a later
+    rollout (UI or kubectl) can be recognized as satisfying the flag.
+    """
     set_setting(RESTART_KEY, "1")
+    _restart_check_cache.clear()
+    _record_restart_generation()
     try:
         name = current_user.username
     except Exception:  # noqa: BLE001
@@ -55,15 +108,32 @@ def set_restart_needed() -> None:
     log_event(name, "restart-pending:config-change")
 
 
+def _record_restart_generation() -> None:
+    try:
+        snap = K8sClient().statefulset_rollout(
+            current_app.config["MASTER_STATEFULSET"]
+        )
+        set_setting(RESTART_GEN_KEY, str(snap["generation"]))
+    except (K8sError, KeyError, TypeError):
+        # No cluster from this page: the UI restart still clears the
+        # flag on success; only the self-heal needs the generation.
+        pass
+
+
 def clear_restart_needed() -> None:
     """Clear the restart-needed flag (after successful restart)."""
     from .db import get_session
     from .models import Setting
 
+    _restart_check_cache.clear()
     session = get_session()
-    row = session.get(Setting, RESTART_KEY)
-    if row is not None:
-        session.delete(row)
+    cleared = False
+    for key in (RESTART_KEY, RESTART_GEN_KEY):
+        row = session.get(Setting, key)
+        if row is not None:
+            session.delete(row)
+            cleared = True
+    if cleared:
         session.commit()
         try:
             name = current_user.username

@@ -308,6 +308,15 @@ def test_nodegroup_delete_blocked_when_referenced(env, monkeypatch):
             self.revision = str(int(self.revision) + 1)
             return self.revision
 
+        def statefulset_rollout(self, name):
+            return {
+                "generation": 1,
+                "observedGeneration": 1,
+                "replicas": 1,
+                "readyReplicas": 1,
+                "updatedReplicas": 1,
+            }
+
     store = FakeStore()
     monkeypatch.setattr(groupsmod, "K8sClient", lambda: store)
     login_as(env, "admin")

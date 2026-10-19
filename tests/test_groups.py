@@ -66,6 +66,17 @@ class FakeConfigMapStore:
         self.revision = str(int(self.revision) + 1)
         return self.revision
 
+    def statefulset_rollout(self, name):
+        # set_restart_needed() records the generation; a static,
+        # converged value keeps the restart badge logic inert here.
+        return {
+            "generation": 1,
+            "observedGeneration": 1,
+            "replicas": 1,
+            "readyReplicas": 1,
+            "updatedReplicas": 1,
+        }
+
     def nodegroups(self) -> dict:
         parsed = yaml.safe_load(self.data["master.conf"]) or {}
         return parsed.get("nodegroups", {})
