@@ -14,6 +14,7 @@ restart route); saving never rolls the masters by itself.
 
 import datetime
 import json
+import threading
 import time
 
 import yaml
@@ -22,6 +23,7 @@ from flask import (
     abort,
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -56,6 +58,17 @@ HISTORY_LIMIT = 20
 # shrink both to run the timeout path without waiting.
 RESTART_MAX_POLLS = 36
 POLL_INTERVAL_S = 5
+# Async restart status, polled by the page while a rollout is running.
+# The wait moved off-request because it can outlast gunicorn's 90s
+# worker timeout (a synchronous wait got the request killed and the
+# browser a 502/504).
+RESTART_STATE_KEY = "master_restart_state"
+RESTART_ESTIMATE_S = 90
+# A daemon thread can die with its gunicorn worker. Past this age a
+# "running" row is treated as unknown so the UI never spins forever.
+RESTART_STALE_S = 600
+# Terminal outcomes are shown for this long, then the banner resets.
+RESTART_NOTICE_S = 300
 YAML_SUFFIXES = (".conf", ".yaml", ".yml")
 # Editing auth config can lock the UI out of salt-api; recovery is
 # revert + restart over kubectl, so the banner restates that at the
@@ -160,12 +173,15 @@ def _checklist() -> dict | None:
 
 def _index_context(client: K8sClient) -> dict:
     live_name, history_name = _names()
+    restart = _restart_status_payload()
     loaded = _load_live(client, live_name)
     if loaded is None:
         return {
             "rows": None,
             "manual": _manual(client.config.namespace, live_name),
             "snapshots": None,
+            "restart_state": restart,
+            "namespace": client.config.namespace,
         }
     data, revision = loaded
     rows = [
@@ -182,6 +198,8 @@ def _index_context(client: K8sClient) -> dict:
         "revision": revision,
         "manual": None,
         "snapshots": _history_count(client, history_name),
+        "restart_state": restart,
+        "namespace": client.config.namespace,
     }
 
 
@@ -397,20 +415,126 @@ def _wait_rollout(client: K8sClient, sts_name: str) -> bool:
     return _rollout_converged(client, sts_name)
 
 
-def _roll_masters(client: K8sClient, sts_name: str) -> tuple[bool, str]:
-    """Stamp the restart and wait for a healthy rollout.
+def _restart_state() -> dict:
+    """Persisted restart outcome, shared by both app replicas."""
+    from .settings import get_setting
 
-    Returns (healthy, reason). A False never means "half done silently":
-    the caller flashes and audits the reason.
+    raw = get_setting(RESTART_STATE_KEY)
+    try:
+        state = json.loads(raw) if raw else {}
+    except ValueError:
+        state = {}
+    return state if isinstance(state, dict) else {}
+
+
+def _set_restart_state(**fields) -> None:
+    from .settings import set_setting
+
+    state = _restart_state()
+    state.update(fields)
+    set_setting(RESTART_STATE_KEY, json.dumps(state))
+
+
+def _seconds_since(iso: str | None) -> int | None:
+    if not iso:
+        return None
+    try:
+        started = datetime.datetime.fromisoformat(iso)
+    except ValueError:
+        return None
+    return int((datetime.datetime.now(datetime.UTC) - started).total_seconds())
+
+
+def _restart_status_payload() -> dict:
+    """The page's countdown/poll view of a master restart.
+
+    ``in_progress`` drives the banner; ``remaining`` is an estimate the
+    client counts down locally and refreshes on each poll. Terminal
+    outcomes expire after ``RESTART_NOTICE_S`` so a stale "healthy"
+    banner does not outlive the moment it described.
+    """
+    state = _restart_state()
+    status = str(state.get("status") or "idle")
+    elapsed = _seconds_since(state.get("started_at"))
+    if status == "running" and (elapsed is None or elapsed > RESTART_STALE_S):
+        # The thread died with its worker (or never started): never
+        # leave the UI reconnecting forever.
+        status = "unknown"
+    if status in ("ok", "failed"):
+        finished = _seconds_since(state.get("finished_at"))
+        if finished is not None and finished > RESTART_NOTICE_S:
+            status = "idle"
+    remaining = (
+        max(0, RESTART_ESTIMATE_S - (elapsed or 0)) if status == "running" else 0
+    )
+    return {
+        "status": status,
+        "in_progress": status == "running",
+        "elapsed": elapsed or 0,
+        "remaining": remaining,
+        "reason": state.get("reason") or "",
+    }
+
+
+def _finish_restart(app, sts_name: str) -> None:
+    """Wait for the rollout off-request, then publish the outcome.
+
+    Runs on a daemon thread with its own app context (the request's
+    context is gone by the time the rollout finishes). Writes the
+    result to the settings row the page polls, so no flash is needed.
+    """
+    with app.app_context():
+        client = K8sClient()
+        converged = _wait_rollout(client, sts_name)
+        reason = ""
+        if not converged:
+            reason = "the rollout did not finish in time"
+        elif not _salt_api_healthy():
+            reason = "salt-api did not come back healthy"
+        _set_restart_state(
+            status="ok" if converged and not reason else "failed",
+            finished_at=datetime.datetime.now(datetime.UTC).isoformat(),
+            reason=reason,
+        )
+        if converged and not reason:
+            from .groups import clear_restart_needed
+
+            clear_restart_needed()
+            log_event("system", "master-restart:ok")
+        else:
+            log_event("system", f"master-restart:failed:{reason}")
+
+
+def _spawn_restart(app, sts_name: str) -> None:
+    """Run the wait on a daemon thread.
+
+    The request must return well inside gunicorn's 90s timeout; the
+    rollout itself can take longer (three pods, one at a time).
+    """
+    threading.Thread(target=_finish_restart, args=(app, sts_name), daemon=True).start()
+
+
+def _start_restart(
+    client: K8sClient, sts_name: str, actor: str, *, prefix: str = ""
+) -> tuple[bool, str]:
+    """Trigger the rollout and hand the wait to a background thread.
+
+    Returns (started, error). ``started`` means the restart was
+    stamped and the page should show the reconnecting banner; it does
+    not mean the rollout has finished.
     """
     try:
         client.restart_statefulset(sts_name)
     except K8sError as exc:
         return False, f"could not trigger the restart: {exc}"
-    if not _wait_rollout(client, sts_name):
-        return False, "the rollout did not finish in time"
-    if not _salt_api_healthy():
-        return False, "salt-api did not come back healthy"
+    _set_restart_state(
+        status="running",
+        started_at=datetime.datetime.now(datetime.UTC).isoformat(),
+        finished_at=None,
+        reason="",
+    )
+    log_event(actor, f"{prefix}master-restart:started")
+    _spawn_restart(current_app._get_current_object(), sts_name)
     return True, ""
 
 
@@ -425,14 +549,25 @@ def _history_count(client: K8sClient, history_name: str) -> int | None:
 @bp.post("/restart")
 @roles_required("admin")
 def restart():
+    """Roll the masters one at a time in the background. Explicit only.
+
+    The request returns as soon as the rollout is stamped; the wait and
+    health check run off-request (see ``_start_restart``) so a slow
+    three-pod roll cannot outlast gunicorn's worker timeout.
+    """
     from .authz import rbac_mode, require
 
     if rbac_mode() == "scoped":
         require("master.rollout")
-    """Roll the masters one at a time and wait for health. Explicit only."""
     client = K8sClient()
     sts_name = current_app.config["MASTER_STATEFULSET"]
     namespace = client.config.namespace
+    if _restart_status_payload()["in_progress"]:
+        flash(
+            "A master restart is already running. This page updates when it finishes.",
+            "info",
+        )
+        return redirect(url_for("masterconfig.index"))
     if not client.config.available:
         flash(
             "No cluster connection from this page. Restart with kubectl: "
@@ -441,21 +576,28 @@ def restart():
         )
         log_event(current_user.username, "master-restart:refused-offline")
         return redirect(url_for("masterconfig.index"))
-    healthy, reason = _roll_masters(client, sts_name)
-    if not healthy:
-        flash(
-            f"Master restart unhealthy: {reason}. The fleet may be unmanaged. "
-            "Revert to the last snapshot and restart from this page.",
-            "error",
-        )
-        log_event(current_user.username, "master-restart:timeout")
+    started, reason = _start_restart(client, sts_name, current_user.username)
+    if not started:
+        flash(f"Master restart not started: {reason}.", "error")
+        log_event(current_user.username, "master-restart:refused")
         return redirect(url_for("masterconfig.index"))
-    flash("Masters restarted and healthy.", "success")
-    from .groups import clear_restart_needed as _clear
-
-    _clear()
-    log_event(current_user.username, "master-restart:ok")
+    flash(
+        "Master restart started. The fleet reconnects in about a minute; "
+        "this page updates when the masters are healthy.",
+        "info",
+    )
     return redirect(url_for("masterconfig.index"))
+
+
+@bp.get("/restart/status")
+@roles_required("admin")
+def restart_status():
+    """Polled by the master-config page while a rollout runs."""
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("master.read")
+    return jsonify(_restart_status_payload())
 
 
 @bp.post("/revert")
@@ -521,15 +663,20 @@ def revert():
         flash(f"The app could not write the live config: {exc}. Nothing changed.", "error")
         log_event(current_user.username, "masterconfig-revert:refused-write")
         return redirect(url_for("masterconfig.index"))
-    healthy, reason = _roll_masters(client, sts_name)
-    if not healthy:
+    started, reason = _start_restart(
+        client, sts_name, current_user.username, prefix=f"masterconfig-revert:{new_rv}:"
+    )
+    if not started:
         flash(
             f"Reverted to the previous snapshot (revision {new_rv}) but the "
-            f"restart is unhealthy ({reason}). Check the masters over kubectl.",
+            f"restart did not start ({reason}). Restart from this page.",
             "error",
         )
-        log_event(current_user.username, f"masterconfig-revert:{new_rv}:timeout")
+        log_event(current_user.username, f"masterconfig-revert:{new_rv}:refused")
         return redirect(url_for("masterconfig.index"))
-    flash(f"Reverted to revision {new_rv}. Masters restarted and are healthy.", "success")
-    log_event(current_user.username, f"masterconfig-revert:{new_rv}")
+    flash(
+        f"Reverted to revision {new_rv}. Masters restarting; this page updates "
+        "when they are healthy.",
+        "success",
+    )
     return redirect(url_for("masterconfig.index"))

@@ -586,6 +586,15 @@ def m4(mui, monkeypatch):
     monkeypatch.setattr(masterconfig_mod, "RESTART_MAX_POLLS", 4)
     monkeypatch.setattr(masterconfig_mod, "POLL_INTERVAL_S", 0)
     monkeypatch.setattr(masterconfig_mod, "_salt_api_healthy", lambda: True)
+    # In-memory SQLite gives each thread its own database, so the
+    # daemon thread the route spawns in production cannot touch the
+    # test DB. Run the same finisher inline: the route's contract
+    # (return immediately, publish state) is covered separately.
+    monkeypatch.setattr(
+        masterconfig_mod,
+        "_spawn_restart",
+        lambda app, sts: masterconfig_mod._finish_restart(app, sts),
+    )
     return mui
 
 
@@ -622,8 +631,12 @@ def test_restart_offline_names_manual_command(m4):
 def test_restart_success(m4):
     client = m4["login"]("admin")
     rv = client.post("/settings/master/restart", follow_redirects=True)
+    # The request returns as soon as the rollout is stamped; the
+    # finisher (inline in tests) publishes the healthy outcome and the
+    # page renders it from the persisted state.
     assert b"Masters restarted and healthy" in rv.data
     assert m4["fake"].stamps == ["salt-master"]
+    assert any(a == "master-restart:started" for a in _actions(client))
     assert any(a == "master-restart:ok" for a in _actions(client))
 
 
@@ -633,7 +646,10 @@ def test_restart_timeout_links_revert(m4):
     rv = client.post("/settings/master/restart", follow_redirects=True)
     assert b"did not finish in time" in rv.data
     assert b"Revert to the last snapshot" in rv.data
-    assert any(a == "master-restart:timeout" for a in _actions(client))
+    assert any(
+        a == "master-restart:failed:the rollout did not finish in time"
+        for a in _actions(client)
+    )
 
 
 def test_restart_api_down_is_unhealthy(m4, monkeypatch):
@@ -641,7 +657,41 @@ def test_restart_api_down_is_unhealthy(m4, monkeypatch):
     client = m4["login"]("admin")
     rv = client.post("/settings/master/restart", follow_redirects=True)
     assert b"salt-api did not come back healthy" in rv.data
-    assert any(a == "master-restart:timeout" for a in _actions(client))
+    assert any(
+        a == "master-restart:failed:salt-api did not come back healthy"
+        for a in _actions(client)
+    )
+
+
+def test_restart_returns_before_rollout_finishes(m4, monkeypatch):
+    """The POST must not block on the rollout: it stamps, publishes a
+    running state, and the page shows the reconnecting banner."""
+    # Hold the finisher back so the state stays 'running'.
+    monkeypatch.setattr(masterconfig_mod, "_spawn_restart", lambda app, sts: None)
+    client = m4["login"]("admin")
+    rv = client.post("/settings/master/restart", follow_redirects=True)
+    assert b"Master restart started" in rv.data
+    assert b"Masters restarting one pod at a time" in rv.data
+    assert b'id="restart-countdown"' in rv.data
+    status = client.get("/settings/master/restart/status").get_json()
+    assert status["in_progress"] is True
+    assert status["remaining"] > 0
+
+
+def test_restart_status_reports_terminal_state(m4):
+    client = m4["login"]("admin")
+    with m4["app"].app_context():
+        masterconfig_mod._set_restart_state(
+            status="failed",
+            reason="boom",
+            finished_at=masterconfig_mod.datetime.datetime.now(
+                masterconfig_mod.datetime.UTC
+            ).isoformat(),
+        )
+    status = client.get("/settings/master/restart/status").get_json()
+    assert status["in_progress"] is False
+    assert status["status"] == "failed"
+    assert status["reason"] == "boom"
 
 
 def test_revert_empty_history_writes_nothing(m4):
@@ -668,7 +718,7 @@ def test_revert_last_restores_snapshot_and_restarts(m4):
     revisions = _json.loads(fake.history["data"]["history.json"])
     assert revisions[-1]["data"]["master.conf"] == "# changed\n"
     assert any(
-        a.startswith("masterconfig-revert:") and not a.endswith(":timeout")
+        a.startswith("masterconfig-revert:") and not a.endswith(":refused")
         for a in _actions(client)
     )
 
