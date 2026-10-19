@@ -231,7 +231,7 @@ overstate_ui/
 ### Critical (Production Blockers)
 | # | File/Location | Issue | Severity |
 |---|---------------|-------|----------|
-| 1 | `deploy/kubernetes/app.yaml:77-78` | `SALT_API_VERIFY_CA: "false"` — in-cluster salt-api TLS unverified; any pod compromise/CNI sniff yields salt-api password | **Critical** |
+| 1 | `deploy/kubernetes/app.yaml:77-78` | `SALT_API_VERIFY_CA: "false"` — in-cluster salt-api TLS unverified; any pod compromise/CNI sniff yields salt-api password | **Critical — Resolved (release `626e5b5`)** |
 | 2 | `deploy/kubernetes/salt-master.yaml:61` | Master image uses floating tag `:lts-pg14` not digest; redeploys may pull different image | **Critical** |
 | 3 | `deploy/kubernetes/kustomization.yaml:50` | App image tag `pair23` hardcoded; no digest pinning | **Critical** |
 | 4 | `overstate_ui/config.py:34` | `SALT_EAUTH_PASSWORD` defaults to `""` — missing password fails silently at runtime | **High** |
@@ -276,8 +276,16 @@ overstate_ui/
 - **Good test hygiene:** 65 test files, SQLite in-memory, production code paths for seeding
 
 **Top risks to address before production:**
-1. **Fix `SALT_API_VERIFY_CA=false`** — pin salt-api CA or use cert-manager issued certs
+1. ~~**Fix `SALT_API_VERIFY_CA=false`** — pin salt-api CA or use cert-manager issued certs~~
+   Resolved (release `626e5b5`): see the Resolution log below.
 2. **Pin all container images to digests** (app, worker, salt-master)
 3. **Add CI pipeline** (tests, lint, container build/scan)
 4. **Address single-instance Postgres/Redis HA gap** (CNPG replica, Redis Sentinel/Cluster)
 5. **Document secret backup procedure** for owner-held Secrets
+---
+
+## Resolution log
+
+| # | Finding | Resolved in | Notes |
+|---|---------|-------------|-------|
+| 1 | `SALT_API_VERIFY_CA: "false"` (Critical) | release `626e5b5` (commit `a1fb10b` for the hook-timing fix) | cert-manager-issued internal CA (`overstate-internal-ca`) and leaf for `salt-master-api`; salt-master `postStart` hook swaps the leaf over the image's self-signed cert and restarts salt-api; app / worker / both cronjob pods mount the CA and verify via `SALT_API_VERIFY_CA=/etc/ssl/overstate/ca.crt`. Deploy required a two-step apply on first install of this release (see `docs/guides/install-kubernetes.md` §2.1); single `kubectl apply -k` is sufficient for subsequent releases. Architecture risk register §8.5 updated to Resolved; `docs/reference/tls.md` documents the mechanism. |

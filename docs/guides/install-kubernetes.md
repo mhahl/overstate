@@ -125,6 +125,98 @@ kubectl -n overstate get pods
 kubectl -n overstate exec statefulset/salt-master -- salt-key --list-all
 ```
 
+## 2.1 Salt-api TLS pinning: two-step apply (this release)
+
+This release introduces the cert-manager-issued internal CA and pins
+`SALT_API_VERIFY_CA` against it. Both pieces land in the same
+kustomize output, but the app/worker env flip MUST NOT happen before
+every salt-master pod is serving the new cert — otherwise the app
+crash-loops on `x509: certificate signed by unknown authority` while
+the master still presents the image's self-signed cert. Apply in two
+stages on the first deploy of this release (fresh install or upgrade);
+after that, a single `kubectl apply -k deploy/kubernetes` is enough
+(the cert-manager resources are already in the cluster, and the
+manifests are idempotent).
+
+Requirements: cert-manager present in the cluster (it is — the
+`le-production` ClusterIssuer already exists; the new resources use a
+namespaced self-signed bootstrap Issuer with no external dependency),
+and the owner-held secrets from §1 already exist (no new
+owner-held secrets are needed — the cert-manager resources are
+namespace-scoped and self-provisioning).
+
+### Stage 1 — cert-manager + salt-master cert swap
+
+Apply the cert-manager resources and the salt-master manifest directly
+(NOT the full kustomize stack — the app/worker/cronjob env must stay
+at `SALT_API_VERIFY_CA=false` for now):
+
+```sh
+kubectl apply -f deploy/kubernetes/salt-api-tls.yaml -n overstate
+kubectl apply -f deploy/kubernetes/salt-master.yaml -n overstate
+```
+
+Wait for the cert-manager Certificates to be Ready and the
+StatefulSet to finish rolling:
+
+```sh
+kubectl -n overstate get certificate
+# overstate-internal-ca   True
+# salt-master-api         True
+
+kubectl -n overstate rollout status statefulset/salt-master --timeout=600s
+```
+
+The ONLY definitive proof that every master is now serving the
+cert-manager cert is the live TLS handshake against `127.0.0.1:8000`
+(the cert file on disk is correct, but salt-api serves whatever it
+loaded at startup; the `postStart` hook restarts salt-api to pick up
+the new file, and that restart can race the supervisord socket on
+the first start — verify, don't assume):
+
+```sh
+for i in 0 1 2; do
+  rtk kubectl -n overstate exec salt-master-$i -- bash -c \
+    "echo | openssl s_client -connect 127.0.0.1:8000 -servername salt-master-api 2>/dev/null \
+     | openssl x509 -noout -subject -issuer"
+done
+```
+
+All three must report `issuer=CN=Overstate internal CA`. If a pod is
+stuck in `CrashLoopBackOff`, `kubectl delete pod salt-master-N` forces
+a clean re-start (the postStart always exits 0, so a crashloop is
+never the hook itself — it's a pre-existing runtime issue, and the
+delete clears the stuck state). The hook's output is tee'd to
+`/tmp/tls-swap.log` on the pod if you need to diagnose.
+
+### Stage 2 — app / worker / cronjob env flip
+
+Now that every master is serving the pinned cert, apply the full
+kustomize stack. The cert-manager and salt-master resources re-apply
+idempotently; the app, worker, and both cronjob pods roll to mount
+the CA and verify salt-api against it:
+
+```sh
+kubectl apply -k deploy/kubernetes
+kubectl -n overstate rollout status deployment/overstate-app --timeout=240s
+kubectl -n overstate rollout status deployment/overstate-worker --timeout=240s
+```
+
+Confirm the app pod is now using the pinned CA:
+
+```sh
+kubectl -n overstate get pods -l app.kubernetes.io/name=overstate-app \
+  -o jsonpath='{.items[0].spec.containers[0].env[?(@.name=="SALT_API_VERIFY_CA")]}{.value}'
+# /etc/ssl/overstate/ca.crt
+```
+
+Clean gunicorn logs (no `x509` / `SSL` / `certificate verify failed`
+tracebacks) and a successful `https://overstate.sigaint.au/login`
+probe confirm the chain. If the app crash-loops, the most likely
+cause is that stage 1 didn't fully complete on every master — go back,
+verify the `openssl s_client` output for every salt-master pod, and
+re-apply.
+
 ## 3. Restore runbook
 
 Config damage (bad master ConfigMap edit) is recovered from the UI:

@@ -21,9 +21,30 @@ The master image regenerates its own self-signed cert and appends its
 `rest_cherrypy` block to the main config file at every boot. So neither a
 bind-mount over its cert paths (its startup deletes them and exits) nor
 `ssl_crt`/`ssl_key` in our mounted `api.conf` (the main file wins the merge
-for nested keys) can take effect declaratively. `enable-api-tls.sh` copies
-our certs over the image's paths and restarts salt-api; `dev-up.sh` and
-`dev-rebuild.sh` run it automatically. Re-run it after any master recreate.
+for nested keys) can take effect declaratively.
+
+- **Dev** (`scripts/enable-api-tls.sh`): copies the CA-signed cert and
+key over `/etc/pki/tls/certs/localhost.crt|.key` and runs
+`supervisorctl restart salt-api`. `dev-up.sh` and `dev-rebuild.sh` invoke
+it automatically. Re-run it after any master recreate.
+- **Kubernetes** (`deploy/kubernetes/salt-master.yaml`): a `postStart`
+lifecycle hook on the salt-master container does the same swap. The leaf
+cert is mounted at `/run/secrets/overstate-salt-api` (a *different* path
+from the image's regen path — mounting over the image's path would
+make startup delete-and-exit). The hook polls up to 120s for the
+image's regenerated cert to appear (proving the one-shot entrypoint
+regen has finished), copies the leaf over the image's path, waits for
+the supervisord socket, then `supervisorctl restart salt-api` so the
+running process picks up the new cert. The hook always exits 0 (a
+transient failure logs to `/tmp/tls-swap.log` on the pod and leaves
+the master on the image's self-signed cert — the same state as before
+this hook existed), so a hook failure never crash-loops the pod. The
+certs themselves are issued by cert-manager from
+`deploy/kubernetes/salt-api-tls.yaml` (self-signed bootstrap Issuer →
+10-year CA → 90-day leaf with SAN `salt-master-api` and the in-cluster
+FQDNs; the leaf Secret `salt-master-api-cert` is mounted into the
+master, the CA Secret `overstate-internal-ca` into the app / worker /
+reconcile-cronjob / file-sync-cronjob).
 
 ## Verification behavior
 
@@ -31,12 +52,17 @@ our certs over the image's paths and restarts salt-api; `dev-up.sh` and
 `SALT_API_VERIFY_CA` overrides it: a path uses that CA bundle, the literal
 `false` disables verification (local dev only, against self-signed masters).
 
-## Production checklist (Kubernetes)
+## Production (Kubernetes)
 
 - Browser traffic terminates at Traefik; the UI Certificate
   (`deploy/kubernetes/ingress.yaml`) is cert-manager-issued.
-- Master pods mint their own self-signed salt-api cert at boot and the
-  app currently reaches them with `SALT_API_VERIFY_CA=false`
-  (in-cluster only). Pinning the CA is an open TODO in the manifests
-  (see `docs/reference/architecture-kubernetes.md` §8.5).
-- Never set `SALT_API_VERIFY_CA=false` outside the cluster.
+- The salt-api hop is now pinned: every master pod serves a cert signed
+  by the cert-manager-managed `overstate-internal-ca` (mounted into the
+  app / worker / both cronjobs as `/etc/ssl/overstate/ca.crt` via
+  `SALT_API_VERIFY_CA`). The cert-manager resources and the master
+  cert-swap hook are the two pieces — both are required to land before
+  the app env flips, which is why this release deploys in two steps
+  (see `docs/guides/install-kubernetes.md` §2.1, the "Salt-api TLS pinning:
+  two-step apply").
+- Never set `SALT_API_VERIFY_CA=false` outside the cluster. The
+  in-cluster default is the mounted CA path; `false` is dev-only.

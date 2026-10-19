@@ -256,10 +256,21 @@ exactly the master StatefulSet.
   node hostnames (`salt-c010` / `salt-42e5` / `salt-b2b6`) with
   `master_type: failover`. `sessionAffinity: ClientIP` remains a
   backstop on mq and salt-api.
-- **8.5 salt-api TLS is unverified in-cluster** (`SALT_API_VERIFY_CA:
-  false`; the image mints a self-signed cert at boot). Fine inside a
-  trusted CNI, but any pod-compromise or CNI-sniffing position yields
-  the salt-api password. Fix: pin the CA (TODO already in manifests).
+- **8.5 salt-api TLS — Resolved (release `626e5b5`).** The in-cluster
+  salt-api hop is now pinned: cert-manager issues a 10-year internal
+  CA (`overstate-internal-ca`) and a 90-day leaf for
+  `salt-master-api` / `*.overstate.svc.cluster.local`; a `postStart`
+  hook on each salt-master pod swaps the leaf over the image's
+  self-signed cert and restarts salt-api (the image regens self-signed
+  at every boot and aborts if its cert path is bind-mounted, so the
+  leaf is mounted at a separate path and swapped post-boot); the app,
+  worker, and both cronjob pods mount the CA and verify the leaf
+  against it via `SALT_API_VERIFY_CA=/etc/ssl/overstate/ca.crt`. The
+  mechanism is documented in `docs/reference/tls.md`; the deploy
+  procedure (two-step apply, required only on the first deploy of this
+  release) is in `docs/guides/install-kubernetes.md` §2.1. Rotating the
+  internal CA is a deliberate, manual change (10-year duration) and
+  re-trusts every leaf and every mounting pod.
 - **8.6 Reactor misses during failover.** Minion-originated events go
   to the attached pod only; minions reconnecting mid-outage lose the
   events in the gap, and each pod's reactor fires only on its own bus.
