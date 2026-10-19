@@ -1,283 +1,235 @@
-"""Minion groups: saved member lists used by the group job target."""
+"""Node groups: Salt nodegroups saved in master.conf.
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+Replaces the Postgres MinionGroup model. Nodegroups live in the
+salt-master ConfigMap's ``master.conf`` as a ``nodegroups:`` stanza,
+so they are usable in pillar top files, compound targets, and reactor
+definitions. Editing writes the whole ConfigMap back through the same
+conflict-handling path as Master Config saves. A master restart is
+required for changes to take effect.
+"""
+
+import yaml
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from .audit import log_event
 from .auth import roles_required
-from .dashboard import get_salt
-from .db import get_session
-from .minions import merged_cached_roster, resolve_page_size
-from .models import Minion, MinionGroup
+from .k8s import K8sClient, K8sConflictError, K8sError
+from .settings import get_setting, set_setting
 
 bp = Blueprint("groups", __name__, url_prefix="/groups")
+
+RESTART_KEY = "restart_pending"
+
+NODEGROUP_HELP = {
+    "L@": "List: L@minion1,minion2",
+    "G@": "Grain: G@os:Ubuntu",
+    "P@": "Grain regex: P@os:(Centos|Redhat)",
+    "S@": "Subnet: S@10.0.0.0/8",
+    "I@": "Pillar: I@role:web",
+    "C@": "Compound: G@os:Ubuntu and L@minion1",
+}
+
+
+def restart_needed() -> bool:
+    """Whether a restart is pending for ConfigMap-based changes."""
+    return get_setting(RESTART_KEY) == "1"
+
+
+def set_restart_needed() -> None:
+    """Mark that a master restart is needed."""
+    set_setting(RESTART_KEY, "1")
+    try:
+        name = current_user.username
+    except Exception:  # noqa: BLE001
+        name = "system"
+    log_event(name, "restart-pending:config-change")
+
+
+def clear_restart_needed() -> None:
+    """Clear the restart-needed flag (after successful restart)."""
+    from .db import get_session
+    from .models import Setting
+
+    session = get_session()
+    row = session.get(Setting, RESTART_KEY)
+    if row is not None:
+        session.delete(row)
+        session.commit()
+        try:
+            name = current_user.username
+        except Exception:  # noqa: BLE001
+            name = "system"
+        log_event(name, "restart-pending:cleared")
+
+
+def _load_nodegroups() -> dict[str, str] | None:
+    """Read ``nodegroups:`` from the live ConfigMap. None on failure."""
+    name = current_app.config["MASTER_CONFIGMAP"]
+    client = K8sClient()
+    try:
+        current = client.get_configmap(name)
+    except K8sError:
+        return None
+    raw = (current["data"] or {}).get("master.conf", "")
+    try:
+        parsed = yaml.safe_load(raw)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    ng = parsed.get("nodegroups", {})
+    return dict(ng) if isinstance(ng, dict) else {}
+
+
+def _write_nodegroups(groups: dict[str, str]) -> str | None:
+    """Write ``nodegroups:`` into master.conf in the ConfigMap.
+
+    Loads the live ConfigMap, replaces the nodegroups stanza, writes
+    back (conflict-guarded). Returns None on success, or an error
+    message.
+    """
+    name = current_app.config["MASTER_CONFIGMAP"]
+    client = K8sClient()
+    try:
+        current = client.get_configmap(name)
+    except K8sError as exc:
+        return f"could not read master config: {exc}"
+    data, revision = (current["data"] or {}), current["resourceVersion"]
+    raw = data.get("master.conf", "")
+    try:
+        parsed = yaml.safe_load(raw) or {}
+    except yaml.YAMLError:
+        return "master.conf is not valid YAML"
+    if not isinstance(parsed, dict):
+        return "master.conf is not a mapping"
+    # Build new master.conf with updated nodegroups.
+    parsed["nodegroups"] = groups
+    updated = data.copy()
+    updated["master.conf"] = yaml.safe_dump(parsed, default_flow_style=False, allow_unicode=True)
+    try:
+        new_rv = client.replace_configmap(name, updated, revision)
+    except K8sConflictError:
+        return "the config changed since you opened it — reload and re-apply"
+    except K8sError as exc:
+        return f"the app could not write the live config: {exc}"
+    set_restart_needed()
+    return None
+
+
+def _load_nodegroup_names() -> list[str]:
+    """Nodegroup names for the job-form dropdown and palette, or empty."""
+    ng = _load_nodegroups()
+    return sorted(ng) if ng else []
+
+
+def _parse_expression(text: str) -> tuple[str, str]:
+    """Split an expression like ``L@minion1,minion2`` into (prefix, rest)."""
+    text = (text or "").strip()
+    for prefix in ("L@", "C@", "G@", "P@", "S@", "I@", "N@"):
+        if text.startswith(prefix):
+            return prefix, text[len(prefix):]
+    return "", text
+
+
+def _format_expression(prefix: str, value: str) -> str:
+    return f"{prefix}{value}" if prefix else value
 
 
 @bp.get("/", strict_slashes=False)
 @login_required
 def index():
-    q = request.args.get("q", "").strip().lower()
-    per_page = resolve_page_size(request.args.get("per_page"))
+    from .authz import require
+
+    require("group.read")
+    group_data: dict[str, str] | None = None
     try:
-        page = int(request.args.get("page", 1))
-    except ValueError:
-        page = 1
-    from flask_login import current_user as _u
-
-    from .authz import has_fleet as _has_fleet
-    from .authz import minions_with as _minions_with
-    from .authz import own_group_ids as _own_ids
-    from .authz import rbac_mode as _mode
-    from .authz import require as _require
-
-    _require("group.read")
-    _scoped = _mode() == "scoped"
-    _fleet = not _scoped or _has_fleet(_u, "group.read")
-    _allowed: set[str] | None = None
-    _own: set[str] = set()
-    if _scoped and not _fleet:
-        _allowed = _minions_with(_u, "group.read")
-        _own = _own_ids(_u)
-    all_groups = get_session().query(MinionGroup).order_by(MinionGroup.name).all()
-    if _scoped and not _fleet:
-        _roster = {row.id for row in get_session().query(Minion.id).all()}
-        all_groups = [
-            g
-            for g in all_groups
-            if str(g.id) in _own
-            or (set(g.members or []) & _roster) <= _allowed
-        ]
-    if q:
-        all_groups = [
-            g
-            for g in all_groups
-            if q in g.name.lower() or any(q in m.lower() for m in g.members)
-        ]
-    total = len(all_groups)
-    sort = request.args.get("sort", "name")
-    if sort not in ("name", "members"):
-        sort = "name"
-    direction = request.args.get("dir", "asc")
-    if direction not in ("asc", "desc"):
-        direction = "asc"
-    if sort == "members":
-        all_groups.sort(
-            key=lambda g: (len(g.members or []), g.name), reverse=(direction == "desc")
-        )
-    elif direction == "desc":
-        all_groups.sort(key=lambda g: g.name, reverse=True)
-    pages = max(1, (total + per_page - 1) // per_page)
-    page = min(max(1, page), pages)
-    # The member picker unions live roster ids with the snapshot so
-    # a minion accepted on any pod shows up.
-    statuses, _, _ = merged_cached_roster(get_salt())
-    roster = sorted(row.id for row in get_session().query(Minion.id).all())
-    if _scoped and not _fleet:
-        # The member picker renders only in-scope ids.
-        roster = [m for m in roster if m in _allowed]
+        group_data = _load_nodegroups()
+        if group_data is None:
+            error = "could not read nodegroups from master.conf"
+    except Exception as exc:
+        error = str(exc)
     return render_template(
         "groups.html",
-        q=request.args.get("q", ""),
-        page=page,
-        pages=pages,
-        per_page=per_page,
-        total=total,
-        sort=sort,
-        direction=direction,
-        groups=all_groups[(page - 1) * per_page : page * per_page],
-        group_names=[g.name for g in all_groups],
-        roster=roster,
-        presence=sorted(set(roster) | set(statuses)) if _fleet or not _scoped else roster,
+        groups=dict(sorted(group_data.items())) if group_data else {},
+        error=error,
+        help_examples=NODEGROUP_HELP,
+        restart_pending=restart_needed(),
     )
 
 
+def _sync_to_minion_group(name: str, expression: str) -> None:
+    """Create or delete a ``MinionGroup`` row from a nodegroup expression.
 
-def _frozen_group_ids() -> set[str]:
-    """Group ids named as scope_value by a grant or IdP mapping."""
+    ``L@`` expressions can be parsed into a member list for RBAC scope
+    resolution (grants referencing group IDs). Other matchers are
+    skipped — they cannot be resolved to specific minions by the UI.
+    """
     from .db import get_session
-    from .models import Grant, IdpRoleMapping
+    from .models import MinionGroup
 
     session = get_session()
-    refs = {
-        row[0]
-        for row in session.query(Grant.scope_value)
-        .filter_by(scope_kind="group")
-        .all()
-    }
-    refs |= {
-        row[0]
-        for row in session.query(IdpRoleMapping.scope_value)
-        .filter_by(scope_kind="group")
-        .all()
-    }
-    return refs
-
-
-def _require_group_write(members: list[str] | None = None) -> None:
-    """group.write, plus new members inside scope and the freeze rule."""
-    from flask import abort
-    from flask_login import current_user
-
-    from .authz import audit_deny, has_fleet, minions_with, rbac_mode, require
-
-    if rbac_mode() != "scoped":
-        return
-    require("group.write")
-    if members is not None and not has_fleet(current_user, "group.write"):
-        allowed = minions_with(current_user, "group.write")
-        outside = [m for m in members if m not in allowed]
-        if outside:
-            audit_deny("group.write", detail="out-of-scope")
-            abort(403)
-
-
-def _require_unfrozen(gid: int) -> None:
-    from flask import abort
-    from flask_login import current_user
-
-    from .authz import audit_deny, has_fleet, rbac_mode
-
-    if rbac_mode() != "scoped":
-        return
-    if str(gid) in _frozen_group_ids() and not has_fleet(
-        current_user, "grant.admin"
-    ):
-        audit_deny("group.write", detail="out-of-scope")
-        abort(403)
-
-
-def parse_member_ids(form) -> list[str]:
-    """Member IDs from a multi-select, with comma/space fallback.
-
-    The group modal posts one `members` value per selected minion;
-    typed input still splits on commas and whitespace. Deduped,
-    order kept.
-    """
-    raw = " ".join(form.getlist("members"))
-    seen: list[str] = []
-    for token in raw.replace(",", " ").split():
-        token = token.strip()
-        if token and token not in seen:
-            seen.append(token)
-    return seen
+    if expression.startswith("L@"):
+        members = [m.strip() for m in expression[2:].split(",") if m.strip()]
+        row = session.query(MinionGroup).filter_by(name=name).first()
+        if row is not None:
+            row.members = members
+        else:
+            session.add(MinionGroup(name=name, members=members))
+        session.commit()
+    else:
+        # Non-L@ expressions: remove any stale MinionGroup row so
+        # RBAC grants cannot reference an unresolvable group.
+        row = session.query(MinionGroup).filter_by(name=name).first()
+        if row is not None:
+            session.delete(row)
+            session.commit()
 
 
 @bp.post("/", strict_slashes=False)
 @roles_required("operator")
-def create_group():
-    name = request.form.get("name", "").strip()
-    members = parse_member_ids(request.form)
-    _require_group_write(members)
-    session = get_session()
+def save():
+    from .authz import require
+
+    require("group.write")
+    name = (request.form.get("name") or "").strip()
+    prefix = request.form.get("prefix", "L@").strip()
+    value = (request.form.get("value") or "").strip()
+    delete_name = request.form.get("delete", "")
+    groups = _load_nodegroups()
+    if groups is None:
+        flash("Cannot read nodegroups from the master config.", "error")
+        return redirect(url_for("groups.index"))
+    if delete_name:
+        if delete_name not in groups:
+            flash(f"Node group '{delete_name}' does not exist.", "error")
+            return redirect(url_for("groups.index"))
+        del groups[delete_name]
+        err = _write_nodegroups(groups)
+        if err:
+            flash(f"Delete failed: {err}", "error")
+        else:
+            _sync_to_minion_group(delete_name, "")
+            log_event(current_user.username, f"nodegroup-delete:{delete_name}")
+            flash(f"Node group '{delete_name}' deleted.", "success")
+        return redirect(url_for("groups.index"))
     if not name:
-        flash("Group needs a name.", "error")
-    elif session.query(MinionGroup).filter_by(name=name).first():
-        flash(f"Group '{name}' already exists.", "error")
+        flash("Enter a group name.", "error")
+        return redirect(url_for("groups.index"))
+    if not value:
+        flash("Enter an expression value.", "error")
+        return redirect(url_for("groups.index"))
+    expression = _format_expression(prefix, value)
+    groups[name] = expression
+    err = _write_nodegroups(groups)
+    if err:
+        flash(f"Save failed: {err}", "error")
     else:
-        session.add(MinionGroup(name=name, members=members))
-        session.commit()
-        log_event(current_user.username, f"group-create:{name}")
-        flash(f"Group '{name}' saved with {len(members)} members.", "success")
-    return redirect(url_for("groups.index"))
-
-
-@bp.post("/<int:gid>/rename")
-@roles_required("operator")
-def rename_group(gid: int):
-    _require_group_write()
-    _require_unfrozen(gid)
-    session = get_session()
-    group = session.get(MinionGroup, gid)
-    name = request.form.get("name", "").strip()
-    if group is None:
-        flash("Unknown group.", "error")
-    elif not name:
-        flash("Group needs a name.", "error")
-    elif (
-        session.query(MinionGroup)
-        .filter(MinionGroup.name == name, MinionGroup.id != gid)
-        .first()
-    ):
-        flash(f"Group '{name}' already exists.", "error")
-    else:
-        log_event(current_user.username, f"group-rename:{group.name}->{name}")
-        group.name = name
-        session.commit()
-        flash(f"Group renamed to '{name}'.", "success")
-    return redirect(url_for("groups.index"))
-
-
-@bp.post("/<int:gid>/members")
-@roles_required("operator")
-def edit_group_members(gid: int):
-    _require_group_write(parse_member_ids(request.form))
-    _require_unfrozen(gid)
-    session = get_session()
-    group = session.get(MinionGroup, gid)
-    if group is None:
-        flash("Unknown group.", "error")
-    else:
-        group.members = parse_member_ids(request.form)
-        session.commit()
-        log_event(current_user.username, f"group-members:{group.name}")
-        flash(f"Group '{group.name}' now has {len(group.members)} members.", "success")
-    return redirect(url_for("groups.index"))
-
-
-@bp.post("/<int:gid>/edit")
-@roles_required("operator")
-def edit_group(gid: int):
-    """Combined rename plus member update from the group modal."""
-    _require_group_write(parse_member_ids(request.form))
-    _require_unfrozen(gid)
-    session = get_session()
-    group = session.get(MinionGroup, gid)
-    name = request.form.get("name", "").strip()
-    if group is None:
-        flash("Unknown group.", "error")
-    elif not name:
-        flash("Group needs a name.", "error")
-    elif (
-        session.query(MinionGroup)
-        .filter(MinionGroup.name == name, MinionGroup.id != gid)
-        .first()
-    ):
-        flash(f"Group '{name}' already exists.", "error")
-    else:
-        if name != group.name:
-            log_event(current_user.username, f"group-rename:{group.name}->{name}")
-            group.name = name
-        group.members = parse_member_ids(request.form)
-        session.commit()
-        log_event(current_user.username, f"group-members:{group.name}")
+        _sync_to_minion_group(name, expression)
+        log_event(current_user.username, f"nodegroup-save:{name}")
         flash(
-            f"Group '{group.name}' saved with {len(group.members)} members.", "success"
+            f"Node group '{name}' saved as '{expression}'. "
+            "Restart masters to activate it.",
+            "success",
         )
-    return redirect(url_for("groups.index"))
-
-
-@bp.post("/<int:gid>/delete")
-@roles_required("operator")
-def delete_group(gid: int):
-    from flask import abort
-    from flask_login import current_user
-
-    from .authz import audit_deny, rbac_mode
-
-    _require_group_write()
-    if rbac_mode() == "scoped" and str(gid) in _frozen_group_ids():
-        # A referenced group is never deleted: no cascade drops the
-        # grant or the mapping. Rename keeps the id, so the grant
-        # keeps resolving.
-        audit_deny("group.write", detail="out-of-scope")
-        abort(403)
-    session = get_session()
-    group = session.get(MinionGroup, gid)
-    if group is None:
-        flash("Unknown group.", "error")
-    else:
-        log_event(current_user.username, f"group-delete:{group.name}")
-        session.delete(group)
-        session.commit()
-        flash(f"Group '{group.name}' deleted.", "success")
     return redirect(url_for("groups.index"))

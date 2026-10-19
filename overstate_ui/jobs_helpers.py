@@ -6,7 +6,7 @@ import datetime as dt
 import os
 import re
 
-TGT_TYPES = ["glob", "list", "grain", "compound", "nodegroup", "group"]
+TGT_TYPES = ["glob", "list", "grain", "compound", "nodegroup"]
 COMPLETE_AFTER_SECONDS = 60
 # JID prefixes Salt never writes returner rows for: grouping records and
 # locally synthesized jobs. The worker owns their completion.

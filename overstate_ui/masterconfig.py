@@ -362,6 +362,9 @@ def save():
         f"Saved {key} (revision {new_rv}). Restart the master to apply it.",
         "success",
     )
+    from .groups import set_restart_needed
+
+    set_restart_needed()
     log_event(current_user.username, f"masterconfig-save:{key}:{new_rv}")
     return redirect(url_for("masterconfig.view", key=key))
 
@@ -448,6 +451,9 @@ def restart():
         log_event(current_user.username, "master-restart:timeout")
         return redirect(url_for("masterconfig.index"))
     flash("Masters restarted and healthy.", "success")
+    from .groups import clear_restart_needed as _clear
+
+    _clear()
     log_event(current_user.username, "master-restart:ok")
     return redirect(url_for("masterconfig.index"))
 

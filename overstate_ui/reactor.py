@@ -327,6 +327,9 @@ def _persist_to_master_conf(event: str, sls: str) -> tuple[bool, str, str]:
         f"Recorded in the master.conf stanza (revision {new_rv}). "
         "Restart the masters to apply it."
     )
+    from .groups import set_restart_needed
+
+    set_restart_needed()
     return True, msg, f"masterconfig-save:master.conf:{new_rv}"
 
 

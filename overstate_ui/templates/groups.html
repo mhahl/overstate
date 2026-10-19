@@ -1,262 +1,97 @@
 {% extends "base.html" %}
-{% block title %}Minion groups · Overstate{% endblock %}
+{% block title %}Node groups · Overstate{% endblock %}
 {% block content %}
-{% set can_write = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
+{% set may_write = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('group.write')) %}
 {% import "_macros.html" as m %}
-<div class="flex flex-wrap items-center gap-3 mb-4">
-  {{ m.page_heading("Minion groups", "Saved minion lists you can target with a job.") }}
-  {% if can_write %}
-  <button type="button" class="btn btn-primary" onclick="openGroupModal()">
-    <span class="icon-[lucide--plus] size-4" aria-hidden="true"></span>New group
-  </button>
-  {% endif %}
-</div>
-{% if not can_write %}
-<div class="alert alert-info mb-4" role="note">
-  <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
-  <span>Groups are read-only for your role. Use them as targets on the <a class="link font-medium" href="{{ url_for('jobs.new') }}">New job</a> page.</span>
-</div>
-{% endif %}
 
-{% import "_macros.html" as m %}
-<section id="groups-directory" class="card card-border bg-base-100" aria-labelledby="groups-directory-title">
-  <div class="border-b border-base-300 px-4 py-3 flex flex-wrap items-end justify-end gap-2">
-  <form id="groups-filter" method="get" action="{{ url_for('groups.index') }}" role="search" aria-label="Search groups" class="flex flex-wrap items-end justify-end gap-2">
-    <input type="hidden" name="sort" value="{{ sort }}">
-    <input type="hidden" name="dir" value="{{ direction }}">
-      {{ m.table_search_field("groups-search", "q", q, "Find a group", "Group name or minion ID", "Search group names and member IDs") }}
-      <button class="btn btn-sm btn-outline mb-0.5">Filter groups</button>
-      {% if q %}<a class="btn btn-sm btn-ghost mb-0.5" href="{{ url_for('groups.index', sort=sort, dir=direction) }}">Clear search</a>{% endif %}
-  </form>
-  {{ m.page_size_select('groups.index', per_page, {'q': q, 'sort': sort, 'dir': direction}) }}
-  </div>
-  <div class="flex flex-wrap items-center gap-3 px-4 py-4 border-b border-base-300">
-    <div class="me-auto">
-      <h2 id="groups-directory-title" class="font-semibold">Fleet group directory</h2>
-      <p class="text-sm text-base-content/70 mt-0.5">{{ total }} group{% if total != 1 %}s{% endif %}{% if q %} matching “{{ q }}”{% endif %}</p>
-    </div>
-    {% if groups and can_write %}<span class="text-xs text-base-content/60">Changes affect future jobs only</span>{% endif %}
-  </div>
-  {% if groups %}
-  <div class="max-w-full overflow-x-auto">
-    <table class="table table-sm table-pin-rows w-full">
-      <thead>
-        <tr>
-          {{ m.sort_th_plain('groups.index', 'name', 'Group', sort, direction, {'q': q, 'per_page': per_page}) }}
-          {{ m.sort_th_plain('groups.index', 'members', 'Members', sort, direction, {'q': q, 'per_page': per_page}) }}
-          <th>Member IDs</th>
-          <th class="text-right">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for g in groups %}
-        <tr class="hover">
-          <td>
-            <div class="flex items-center gap-2 font-medium">
-              <span class="icon-[lucide--users-round] size-4 text-base-content/60" aria-hidden="true"></span>
-              {{ g.name }}
-            </div>
-          </td>
-          <td class="whitespace-nowrap">
-            <span class="badge badge-outline tabular-nums">{{ g.members|length }} member{% if g.members|length != 1 %}s{% endif %}</span>
-          </td>
-          <td class="min-w-56">
-            <div class="flex flex-wrap items-center gap-1">
-              {% for mid in g.members[:3] %}<span class="badge badge-ghost font-mono text-xs">{{ mid }}</span>{% endfor %}
-              {% if g.members|length > 3 %}
-              <details class="text-xs">
-                <summary class="link cursor-pointer">+{{ g.members|length - 3 }} more</summary>
-                <ul class="mt-2 flex flex-wrap gap-1">
-                  {% for mid in g.members[3:] %}<li><span class="badge badge-ghost font-mono">{{ mid }}</span></li>{% endfor %}
-                </ul>
-              </details>
-              {% elif not g.members %}<span class="text-sm text-base-content/60">No members</span>{% endif %}
-            </div>
-          </td>
-          <td class="text-right whitespace-nowrap">
-            <div class="flex justify-end gap-1">
-              <a class="btn btn-sm btn-outline" href="{{ url_for('jobs.new', tgt_type='group', tgt=g.name) }}">
-                <span class="icon-[lucide--play] size-4" aria-hidden="true"></span>Run job
-              </a>
-              {% if can_write %}
-              <button type="button" class="btn btn-sm btn-ghost" onclick='openGroupModal({{ g.id }}, {{ g.name|tojson }}, {{ g.members|tojson }})' aria-label="Edit {{ g.name }}">
-                <span class="icon-[lucide--pencil] size-4" aria-hidden="true"></span><span class="sr-only sm:not-sr-only">Edit</span>
-              </button>
-              <form method="post" action="{{ url_for('groups.delete_group', gid=g.id) }}" class="inline" data-confirm="Delete group '{{ g.name }}' ({{ g.members|length }} members)?">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-sm btn-error btn-outline" aria-label="Delete {{ g.name }}">
-                  <span class="icon-[lucide--trash-2] size-4" aria-hidden="true"></span><span class="sr-only sm:not-sr-only">Delete</span>
-                </button>
-              </form>
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<div class="flex flex-col gap-4">
+  <header class="flex flex-wrap items-end justify-between gap-3">
+    {{ m.page_heading("Node groups", "Salt nodegroups stored in master.conf. A master restart activates changes.") }}
+    {% if restart_pending %}
+    <span role="status" class="badge badge-sm badge-warning badge-outline">Restart required</span>
+    {% endif %}
+  </header>
+
+  {% if error %}
+  <div class="alert alert-error" role="alert">
+    <span class="icon-[lucide--circle-x] size-5 shrink-0" aria-hidden="true"></span>
+    <span>Cannot read nodegroups from the Salt master config: {{ error }}. This is only available in-cluster.</span>
   </div>
   {% else %}
-  <div class="px-4 py-12 text-center">
-    <span class="icon-[lucide--users-round] size-7 text-base-content/50" aria-hidden="true"></span>
-    <h3 class="font-semibold mt-3">{% if q %}No groups match that search{% else %}No saved groups yet{% endif %}</h3>
-    <p class="text-sm text-base-content/70 mt-1">{% if q %}Try a different name or minion ID, or clear the search.{% else %}Save a set of minions once, then reuse it as a job target.{% endif %}</p>
-    {% if can_write and not q %}<button type="button" class="btn btn-sm btn-outline mt-4" onclick="openGroupModal()">Create the first group</button>{% endif %}
+
+  {% if restart_pending %}
+  <div class="alert alert-warning" role="note">
+    <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+    <span>Changes require a master restart to take effect. Go to <a class="link" href="{{ url_for('masterconfig.index') }}">Master settings</a> to restart one pod at a time.</span>
   </div>
   {% endif %}
-  <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-t border-base-300">
-    <span class="text-sm text-base-content/70 me-auto">{% if total %}{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} groups{% else %}0 groups{% endif %}</span>
-    {{ m.pagination_plain('groups.index', page, pages, {'q': q, 'per_page': per_page, 'sort': sort, 'dir': direction}, 'Group pages') }}
-  </div>
-</section>
 
-{% if can_write %}
-<dialog id="group-modal" class="modal" aria-labelledby="group-modal-title">
-  <div class="modal-box max-w-2xl">
-    <div class="flex items-start gap-3">
-      <span class="icon-[lucide--users-round] size-5 mt-1 text-base-content/60" aria-hidden="true"></span>
-      <div>
-        <h2 id="group-modal-title" class="font-bold text-lg">New group</h2>
-        <p class="text-sm text-base-content/70 mt-1">Choose a stable name and the minions this reusable job target should include.</p>
+  <section class="card card-border bg-base-100 min-w-0" aria-label="Node group list">
+    <div class="card-body gap-4">
+      {% if groups %}
+      <div class="max-w-full overflow-x-auto rounded-box border border-base-300">
+        <table class="table table-sm w-full">
+          <thead><tr><th>Name</th><th>Expression</th><th class="text-right w-48">Actions</th></tr></thead>
+          <tbody>
+            {% for ng_name, ng_expr in groups.items() %}
+            <tr class="hover">
+              <td class="font-mono text-sm">{{ ng_name }}</td>
+              <td class="font-mono text-xs break-all">{{ ng_expr }}</td>
+              <td class="text-right">
+                {% if may_write %}
+                <div class="flex flex-wrap justify-end gap-1">
+                  <form method="post" action="{{ url_for('groups.save') }}" class="inline" data-confirm="Delete node group '{{ ng_name }}'?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="delete" value="{{ ng_name }}">
+                    <button class="btn btn-xs btn-ghost text-error">Delete</button>
+                  </form>
+                </div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
+      {% else %}
+      <p class="text-sm text-base-content/70">No node groups defined. Add one below.</p>
+      {% endif %}
     </div>
-    <form id="group-modal-form" method="post" action="{{ url_for('groups.create_group') }}" class="flex flex-col gap-4 mt-4">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <fieldset class="fieldset">
-        <legend class="fieldset-legend">Group name</legend>
-        <input id="group-modal-name" name="name" class="input w-full" autocomplete="off" required aria-label="Group name" aria-describedby="group-name-hint">
-        <p id="group-name-hint" class="text-xs text-base-content/70 mt-1">Use a descriptive label, such as “web-production”.</p>
-      </fieldset>
-      <fieldset class="fieldset">
-        <legend class="fieldset-legend">Minion members <span id="group-modal-count" class="badge badge-sm ms-1">0</span></legend>
-        <label class="input input-sm w-full flex items-center gap-2">
-          <span class="icon-[lucide--search] size-4 text-base-content/50" aria-hidden="true"></span>
-          <input id="group-modal-search" type="search" placeholder="Filter minion IDs" autocomplete="off" aria-label="Filter minion IDs" class="grow" oninput="filterGroupMembers()">
-        </label>
-        <div class="mt-2 max-h-64 overflow-auto overflow-x-auto rounded-box border border-base-300 bg-base-100">
-          <table class="table table-sm w-full">
-            <thead><tr><th class="w-12"><span class="sr-only">Select</span></th><th>Minion ID</th></tr></thead>
-            <tbody id="group-modal-list">
-              {% for mid in roster %}
-              <tr class="hover" data-name="{{ mid|lower }}">
-                <td><input type="checkbox" name="members" value="{{ mid }}" class="checkbox checkbox-sm" onchange="updateGroupCount()" aria-label="Select {{ mid }}"></td>
-                <td class="font-mono text-sm">{{ mid }}</td>
-              </tr>
+  </section>
+
+  {% if may_write %}
+  <section class="card card-border bg-base-100" aria-label="Add or edit node group">
+    <div class="card-body gap-3">
+      <h2 class="card-title text-base">Add node group</h2>
+      <form method="post" action="{{ url_for('groups.save') }}" class="flex flex-col gap-3 max-w-lg">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Name</legend>
+          <input type="text" name="name" class="input input-sm w-full font-mono" placeholder="my-servers" aria-label="Node group name" required autocomplete="off">
+        </fieldset>
+        <div class="flex flex-wrap items-start gap-3">
+          <fieldset class="fieldset flex-1 min-w-28">
+            <legend class="fieldset-legend">Matcher</legend>
+            <select name="prefix" class="select select-sm w-full" aria-label="Matcher type">
+              {% for key, label in help_examples.items() %}
+              <option value="{{ key }}"{% if loop.first %} selected{% endif %}>{{ label }}</option>
               {% endfor %}
-            </tbody>
-          </table>
+            </select>
+          </fieldset>
+          <fieldset class="fieldset flex-1 min-w-52">
+            <legend class="fieldset-legend">Value</legend>
+            <input type="text" name="value" class="input input-sm w-full font-mono" placeholder="web-01,web-02" aria-label="Expression value" required autocomplete="off">
+          </fieldset>
         </div>
-        <p class="text-xs text-base-content/70 mt-1">Unknown IDs are retained but skipped when a job runs.</p>
-      </fieldset>
-      <p id="group-modal-error" class="text-sm text-error hidden" role="alert"></p>
-      <div class="modal-action">
-        <button type="button" class="btn btn-ghost" onclick="document.getElementById('group-modal').close()">Cancel</button>
-        <button type="button" class="btn btn-ghost" onclick="clearGroupMembers()">Clear selection</button>
-        <button class="btn btn-primary">Save group</button>
-      </div>
-    </form>
-  </div>
-  <form method="dialog" class="modal-backdrop"><button>Close dialog</button></form>
-</dialog>
-<script>
-(function () {
-  var createUrl = {{ url_for('groups.create_group')|tojson }};
-  var editUrl = function (gid) {
-    return {{ url_for('groups.edit_group', gid=0)|tojson }}.replace('/0/edit', '/' + gid + '/edit');
-  };
-  var presence = {{ presence|tojson }};
-  var seen = {};
-  presence.forEach(function (m) { seen[m] = true; });
-  var groupNames = {{ group_names|tojson }};
-  var editingName = null;
-  function boxes() {
-    return Array.from(document.querySelectorAll('#group-modal-list input[name=members]'));
-  }
-  window.updateGroupCount = function () {
-    var n = boxes().filter(function (b) { return b.checked; }).length;
-    document.getElementById('group-modal-count').textContent = n;
-  };
-  window.filterGroupMembers = function () {
-    var q = document.getElementById('group-modal-search').value.toLowerCase();
-    Array.from(document.querySelectorAll('#group-modal-list tr')).forEach(function (row) {
-      row.classList.toggle('hidden', !!q && row.getAttribute('data-name').indexOf(q) === -1);
-    });
-  };
-  window.clearGroupMembers = function () {
-    boxes().forEach(function (b) { b.checked = false; });
-    updateGroupCount();
-  };
-  function memberRow(value, checked, stale) {
-    var row = document.createElement('tr');
-    row.className = 'hover';
-    row.setAttribute('data-name', value.toLowerCase());
-    row.setAttribute('data-extra', '1');
-    var selectCell = document.createElement('td');
-    var box = document.createElement('input');
-    box.type = 'checkbox';
-    box.name = 'members';
-    box.value = value;
-    box.className = 'checkbox checkbox-sm';
-    box.checked = !!checked;
-    box.onchange = window.updateGroupCount;
-    box.setAttribute('aria-label', 'Select ' + value);
-    selectCell.appendChild(box);
-    var nameCell = document.createElement('td');
-    nameCell.className = 'font-mono text-sm';
-    nameCell.textContent = value;
-    if (stale) {
-      var badge = document.createElement('span');
-      badge.className = 'badge badge-outline badge-warning badge-xs ms-2';
-      badge.textContent = 'not seen';
-      nameCell.appendChild(badge);
-    }
-    row.appendChild(selectCell);
-    row.appendChild(nameCell);
-    return row;
-  }
-  window.openGroupModal = function (gid, name, members) {
-    var dialog = document.getElementById('group-modal');
-    var form = document.getElementById('group-modal-form');
-    var title = document.getElementById('group-modal-title');
-    var nameInput = document.getElementById('group-modal-name');
-    var list = document.getElementById('group-modal-list');
-    var search = document.getElementById('group-modal-search');
-    var error = document.getElementById('group-modal-error');
-    list.querySelectorAll('[data-extra]').forEach(function (el) { el.remove(); });
-    var picked = {};
-    (members || []).forEach(function (m) { picked[m] = true; });
-    boxes().forEach(function (b) { b.checked = !!picked[b.value]; });
-    Object.keys(picked).forEach(function (m) {
-      var known = boxes().some(function (b) { return b.value === m; });
-      if (!known) list.appendChild(memberRow(m, true, !seen[m]));
-    });
-    editingName = gid ? (name || '') : null;
-    error.classList.add('hidden');
-    search.value = '';
-    filterGroupMembers();
-    updateGroupCount();
-    if (gid) {
-      title.textContent = 'Edit group';
-      form.action = editUrl(gid);
-      nameInput.value = name || '';
-    } else {
-      title.textContent = 'New group';
-      form.action = createUrl;
-      nameInput.value = '';
-    }
-    dialog.showModal();
-    nameInput.focus();
-  };
-  document.getElementById('group-modal-form').addEventListener('submit', function (ev) {
-    var name = document.getElementById('group-modal-name').value.trim();
-    var error = document.getElementById('group-modal-error');
-    if (name && name !== editingName && groupNames.indexOf(name) !== -1) {
-      ev.preventDefault();
-      error.textContent = 'A group named "' + name + '" already exists.';
-      error.classList.remove('hidden');
-    }
-  });
-})();
-</script>
-{% endif %}
+        <p class="text-xs text-base-content/60">For <span class="font-mono">L@</span> (list) the value is comma-separated minion IDs. For <span class="font-mono">G@</span> (grain) it is <span class="font-mono">key:pattern</span>. Compound expressions use <span class="font-mono">and</span>, <span class="font-mono">or</span>, and <span class="font-mono">not</span>.</p>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-sm btn-primary">Save</button>
+          <span class="text-xs text-base-content/60">Saves to master.conf. Restart masters to activate.</span>
+        </div>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+  {% endif %}
+</div>
 {% endblock %}

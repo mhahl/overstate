@@ -226,6 +226,7 @@ def index():
     shows, which also terminates its polling.
     """
     from .authz import has_any_access, has_fleet, rbac_mode
+    from .groups import restart_needed
     from .tasks import (
         capabilities_task,
         fleet_keys_task,
@@ -284,6 +285,7 @@ def index():
         poll_qs=_poll_qs(panels, _fingerprint({}, cached, stats), int(time.time())),
         probing=any(panels.values()),
         worker_down=not any(panels.values()),
+        restart_pending=restart_needed(),
     )
 
 
@@ -317,6 +319,7 @@ def panels():
     from flask import abort
 
     from .authz import audit_deny, has_any_access, has_fleet, minions_with, rbac_mode
+    from .groups import restart_needed as _restart_needed
     from .tasks import read_capability_cache
 
     # Any grant admits the poll shell; zero-grant users get 403. Live
@@ -385,6 +388,7 @@ def panels():
         masters=masters,
         probing=probing,
         worker_down=False,
+        restart_pending=_restart_needed(),
         poll_qs=(
             _poll_qs(jids, fingerprint, _poll_started(request.args.get("started")))
             if probing

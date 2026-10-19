@@ -160,6 +160,17 @@ def get_setting(key: str) -> str:
     return DEFS.get(key, {}).get("default", "")
 
 
+def set_setting(key: str, value: str) -> None:
+    """Persist a setting key/value pair (created or updated)."""
+    session = get_session()
+    row = session.get(Setting, key)
+    if row is not None:
+        row.value = value
+    else:
+        session.add(Setting(key=key, value=value))
+    session.commit()
+
+
 #: Keys a scoped settings.read holder may see. OIDC issuer, client id,
 #: group lists, and the client secret are grant.admin; the rotation card
 #: is settings.rotate_eauth.
