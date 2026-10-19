@@ -19,7 +19,8 @@
         {% for row in minions %}
         {% set raw_status = (row.conformity or {}).get("status", "unknown") %}
         {% set cstatus = "drifted" if raw_status in ["drifted", "failed"] else raw_status %}
-        {% if cstatus not in ["ok", "drifted", "unreachable", "unknown"] %}{% set cstatus = "unknown" %}{% endif %}
+        {% if raw_status == "unreachable" and row.id in up %}{% set cstatus = "missed" %}{% endif %}
+        {% if cstatus not in ["ok", "drifted", "unreachable", "unknown", "missed"] %}{% set cstatus = "unknown" %}{% endif %}
         <tr class="hover">
           <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=row.id) }}">{{ row.id }}</a></td>
           <td>
@@ -28,6 +29,8 @@
               <span class="status status-sm status-success" aria-hidden="true"></span><span class="badge badge-sm badge-success" role="status" aria-label="Conformity: ok">ok</span>
               {% elif cstatus == "drifted" %}
               <span class="status status-sm status-error" aria-hidden="true"></span><span class="badge badge-sm badge-error" role="status" aria-label="Conformity: drifted">drifted</span>
+              {% elif cstatus == "missed" %}
+              <span class="status status-sm status-warning" aria-hidden="true"></span><span class="badge badge-sm badge-warning" role="status" aria-label="Conformity: missed" title="Targeted but returned nothing while the roster shows this minion up — the return was likely lost.">missed</span>
               {% elif cstatus == "unreachable" %}
               <span class="status status-sm status-error" aria-hidden="true"></span><span class="badge badge-sm badge-error badge-outline" role="status" aria-label="Conformity: unreachable">unreachable</span>
               {% else %}

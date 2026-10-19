@@ -881,6 +881,16 @@ def detail(mid: str):
                             )
                         ]
                     rows = [f for f in findings if isinstance(f, dict)]
+                    for f in rows:
+                        # Reference URLs come from minion-supplied grype
+                        # data: allow only http(s) so a compromised minion
+                        # cannot inject javascript:/data: URLs into the page.
+                        f["urls"] = [
+                            u
+                            for u in (f.get("urls") or [])
+                            if isinstance(u, str)
+                            and u.startswith(("https://", "http://"))
+                        ]
                     if vuln_sort == "cve":
                         rows.sort(key=lambda f: str(f.get("cve", "")))
                     elif vuln_sort == "pkg":

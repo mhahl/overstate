@@ -44,6 +44,33 @@ def _watched_list(session) -> list[str]:
     return [w.sls for w in session.query(WatchedState).order_by(WatchedState.sls)]
 
 
+def _sls_file(sls: str):
+    """Resolve an SLS name to a real file under the file roots, or None.
+
+    Salt resolves an SLS reference without the extension (``demo`` →
+    ``demo.sls``), so both spellings are tried. Used to validate the
+    watch set: a watch that names no existing state file can never
+    narrow a verdict, so the UI flags it instead of silently degrading
+    to whole-job results.
+    """
+    from .files import safe_join
+
+    rel = (sls or "").strip()
+    if rel.startswith("salt://"):
+        rel = rel[len("salt://") :]
+    if not rel or rel.startswith((".", "/")) or "\\" in rel:
+        return None
+    for candidate in (rel, f"{rel}.sls"):
+        target = safe_join(candidate)
+        if target is not None and target.is_file():
+            return target
+    return None
+
+
+def _missing_watches(session) -> set[str]:
+    return {w.sls for w in session.query(WatchedState).all() if _sls_file(w.sls) is None}
+
+
 def _record_history(session, mid: str, jid: str, status: str, now: dt.datetime) -> None:
     """Append one verdict-trail row, pruning to the newest HISTORY_LIMIT."""
     session.add(
@@ -268,6 +295,18 @@ def index():
             entries = history.setdefault(trail.minion_id, [])
             if len(entries) < 5:
                 entries.append({"status": trail.status, "jid": trail.jid})
+    # Cached presence split: a minion stamped "unreachable" (targeted but
+    # silent) that the roster currently lists as up is shown as "missed" —
+    # its return was likely lost, not the minion down. No live salt call:
+    # the roster cache is a Redis read. (The stored verdict stays as-is.)
+    from .tasks_queue import read_merged_roster_cache
+
+    cached = read_merged_roster_cache()
+    up = (
+        set(cached["up"])
+        if isinstance(cached, dict) and isinstance(cached.get("up"), list)
+        else set()
+    )
     ctx = {
         "watched": watched,
         "minions": paged,
@@ -281,6 +320,8 @@ def index():
         "pages": pages,
         "per_page": per_page,
         "total": total,
+        "up": up,
+        "missing_watch": _missing_watches(session),
     }
     if request.headers.get("HX-Request") == "true":
         return render_template("_conformity_rows.html", **ctx)
@@ -304,7 +345,14 @@ def watch():
         session.add(WatchedState(sls=sls))
         session.commit()
         log_event(current_user.username, f"watch:{sls}")
-        flash(f"Watching '{sls}'.", "success")
+        if _sls_file(sls) is None:
+            flash(
+                f"Watching '{sls}', but no state file matches it under the file "
+                "roots — verdicts stay whole-job until the file exists.",
+                "warning",
+            )
+        else:
+            flash(f"Watching '{sls}'.", "success")
     return redirect(url_for("states.index"))
 
 

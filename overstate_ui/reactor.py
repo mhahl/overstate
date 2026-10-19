@@ -89,6 +89,23 @@ def sls_to_rel(sls: str) -> str | None:
     return ref
 
 
+def sls_exists(sls: str) -> bool:
+    """Whether a reactor SLS reference resolves to an existing file.
+
+    A mapping to a missing file 404s at fire time, so the UI warns on
+    add and on the wizard review instead of wiring a dead reference.
+    Salt resolves SLS names with or without the ``.sls`` extension.
+    """
+    rel = sls_to_rel(sls)
+    if rel is None:
+        return False
+    for candidate in (rel, f"{rel}.sls"):
+        target = _safe_join(candidate)
+        if target is not None and target.is_file():
+            return True
+    return False
+
+
 def parse_reactor_list(value) -> tuple[dict[str, list[str]], str]:
     """Normalize ``reactor.list`` output to {event: [sls, …]}.
 
@@ -516,6 +533,12 @@ def add():
     ):
         flash("Event pattern and SLS reference are required.", "error")
         return redirect(url_for("reactor.index"))
+    if not sls_exists(sls):
+        flash(
+            f"No reactor SLS file matches '{sls}' under the reactor roots — "
+            "the mapping will fail when the event fires until the file exists.",
+            "warning",
+        )
     # Fan out to every pod: publish buses and reactor systems are
     # per-master, so a single-pod add would fire only for minions on
     # that pod. Runner writes are runtime-only (Salt persists nothing),
@@ -699,6 +722,7 @@ def add_review():
         event=event,
         sls=sls,
         browsable=sls_to_rel(sls) is not None,
+        sls_missing=not sls_exists(sls),
         pod_count=len(clients),
         down=down,
         unreachable=unreachable,

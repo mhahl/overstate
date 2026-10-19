@@ -104,7 +104,7 @@
             {% for w in watched %}
             <li class="list-row">
               <div class="list-col-grow min-w-0">
-                <p class="font-mono text-sm break-all">{{ w.sls }}</p>
+                <p class="font-mono text-sm break-all">{{ w.sls }}{% if w.sls in missing_watch %} <span class="badge badge-sm badge-warning" title="No state file matches this name under the file roots, so it can never narrow a verdict.">missing</span>{% endif %}</p>
                 <p class="text-xs text-base-content/60">Included in verdict scope</p>
               </div>
               {% if may_watch %}
@@ -117,6 +117,11 @@
             {% endfor %}
           </ul>
           <p class="text-sm text-base-content/70">Watched SLS files narrow verdicts to matching state returns. If a return cannot be isolated, the whole-job result is used.</p>
+          {% if missing_watch %}
+          <div class="alert alert-warning" role="status">
+            <span>One or more watched names match no state file — their verdicts stay whole-job until the files exist.</span>
+          </div>
+          {% endif %}
           {% else %}
           <p class="text-sm text-base-content/70">No SLS files are watched. Verdicts use the whole state-job result.</p>
           {% endif %}
@@ -152,7 +157,11 @@
             </li>
             <li class="flex items-start gap-2">
               <span class="badge badge-sm badge-error badge-outline shrink-0">unreachable</span>
-              <p class="text-sm text-base-content/70">The minion was targeted but returned nothing.</p>
+              <p class="text-sm text-base-content/70">The minion was targeted but returned nothing and is not responding.</p>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="badge badge-sm badge-warning shrink-0">missed</span>
+              <p class="text-sm text-base-content/70">Targeted but silent while the roster shows it up — the return was likely lost, not the minion down.</p>
             </li>
             <li class="flex items-start gap-2">
               <span class="badge badge-sm badge-neutral shrink-0">unknown</span>

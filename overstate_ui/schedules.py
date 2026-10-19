@@ -6,8 +6,10 @@ from flask_login import current_user, login_required
 from .audit import log_event
 from .auth import roles_required
 from .dashboard import get_salt
+from .db import get_session
 from .jobs_helpers import ALLOWED_FUNS, FUN_RE
 from .minions import _exact_mid, merged_cached_roster, minion_is_up
+from .models import AuditEvent
 from .salt_client import SaltApiError
 
 bp = Blueprint("schedules", __name__, url_prefix="/schedules")
@@ -19,6 +21,22 @@ SCHEDULE_ACTIONS = {
 }
 
 SCHEDULE_UNITS = ("seconds", "minutes", "hours", "days")
+
+
+def _interval_text(job: dict) -> str:
+    """Human interval for a schedule entry: 'every 60 seconds', a
+    ``when:``/``cron:`` form, or a dash when neither is present."""
+    if not isinstance(job, dict):
+        return "—"
+    for unit in SCHEDULE_UNITS:
+        v = job.get(unit)
+        if isinstance(v, (int, float)) or (isinstance(v, str) and v.isdigit()):
+            return f"every {v} {unit}"
+    if job.get("when"):
+        return f"when: {job['when']}"
+    if job.get("cron"):
+        return f"cron: {job['cron']}"
+    return "—"
 
 
 def add_succeeded(result, mid: str) -> bool:
@@ -154,6 +172,86 @@ def index():
         pages=pages,
         per_page=per_page,
         total=total,
+    )
+
+
+@bp.route("/all")
+@roles_required("operator")
+def all_schedules():
+    """Fleet-wide schedule inventory with the defining user per entry.
+
+    Schedules authorize at define time only (see ``add``); a revoked
+    grant does not stop a schedule already on a minion. This page is the
+    surface to audit and revoke them. Fleet-gated: a minion-scoped
+    holder cannot enumerate schedules outside their scope.
+    """
+    from flask import abort
+
+    from .authz import audit_deny, has_fleet, rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("schedule.read")
+        if not has_fleet(current_user, "schedule.read"):
+            audit_deny("schedule.read", detail="fleet-view-required")
+            abort(403)
+    client = get_salt()
+    statuses, _up, _reachable = merged_cached_roster(client)
+    accepted = sorted(m for m, st in statuses.items() if st == "accepted")
+    rows: list[dict] = []
+    error = None
+    if not accepted:
+        error = "No accepted minions."
+    else:
+        try:
+            payload = client.local(
+                ",".join(accepted),
+                "schedule.list",
+                tgt_type="list",
+                kwarg={"return_yaml": False},
+            )[0]
+        except SaltApiError as exc:
+            error = str(exc)
+            payload = {}
+        if isinstance(payload, dict):
+            session = get_session()
+            owner_by: dict[tuple[str, str], str] = {}
+            for ev in (
+                session.query(AuditEvent)
+                .filter(
+                    AuditEvent.action.like("schedule-add:%"),
+                    AuditEvent.minion_id.in_(accepted),
+                )
+                .order_by(AuditEvent.id)
+                .all()
+            ):
+                name = ev.action[len("schedule-add:") :]
+                owner_by[(ev.minion_id, name)] = ev.user
+            for mid, value in payload.items():
+                for name, job in parse_schedule_list(value).items():
+                    rows.append(
+                        {
+                            "mid": mid,
+                            "name": name,
+                            "function": str(job.get("function", "")),
+                            "when": _interval_text(job),
+                            "enabled": bool(job.get("enabled", True)),
+                            "owner": owner_by.get((mid, name), ""),
+                        }
+                    )
+    q = request.args.get("q", "").strip().lower()
+    if q:
+        rows = [
+            r
+            for r in rows
+            if q in r["mid"].lower() or q in r["name"].lower() or q in r["function"].lower()
+        ]
+    rows.sort(key=lambda r: (r["mid"], r["name"]))
+    return render_template(
+        "schedules_all.html",
+        rows=rows,
+        error=error,
+        q=request.args.get("q", ""),
+        total=len(rows),
     )
 
 

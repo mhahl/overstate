@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}All schedules · Overstate{% endblock %}
+{% block content %}
+{% import "_macros.html" as m %}
+<div class="flex flex-wrap items-end gap-3 mb-4">
+  {{ m.page_heading("All schedules", "Every recurring job across the fleet, with who defined it.") }}
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('schedules.index') }}">‹ Per-minion view</a>
+</div>
+<div class="alert alert-warning mb-4" role="status">
+  <span>Schedules are authorized at define time only. Removing a user's
+  <code class="font-mono">job.run.*</code> grant does not stop schedules that user
+  already defined — delete them here.</span>
+</div>
+{% if error %}
+<div class="alert alert-error mb-4" role="alert"><span>{{ error }}</span></div>
+{% elif not rows %}
+<div class="card card-border bg-base-100"><div class="card-body text-center py-8">
+  <p class="font-medium">No schedules anywhere in the fleet</p>
+  <p class="text-sm text-base-content/70">Add one from the per-minion Schedules page.</p>
+</div></div>
+{% else %}
+<section class="card card-border bg-base-100 min-w-0" aria-label="Fleet schedule inventory">
+  <div class="card-body gap-3">
+    <form method="get" role="search" aria-label="Filter schedules" class="flex flex-wrap items-center gap-2">
+      <input type="search" name="q" value="{{ q }}" placeholder="minion, job, or function" class="input input-sm" aria-label="Filter schedules by minion, job, or function">
+      <button class="btn btn-sm btn-primary">Filter</button>
+    </form>
+    <div class="max-w-full overflow-x-auto rounded-box border border-base-300">
+      <table class="table table-sm table-pin-rows w-full">
+        <thead><tr><th>Minion</th><th>Job</th><th>Function</th><th>When</th><th>Enabled</th><th>Added by</th><th class="text-right">Actions</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="hover">
+            <td><a class="link font-mono text-xs" href="{{ url_for('schedules.index', minion=r.mid) }}">{{ r.mid }}</a></td>
+            <td class="font-mono text-xs">{{ r.name }}</td>
+            <td class="font-mono text-xs">{{ r.function }}</td>
+            <td class="font-mono text-xs whitespace-nowrap">{{ r.when }}</td>
+            <td>{% if r.enabled %}<span class="badge badge-sm badge-success">enabled</span>{% else %}<span class="badge badge-sm badge-neutral">disabled</span>{% endif %}</td>
+            <td class="text-xs">{{ r.owner or "—" }}</td>
+            <td class="text-right">
+              {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('schedule.write')) %}
+              <form method="post" action="{{ url_for('schedules.act', mid=r.mid, action='delete') }}" data-confirm="Delete job '{{ r.name }}' on {{ r.mid }}? It stops running.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="job" value="{{ r.name }}">
+                <button class="btn btn-xs btn-error btn-outline">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-sm text-base-content/60 me-auto">{{ total }} schedule{{ "s" if total != 1 }}</p>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

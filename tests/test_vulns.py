@@ -235,6 +235,31 @@ def test_minion_tab_cve_links_to_nvd():
     assert "https://nvd.nist.gov/vuln/detail/CVE-2026-0000" in html
 
 
+def test_minion_tab_reference_urls_allowlisted():
+    """Reference URLs are minion-supplied grype data: only http(s) may
+    become an href, so a compromised minion cannot inject a
+    javascript:/data: URL into the page."""
+    original = DETAILS["web-01"]
+
+    def poisoned_detail(mid):
+        payload = _detail(mid)
+        payload["detailed_report"][0]["urls"] = [
+            "javascript:alert(1)",
+            "https://example.test/CVE-2026-0000",
+            "data:text/html,<script>alert(2)</script>",
+        ]
+        return payload
+
+    try:
+        DETAILS["web-01"] = poisoned_detail("web-01")
+        html = make_client().get("/minions/web-01?tab=vulns").data.decode()
+        assert "javascript:alert(1)" not in html
+        assert "data:text/html" not in html
+        assert "https://example.test/CVE-2026-0000" in html
+    finally:
+        DETAILS["web-01"] = original
+
+
 def test_minion_tab_has_no_cached_footer_note():
     html = make_client().get("/minions/web-01?tab=vulns").data.decode()
     assert "Findings stay cached" not in html

@@ -140,6 +140,123 @@ def test_states_pages_with_size_dropdown():
     assert "Page 2 of 2" in page2
 
 
+def test_watch_unknown_sls_warns_and_marks_missing():
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/states/watch", data={"sls": "no-such-state"}, follow_redirects=True
+    )
+    html = rv.data.decode()
+    assert "no state file matches it" in html
+    assert "missing" in html  # the missing badge on the watch list
+    with app.app_context():
+        from overstate_ui.db import get_session
+        from overstate_ui.models import WatchedState
+
+        assert get_session().query(WatchedState).filter_by(sls="no-such-state").first()
+
+
+def test_watch_known_sls_no_warning():
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post("/states/watch", data={"sls": "top"}, follow_redirects=True)
+    html = rv.data.decode()
+    assert "no state file matches it" not in html
+    assert "Watching" in html and "top" in html
+
+
+def test_conformity_missed_when_up_but_silent(fake_redis):
+    from overstate_ui.tasks_queue import write_merged_roster_cache
+
+    app = _app()
+    with app.app_context():
+        get_session().add(
+            Minion(
+                id="silent-01",
+                grains={},
+                conformity={"status": "unreachable", "jid": "j9"},
+            )
+        )
+        get_session().commit()
+    # Roster cache says silent-01 is up: the verdict renders as missed
+    # (seed_mock also seeds an unreachable minion, so only the missed
+    # badge proves the split).
+    write_merged_roster_cache({"silent-01": "accepted"}, ["silent-01"])
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/states/").data.decode()
+    assert 'aria-label="Conformity: missed"' in html
+
+
+def test_conformity_unreachable_when_down(fake_redis):
+    from overstate_ui.tasks_queue import write_merged_roster_cache
+
+    app = _app()
+    with app.app_context():
+        get_session().add(
+            Minion(
+                id="down-01",
+                grains={},
+                conformity={"status": "unreachable", "jid": "j9"},
+            )
+        )
+        get_session().commit()
+    write_merged_roster_cache({"down-01": "accepted"}, [])
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/states/").data.decode()
+    assert 'aria-label="Conformity: unreachable"' in html
+
+
+def test_schedule_inventory_lists_entries_with_owner(fake_redis):
+    from overstate_ui.models import AuditEvent
+    from overstate_ui.tasks_queue import write_merged_roster_cache
+
+    write_merged_roster_cache({"web-01": "accepted"}, ["web-01"])
+    app = _app()
+    with app.app_context():
+        get_session().add(
+            AuditEvent(user="alice", action="schedule-add:daily", minion_id="web-01")
+        )
+        get_session().commit()
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/schedules/all").data.decode()
+    assert "web-01" in html
+    assert "state.highstate" in html
+    assert "alice" in html
+    # Delete from the inventory uses the shared per-minion act route.
+    rv = client.post(
+        "/schedules/web-01/delete", data={"job": "daily"}, follow_redirects=True
+    )
+    assert "deleted" in rv.data.decode().lower()
+
+
+def test_schedule_inventory_fleet_gated(fake_redis):
+    """Scoped schedule.read without a fleet grant cannot enumerate."""
+    from overstate_ui import auth as authmod
+    from overstate_ui.models import Setting, User
+    from overstate_ui.tasks_queue import write_merged_roster_cache
+
+    write_merged_roster_cache({"web-01": "accepted"}, ["web-01"])
+    app = _app()
+    with app.app_context():
+        get_session().add(Setting(key="rbac_mode", value="scoped"))
+        get_session().add(
+            User(
+                username="teamop",
+                password_hash=authmod._ph.hash(PW),
+                role="scoped",
+            )
+        )
+        get_session().commit()
+    client = app.test_client()
+    _login(client, "teamop")
+    assert client.get("/schedules/all").status_code == 403
+
+
 def test_schedule_add_rejects_disallowed_function():
     app = _app()
     client = app.test_client()

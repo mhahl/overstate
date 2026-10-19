@@ -190,6 +190,35 @@ def test_add_rejects_bad_event(tmp_path):
     assert not [c for c in calls if c[0] == "reactor.add"]
 
 
+def test_add_warns_missing_sls_file(tmp_path):
+    calls = []
+    app = _app(tmp_path, calls)
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/reactor/add",
+        data={"event": "salt/key", "sls": "salt://reactor/missing.sls"},
+        follow_redirects=True,
+    )
+    assert "no reactor sls file matches" in rv.data.decode().lower()
+    assert [c for c in calls if c[0] == "reactor.add"]
+
+
+def test_add_known_sls_no_missing_warning(tmp_path):
+    calls = []
+    app = _app(tmp_path, calls)
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/reactor/add",
+        data={"event": "salt/key", "sls": "salt://greet.sls"},
+        follow_redirects=True,
+    )
+    html = rv.data.decode().lower()
+    assert "no reactor sls file matches" not in html
+    assert "Reactor added" in rv.data.decode()
+
+
 def test_delete_flows_through_shared_dialog(tmp_path):
     calls = []
     app = _app(tmp_path, calls)

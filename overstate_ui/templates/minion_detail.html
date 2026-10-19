@@ -286,7 +286,7 @@
             <td class="font-mono text-xs max-w-32 truncate" title="{% if f.get("fixed") %}{{ f.get("fixed") }}{% endif %}">{% if f.get("fixed") %}{{ f.get("fixed") }}{% else %}–{% endif %}</td>
             <td><span class="badge badge-sm badge-soft {% if f.get('severity') == 'CRITICAL' %}badge-error{% elif f.get('severity') == 'HIGH' %}badge-warning{% elif f.get('severity') == 'MEDIUM' %}badge-info{% else %}badge-neutral{% endif %}">{% if f.get("severity") in ("CRITICAL", "HIGH") %}<span class="icon-[lucide--shield-alert] size-3" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--shield] size-3" aria-hidden="true"></span>{% endif %} {{ f.get("severity", "UNKNOWN")|capitalize }}</span></td>
             <td class="font-mono text-xs">{{ f.get("namespace", "–") }}</td>
-            <td class="text-xs break-all">{% set urls = f.get("urls") or [] %}{% if urls %}<a class="link font-mono inline-flex items-center gap-1" href="{{ urls[0] }}" target="_blank" rel="noopener"><span class="icon-[lucide--external-link] size-3" aria-hidden="true"></span>link</a>{% if urls|length > 1 %} <span class="opacity-70">+{{ urls|length - 1 }} more</span>{% endif %}{% else %}–{% endif %}</td></tr>
+            <td class="text-xs break-all">{% set urls = f.get("urls") or [] %}{% if urls %}{% for u in urls %}<a class="link font-mono inline-flex items-center gap-1 mr-2" href="{{ u }}" target="_blank" rel="noopener"><span class="icon-[lucide--external-link] size-3" aria-hidden="true"></span>link</a>{% endfor %}{% else %}–{% endif %}</td></tr>
           {% endfor %}
         </tbody></table>
     </div>
