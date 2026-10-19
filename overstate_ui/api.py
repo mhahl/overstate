@@ -154,6 +154,14 @@ def _pinned_fire(user, token_row, saved_id: object):
             jsonify({"ok": False, "error": "batch-saved-jobs-are-interactive-only"}),
             400,
         )
+    from .jobs_helpers import CONFIRM_FUNS
+
+    if (saved.fun or "") in CONFIRM_FUNS:
+        # Pinned tokens fire saved jobs ungated by design (CI), but the
+        # destructive nature is called out in the audit trail.
+        log_event(
+            user.username, f"api-fire:destructive:{saved.fun}", detail=f"saved:{saved.id}"
+        )
     try:
         jid = launch(
             saved.tgt,

@@ -257,6 +257,64 @@ def test_schedule_inventory_fleet_gated(fake_redis):
     assert client.get("/schedules/all").status_code == 403
 
 
+def test_schedule_add_cron_mode():
+    """The add form accepts a five-field cron expression and ships it
+    as the schedule's cron kwarg instead of an interval."""
+    import json
+
+    calls = []
+
+    def transport():
+        import httpx
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/login":
+                return httpx.Response(200, json={"return": [{"token": "tok", "expire": 99}]})
+            body = json.loads(request.content or b"{}")
+            if body.get("client") == "wheel":
+                return httpx.Response(
+                    200,
+                    json={"return": [{"data": {"return": {"minions": ["web-01"], "minions_pre": []}}}]},
+                )
+            if body.get("client") == "local" and body.get("fun") == "schedule.add":
+                calls.append(body.get("kwarg"))
+                return httpx.Response(200, json={"return": [{"web-01": True}]})
+            return httpx.Response(200, json={"return": [{"web-01": {}}]})
+
+        return httpx.MockTransport(handler)
+
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    app.extensions["salt_client"] = SaltClient("https://salt:8000", "u", "p", transport=transport())
+    with app.app_context():
+        create_all()
+        seed_admin(password=PW)
+        get_session().add(
+            User(username="op", password_hash=authmod._ph.hash(PW), role="operator")
+        )
+        get_session().add(Minion(id="web-01", grains={}, conformity={}))
+        get_session().commit()
+    client = app.test_client()
+    _login(client, "op")
+    rv = client.post(
+        "/schedules/web-01/add",
+        data={"name": "daily-3am", "function": "state.highstate", "mode": "cron", "cron": "0 3 * * *"},
+        follow_redirects=True,
+    )
+    assert calls and calls[-1]["cron"] == ["0 3 * * *"]
+    assert "added" in rv.data.decode().lower()
+    # Invalid cron is rejected without touching salt.
+    before = len(calls)
+    rv = client.post(
+        "/schedules/web-01/add",
+        data={"name": "bad", "function": "test.ping", "mode": "cron", "cron": "61 * * * *"},
+        follow_redirects=True,
+    )
+    assert "Invalid cron expression" in rv.data.decode()
+    assert len(calls) == before
+
+
 def test_schedule_add_rejects_disallowed_function():
     app = _app()
     client = app.test_client()

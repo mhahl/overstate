@@ -35,6 +35,12 @@
         <span class="text-xs text-base-content/60">{{ git.reason }}</span>
         {% endif %}
         <span class="ms-auto text-xs text-base-content/60">Scheduled sync: <span class="font-mono">{{ file_sync.schedule }}</span>{% if file_sync.schedule|lower == "off" %} (disabled){% endif %}{% if file_sync.last_message %} · last run {{ file_sync.last_message }}{% if file_sync.last_run %} ({{ file_sync.last_run|reltime }}){% endif %}{% endif %}</span>
+        {% if current_user.role == "admin" %}
+        <form method="post" action="{{ url_for('files.sync_now') }}" data-confirm="Run the scheduled file sync now? It pulls --ff-only and refreshes the master fileserver.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-xs btn-ghost">Run scheduled sync now</button>
+        </form>
+        {% endif %}
       </div>
       {% if may_sync %}
       <div class="flex flex-wrap items-center gap-2 border-t border-base-300 pt-3">

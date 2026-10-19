@@ -128,8 +128,11 @@ def test_schedule_controls_have_visible_associated_labels(client):
                 "minion",
                 "name",
                 "function",
+                "mode",
                 "value",
                 "unit",
+                "cron",
+                "when",
                 "enabled",
             ):
                 self.controls[attributes["name"]] = attributes.get("id")
@@ -140,8 +143,11 @@ def test_schedule_controls_have_visible_associated_labels(client):
         "minion",
         "name",
         "function",
+        "mode",
         "value",
         "unit",
+        "cron",
+        "when",
         "enabled",
     }
     assert all(

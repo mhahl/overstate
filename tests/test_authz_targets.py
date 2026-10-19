@@ -432,6 +432,56 @@ def test_batch_recheck_drops_minion(env, monkeypatch):
         )
 
 
+def test_batch_stops_when_job_batch_grant_revoked(env, monkeypatch):
+    """Revoking only job.batch (the run class stays) must stop the
+    remaining waves too — the run-class re-check alone is not enough.
+    The worker logic is isolated with monkeypatches because no built-in
+    role carries job.run.read without job.batch."""
+    import overstate_ui.tasks_batch as batchmod
+
+    seen: list = []
+
+    class FakeClient:
+        def local(self, tgt, fun, **kwargs):
+            seen.append((list(tgt), fun))
+            return [{"jid": "wave-jid-1"}]
+
+    monkeypatch.setattr("overstate_ui.tasks.build_client", lambda: FakeClient())
+    # Run class is intact for web-01; job.batch is gone everywhere.
+    monkeypatch.setattr(
+        batchmod,
+        "minions_with",
+        lambda actor, perm: {"web-01"} if perm == "job.run.read" else set(),
+    )
+    monkeypatch.setattr(batchmod, "has_fleet", lambda actor, perm: False)
+    with env.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="batch-g2",
+                fun="test.ping",
+                tgt="web-01",
+                tgt_type="list",
+                user="teamop",
+                batch_group="g2",
+                batch_state={},
+            )
+        )
+        session.commit()
+        result = batchmod.run_wave_batch(
+            "g2", [["web-01"]], "test.ping", [], 10, "teamop", wave_timeout=0
+        )
+        assert result["status"] == "stopped"
+        assert seen == []
+        assert (
+            session.query(AuditEvent)
+            .filter_by(action="batch-stopped-authz")
+            .filter(AuditEvent.detail.like("%no-batch-grant%"))
+            .count()
+            == 1
+        )
+
+
 def _fleet_user(client, username: str, role: str = "operator"):
     with client.app.app_context():
         session = get_session()

@@ -28,6 +28,13 @@
   </div>
 </div>
 {% endfor %}
+{% if job.fun == "state.orchestrate" and not job.complete %}
+<div class="alert alert-info mb-4" role="status">
+  <span>Master-side orchestrate cannot be cancelled from this UI. Stop individual steps with
+    <code class="font-mono">saltutil.kill_job</code> on the orchestrated minions, or
+    <code class="font-mono">salt-run jobs.kill {{ job.jid }}</code> on the master.</span>
+</div>
+{% endif %}
 <div class="card card-border card-sm bg-base-100 mb-4">
   <div class="card-body flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
     <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ tgt_display.get(job.jid, job.tgt) }} <span class="opacity-60">, by {{ job.user }}</span></p>

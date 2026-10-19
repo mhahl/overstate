@@ -19,16 +19,34 @@
       <input id="schedule-function" name="function" placeholder="test.ping" class="input input-sm font-mono" required>
     </fieldset>
     <fieldset class="fieldset">
-      <label class="label" for="schedule-value">Every</label>
-      <input id="schedule-value" name="value" type="number" min="1" value="60" class="input input-sm w-24" required>
-    </fieldset>
-    <fieldset class="fieldset">
-      <label class="label" for="schedule-unit">Unit</label>
-      <select id="schedule-unit" name="unit" class="select select-sm">
-        {% for u in ["seconds", "minutes", "hours", "days"] %}
-        <option value="{{ u }}">{{ u }}</option>
-        {% endfor %}
+      <label class="label" for="schedule-mode">Mode</label>
+      <select id="schedule-mode" name="mode" class="select select-sm">
+        <option value="interval" selected>interval</option>
+        <option value="cron">cron</option>
+        <option value="when">when</option>
       </select>
+    </fieldset>
+    <fieldset class="fieldset" id="schedule-interval-fields">
+      <label class="label" for="schedule-value">Every</label>
+      <div class="flex items-end gap-1">
+        <input id="schedule-value" name="value" type="number" min="1" value="60" class="input input-sm w-24" required>
+        <span class="flex flex-col">
+          <label class="label" for="schedule-unit">Unit</label>
+          <select id="schedule-unit" name="unit" class="select select-sm">
+            {% for u in ["seconds", "minutes", "hours", "days"] %}
+            <option value="{{ u }}">{{ u }}</option>
+            {% endfor %}
+          </select>
+        </span>
+      </div>
+    </fieldset>
+    <fieldset class="fieldset hidden" id="schedule-cron-field">
+      <label class="label" for="schedule-cron">Cron (5 numeric fields)</label>
+      <input id="schedule-cron" name="cron" placeholder="0 3 * * *" class="input input-sm font-mono" autocomplete="off">
+    </fieldset>
+    <fieldset class="fieldset hidden" id="schedule-when-field">
+      <label class="label" for="schedule-when">When (ISO)</label>
+      <input id="schedule-when" name="when" placeholder="2026-10-21T03:00:00" class="input input-sm font-mono" autocomplete="off">
     </fieldset>
     <fieldset class="fieldset">
       <label class="label" for="schedule-enabled">Enabled</label>
@@ -95,4 +113,23 @@
 </div>
 {% endif %}
 </section>
+<script>
+(function () {
+  var mode = document.getElementById("schedule-mode");
+  if (!mode) return;
+  var fields = {
+    interval: "schedule-interval-fields",
+    cron: "schedule-cron-field",
+    when: "schedule-when-field",
+  };
+  function paint() {
+    Object.keys(fields).forEach(function (key) {
+      var el = document.getElementById(fields[key]);
+      if (el) el.classList.toggle("hidden", key !== mode.value);
+    });
+  }
+  mode.addEventListener("change", paint);
+  paint();
+})();
+</script>
 {% endblock %}

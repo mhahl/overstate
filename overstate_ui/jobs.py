@@ -308,6 +308,7 @@ def index():
         "running": running,
         "history": history,
         "saved": saved,
+        "destructive_funs": CONFIRM_FUNS,
         "sort": sort,
         "direction": direction,
         "q": q,

@@ -261,18 +261,40 @@ def add(mid: str):
     mid = _exact_mid(mid)
     name = request.form.get("name", "").strip()
     fun = request.form.get("function", "").strip()
+    mode = request.form.get("mode", "interval")
     unit = request.form.get("unit", "seconds")
+    cron_expr = request.form.get("cron", "").strip()
+    when_iso = request.form.get("when", "").strip()
     try:
         value = int(request.form.get("value", "").strip())
     except ValueError:
         value = 0
     enabled = request.form.get("enabled", "") == "on"
-    if not name or not fun or unit not in SCHEDULE_UNITS or value < 1:
-        flash("Name, function, and positive interval required.", "error")
+    if not name or not fun:
+        flash("Name and function required.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     if not FUN_RE.match(fun) or fun not in ALLOWED_FUNS:
         flash("That function cannot run here.", "error")
         return redirect(url_for("schedules.index", minion=mid))
+    from .file_sync_schedule import parse_cron
+
+    if mode == "cron":
+        try:
+            parse_cron(cron_expr)
+        except ValueError:
+            flash("Invalid cron expression. Use five numeric fields.", "error")
+            return redirect(url_for("schedules.index", minion=mid))
+        kwarg: dict = {"function": fun, "enabled": enabled, "cron": [cron_expr]}
+    elif mode == "when":
+        if not when_iso:
+            flash("A when date is required (YYYY-MM-DDTHH:MM:SS).", "error")
+            return redirect(url_for("schedules.index", minion=mid))
+        kwarg = {"function": fun, "enabled": enabled, "when": [when_iso]}
+    else:
+        if unit not in SCHEDULE_UNITS or value < 1:
+            flash("Name, function, and positive interval required.", "error")
+            return redirect(url_for("schedules.index", minion=mid))
+        kwarg = {"function": fun, "enabled": enabled, unit: value}
     from .authz import rbac_mode
 
     if rbac_mode() == "scoped":
@@ -303,7 +325,7 @@ def add(mid: str):
             "schedule.add",
             arg=[name],
             tgt_type="list",
-            kwarg={"function": fun, unit: value, "enabled": enabled},
+            kwarg=kwarg,
         )
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")

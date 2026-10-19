@@ -403,6 +403,25 @@ def sync():
     return redirect(url_for("files.index"))
 
 
+@bp.post("/sync-now")
+@roles_required("admin")
+def sync_now():
+    """Run the scheduled file sync immediately, bypassing the cron gate.
+
+    Shares the scheduled path's sync + fileserver refresh + status
+    recording, so the Files page's schedule/status line reflects it.
+    """
+    from .file_sync_schedule import run_manual_sync
+
+    result = run_manual_sync()
+    if result.get("ok"):
+        flash(result["message"], "success" if result.get("status") != "warning" else "warning")
+        log_event(current_user.username, "file-sync:manual")
+    else:
+        flash(result["message"], "error")
+    return redirect(url_for("files.index"))
+
+
 @bp.post("/sync-modules")
 @roles_required("operator")
 def sync_modules():

@@ -162,8 +162,6 @@ def _save_status(
 
 def run_scheduled_sync(now: dt.datetime | None = None) -> dict:
     """Run one scheduled fast-forward sync, or return a quiet skip result."""
-    from .files import _refresh_fileserver
-    from .git_sync import git_sync_now
     from .settings import get_setting
 
     now = now or dt.datetime.now(dt.timezone.utc)
@@ -179,12 +177,33 @@ def run_scheduled_sync(now: dt.datetime | None = None) -> dict:
     if get_setting(LAST_SLOT_SETTING) == slot_value:
         return {"ran": False, "ok": True, "message": ""}
 
+    return _sync_now(now, slot)
+
+
+def run_manual_sync() -> dict:
+    """Run one file sync immediately, bypassing the schedule gate.
+
+    Triggered from the Files page; shares the exact same sync +
+    fileserver-refresh + status/audit path as the scheduled run.
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    return _sync_now(now, slot=None)
+
+
+def _sync_now(now: dt.datetime, slot: dt.datetime | None) -> dict:
+    from .files import _refresh_fileserver
+    from .git_sync import git_sync_now
+    from .settings import get_setting
+
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=dt.timezone.utc)
     previous_status = get_setting(LAST_STATUS_SETTING)
     previous_message = get_setting(LAST_MESSAGE_SETTING)
     result = git_sync_now()
     if not result.get("ok"):
         reason = result.get("reason") or "git sync failed"
         message = f"file sync failed: {reason}"
+        # No slot recorded on failure: the retry may re-run the same window.
         _save_status(now, "failed", message)
         log_event("cron", "file-sync:failed", outcome="deny", detail=reason)
         return {"ran": True, "ok": False, "message": message}

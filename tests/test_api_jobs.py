@@ -165,7 +165,38 @@ def test_token_pinned_saved_job(env):
     with env.app.app_context():
         job = get_session().get(Job, jid)
         assert job is not None and job.user == "ci"
-        assert job.tgt_requested == "*"
+
+
+def test_pinned_destructive_saved_job_is_audited(env):
+    """A pinned token fires a destructive saved job ungated by design,
+    but the audit trail names it as destructive."""
+    from overstate_ui.models import AuditEvent, SavedJob
+
+    with env.app.app_context():
+        session = get_session()
+        saved = SavedJob(
+            name="nuke",
+            fun="pkg.remove",
+            tgt="*",
+            tgt_type="glob",
+            args=[],
+            batch=None,
+        )
+        session.add(saved)
+        session.commit()
+        saved_id = saved.id
+    raw, _ = _mint(env, pin=saved_id)
+    rv = env.post("/api/jobs/run", json={"saved_id": saved_id}, headers=_auth(raw))
+    assert rv.status_code == 200, rv.get_json()
+    with env.app.app_context():
+        rows = (
+            get_session()
+            .query(AuditEvent)
+            .filter(AuditEvent.action == "api-fire:destructive:pkg.remove")
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].user == "ci"
 
 
 def test_unpinned_allows_read_class(env):

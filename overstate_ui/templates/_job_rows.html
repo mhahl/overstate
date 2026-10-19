@@ -12,7 +12,7 @@
 {% if saved %}
 <div class="max-w-full overflow-x-auto"><table class="table table-sm table-pin-rows w-full"><thead><tr><th>Name</th><th>Function</th><th>Target</th><th class="text-right">Actions</th></tr></thead><tbody>
 {% for s in saved %}
-<tr><td class="font-medium">{{ s.name }}</td><td class="font-mono text-xs">{{ s.fun }}</td><td class="font-mono text-xs">{{ s.tgt_type }}: {{ tgt_display.get('saved:' ~ s.id, s.tgt) }}</td>
+<tr><td class="font-medium">{{ s.name }}</td><td class="font-mono text-xs">{{ s.fun }}{% if s.fun in destructive_funs %} <span class="badge badge-sm badge-warning" title="This function is destructive. A pinned CI token fires it without the interactive confirm gate.">destructive</span>{% endif %}</td><td class="font-mono text-xs">{{ s.tgt_type }}: {{ tgt_display.get('saved:' ~ s.id, s.tgt) }}</td>
 <td class="text-right"><div class="join join-horizontal">
 <a class="btn btn-sm btn-primary join-item" href="{{ url_for('jobs.new', saved=s.id) }}">Run</a>
 {% if (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('job.save')) %}<form method="post" action="{{ url_for('jobs.delete_saved', saved_id=s.id) }}" data-confirm="Delete saved job '{{ s.name }}'? Past runs are unaffected."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-ghost join-item">Delete</button></form>{% endif %}

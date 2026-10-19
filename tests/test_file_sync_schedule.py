@@ -66,6 +66,23 @@ def test_cron_supports_lists_ranges_steps_and_weekdays():
     assert cron_matches("5/10 * * * *", monday.replace(minute=55))
 
 
+def test_manual_sync_route_runs_now(client, monkeypatch):
+    """The Files page can trigger the scheduled sync immediately."""
+    from overstate_ui import files as files_mod
+    from overstate_ui import git_sync as git_mod
+
+    monkeypatch.setattr(git_mod, "git_sync_now", lambda: {"ok": True, "changed": False, "old": "x", "new": "y"})
+    monkeypatch.setattr(files_mod, "_refresh_fileserver", lambda: None)
+    rv = client.post("/files/sync-now", follow_redirects=True)
+    assert rv.status_code == 200
+    assert "already up to date" in rv.data.decode().lower()
+    with client.app.app_context():
+        from overstate_ui.file_sync_schedule import LAST_STATUS_SETTING
+        from overstate_ui.settings import get_setting
+
+        assert get_setting(LAST_STATUS_SETTING) == "success"
+
+
 @pytest.mark.parametrize(
     "expression",
     [

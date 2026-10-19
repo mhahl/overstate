@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from .authz import has_fleet, minions_with, publish_perm, rbac_mode
 from .models import JobReturn
 from .salt_client import SaltApiError
 from .tasks_queue import app_context, get_redis_client
@@ -82,8 +83,6 @@ def run_wave_batch(
             log_event(user, f"batch-cancelled:{group}")
             break
         targets = sorted(wave)
-        from .authz import minions_with, publish_perm, rbac_mode
-
         if rbac_mode() == "scoped":
             # Defining user, at each wave: drop ids that fell out of
             # scope since the batch started. A deleted user or a fully
@@ -98,6 +97,20 @@ def run_wave_batch(
             kept = [m for m in targets if m in allowed]
             if not kept:
                 continue
+            # Re-check the batch grant per wave, not just the run class:
+            # a revoked job.batch must stop the remaining waves. Fleet
+            # holders skip (their scope is the whole snapshot); everyone
+            # else needs every target still inside their job.batch set.
+            if actor is not None and not has_fleet(actor, "job.batch"):
+                batch_allowed = minions_with(actor, "job.batch")
+                if not batch_allowed or not set(targets) <= batch_allowed:
+                    status = "stopped"
+                    log_event(
+                        user,
+                        "batch-stopped-authz",
+                        detail=f"batch:{group}:no-batch-grant",
+                    )
+                    break
             targets = kept
         try:
             result = client.local(
