@@ -20,11 +20,10 @@ TEMPLATES = (
     pathlib.Path(__file__).resolve().parent.parent / "overstate_ui" / "templates"
 )
 
-FILTER_PAGES = ["/audit/", "/groups/", "/jobs/", "/keys/", "/minions/", "/pillar/"]
+FILTER_PAGES = ["/audit/", "/jobs/", "/keys/", "/minions/", "/pillar/"]
 TABLE_SEARCH_TEMPLATES = (
     "audit.html",
     "files.html",
-    "groups.html",
     "jobs.html",
     "keys.html",
     "minions.html",
@@ -67,9 +66,6 @@ def test_filter_submit_is_primary_on_every_filter_page():
     c = make_client()
     for path in FILTER_PAGES:
         html = c.get(path).data.decode()
-        if path == "/groups/":
-            assert re.search(r'class="[^"]*btn-outline[^"]*">Filter groups', html), path
-            continue
         assert re.search(r'class="[^"]*btn-primary[^"]*">Filter', html), path
         assert 'class="btn btn-sm mb-1">Filter' not in html, path
 
@@ -102,7 +98,6 @@ def test_pagination_uses_join_component():
     c = make_client()
     for path in (
         "/audit/?per_page=10",
-        "/groups/?per_page=10",
         "/jobs/?tab=history&per_page=10",
         "/minions/?per_page=10",
     ):
@@ -113,7 +108,7 @@ def test_pagination_uses_join_component():
 
 def test_list_tables_pin_headers():
     c = make_client()
-    for path in ("/audit/", "/groups/", "/users/", "/pillar/"):
+    for path in ("/audit/", "/users/", "/pillar/"):
         html = c.get(path).data.decode()
         assert "table-pin-rows" in html, path
     # The Keys table only renders with live roster data.
@@ -171,7 +166,6 @@ def test_list_pages_offer_page_size_dropdown():
     c = make_client()
     for path in (
         "/audit/?per_page=10",
-        "/groups/?per_page=10",
         "/jobs/?tab=history&per_page=10",
         "/minions/?per_page=10",
         "/users/?per_page=10",

@@ -18,7 +18,9 @@ from overstate_ui.config import TestConfig
 from overstate_ui.db import create_all, get_session, init_db
 from overstate_ui.models import Grant, LocalGroup, User
 
-HEAD = "f2b3c4d5e6f7"
+# The chain since RBAC: f1a2b3c4d5e6 (grant tables) -> f2b3c4d5e6f7
+# (backfill) -> a8b9c0d1e2f3 (formulas, head).
+HEAD = "a8b9c0d1e2f3"
 
 
 def _alembic(db_path, *args):
@@ -73,15 +75,22 @@ def test_migration_upgrade_downgrade_roundtrip(tmp_path):
     for table in _RBAC_TABLES:
         assert table in tables
 
-    # -1 rolls back the idempotent backfill; tables stay.
+    # -1 rolls back the formulas migration; grant tables stay.
+    rv = _alembic(db, "downgrade", "-1")
+    assert rv.returncode == 0, rv.stderr
+    assert _version(db) == "f2b3c4d5e6f7"
+    assert "grants" in _tables(db)
+
+    # A second -1 rolls back the backfill; tables still stay.
     rv = _alembic(db, "downgrade", "-1")
     assert rv.returncode == 0, rv.stderr
     assert _version(db) == "f1a2b3c4d5e6"
     assert "grants" in _tables(db)
 
-    # A second -1 drops the tables.
+    # A third -1 drops the grant tables.
     rv = _alembic(db, "downgrade", "-1")
     assert rv.returncode == 0, rv.stderr
+    assert _version(db) == "e8f0a1b2c3d4"
     assert "grants" not in _tables(db)
 
     rv = _alembic(db, "upgrade", "head")

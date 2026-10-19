@@ -788,13 +788,27 @@ def groups():
     )
 
 
+def _parse_member_ids(form) -> list[str]:
+    """Minion ids for a list scope from the grant dialog's shared
+    scope_value field (comma/space separated, e.g. "web-01, web-02").
+    Deduped, order kept. Previously lived in groups.py until the
+    nodegroup refactor deleted the old create-group form that posted
+    one `members` value per checkbox."""
+    raw = form.get("scope_value", "") or ""
+    seen: list[str] = []
+    for token in raw.replace(",", " ").split():
+        token = token.strip()
+        if token and token not in seen:
+            seen.append(token)
+    return seen
+
+
 def _validate_grant_scope(role: str, scope_kind: str, form) -> tuple[str | None, str | None]:
     """Validate a grant dialog post. Returns (error, scope_value):
     error names the problem for a flash, scope_value is the normalized
     stored value. Fleet-only roles are rejected off fleet; file roles
     are prefix-or-fleet only; every other role takes a minion matcher."""
     from .authz import FLEET_ONLY_ROLES, ROLE_PERMS
-    from .groups import parse_member_ids
     from .inventory import SNAPSHOT_GRAINS
     from .models import MinionGroup
 
@@ -826,7 +840,7 @@ def _validate_grant_scope(role: str, scope_kind: str, form) -> tuple[str | None,
             return "Unknown minion group.", None
         return None, raw
     if scope_kind == "list":
-        members = parse_member_ids(form)
+        members = _parse_member_ids(form)
         if not members:
             return "A list scope needs at least one minion id.", None
         import json

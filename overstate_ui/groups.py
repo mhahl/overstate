@@ -9,7 +9,16 @@ required for changes to take effect.
 """
 
 import yaml
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from .audit import log_event
@@ -143,6 +152,7 @@ def index():
 
     require("group.read")
     group_data: dict[str, str] | None = None
+    error: str | None = None
     try:
         group_data = _load_nodegroups()
         if group_data is None:
@@ -186,10 +196,36 @@ def _sync_to_minion_group(name: str, expression: str) -> None:
             session.commit()
 
 
+def _frozen_group_ids() -> set[str]:
+    """MinionGroup row ids named as scope_value by a grant or IdP mapping.
+
+    The freeze rule: a group a grant or mapping references is never
+    deleted through the editor — no cascade drops the grant or the
+    mapping. Renaming keeps the id, so the reference keeps resolving.
+    """
+    from .db import get_session
+    from .models import Grant, IdpRoleMapping
+
+    session = get_session()
+    refs = {
+        row[0]
+        for row in session.query(Grant.scope_value)
+        .filter_by(scope_kind="group")
+        .all()
+    }
+    refs |= {
+        row[0]
+        for row in session.query(IdpRoleMapping.scope_value)
+        .filter_by(scope_kind="group")
+        .all()
+    }
+    return refs
+
+
 @bp.post("/", strict_slashes=False)
 @roles_required("operator")
 def save():
-    from .authz import require
+    from .authz import rbac_mode, require
 
     require("group.write")
     name = (request.form.get("name") or "").strip()
@@ -204,6 +240,23 @@ def save():
         if delete_name not in groups:
             flash(f"Node group '{delete_name}' does not exist.", "error")
             return redirect(url_for("groups.index"))
+        if rbac_mode() == "scoped":
+            # Freeze rule: a nodegroup whose synced MinionGroup row a
+            # grant or IdP mapping references is never deleted — no
+            # cascade drops the grant or the mapping.
+            from .authz import audit_deny
+            from .db import get_session
+            from .models import MinionGroup
+
+            row = (
+                get_session()
+                .query(MinionGroup)
+                .filter_by(name=delete_name)
+                .first()
+            )
+            if row is not None and str(row.id) in _frozen_group_ids():
+                audit_deny("group.write", detail="referenced")
+                abort(403)
         del groups[delete_name]
         err = _write_nodegroups(groups)
         if err:

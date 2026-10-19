@@ -218,19 +218,23 @@ def test_mine_error_offers_retry_without_losing_lookup():
     }
 
 
-def test_group_target_resolves_to_list():
+def test_nodegroup_target_passes_through():
     CALLS.clear()
     html = (
         make_client()
         .get(
             "/mine/",
-            query_string={"tgt": "g", "tgt_type": "group", "fun": "network.ip_addrs"},
+            query_string={
+                "tgt": "g",
+                "tgt_type": "nodegroup",
+                "fun": "network.ip_addrs",
+            },
         )
         .data.decode()
     )
     assert "web-01" in html
-    assert CALLS and CALLS[0]["arg"][0] == "web-01"
-    assert CALLS[0]["kwarg"]["tgt_type"] == "list"
+    assert CALLS and CALLS[0]["arg"][0] == "g"
+    assert CALLS[0]["kwarg"]["tgt_type"] == "nodegroup"
 
 
 def test_viewer_can_read():

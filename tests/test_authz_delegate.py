@@ -170,6 +170,34 @@ def test_delegate_grant_inside_scope(env):
         assert get_session().get(User, env.ids["new"]).role == "scoped"
 
 
+def test_delegate_grant_list_scope(env):
+    """List scopes type ids into the shared scope_value field
+    (comma/space separated); they store as a JSON array. Regression:
+    users.py imported the deleted groups.parse_member_ids and every
+    grant post 500'd."""
+    login_as(env, "lead")
+    rv = env.post(
+        f"/users/{env.ids['new']}/grants",
+        data={
+            "role": "team-operator",
+            "scope_kind": "list",
+            "scope_value": "web-01, web-02",
+        },
+    )
+    assert rv.status_code == 302
+    with env.app.app_context():
+        row = (
+            get_session()
+            .query(Grant)
+            .filter_by(subject_user_id=env.ids["new"], role="team-operator")
+            .one()
+        )
+        import json
+
+        assert row.scope_kind == "list"
+        assert json.loads(row.scope_value) == ["web-01", "web-02"]
+
+
 def test_delegate_cannot_grant_fleet(env):
     login_as(env, "lead")
     for role in ("operator", "team-operator"):

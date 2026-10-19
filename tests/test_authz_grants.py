@@ -275,7 +275,7 @@ def test_local_group_membership_refreshes_cache(env):
         assert get_session().get(User, bob).role == "scoped"
 
 
-def test_group_freeze_blocks_rename_and_delete(env):
+def test_nodegroup_delete_blocked_when_referenced(env, monkeypatch):
     with env.app.app_context():
         bob = _user("bob")
         session = get_session()
@@ -291,17 +291,39 @@ def test_group_freeze_blocks_rename_and_delete(env):
             )
         )
         session.commit()
+    from overstate_ui import groups as groupsmod
+
+    class FakeStore:
+        def __init__(self):
+            self.data = {"master.conf": "nodegroups:\n  web: L@web-01\n"}
+            self.revision = "1"
+
+        def get_configmap(self, name):
+            return {"data": dict(self.data), "resourceVersion": self.revision}
+
+        def replace_configmap(self, name, data, revision):
+            if revision != self.revision:
+                raise groupsmod.K8sConflictError("conflict")
+            self.data = data
+            self.revision = str(int(self.revision) + 1)
+            return self.revision
+
+    store = FakeStore()
+    monkeypatch.setattr(groupsmod, "K8sClient", lambda: store)
     login_as(env, "admin")
-    # grant.admin may rename: the id scope_value keeps resolving.
-    assert env.post("/groups/7/rename", data={"name": "web2"}).status_code == 302
+    # Delete of a referenced nodegroup is rejected, even for
+    # grant.admin: the id scope_value keeps resolving.
+    assert env.post("/groups", data={"delete": "web"}).status_code == 403
     with env.app.app_context():
+        assert get_session().get(MinionGroup, 7) is not None
         from overstate_ui.authz import scope_group_members
 
         assert scope_group_members(7) == {"web-01"}
-    # Delete of a referenced group is rejected, even for grant.admin.
-    assert env.post("/groups/7/delete").status_code == 403
+    # An unreferenced nodegroup deletes normally.
+    env.post("/groups", data={"name": "db", "prefix": "L@", "value": "db-01"})
+    assert env.post("/groups", data={"delete": "db"}).status_code == 302
     with env.app.app_context():
-        assert get_session().get(MinionGroup, 7) is not None
+        assert get_session().query(MinionGroup).filter_by(name="db").first() is None
 
 
 def test_mapping_crud_refreshes_cache(env):
