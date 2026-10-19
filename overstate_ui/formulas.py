@@ -324,6 +324,59 @@ def update(name: str):
     return redirect(url_for("formulas.index"))
 
 
+def _re_vendor_row(row, report: dict) -> None:
+    """Vendor one formula from its DB row, populating ``report``.
+
+    Uses shared auth (credential helper or SSH host keys). Skips if the
+    directory already exists. Records success/failure in-place on
+    ``report`` so the caller can batch-process rows.
+    """
+    dest = roots() / row.name
+    if dest.is_dir():
+        report["skipped"] += 1
+        return
+    result = vendor_formula(row.name, row.url, row.branch or None, "shared", None)
+    if result["ok"]:
+        report["restored"] += 1
+    else:
+        report["failed"].append(row.name)
+        report["failed_reasons"].append(result.get("reason", "unknown"))
+
+
+@bp.post("/re-vendor")
+@roles_required("operator")
+def re_vendor():
+    """Re-install every tracked formula that is missing from disk.
+
+    Uses the stored URL and ref, cloning with shared auth (credential
+    helper or SSH host keys). Formulas that need a one-time token are
+    skipped — re-add those individually.
+    """
+    from .authz import rbac_mode, require
+    from .db import get_session
+    from .models import Formula
+
+    if rbac_mode() == "scoped":
+        require("file.write")
+    session = get_session()
+    rows = session.query(Formula).order_by(Formula.name).all()
+    report = {"restored": 0, "skipped": 0, "failed": [], "failed_reasons": []}
+    for row in rows:
+        _re_vendor_row(row, report)
+    session.commit()
+    msg = [f"Restored {report['restored']} formula{'s' if report['restored'] != 1 else ''}"]
+    if report["skipped"]:
+        msg.append(f"{report['skipped']} already present")
+    if report["failed"]:
+        msg.append(f"{len(report['failed'])} failed")
+        for name, reason in zip(report["failed"], report["failed_reasons"], strict=True):
+            msg.append(f"'{name}': {reason}")
+            log_event(current_user.username, f"formula-revendor-failed:{name}:{reason}")
+    flash(". ".join(msg), "info")
+    log_event(current_user.username, f"formula-revendor:{report['restored']}:{len(report['failed'])}")
+    return redirect(url_for("formulas.index"))
+
+
 @bp.post("/remove/<name>")
 @roles_required("operator")
 def remove(name: str):

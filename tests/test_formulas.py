@@ -327,6 +327,42 @@ def test_track_refuses_from_repo_formula(web_client):
     assert "formula-track-refused:fromrepo:from-repo" in _actions(app)
 
 
+def test_re_vendor_restores_missing_formulas(web_client, monkeypatch):
+    app, client, roots = web_client
+    _login_as(client, "op")
+    with app.app_context():
+        get_session().add(
+            Formula(name="nginx", url="https://git.example.com/n.git", branch="v1",
+                    installed_sha="abc123", created_by="admin")
+        )
+        get_session().add(
+            Formula(name="redis", url="https://git.example.com/r.git", branch=None,
+                    installed_sha="def456", created_by="admin")
+        )
+        get_session().commit()
+    # both are "missing" — no dir on disk
+    rv = client.get("/formulas/").data.decode()
+    assert "Re-vendor all" in rv
+    # confirm there is no add/restore flash yet
+    assert "Restored" not in rv
+
+    def fake_vendor(name, url, branch, auth, token):
+        (roots / name).mkdir(parents=True)
+        (roots / name / "init.sls").write_text(f"# {name}\n")
+        return {"ok": True, "name": name, "sha": "deadbeef"}
+
+    monkeypatch.setattr(formulas_mod, "vendor_formula", fake_vendor)
+    rv = client.post("/formulas/re-vendor", follow_redirects=True)
+    assert b"Restored" in rv.data
+    assert b"nginx" in rv.data or b"redis" in rv.data
+    # both dirs now exist
+    assert (roots / "nginx" / "init.sls").is_file()
+    assert (roots / "redis" / "init.sls").is_file()
+    with app.app_context():
+        assert get_session().query(Formula).count() == 2
+    assert any("formula-revendor" in a for a in _actions(app))
+
+
 def test_update_formula_replaces_tree(web_client, monkeypatch):
     """Regression: update must replace the installed tree, not fail on a
     pre-created dest dir (the old code mkdir'ed dest, then

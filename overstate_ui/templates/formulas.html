@@ -49,6 +49,12 @@
         </div>
         {% if may_edit %}
         <button class="btn btn-sm btn-primary ms-auto" onclick="document.getElementById('formula-add').showModal()">Add formula</button>
+        {% if formula_summary.missing %}
+        <form method="post" action="{{ url_for('formulas.re_vendor') }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-ghost" data-confirm="Re-vendor {{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing from disk?">Re-vendor all</button>
+        </form>
+        {% endif %}
         {% endif %}
         <span class="w-full text-xs text-base-content/60">{% if formula_summary.missing %}{{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing on disk.{% endif %} {% if formula_summary.untracked %}{{ formula_summary.untracked }} dir{% if formula_summary.untracked != 1 %}s{% endif %} on disk without a row{% if formula_summary.from_git %} — {{ formula_summary.from_git }} from the states repo{% endif %}.{% endif %}</span>
       </div>
