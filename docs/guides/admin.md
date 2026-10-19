@@ -346,3 +346,15 @@ Run the daily grype scan now** (the `vuln-scan` preset), which fires
 The fleet page flags scans older than 7 days as **stale**, shows
 `+N new` for findings that appeared since the last recorded scan, and
 rolls up fixable/critical/high counts fleet-wide.
+
+## State conformity
+
+The States page derives `ok` / `drifted` / `unreachable` / `missed`
+verdicts from the last highstate-style job's stored returns. Only state
+jobs that run **through Overstate** (or the master returner it reads)
+stamp verdicts — a `state.apply` fired directly from the master CLI or
+by an out-of-band schedule on a minion leaves no returner row, so no
+verdict is written for it. A minion the roster cache currently shows as
+up but that a job marked `unreachable` renders as `missed` (its return
+was likely lost, not the minion down). Verdicts older than a day are
+flagged `stale`.

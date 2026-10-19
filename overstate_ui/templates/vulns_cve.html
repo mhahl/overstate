@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ cve }} · Overstate{% endblock %}
+{% block content %}
+{% import "_macros.html" as m %}
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  {{ m.page_heading(cve, "Minions reporting this CVE in the latest scan.") }}
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('vulns.index') }}">‹ Fleet vulnerabilities</a>
+</div>
+{% if affected %}
+<section class="card card-border bg-base-100 min-w-0" aria-label="Affected minions">
+  <div class="card-body gap-3">
+    <p class="text-sm">From the most recent recorded fleet scan: <span class="font-semibold">{{ affected|length }}</span> minion{{ "s" if affected|length != 1 }}.</p>
+    <ul class="list">
+      {% for mid in affected %}
+      <li class="list-row">
+        <div class="list-col-grow min-w-0">
+          <a class="link font-mono text-sm" href="{{ url_for('minions.detail', mid=mid, tab='vulns', q=cve) }}">{{ mid }}</a>
+        </div>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('minions.detail', mid=mid, tab='vulns', q=cve) }}">View findings</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% else %}
+<div class="card card-border bg-base-100"><div class="card-body text-center py-8">
+  <p class="font-medium">No minions report {{ cve }}</p>
+  <p class="text-sm text-base-content/70">The fleet page records the summary top lists; this CVE is not among them. <a class="link" href="{{ url_for('jobs.new', preset='vuln-scan') }}">Run a scan now</a> to refresh.</p>
+</div></div>
+{% endif %}
+{% endblock %}

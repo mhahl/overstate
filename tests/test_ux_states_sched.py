@@ -210,6 +210,39 @@ def test_conformity_unreachable_when_down(fake_redis):
     assert 'aria-label="Conformity: unreachable"' in html
 
 
+def test_conformity_stale_badge_when_verdict_old():
+    import datetime as dt
+
+    app = _app()
+    with app.app_context():
+        get_session().add(
+            Minion(
+                id="old-01",
+                grains={},
+                conformity={
+                    "status": "ok",
+                    "jid": "j0",
+                    "checked_at": (
+                        dt.datetime.now(dt.UTC) - dt.timedelta(days=2)
+                    ).isoformat(),
+                },
+            )
+        )
+        get_session().commit()
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/states/").data.decode()
+    assert "stale" in html  # verdict older than a day is flagged
+
+
+def test_drifted_row_offers_rerun_link():
+    app = _app()
+    client = app.test_client()
+    _login(client, "op")
+    html = client.get("/states/").data.decode()
+    assert "Re-run" in html  # drifted rows prefill a state.apply on the minion
+
+
 def test_schedule_inventory_lists_entries_with_owner(fake_redis):
     from overstate_ui.models import AuditEvent
     from overstate_ui.tasks_queue import write_merged_roster_cache

@@ -304,6 +304,17 @@ def test_fleet_page_marks_new_since_last_scan():
         SUMMARIES["web-01"] = original
 
 
+def test_cve_view_lists_affected_minions():
+    """/vulnerabilities/cve/<cve> reads the fleet snapshot (V5)."""
+    client = make_client()
+    client.get("/vulnerabilities/")  # records the snapshot
+    html = client.get("/vulnerabilities/cve/CVE-2026-0000").data.decode()
+    assert "web-01" in html
+    assert "web-02" in html  # both summaries carry CVE-2026-0000 in top
+    none = client.get("/vulnerabilities/cve/CVE-2099-9999").data.decode()
+    assert "No minions report CVE-2099-9999" in none
+
+
 def test_minion_tab_has_no_cached_footer_note():
     html = make_client().get("/minions/web-01?tab=vulns").data.decode()
     assert "Findings stay cached" not in html

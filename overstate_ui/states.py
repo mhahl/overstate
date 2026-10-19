@@ -56,8 +56,7 @@ def _sls_file(sls: str):
     from .files import safe_join
 
     rel = (sls or "").strip()
-    if rel.startswith("salt://"):
-        rel = rel[len("salt://") :]
+    rel = rel.removeprefix("salt://")
     if not rel or rel.startswith((".", "/")) or "\\" in rel:
         return None
     for candidate in (rel, f"{rel}.sls"):
@@ -90,6 +89,20 @@ def _record_history(session, mid: str, jid: str, status: str, now: dt.datetime) 
 
 def _aware(value: dt.datetime) -> dt.datetime:
     return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
+
+
+def _checked_age_days(checked_at: str | None) -> int:
+    """Whole days since a verdict was stamped, or a large value when the
+    timestamp is missing (never treat unknown age as fresh)."""
+    if not checked_at:
+        return 10**9
+    try:
+        when = dt.datetime.fromisoformat(checked_at)
+    except ValueError:
+        return 10**9
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt.UTC)
+    return max(0, int((dt.datetime.now(dt.UTC) - when).total_seconds() // 86400))
 
 
 def apply_sync_verdicts(job: Job, rows: list) -> None:
@@ -307,6 +320,13 @@ def index():
         if isinstance(cached, dict) and isinstance(cached.get("up"), list)
         else set()
     )
+    # A verdict whose checked_at is older than a day is flagged as stale
+    # so an old "ok" is not read as current assurance.
+    stale_checked = {
+        row.id
+        for row in paged
+        if _checked_age_days((row.conformity or {}).get("checked_at")) > 1
+    }
     ctx = {
         "watched": watched,
         "minions": paged,
@@ -321,6 +341,7 @@ def index():
         "per_page": per_page,
         "total": total,
         "up": up,
+        "stale_checked": stale_checked,
         "missing_watch": _missing_watches(session),
     }
     if request.headers.get("HX-Request") == "true":

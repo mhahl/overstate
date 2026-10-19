@@ -173,6 +173,38 @@ def sort_rows(rows: list[dict], sort: str, direction: str) -> list[dict]:
     return sorted(rows, key=key, reverse=reverse)
 
 
+@bp.route("/cve/<cve>")
+@login_required
+def cve(cve: str):
+    """Which minions currently report a specific CVE.
+
+    Reads the latest fleet snapshot (see ``record_snapshot``) rather
+    than fanning out live detail keys, so it is cheap and consistent
+    with what the fleet page last saw.
+    """
+    from flask_login import current_user
+
+    from .authz import minions_with, rbac_mode, require
+    from .db import get_session
+    from .models import VulnSnapshot
+
+    if rbac_mode() == "scoped":
+        require("mine.read")
+    snap = (
+        get_session()
+        .query(VulnSnapshot)
+        .order_by(VulnSnapshot.id.desc())
+        .first()
+    )
+    affected: list[str] = []
+    if snap is not None and isinstance(snap.cves, dict):
+        affected = sorted(m for m, cves in snap.cves.items() if cve in cves)
+    if rbac_mode() == "scoped":
+        allowed = minions_with(current_user, "mine.read")
+        affected = [m for m in affected if m in allowed]
+    return render_template("vulns_cve.html", cve=cve, affected=affected)
+
+
 @bp.route("/")
 @login_required
 def index():

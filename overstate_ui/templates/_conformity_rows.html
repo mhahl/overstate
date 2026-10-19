@@ -37,10 +37,13 @@
               <span class="status status-sm status-neutral" aria-hidden="true"></span><span class="badge badge-sm badge-neutral" role="status" aria-label="Conformity: unknown">unknown</span>
               {% endif %}
               {% if (row.conformity or {}).get("partial") %}<span class="badge badge-sm badge-warning" title="The whole-job verdict is shown because this return did not isolate watched states." aria-label="Partial verdict">partial</span>{% endif %}
+              {% if cstatus == "drifted" and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can_any('job.run.read', 'job.run.change', 'job.run.state'))) %}
+              <a class="btn btn-xs" href="{{ url_for('jobs.new', tgt=row.id, tgt_type='list', fun='state.apply') }}">Re-run</a>
+              {% endif %}
             </div>
           </td>
           {% set checked = (row.conformity or {}).get("checked_at", "") %}
-          <td class="font-mono text-xs whitespace-nowrap">{% if checked %}{{ checked|reltime }}{% else %}<span class="text-base-content/60" aria-label="No check recorded">–</span>{% endif %}</td>
+          <td class="font-mono text-xs whitespace-nowrap">{% if checked %}{{ checked|reltime }}{% if row.id in stale_checked %} <span class="badge badge-sm badge-warning" title="Verdict is older than a day.">stale</span>{% endif %}{% else %}<span class="text-base-content/60" aria-label="No check recorded">–</span>{% endif %}</td>
           <td>
             {% if history.get(row.id) %}
             <ul class="flex flex-wrap gap-1" aria-label="Recent state verdict history">
