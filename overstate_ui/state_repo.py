@@ -168,7 +168,7 @@ def reset():
             return redirect(url_for("state_repo.index"))
         return _render(preview=preview)
     clean = request.form.get("clean") == "1"
-    result = reset_hard(clean_untracked=clean)
+    result = reset_hard(clean_untracked=clean, force=bool(request.form.get("force")))
     if result["ok"]:
         log_event(current_user.username, "git-reset")
         _note_refreshed("Reset", result["new"])
@@ -194,7 +194,7 @@ def reclone():
             flash("Re-clone refused: enter a remote URL first.", "error")
             return redirect(url_for("state_repo.index"))
         return _render(pending={"url": url, "branch": branch})
-    result = reclone_repo(url, branch, token)
+    result = reclone_repo(url, branch, token, force=bool(request.form.get("force")))
     if result["ok"]:
         log_event(current_user.username, "git-reclone")
         _note_refreshed("Re-cloned", git_head())

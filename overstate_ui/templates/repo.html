@@ -72,6 +72,7 @@
   <input type="hidden" name="branch" value="{{ pending.branch }}">
   <fieldset class="fieldset"><legend class="fieldset-legend">Token (re-enter it; never displayed)</legend>
   <input type="password" name="token" class="input input-sm" autocomplete="off" aria-label="Token for confirmed re-clone"></fieldset>
+  {% if status and status.ahead %}<label class="label text-sm cursor-pointer gap-2"><input type="checkbox" name="force" value="1" class="checkbox checkbox-sm"> abandon {{ status.ahead }} unpushed commit{% if status.ahead != 1 %}s{% endif %}</label>{% endif %}
   <button class="btn btn-sm btn-error" data-confirm="Destroy these files and re-clone?">Confirm re-clone</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('state_repo.index') }}">Cancel</a>
 </form>
@@ -114,6 +115,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="confirm" value="1">
   <label class="label text-sm cursor-pointer gap-1"><input type="checkbox" name="clean" value="1" class="checkbox checkbox-sm"> also delete untracked files{% if preview.untracked %} ({{ preview.untracked|join(", ") }}){% endif %}</label>
+  {% if preview.ahead %}<label class="label text-sm cursor-pointer gap-1"><input type="checkbox" name="force" value="1" class="checkbox checkbox-sm"> abandon {{ preview.ahead }} unpushed commit{% if preview.ahead != 1 %}s{% endif %}</label>{% endif %}
   <button class="btn btn-sm btn-error" data-confirm="Abandon these changes?">Confirm reset</button>
   <a class="btn btn-sm btn-ghost" href="{{ url_for('state_repo.index') }}">Cancel</a>
 </form>

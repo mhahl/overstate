@@ -800,11 +800,12 @@ def reset_preview() -> dict:
     }
 
 
-def reset_hard(clean_untracked: bool = False) -> dict:
+def reset_hard(clean_untracked: bool = False, force: bool = False) -> dict:
     """Abandon tracked working-tree changes to the tracked upstream.
 
     Refuses on unpushed commits (they would be destroyed, not merely
-    shelved) and without an upstream. Untracked files survive unless
+    shelved) and without an upstream. Set ``force`` to True to abandon
+    unpushed commits as well. Untracked files survive unless
     ``clean_untracked`` is set — a separate, explicit confirm.
     """
     with _single_flight() as free:
@@ -818,7 +819,7 @@ def reset_hard(clean_untracked: bool = False) -> dict:
         ahead = _ahead_count()
         if ahead is None:
             return {"ok": False, "reason": "cannot reach the remote"}
-        if ahead > 0:
+        if ahead > 0 and not force:
             return {
                 "ok": False,
                 "reason": "unpushed commits would be destroyed — push first",
@@ -925,18 +926,19 @@ def _drop_staged(tmp: Path) -> None:
         pass
 
 
-def _reclone(url: str, branch: str | None, token: str | None = None) -> dict:
+def _reclone(url: str, branch: str | None, token: str | None = None, force: bool = False) -> dict:
     """Destroy the checkout and clone fresh at the srv roots. Lock-free;
     ``reclone_repo`` validates + serializes. Refuses only on unpushed
     commits — everything else (dirty, untracked, corrupt ``.git``,
-    foreign files) is what re-clone is for. The ``reactor/`` sibling
-    and the token helper survive the swap."""
+    foreign files) is what re-clone is for. Set ``force`` to True to
+    destroy the checkout even with unpushed commits. The ``reactor/``
+    sibling and the token helper survive the swap."""
     if branch is not None:
         check = validate_branch(branch)
         if not check["ok"] or check["branch"] is None:
             return {"ok": False, "reason": "that branch name cannot be used"}
         branch = check["branch"]
-    if _is_checkout():
+    if not force and _is_checkout():
         ahead = _ahead_count()
         if ahead is None:
             return {"ok": False, "reason": "cannot reach the remote"}
@@ -961,7 +963,7 @@ def _reclone(url: str, branch: str | None, token: str | None = None) -> dict:
     return {"ok": True}
 
 
-def reclone_repo(url: str, branch: str, token: str | None) -> dict:
+def reclone_repo(url: str, branch: str, token: str | None, force: bool = False) -> dict:
     """Validated, serialized re-clone for the Repo tab."""
     valid = validate_repo_url((url or "").strip())
     if not valid["ok"]:
@@ -980,7 +982,7 @@ def reclone_repo(url: str, branch: str, token: str | None) -> dict:
     with _single_flight() as free:
         if not free:
             return {"ok": False, "reason": "a sync is already running"}
-        result = _reclone(valid_url(url), checked["branch"], token)
+        result = _reclone(valid_url(url), checked["branch"], token, force=force)
         if result["ok"] and token:
             saved = save_token(token, valid["host"])
             if not saved["ok"]:
