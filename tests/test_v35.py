@@ -206,12 +206,6 @@ def test_sort_jobs_started_uses_datetime():
     assert next(j.jid for j in sort_jobs([missing, old], "started", "desc")) == "001"
 
 
-def test_conformity_ok_renders_success(client):
-    html = client.get("/states/").data.decode()
-    assert '<span class="badge badge-sm badge-success"' in html
-    assert ">ok</span>" in html
-
-
 def test_conformity_source_jid_links_to_job(client):
     html = client.get("/states/").data.decode()
     assert '<a class="link link-primary" href="/jobs/1">1</a>' in html

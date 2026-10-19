@@ -9,6 +9,7 @@ for minion-scoped ``user.read`` is 200 and filtered, not 403.
 """
 
 import pytest
+from conftest import login_as
 
 from overstate_ui import auth as authmod
 from overstate_ui import authz, create_app
@@ -122,11 +123,6 @@ def env(monkeypatch):
     return client
 
 
-def login_as(client, username: str):
-    client.post("/logout")
-    return client.post("/login", data={"username": username, "password": PW})
-
-
 def test_filtered_users_page(env):
     login_as(env, "lead")
     rv = env.get("/users/")
@@ -145,6 +141,14 @@ def test_filtered_users_page(env):
     # The lead's own grants show, without an edit button for them.
     assert "team-lead · glob:web-*" in html
     assert f"grants-user-{env.ids['lead']}" not in html
+    # Function-level: the filter decision itself, not just its rendering.
+    with env.app.app_context():
+        from overstate_ui.authz import authorize, scope_inside
+
+        lead = get_session().get(User, env.ids["lead"])
+        assert authorize(lead, "user.read")
+        assert scope_inside("glob", "web-*", ["web-01", "web-02"])
+        assert not scope_inside("glob", "web-*", ["db-01"])
 
 
 def test_viewer_without_user_read_is_403(env):

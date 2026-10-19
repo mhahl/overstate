@@ -6,6 +6,7 @@ mappings are edited on Settings. Forged writes 403.
 """
 
 import pytest
+from conftest import login_as
 
 from overstate_ui import auth as authmod
 from overstate_ui import create_app
@@ -51,11 +52,6 @@ def env():
     client = app.test_client()
     client.app = app
     return client
-
-
-def login_as(client, username: str):
-    client.post("/logout")
-    return client.post("/login", data={"username": username, "password": PW})
 
 
 def _user(username, role="viewer"):

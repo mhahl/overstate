@@ -8,6 +8,7 @@ publishing, or publish only inside the caller's scope. A new
 
 import httpx
 import pytest
+from conftest import login_as
 
 from overstate_ui import auth as authmod
 from overstate_ui import authz, create_app
@@ -131,11 +132,6 @@ def env(monkeypatch):
     client.app = app
     client.spy = spy
     return client
-
-
-def login_as(client, username: str):
-    client.post("/logout")
-    return client.post("/login", data={"username": username, "password": PW})
 
 
 def test_console_runner_needs_runner_perm(env):

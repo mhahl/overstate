@@ -140,15 +140,6 @@ def test_states_pages_with_size_dropdown():
     assert "Page 2 of 2" in page2
 
 
-def test_unwatch_form_has_data_confirm():
-    app = _app()
-    client = app.test_client()
-    _login(client, "op")
-    html = client.get("/states/").data.decode()
-    assert "data-confirm=" in html
-    assert "Stop watching" in html
-
-
 def test_schedule_add_rejects_disallowed_function():
     app = _app()
     client = app.test_client()

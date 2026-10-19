@@ -7,6 +7,7 @@ role column.
 """
 
 import pytest
+from conftest import login_as
 
 from overstate_ui import create_app
 from overstate_ui.auth import provision_oidc_user, role_for_groups, seed_admin
@@ -50,11 +51,6 @@ def env():
     client = app.test_client()
     client.app = app
     return client
-
-
-def login_as(client, username: str):
-    client.post("/logout")
-    return client.post("/login", data={"username": username, "password": PW})
 
 
 def _userinfo(sub, groups):

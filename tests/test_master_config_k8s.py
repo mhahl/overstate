@@ -694,6 +694,44 @@ def test_restart_status_reports_terminal_state(m4):
     assert status["reason"] == "boom"
 
 
+def test_restart_badge_self_heals_after_a_completed_rollout(m4, monkeypatch):
+    """A kubectl restart (or a lost finisher) must clear the badge: a
+    converged rollout newer than the recorded generation satisfies it."""
+    import overstate_ui.groups as groups_mod
+
+    fake = m4["fake"]
+    monkeypatch.setattr(groups_mod, "K8sClient", lambda: fake)
+    with m4["app"].app_context():
+        groups_mod.set_restart_needed()
+        assert groups_mod.restart_needed() is True
+        # Recorded generation == live generation: no rollout yet.
+        assert groups_mod.restart_needed() is True
+        # A rollout bumps the generation; converge it (kubectl path).
+        fake.sts["generation"] += 1
+        fake.sts["observed"] = fake.sts["generation"]
+        groups_mod._restart_check_cache.clear()
+        assert groups_mod.restart_needed() is False
+        # The flag rows are gone, so the badge stays off.
+        from overstate_ui.settings import get_setting
+
+        assert get_setting(groups_mod.RESTART_KEY) == ""
+        assert get_setting(groups_mod.RESTART_GEN_KEY) == ""
+
+
+def test_restart_badge_holds_until_the_rollout_converges(m4, monkeypatch):
+    import overstate_ui.groups as groups_mod
+
+    fake = m4["fake"]
+    monkeypatch.setattr(groups_mod, "K8sClient", lambda: fake)
+    with m4["app"].app_context():
+        groups_mod.set_restart_needed()
+        fake.sts["generation"] += 1  # rollout started...
+        fake.sts["observed"] = fake.sts["generation"] - 1  # ...not converged
+        fake.sts["ready"] = fake.sts["replicas"] - 1
+        groups_mod._restart_check_cache.clear()
+        assert groups_mod.restart_needed() is True
+
+
 def test_revert_empty_history_writes_nothing(m4):
     fake = m4["fake"]
     client = m4["login"]("admin")

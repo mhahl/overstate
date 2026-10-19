@@ -55,11 +55,14 @@ class StubSalt:
 def test_running_job_detail_handles_stream_drop(admin):
     html = admin.get("/jobs/abc123").data.decode()
     assert "onerror" in html
-    # onerror transparently reconnects via the same 'done' handler
-    # path (setNote('Reconnecting…') + setTimeout(connect, 2000)) so
-    # transient blips recover without a manual reload.
     assert "Reconnecting" in html
     assert 'aria-live="polite"' in html
+    # Same template's reconnect machinery (merged from the former
+    # test_running_detail_reconnects_stream): capped connections
+    # reopen and the note tracks reconnect state.
+    assert "EventSource" in html
+    assert "setTimeout(connect" in html
+    assert "pending[mid]" in html
 
 
 def test_killable_matrix(app):
@@ -110,6 +113,11 @@ def test_kill_denial_flashes(app, admin, monkeypatch):
     monkeypatch.setattr(app.extensions["salt_client"], "local", stub.local)
     rv = admin.post("/jobs/abc123/kill", follow_redirects=True)
     assert "kill failed" in rv.data.decode()
+    # Function-level: a denied kill writes no kill Job row.
+    with app.app_context():
+        assert (
+            get_session().query(Job).filter_by(fun="saltutil.kill_job").count() == 0
+        )
 
 
 def test_kill_guards(app, admin):

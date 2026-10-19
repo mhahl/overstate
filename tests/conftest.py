@@ -47,3 +47,13 @@ def fake_redis(monkeypatch):
     fake = FakeRedis()
     monkeypatch.setattr(queue_mod, "get_redis_client", lambda: fake)
     return fake
+
+
+def login_as(client, username: str, password: str = "test-password"):
+    """Shared login helper: log out, then log in as username.
+
+    Replaces the identical 3-line helper previously copy-pasted across
+    8 test modules. Password defaults to the suite-wide PW.
+    """
+    client.post("/logout")
+    return client.post("/login", data={"username": username, "password": password})

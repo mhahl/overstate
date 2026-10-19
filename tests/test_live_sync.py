@@ -110,19 +110,40 @@ def make_client(with_db_return=False):
 
 
 def test_live_rows_merge_marked_live():
-    html = make_client().get("/jobs/j-live").data.decode()
+    c = make_client()
+    with c.app.app_context():
+        from overstate_ui.jobs import live_returns_now
+
+        rows, err = live_returns_now(c.app.extensions["salt_client"], "j-live")
+        assert err is None
+        assert [(r.minion_id, r.success) for r in rows] == [("web-01", True)]
+        assert all(r.live for r in rows)
+        # No JobReturn row is written by the live merge (display-only).
+        assert get_session().query(JobReturn).filter_by(jid="j-live").count() == 0
+    html = c.get("/jobs/j-live").data.decode()
     assert "web-01" in html
     assert LIVE_BADGE in html
 
 
 def test_expired_jid_falls_back_without_live_rows():
-    html = make_client().get("/jobs/j-old").data.decode()
+    c = make_client()
+    with c.app.app_context():
+        from overstate_ui.jobs import live_returns_now
+
+        rows, err = live_returns_now(c.app.extensions["salt_client"], "j-old")
+        assert err is None
+        assert rows == []
+    html = c.get("/jobs/j-old").data.decode()
     assert "No returns yet" in html
     assert LIVE_BADGE not in html
 
 
 def test_db_rows_win_no_duplicates():
-    html = make_client(with_db_return=True).get("/jobs/j-live").data.decode()
+    c = make_client(with_db_return=True)
+    with c.app.app_context():
+        rows = get_session().query(JobReturn).filter_by(jid="j-live").all()
+        assert [(r.minion_id, r.success) for r in rows] == [("web-01", True)]
+    html = c.get("/jobs/j-live").data.decode()
     assert LIVE_BADGE not in html  # covered by the DB row, not merged
     assert html.count("web-01 — ok") == 1
 

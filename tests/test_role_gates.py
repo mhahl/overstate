@@ -92,6 +92,22 @@ def test_viewer_sees_no_operator_buttons(viewer):
     orch = viewer.get("/jobs/orchestrate").data.decode()
     assert "Run orchestration" not in orch
     assert viewer.get("/users/").status_code == 403
+    # Function-level: the hidden buttons must also fail server-side.
+    # A viewer POST to each mutation route is 403 and creates nothing.
+    assert viewer.post("/keys/accept", data={"id": "web-01"}).status_code == 403
+    assert (
+        viewer.post(
+            "/jobs/run",
+            data={"tgt": "*", "tgt_type": "glob", "fun": "test.ping"},
+        ).status_code
+        == 403
+    )
+    assert viewer.post("/pillar/web-01/capture").status_code == 403
+    with viewer.app.app_context():
+        from overstate_ui.db import get_session
+        from overstate_ui.models import Job
+
+        assert get_session().query(Job).filter_by(user="v").count() == 0
 
 
 def test_operator_still_sees_buttons(viewer):

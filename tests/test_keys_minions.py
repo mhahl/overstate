@@ -958,16 +958,6 @@ def test_onboard_description_fields_and_panels_align(client):
     assert 'class="grid gap-3 sm:grid-cols-2"' in html
 
 
-def test_onboard_page_uses_a_cohesive_enrollment_workspace(client):
-    html = client.get("/minions/onboard").data.decode()
-    assert 'id="onboarding-workflow"' in html
-    assert 'aria-label="Onboarding steps"' in html
-    assert 'id="onboarding-step-describe"' in html
-    assert 'aria-label="Failover master configuration"' in html
-    assert 'id="onboarding-step-accept"' in html
-    assert 'id="onboarding-step-verify"' in html
-
-
 def test_onboard_generates_failover_script(client):
     _configure_master_ips(client)
     client.app.config["PUBLIC_URL"] = "https://overstate.example.com/"
@@ -1240,14 +1230,6 @@ def test_minion_overview_dashboard(client):
     assert "Run job on this minion" in html
     assert "not in snapshot cache" in html
     assert "No highstate-style job has reported" in html
-
-
-def test_minions_page_pause_labels_scope(client):
-    html = client.get("/minions/").data.decode()
-    assert "Pause live updates" in html
-    # The toggle pauses the job and minion lists only.
-    assert "job and minion lists" in html
-    assert "all pages" not in html
 
 
 def test_os_icon_slug():

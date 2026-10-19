@@ -11,6 +11,7 @@ import secrets
 
 import httpx
 import pytest
+from conftest import login_as
 
 from overstate_ui import api as apimod
 from overstate_ui import auth as authmod
@@ -119,11 +120,6 @@ def env(monkeypatch):
     with app.app_context():
         client.saved_id = get_session().query(SavedJob).one().id
     return client
-
-
-def login_as(client, username: str):
-    client.post("/logout")
-    return client.post("/login", data={"username": username, "password": PW})
 
 
 def _mint(client, name="t1", pin=None, expired=False, revoked=False):

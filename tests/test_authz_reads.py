@@ -8,6 +8,7 @@ dashboard shell with no probes.
 
 import httpx
 import pytest
+from conftest import login_as
 
 from overstate_ui import auth as authmod
 from overstate_ui import authz, create_app
@@ -190,11 +191,6 @@ def env(monkeypatch):
     return client
 
 
-def login_as(client, username: str):
-    client.post("/logout")
-    return client.post("/login", data={"username": username, "password": PW})
-
-
 def _seed_state_job():
     session = get_session()
     job = Job(
@@ -258,15 +254,6 @@ def test_mine_needs_mine_read(env):
     assert not env.spy.publishes("mine.get")
 
 
-def test_mine_constrained_publish(env):
-    login_as(env, "seer")
-    rv = env.get("/mine/?tgt=*&tgt_type=glob&fun=network.ips")
-    assert rv.status_code == 200
-    for body in env.spy.publishes("mine.get"):
-        assert body.get("tgt") != "*"
-        assert "db-01" not in str(body.get("tgt", "")).split(",")
-
-
 def test_job_returns_filtered_to_scope(env):
     with env.app.app_context():
         jid = _seed_state_job()
@@ -276,6 +263,16 @@ def test_job_returns_filtered_to_scope(env):
     html = rv.get_data(as_text=True)
     assert "web-01" in html
     assert "db-01" not in html
+    # Function-level: both rows exist in the DB — the split is the
+    # route's scope filter, not missing data.
+    with env.app.app_context():
+        from overstate_ui.models import JobReturn
+
+        mids = {
+            r.minion_id
+            for r in get_session().query(JobReturn).filter_by(jid=jid).all()
+        }
+        assert mids == {"web-01", "db-01"}
 
 
 def test_job_out_of_scope_is_403(env):

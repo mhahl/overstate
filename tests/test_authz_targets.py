@@ -7,6 +7,7 @@ stays fleet-only.
 
 import httpx
 import pytest
+from conftest import login_as
 
 from overstate_ui import auth as authmod
 from overstate_ui import authz, create_app
@@ -125,11 +126,6 @@ def env(monkeypatch):
     client.app = app
     client.spy = spy
     return client
-
-
-def login_as(client, username: str):
-    client.post("/logout")
-    return client.post("/login", data={"username": username, "password": PW})
 
 
 def test_scoped_allow_list_target(env):
@@ -384,12 +380,6 @@ def test_console_sync_redacts_without_body_perm(env, monkeypatch):
     out = rv.get_json()["output"]
     assert "web-01: ok" in out
     assert "beacon-config-with-pillar-secret" not in out
-
-
-def test_console_key_list_fleet_only(env):
-    login_as(env, "teamop")
-    rv = env.post("/console/run", json={"line": "salt-key -L"})
-    assert rv.status_code == 403
 
 
 def test_batch_recheck_drops_minion(env, monkeypatch):

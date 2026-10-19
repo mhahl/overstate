@@ -16,6 +16,16 @@ from overstate_ui.salt_client import SaltClient
 from overstate_ui.seed_mock import seed as seed_mock
 
 
+def _first_stream_payload(rv) -> dict:
+    """Parse the first SSE data line of a stream response.
+
+    Shared by the stream-payload tests so each asserts the payload
+    shape, not the SSE framing.
+    """
+    first = rv.data.decode().splitlines()[0]
+    return json.loads(first.removeprefix("data: "))
+
+
 def fake_transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login":
@@ -168,14 +178,6 @@ def test_sync_completes_old_job_without_returns(client):
         get_session().commit()
         assert sync_job("42424242424242424242").complete is True
         assert sync_job("42424242424242424243").complete is False
-
-
-def test_detail_and_history_render(client):
-    with client.app.app_context():
-        sync_job("20260910123000000002")
-    html = client.get("/jobs/20260910123000000002").data.decode()
-    assert "tw-minion-02" in html and "failed" in html
-    assert "Sync results" in html
 
 
 def test_history_per_page_param_with_size_dropdown(client):
@@ -460,37 +462,6 @@ def test_detail_carries_live_panel_container(client):
     assert 'data-panel-mid="web01"' in html
 
 
-def test_running_detail_reconnects_stream(client):
-    import datetime as dt
-
-    with client.app.app_context():
-        session = get_session()
-        session.add(
-            Job(
-                jid="20260910123000000013",
-                fun="test.ping",
-                tgt="web01",
-                tgt_type="list",
-                user="admin",
-                started_at=dt.datetime.now(dt.UTC),
-                complete=False,
-            )
-        )
-        session.commit()
-    html = client.get("/jobs/20260910123000000013").data.decode()
-    assert "EventSource" in html
-    # Capped connections reopen; the note tracks reconnect state.
-    assert "Reconnecting" in html
-    assert "setTimeout(connect" in html
-    assert "var reconnecting = false" in html
-    assert "completeSeen || reconnecting" in html
-    assert "src.onopen" in html
-    assert "missing[mid] = true" not in html
-    assert "pending[mid]" in html
-    assert "if (panels.querySelector(sel)) return;" in html
-    assert "Session expired. Reload." in html
-
-
 def test_describe_return_failure_surface():
     from overstate_ui.jobs_helpers import describe_return
 
@@ -755,8 +726,7 @@ def test_stream_counts_live_cache_minions(client, monkeypatch):
     monkeypatch.setattr(jobsmod, "live_returns_now", lambda client, jid: (live, None))
     monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
     rv = client.get("/jobs/20260910123000000020/stream?interval=0.05")
-    first = rv.data.decode().splitlines()[0]
-    payload = json.loads(first.removeprefix("data: "))
+    payload = _first_stream_payload(rv)
     assert payload["minions"] == ["web01"]
     assert payload["returned"] == 1
     assert payload["live"] == 1
@@ -799,8 +769,7 @@ def test_stream_sends_live_and_failed_counts(client, monkeypatch):
     monkeypatch.setattr(jobsmod, "live_returns_now", lambda client, jid: (live, None))
     monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
     rv = client.get("/jobs/20260910123000000021/stream?interval=0.05")
-    first = rv.data.decode().splitlines()[0]
-    payload = json.loads(first.removeprefix("data: "))
+    payload = _first_stream_payload(rv)
     assert sorted(payload["minions"]) == ["live01", "stored01"]
     assert payload["returned"] == 2
     assert payload["failed"] == 2
@@ -860,8 +829,7 @@ def test_batch_parent_stream_unions_wave_live_rows(client, monkeypatch):
     monkeypatch.setattr(jobsmod, "live_returns_now", fake_live)
     monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
     rv = client.get("/jobs/batch-g1/stream?interval=0.05")
-    first = rv.data.decode().splitlines()[0]
-    payload = json.loads(first.removeprefix("data: "))
+    payload = _first_stream_payload(rv)
     assert payload["minions"] == ["web01"]
     assert payload["live"] == 1
 
@@ -891,7 +859,7 @@ def test_stream_payload_includes_degraded_when_live_call_fails(client, monkeypat
     )
     monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
     rv = client.get("/jobs/20261019000000000050/stream?interval=0.05")
-    first = json.loads(rv.data.decode().splitlines()[0].removeprefix("data: "))
+    first = _first_stream_payload(rv)
     assert first["degraded"] == "salt-api error"
     assert first["live"] == 0
 

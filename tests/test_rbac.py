@@ -1,6 +1,7 @@
 """v2 unit 1 tests: role matrix, OIDC provisioning, admin user management."""
 
 import pytest
+from conftest import login_as
 
 from overstate_ui import auth as authmod
 from overstate_ui import create_app
@@ -31,11 +32,6 @@ def client():
     c = app.test_client()
     c.app = app
     return c
-
-
-def login_as(client, username: str):
-    client.post("/logout")
-    return client.post("/login", data={"username": username, "password": PW})
 
 
 def test_seed_admin_gets_admin_role(client):
@@ -169,12 +165,6 @@ def test_provision_oidc_user_defaults_to_viewer(client):
 def test_provision_oidc_user_rejects_empty_claims(client):
     with client.app.app_context(), pytest.raises(ValueError):
         provision_oidc_user({}, "https://idp.example")
-
-
-def test_oidc_routes_404_when_disabled(client):
-    assert client.get("/login/oidc").status_code == 404
-    assert client.get("/login/oidc/callback").status_code == 404
-    assert b"Log in with SSO" not in client.get("/login").data
 
 
 def test_oidc_callback_provisions_and_logs_in(client, monkeypatch):

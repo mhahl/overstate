@@ -17,6 +17,7 @@ def make_client():
         seed_admin(password="pw")
     c = app.test_client()
     c.post("/login", data={"username": "admin", "password": "pw"})
+    c.app = app
     return c
 
 
@@ -80,6 +81,12 @@ def test_orchestrate_rejects_bad_input():
         follow_redirects=True,
     )
     assert "must be a JSON object" in rv.data.decode()
+    # Function-level: rejected inputs enqueue nothing.
+    with c.app.app_context():
+        from overstate_ui.db import get_session
+        from overstate_ui.models import Job
+
+        assert get_session().query(Job).count() == 0
 
 
 def test_orchestrate_runs_and_stores_returns(monkeypatch):
