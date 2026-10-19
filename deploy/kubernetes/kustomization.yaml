@@ -36,6 +36,7 @@ resources:
   - volumes.yaml
   - redis.yaml
   - postgres.yaml
+  - salt-api-tls.yaml
   - salt-master.yaml
   - app.yaml
   - worker.yaml

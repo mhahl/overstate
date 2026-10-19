@@ -31,7 +31,7 @@
 <div class="card card-border card-sm bg-base-100 mb-4">
   <div class="card-body flex-row flex-wrap gap-x-6 gap-y-1 text-sm">
     <p class="font-mono text-xs">{{ job.fun }} <span class="opacity-60">on</span> {{ job.tgt_type }}: {{ tgt_display.get(job.jid, job.tgt) }} <span class="opacity-60">, by {{ job.user }}</span></p>
-    <p class="ms-auto" aria-live="polite"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{% if not job.complete %}Live…{% endif %}</span></p>
+    <p class="ms-auto" aria-live="polite"><span id="live-returned" class="font-semibold">{{ returns|length }}</span> returned, <span id="live-failed" class="font-semibold">{{ returns|selectattr('success', 'equalto', False)|list|length }}</span> failed. <span id="live-note" class="opacity-70">{%- if degraded %}Live unavailable: {{ degraded }}{% elif not job.complete %}Live…{% endif -%}</span></p>
   </div>
 </div>
 {% if batch_state %}
@@ -153,7 +153,9 @@
       var s = JSON.parse(ev.data);
       document.getElementById("live-returned").textContent = s.returned;
       document.getElementById("live-failed").textContent = s.failed;
-      if (!completeSeen && !sessionExpired) setNote("Live…");
+      if (!completeSeen && !sessionExpired) {
+        setNote(s.degraded ? ("Live unavailable: " + s.degraded) : "Live…");
+      }
       upgradePanels(s);
       if (s.complete) {
         completeSeen = true;
@@ -171,9 +173,15 @@
       setTimeout(connect, 2000);
     });
     src.onerror = function () {
+      if (completeSeen || reconnecting) { src.close(); return; }
+      // Mirror the 'done' handler: a transient blip (proxy timeout,
+      // brief network loss, or a worker restart) should reconnect
+      // transparently rather than strand the user on a manual-reload
+      // prompt.
       src.close();
-      if (completeSeen || reconnecting) return;
-      setNote("Connection lost. Reload to retry.");
+      reconnecting = true;
+      setNote("Reconnecting\u2026");
+      setTimeout(connect, 2000);
     };
   }
   connect();

@@ -909,9 +909,10 @@ def detail(jid: str):
         # recorded yet (DB rows win, so no duplicates). The sync
         # button redirects here, so it shares this merge.
         seen = {r.minion_id for r in returns}
-        returns = returns + [
-            r for r in live_returns_now(get_salt(), jid) if r.minion_id not in seen
-        ]
+        live_rows, live_degraded = live_returns_now(get_salt(), jid)
+        returns = returns + [r for r in live_rows if r.minion_id not in seen]
+    else:
+        live_degraded = None
     kill_reports: list = []
     if not (job.batch_group and jid == f"batch-{job.batch_group}"):
         from .models import AuditEvent
@@ -956,6 +957,7 @@ def detail(jid: str):
         state_summary=summarize_state_return,
         describe_return=describe_return,
         tgt_display=tgt_display,
+        degraded=live_degraded,
     )
 
 
@@ -995,8 +997,8 @@ def panel(jid: str, mid: str):
         sync_job(jid)
         row = session.query(JobReturn).filter_by(jid=jid, minion_id=mid).first()
     if row is None and not job.complete:
-        live = [r for r in live_returns_now(get_salt(), jid) if r.minion_id == mid]
-        row = live[0] if live else None
+        live, _ = live_returns_now(get_salt(), jid)
+        row = next((r for r in live if r.minion_id == mid), None)
     if row is None:
         abort(404)
     if rbac_mode() == "scoped" and not can_see_return_body(
@@ -1148,6 +1150,7 @@ def stream(jid: str):
     allowed = None if fleet else minions_with(current_user, "job.read")
 
     def events():
+        last_keepalive = time.monotonic()
         for _ in range(30):
             job = sync_job(jid)
             jids = [jid]
@@ -1175,6 +1178,7 @@ def stream(jid: str):
                 job and job.batch_group and jid == f"batch-{job.batch_group}"
             )
             live_rows: list = []
+            live_error: str | None = None
             if job is not None and not job.complete:
                 # Live-cache minions the returner hasn't recorded yet so
                 # the page can render their panels before the rows land.
@@ -1182,9 +1186,12 @@ def stream(jid: str):
                     for wave_jid in jids:
                         if wave_jid == jid:
                             continue
-                        live_rows += live_returns_now(get_salt(), wave_jid)
+                        wave_rows, wave_err = live_returns_now(get_salt(), wave_jid)
+                        if wave_err and live_error is None:
+                            live_error = wave_err
+                        live_rows += wave_rows
                 else:
-                    live_rows = live_returns_now(get_salt(), jid)
+                    live_rows, live_error = live_returns_now(get_salt(), jid)
                 if allowed is not None:
                     live_rows = [r for r in live_rows if r.minion_id in allowed]
                 mids |= {r.minion_id for r in live_rows}
@@ -1198,9 +1205,18 @@ def stream(jid: str):
                 "live": len(live_only),
                 "minions": sorted(mids),
             }
+            if live_error:
+                payload["degraded"] = live_error
             yield f"data: {json.dumps(payload)}\n\n"
             if payload["complete"]:
                 break
+            # SSE comment keepalive: keeps proxies from idling out
+            # long-lived connections and gives the client a real
+            # signal the channel is alive during slow master calls.
+            now_m = time.monotonic()
+            if now_m - last_keepalive >= 15.0:
+                yield ": keepalive\n\n"
+                last_keepalive = now_m
             time.sleep(interval)
         yield "event: done\ndata: {}\n\n"
 

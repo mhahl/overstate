@@ -212,6 +212,45 @@ def test_sync_launch_uses_app_jid(client, monkeypatch):
         assert [r.minion_id for r in rows] == ["web-01"]
 
 
+def test_no_rows_master_still_has_jid_keeps_running(client, monkeypatch):
+    """Regression for bug #1: a job with no returner rows must NOT
+    be marked complete just because started_at is old, as long as
+    the master still tracks the JID with minions (i.e. work is
+    still in flight). The previous flat 60s timer could prematurely
+    complete slow jobs and strand the page on a stuck "complete"
+    state with no live updates."""
+    from overstate_ui import jobs_service
+
+    with client.app.app_context():
+        session = get_session()
+        _old_job(session, "20261019000000000001", minutes=2)
+        get_session().commit()
+
+    monkeypatch.setattr(
+        jobs_service, "_master_minions", lambda jid: {"web-01", "web-02"}
+    )
+    with client.app.app_context():
+        job = jobs_service.sync_job("20261019000000000001")
+        assert job.complete is False
+
+
+def test_no_rows_master_forgot_jid_flips_complete(client, monkeypatch):
+    """When the master has forgotten the JID (None) and the job is
+    old, the no-rows branch still flips complete — truly orphaned
+    jobs shouldn't sit 'running' forever."""
+    from overstate_ui import jobs_service
+
+    with client.app.app_context():
+        session = get_session()
+        _old_job(session, "20261019000000000002", minutes=2)
+        get_session().commit()
+
+    monkeypatch.setattr(jobs_service, "_master_minions", lambda jid: None)
+    with client.app.app_context():
+        job = jobs_service.sync_job("20261019000000000002")
+        assert job.complete is True
+
+
 def test_sync_launch_expiry_leaves_job_running(client, monkeypatch):
     """No returner rows inside the budget: no hang, no rows, and the
     job stays running for the background sync to complete later."""

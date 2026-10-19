@@ -134,6 +134,37 @@ def test_live_returns_handles_scalar():
         def runner(self, fun, **kwargs):
             return [{"m1": True, "m2": False}]
 
-    rows = live_returns_now(ScalarClient(), "9")
+    rows, err = live_returns_now(ScalarClient(), "9")
+    assert err is None
     assert [(r.minion_id, r.success) for r in rows] == [("m1", True), ("m2", False)]
     assert all(r.live for r in rows)
+
+
+def test_live_returns_returns_error_on_master_failure():
+    """The stream now surfaces a degraded hint when the master call
+    fails; ``live_returns_now`` returns the category alongside the
+    (empty) rows so the caller can choose what to show."""
+    import httpx
+
+    from overstate_ui.jobs import live_returns_now
+
+    class FailingClient:
+        def runner(self, fun, **kwargs):
+            raise httpx.ConnectError("salt-master-api:8000 unreachable", request=None)
+
+    rows, err = live_returns_now(FailingClient(), "20261019000000000001")
+    assert rows == []
+    assert err == "connection error"
+
+
+def test_live_returns_returns_error_for_salt_api_error():
+    from overstate_ui.jobs import live_returns_now
+    from overstate_ui.salt_client import SaltApiError
+
+    class SaltApiFailingClient:
+        def runner(self, fun, **kwargs):
+            raise SaltApiError("salt-api 500: internal")
+
+    rows, err = live_returns_now(SaltApiFailingClient(), "20261019000000000002")
+    assert rows == []
+    assert err == "salt-api error"

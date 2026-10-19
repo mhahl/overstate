@@ -40,7 +40,7 @@ spec:
                 - name: SALT_API_URL
                   value: https://salt-master-api:8000
                 - name: SALT_API_VERIFY_CA
-                  value: "false"
+                  value: /etc/ssl/overstate/ca.crt
                 - name: SALT_EAUTH_USER
                   value: overstate
                 - name: SALT_EAUTH_PASSWORD
@@ -48,3 +48,15 @@ spec:
                     secretKeyRef:
                       name: overstate-secrets
                       key: SALT_API_USER_PASS
+              volumeMounts:
+                - name: salt-api-ca
+                  mountPath: /etc/ssl/overstate/ca.crt
+                  subPath: tls.crt
+                  readOnly: true
+          volumes:
+            - name: salt-api-ca
+              secret:
+                secretName: overstate-internal-ca
+                items:
+                  - key: tls.crt
+                    path: tls.crt

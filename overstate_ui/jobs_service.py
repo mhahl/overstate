@@ -76,20 +76,29 @@ def sync_job(jid: str, actor: str | None = None) -> Job | None:
         return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
 
     if not rows:
-        # No returner rows at all (lost returns, dead minion): age out
-        # against started_at so the job can't sit in Running forever.
+        # No returner rows at all (lost returns, dead minion). The
+        # master is the source of truth for "this JID is done": if
+        # it still tracks the JID with minions, the job is in flight
+        # even though no returns have landed yet (slow job, or the
+        # returner is behind). Only declare complete when the master
+        # confirms it has nothing more for this JID AND the grace
+        # period has elapsed. A flat 60s timer previously could
+        # prematurely complete slow jobs and strand the page on a
+        # stuck "complete" state (bug #1).
         if (
             job is not None
             and not job.complete
             and job.started_at is not None
-            and (now - aware(job.started_at)).total_seconds() > COMPLETE_AFTER_SECONDS
         ):
-            job.complete = True
-            if _verdicts_eligible(job):
-                from .states import apply_sync_verdicts
+            master_mids = _master_minions(jid)
+            master_done = master_mids is None or len(master_mids) == 0
+            if master_done and (now - aware(job.started_at)).total_seconds() > COMPLETE_AFTER_SECONDS:
+                job.complete = True
+                if _verdicts_eligible(job):
+                    from .states import apply_sync_verdicts
 
-                apply_sync_verdicts(job, [])
-            session.commit()
+                    apply_sync_verdicts(job, [])
+                session.commit()
         return job
     if job is None:
         first = rows[0]
@@ -154,22 +163,24 @@ def sync_job(jid: str, actor: str | None = None) -> Job | None:
     return job
 
 
-def live_returns_now(client, jid: str) -> list:
+def live_returns_now(client, jid: str) -> tuple[list, str | None]:
     """Display-only live returns from the master job cache.
 
-    Never raises; [] when the cache expired the JID. Rows are
-    lightweight stand-ins marked live=True — never DB rows, so
+    Returns ``(rows, error)``. ``error`` is a short category string
+    (e.g. ``"connection error"``) when the master call failed, or
+    ``None`` on a healthy empty cache. Never raises. Rows are
+    lightweight stand-ins marked ``live=True`` — never DB rows, so
     the merge below can't duplicate or rewrite history.
     """
     from types import SimpleNamespace
 
     try:
         payload = client.runner("jobs.lookup_jid", jid=jid)[0]
-    except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
-        return []
+    except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
+        return [], _live_error(exc)
     data = payload.get(jid, payload) if isinstance(payload, dict) else {}
     if not isinstance(data, dict):
-        return []
+        return [], None
     rows = []
     for mid, ret in data.items():
         # Verified live: values are the raw returns ({minion: True}
@@ -187,11 +198,22 @@ def live_returns_now(client, jid: str) -> list:
             )
         else:
             rows.append(
-                SimpleNamespace(
-                    minion_id=mid, success=bool(ret), retcode=0, payload=ret, live=True
-                )
+                SimpleNamespace(minion_id=mid, success=bool(ret), retcode=0, payload=ret, live=True)
             )
-    return rows
+    return rows, None
+
+
+def _live_error(exc: BaseException) -> str:
+    """Short, safe category for a failed master call.
+
+    Avoids leaking stack traces, URLs, or salt traceback bodies; the
+    UI shows it as a status hint. Authenticated callers only.
+    """
+    if isinstance(exc, SaltApiError):
+        return "salt-api error"
+    if isinstance(exc, httpx.HTTPError):
+        return "connection error"
+    return "unexpected response"
 
 
 def build_sls_preview(

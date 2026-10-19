@@ -72,10 +72,13 @@ spec:
               value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
             - name: SALT_API_URL
               value: https://salt-master-api:8000
-            # TODO: pin the salt-api CA instead of skipping verification
-            # (image mints a self-signed cert at boot; in-cluster only).
+            # Pin the salt-api CA (deploy/kubernetes/salt-api-tls.yaml).
+            # Closes the SALT_API_VERIFY_CA=false TODO in
+            # docs/reference/tls.md: the in-cluster channel now
+            # authenticates the server cert against the cert-manager
+            # CA instead of accepting any cert.
             - name: SALT_API_VERIFY_CA
-              value: "false"
+              value: /etc/ssl/overstate/ca.crt
             - name: SALT_EAUTH_USER
               value: overstate
             - name: SALT_EAUTH_PASSWORD
@@ -103,6 +106,10 @@ spec:
           volumeMounts:
             - name: srv
               mountPath: /srv/states
+            - name: salt-api-ca
+              mountPath: /etc/ssl/overstate/ca.crt
+              subPath: tls.crt
+              readOnly: true
           readinessProbe:
             tcpSocket:
               port: http
@@ -125,6 +132,12 @@ spec:
         - name: seed
           configMap:
             name: salt-seed
+        - name: salt-api-ca
+          secret:
+            secretName: overstate-internal-ca
+            items:
+              - key: tls.crt
+                path: tls.crt
 ---
 apiVersion: v1
 kind: Service

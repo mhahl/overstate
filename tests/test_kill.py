@@ -55,7 +55,10 @@ class StubSalt:
 def test_running_job_detail_handles_stream_drop(admin):
     html = admin.get("/jobs/abc123").data.decode()
     assert "onerror" in html
-    assert "Connection lost" in html
+    # onerror transparently reconnects via the same 'done' handler
+    # path (setNote('Reconnecting…') + setTimeout(connect, 2000)) so
+    # transient blips recover without a manual reload.
+    assert "Reconnecting" in html
     assert 'aria-live="polite"' in html
 
 

@@ -1,0 +1,66 @@
+# Internal CA + leaf cert for the in-cluster salt-api service
+# (overstate-overstate.svc.cluster.local). This closes the long-open
+# SALT_API_VERIFY_CA=false TODO (docs/reference/tls.md §"Production
+# checklist"). The master image regens its own self-signed salt-api
+# cert at every boot and "deletes them and exits" if a bind-mount covers
+# its cert path, so the leaf is mounted at a separate path and a
+# postStart hook on the salt-master container swaps it over and
+# restarts salt-api (the k8s analog of scripts/enable-api-tls.sh).
+#
+# Rollout: apply this file together with the salt-master.yaml change
+# FIRST; wait for the postStart hook to swap the cert on every master
+# pod and for the readiness probe to pass; only then apply the app /
+# worker / cronjob env flip (SALT_API_VERIFY_CA: /etc/ssl/overstate/ca.crt).
+# A single combined apply races: the app pods may briefly fail to
+# verify the still-self-signed cert while the postStart is still
+# running on a freshly-rolled master pod.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: overstate-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: overstate-internal-ca
+spec:
+  isCA: true
+  commonName: Overstate internal CA
+  secretName: overstate-internal-ca
+  # Long-lived: rotating the internal CA is a deliberate, manual
+  # change (every leaf and every mounting pod must re-trust it).
+  duration: 87600h
+  issuerRef:
+    name: overstate-bootstrap
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: overstate-internal-ca
+spec:
+  ca:
+    secretName: overstate-internal-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: salt-master-api
+spec:
+  secretName: salt-master-api-cert
+  duration: 2160h
+  issuerRef:
+    name: overstate-internal-ca
+    kind: Issuer
+  # The app connects to https://salt-master-api:8000 (see app.yaml);
+  # the FQDN forms are included for the in-cluster resolver.
+  dnsNames:
+    - salt-master-api
+    - salt-master-api.overstate.svc
+    - salt-master-api.overstate.svc.cluster.local
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth

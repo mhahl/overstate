@@ -752,7 +752,7 @@ def test_stream_counts_live_cache_minions(client, monkeypatch):
             minion_id="web01", success=True, retcode=0, payload=True, live=True
         )
     ]
-    monkeypatch.setattr(jobsmod, "live_returns_now", lambda client, jid: live)
+    monkeypatch.setattr(jobsmod, "live_returns_now", lambda client, jid: (live, None))
     monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
     rv = client.get("/jobs/20260910123000000020/stream?interval=0.05")
     first = rv.data.decode().splitlines()[0]
@@ -796,7 +796,7 @@ def test_stream_sends_live_and_failed_counts(client, monkeypatch):
             minion_id="live01", success=False, retcode=1, payload=False, live=True
         )
     ]
-    monkeypatch.setattr(jobsmod, "live_returns_now", lambda client, jid: live)
+    monkeypatch.setattr(jobsmod, "live_returns_now", lambda client, jid: (live, None))
     monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
     rv = client.get("/jobs/20260910123000000021/stream?interval=0.05")
     first = rv.data.decode().splitlines()[0]
@@ -843,16 +843,19 @@ def test_batch_parent_stream_unions_wave_live_rows(client, monkeypatch):
 
     def fake_live(client, jid):
         if jid == "20260910123000000030":
-            return [
-                SimpleNamespace(
-                    minion_id="web01",
-                    success=True,
-                    retcode=0,
-                    payload=True,
-                    live=True,
-                )
-            ]
-        return []
+            return (
+                [
+                    SimpleNamespace(
+                        minion_id="web01",
+                        success=True,
+                        retcode=0,
+                        payload=True,
+                        live=True,
+                    )
+                ],
+                None,
+            )
+        return [], None
 
     monkeypatch.setattr(jobsmod, "live_returns_now", fake_live)
     monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
@@ -861,6 +864,36 @@ def test_batch_parent_stream_unions_wave_live_rows(client, monkeypatch):
     payload = json.loads(first.removeprefix("data: "))
     assert payload["minions"] == ["web01"]
     assert payload["live"] == 1
+
+
+def test_stream_payload_includes_degraded_when_live_call_fails(client, monkeypatch):
+    """The stream surfaces a degraded reason in the payload when the
+    live cache read fails, so the UI can show a hint instead of a
+    silent blank."""
+    import overstate_ui.jobs as jobsmod
+
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20261019000000000050",
+                fun="test.ping",
+                tgt="*",
+                tgt_type="glob",
+                user="admin",
+                started_at=dt.datetime.now(dt.UTC),
+                complete=False,
+            )
+        )
+        session.commit()
+    monkeypatch.setattr(
+        jobsmod, "live_returns_now", lambda client, jid: ([], "salt-api error")
+    )
+    monkeypatch.setattr(jobsmod, "sync_job", lambda jid: get_session().get(Job, jid))
+    rv = client.get("/jobs/20261019000000000050/stream?interval=0.05")
+    first = json.loads(rv.data.decode().splitlines()[0].removeprefix("data: "))
+    assert first["degraded"] == "salt-api error"
+    assert first["live"] == 0
 
 
 def test_job_sse_response_is_not_buffered(client):

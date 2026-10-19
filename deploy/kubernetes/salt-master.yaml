@@ -132,6 +132,39 @@ spec:
             # Returner, Redis cache, and cluster drop-ins arrive via the
             # projected `config` volume below — never subPath file mounts
             # into this read-only directory: these nodes reject those with ENOTDIR.
+            # CA-signed salt-api leaf cert (deploy/kubernetes/salt-api-tls.yaml).
+            # Mounted at a path the image does not touch; the postStart
+            # hook below swaps it over the image's self-signed cert
+            # and restarts salt-api. Do NOT move this mount under the
+            # image's cert path (/etc/pki/tls/certs) — the image's
+            # startup deletes the files there and the pod exits.
+            - name: salt-api-cert
+              mountPath: /run/secrets/overstate-salt-api
+              readOnly: true
+          # postStart hook: the master image regens
+          # /etc/pki/tls/certs/localhost.crt|.key at every boot, so a
+          # bind-mount over its cert path makes startup delete-and-exit
+          # (docs/reference/tls.md). The dev script (enable-api-tls.sh)
+          # podman-cps the cert after boot; the k8s analog is this
+          # hook. We poll for the regen file to appear, then overwrite
+          # it and restart salt-api. The entrypoint only regens once
+          # per boot, so copying after the poll never races a rewrite.
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    set -eu
+                    for _ in $(seq 1 90); do
+                      [ -s /etc/pki/tls/certs/localhost.crt ] && break
+                      sleep 1
+                    done
+                    cp /run/secrets/overstate-salt-api/tls.crt /etc/pki/tls/certs/localhost.crt
+                    cp /run/secrets/overstate-salt-api/tls.key /etc/pki/tls/certs/localhost.key
+                    chmod 600 /etc/pki/tls/certs/localhost.key
+                    supervisorctl restart salt-api
           # Ready means this node may serve traffic: a Raft leader is
           # visible (.cluster_ready, from persisted membership) AND
           # Salt itself opened its request gate (health/ready, written
@@ -208,6 +241,13 @@ spec:
         - name: srv
           persistentVolumeClaim:
             claimName: srv-data
+        # CA-signed salt-api leaf cert, produced by cert-manager
+        # (deploy/kubernetes/salt-api-tls.yaml). Consumed by the
+        # postStart hook above to replace the image's self-signed cert.
+        - name: salt-api-cert
+          secret:
+            secretName: salt-master-api-cert
+            defaultMode: 0440
   volumeClaimTemplates:
     - metadata:
         name: keys
