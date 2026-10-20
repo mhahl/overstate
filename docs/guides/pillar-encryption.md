@@ -73,8 +73,12 @@ keys PVC is ever deleted, re-run this step from the offline backup.
 
 ## 3. Enable the GPG renderer in master config
 
-Settings → **Master Settings** tab (admins only), edit `master.conf`,
-append below the managed line:
+These two lines now live in the repo manifest
+(`deploy/kubernetes/salt-master-config.yaml`), so they survive every
+`kubectl apply -k`. Verify they are present, then restart the masters
+one pod at a time (Master Settings tab → restart, or
+`kubectl rollout restart statefulset/salt-master`; the PDB keeps
+quorum):
 
 ```yaml
 renderer: jinja | yaml | gpg
