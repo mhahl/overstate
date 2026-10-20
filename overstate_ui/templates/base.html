@@ -182,12 +182,9 @@
             Settings</a></li>
           {% endif %}
           {% if current_user.is_authenticated and (current_user.role == 'admin' or (rbac_scoped and can('user.read'))) %}
-          <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint == 'users.index' }}">
+          <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('users.') }}">
             <span class="icon-[lucide--users] size-4.5" aria-hidden="true"></span>
             Users</a></li>
-          <li><a href="{{ url_for('users.groups') }}" class="{{ 'menu-active' if request.endpoint == 'users.groups' }}">
-            <span class="icon-[lucide--users-round] size-4.5" aria-hidden="true"></span>
-            Access groups</a></li>
           {% endif %}
         </ul>
       </nav>

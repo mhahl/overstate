@@ -272,10 +272,15 @@ def test_chrome_title_flash_tabs_schedule_bulk(client):
             assert "get_flashed_messages" not in fh.read(), name
     orch = client.get("/jobs/orchestrate").data.decode()
     assert "Orchestrate" in orch
-    assert 'role="tab"' not in users + orch
+    assert 'role="tab"' not in orch
     assert 'role="tab"' not in client.get("/jobs/").data.decode()
     assert 'role="tab"' not in client.get("/keys/").data.decode()
     assert 'role="tab"' not in client.get("/minions/web-01").data.decode()
+    # Users owns a section tab bar (Users / Access groups): the endpoint-
+    # driven active tab renders on the users list page.
+    assert 'aria-label="Users views"' in users
+    assert 'role="tab"' in users
+    assert 'tab-active' in users
     minions = client.get("/minions/").data.decode()
     assert 'id="bulk-all"' in minions
     assert "<noscript>" in minions

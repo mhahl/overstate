@@ -1,0 +1,13 @@
+{# Horizontal tabs for the Users section. Both routes live in the users
+   blueprint, so one sidebar entry covers them and exactly one tab is
+   active at a time (endpoint-driven; tab-active + aria-current, never
+   color alone). Pattern matches the Pillar section tabs. #}
+{% set groups_active = request.endpoint == 'users.groups' %}
+<div role="tablist" class="tabs tabs-border mb-4" aria-label="Users views">
+  <a role="tab" href="{{ url_for('users.index') }}" class="tab{% if not groups_active %} tab-active{% endif %}"{% if not groups_active %} aria-current="page"{% endif %}>
+    <span class="icon-[lucide--users] size-4" aria-hidden="true"></span>
+    Users</a>
+  <a role="tab" href="{{ url_for('users.groups') }}" class="tab{% if groups_active %} tab-active{% endif %}"{% if groups_active %} aria-current="page"{% endif %}>
+    <span class="icon-[lucide--users-round] size-4" aria-hidden="true"></span>
+    Access groups</a>
+</div>

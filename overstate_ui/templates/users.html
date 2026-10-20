@@ -7,6 +7,7 @@
   <div class="flex flex-wrap items-end gap-3 mb-4">
     {{ m.page_heading("Users", "Accounts, roles, and service-account tokens.") }}
   </div>
+  {% include "_users_tabs.html" %}
   <div class="card card-border bg-base-100 min-w-0">
   <div class="border-b border-base-300 px-4 py-3 flex flex-wrap items-end justify-end gap-2">
   <form method="get" action="{{ url_for('users.index') }}" role="search" aria-label="Filter users" class="flex flex-row flex-wrap items-end justify-end gap-2">
