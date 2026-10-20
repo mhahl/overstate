@@ -27,6 +27,18 @@
     </div>
   </header>
 
+  {% if secret_keys %}
+  <div class="alert alert-warning" role="status">
+    <span class="icon-[lucide--key-round] size-5 shrink-0" aria-hidden="true"></span>
+    <div>
+      <p class="font-medium">Encrypted pillar values are included</p>
+      <p class="text-sm">The master decrypts before serving, so this page and any
+      <strong>captured snapshot</strong> contain these values in plaintext —
+      snapshots are stored in Postgres. Keys: <span class="font-mono text-xs">{{ secret_keys|join(', ') }}</span>.</p>
+    </div>
+  </div>
+  {% endif %}
+
   {% if error %}
   <div class="alert alert-error" role="alert">
     <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>

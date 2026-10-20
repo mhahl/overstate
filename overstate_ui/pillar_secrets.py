@@ -117,6 +117,26 @@ def list_collections() -> list[str]:
     return [n for n in names if SLUG_RE.match(n) and n not in RESERVED_SLUGS]
 
 
+def secret_key_names() -> list[str]:
+    """Dotted keys of every encrypted value in the secrets tree.
+
+    Names only — never values. Drives the capture-honesty banner on the
+    Pillar page: captured snapshots store the *decrypted* render in
+    Postgres, so the keys it will contain are called out before capture.
+    Never raises; unreadable trees read as no keys.
+    """
+    names: list[str] = []
+    for collection in list_collections():
+        try:
+            data = _load_rt(_collection_path(collection))
+        except (GpgSetupError, OSError):
+            continue
+        leaves: dict = {}
+        _flatten("", data, leaves)
+        names.extend(key for key, value in leaves.items() if is_encrypted(value))
+    return sorted(names)
+
+
 # --- YAML helpers (comment-preserving round-trip) -----------------------
 
 def _load_rt(path: Path):

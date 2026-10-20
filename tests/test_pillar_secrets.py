@@ -506,3 +506,26 @@ def test_settings_tab_store_and_replace_gate(secrets_env, monkeypatch):
     )
     with secrets_env.app.app_context():
         assert get_setting("pillar_gpg_pk") == ""
+
+
+# --- Pillar capture honesty -------------------------------------------
+
+def test_pillar_detail_banner_lists_encrypted_keys(secrets_env, monkeypatch):
+    import overstate_ui.pillar_secrets as psmod
+
+    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: ARMORED)
+    _store_pk(secrets_env)
+    _mk_collection(secrets_env, "netbird")
+    secrets_env.post(
+        "/pillar/secrets/secret/add",
+        data={"collection": "netbird", "key": "netbird.setup_key", "value": "x"},
+    )
+    html = secrets_env.get("/pillar/web-01").data.decode()
+    assert "Encrypted pillar values are included" in html
+    assert "netbird.setup_key" in html  # key name, never the value
+    assert "plaintext" in html
+
+
+def test_pillar_detail_no_banner_without_secrets(secrets_env):
+    html = secrets_env.get("/pillar/web-01").data.decode()
+    assert "Encrypted pillar values are included" not in html

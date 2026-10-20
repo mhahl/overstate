@@ -194,12 +194,21 @@ def detail(mid: str):
         live = get_salt().local(mid, "pillar.items", tgt_type="list")[0].get(mid)
     except SaltApiError as exc:
         error = str(exc)
+    # Capture stores the decrypted render in Postgres; name the encrypted
+    # keys so the warning is concrete (never the values themselves).
+    try:
+        from .pillar_secrets import secret_key_names
+
+        secret_keys = secret_key_names()
+    except Exception:  # noqa: BLE001 — advisory banner only
+        secret_keys = []
     return render_template(
         "pillar_detail.html",
         mid=mid,
         snaps=snaps,
         live=live,
         error=error,
+        secret_keys=secret_keys,
         render_value=render_value,
     )
 
