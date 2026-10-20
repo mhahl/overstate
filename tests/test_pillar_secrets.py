@@ -501,18 +501,46 @@ def test_settings_tab_store_and_replace_gate(secrets_env, monkeypatch):
 
 # --- setup copy / onboarding ------------------------------------------
 
-def test_setup_card_has_nacl_keygen_accordion(secrets_env):
-    """Without a stored key the setup card renders the NaCl runbook:
-    code blocks, keygen accordion, no gpg remnants."""
+def test_unconfigured_page_shows_empty_state_with_setup_button(secrets_env):
+    """No stored key => a single empty state, not the old stacked cards."""
     html = secrets_env.get("/pillar/secrets/").data.decode()
+    assert "Set up encrypted pillar" in html
+    assert "Setup encryption" in html
+    assert 'href="/pillar/secrets/setup"' in html
+    # The runbook/code blocks moved to the wizard.
+    assert "mockup-code" not in html
+    assert "salt-call --local nacl.keygen" not in html
+
+
+def test_configured_page_shows_editor_status(secrets_env, monkeypatch):
+    import overstate_ui.pillar_secrets as psmod
+
+    monkeypatch.setattr(psmod, "key_id", lambda pk: "f1ce" if pk else None)
+    _store_pk(secrets_env)
+    html = secrets_env.get("/pillar/secrets/").data.decode()
+    assert "encryption configured" in html
+    assert "Setup encryption" not in html  # empty state gone
+    assert 'href="/pillar/secrets/setup"' in html  # repair link
+
+
+def test_setup_wizard_has_nacl_runbook(secrets_env):
+    """The wizard carries the config check, keygen runbook, key step,
+    and verify step in the minion-onboarding style."""
+    html = secrets_env.get("/pillar/secrets/setup").data.decode()
+    assert 'aria-label="Encryption setup steps"' in html
+    assert "Step 1 · Master config" in html
+    assert "Step 2 · Keys" in html
     assert "mockup-code" in html
-    assert 'id="keygen"' in html
-    assert "Generate the master keypair" in html
     assert "salt-call --local nacl.keygen" in html
     assert "nacl.config" in html
-    assert "Set up NaCl on the masters" in html  # admin exec action
+    assert "Set up NaCl on the masters" in html
     assert "gpg" not in html.lower()
     assert "_overstate_verify" not in html
+
+
+def test_setup_wizard_verify_step_needs_a_collection(secrets_env):
+    html = secrets_env.get("/pillar/secrets/setup").data.decode()
+    assert "Create a collection and add a secret first" in html
 
 
 def test_key_settings_page_uses_nacl(secrets_env):

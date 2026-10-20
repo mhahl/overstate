@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Set up encrypted pillar · Overstate{% endblock %}
+{% block content %}
+<header class="flex flex-wrap items-center gap-3 mb-4">
+  <div class="me-auto">
+    <h1 class="text-2xl font-bold tracking-tight">Set up encrypted pillar</h1>
+    <p class="text-sm text-base-content/70 mt-1">Generate the shared NaCl keypair, store the public key, and verify decryption.</p>
+  </div>
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_secrets.index') }}">‹ Encrypted pillar</a>
+</header>
+
+<ul class="steps w-full mb-4" aria-label="Encryption setup steps">
+  <li data-content="1" class="step {{ 'step-primary' if renderer and renderer.renderer and renderer.keys }}">Master config</li>
+  <li data-content="2" class="step {{ 'step-primary' if pk_stored }}">Keys</li>
+  <li data-content="3" class="step {{ 'step-primary' if pk_stored }}">Public key</li>
+  <li data-content="4" class="step {{ 'step-primary' if verified_at }}">Verify</li>
+</ul>
+
+<main class="grid gap-4 xl:grid-cols-12 items-start">
+  <section class="card card-border bg-base-100 min-w-0 xl:col-span-7" aria-labelledby="setup-config-title">
+    <div class="card-body gap-3">
+      <div class="flex items-start gap-3">
+        <span class="icon-[lucide--server] size-5 mt-1 text-base-content/60" aria-hidden="true"></span>
+        <div>
+          <h2 id="setup-config-title" class="card-title text-base">Step 1 · Master config</h2>
+          <p class="text-sm text-base-content/70 mt-1">The masters must render pillar with the nacl renderer and know where the keypair lives.</p>
+        </div>
+      </div>
+      {% if renderer is none %}
+      <div class="alert alert-warning" role="status">
+        <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+        <span>Cannot read the master ConfigMap from here. Set <code class="font-mono">renderer: jinja | yaml | nacl</code> and the <code class="font-mono">nacl.config</code> block in <span class="font-mono">master.conf</span>, then restart the masters.</span>
+      </div>
+      {% elif renderer.renderer and renderer.keys %}
+      <div class="alert alert-success" role="status">
+        <span class="icon-[lucide--circle-check] size-5 shrink-0" aria-hidden="true"></span>
+        <span>nacl renderer and <span class="font-mono">nacl.config</span> detected in master config.</span>
+      </div>
+      {% else %}
+      <div class="alert alert-warning" role="status">
+        <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+        <span>Missing {% if not renderer.renderer %}<span class="badge badge-sm badge-error">renderer</span>{% endif %} {% if not renderer.keys %}<span class="badge badge-sm badge-error">nacl.config</span>{% endif %}. Add <code class="font-mono">renderer: jinja | yaml | nacl</code> and the <code class="font-mono">nacl.config</code> block, then restart the masters.</span>
+      </div>
+      {% endif %}
+      <div class="card-actions">
+        <a class="btn btn-sm btn-outline" href="{{ url_for('masterconfig.index') }}">Open Master settings</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="card card-border bg-base-100 min-w-0 xl:col-span-5" aria-labelledby="setup-keys-title">
+    <div class="card-body gap-3">
+      <div class="flex items-start gap-3">
+        <span class="icon-[lucide--key-round] size-5 mt-1 text-base-content/60" aria-hidden="true"></span>
+        <div>
+          <h2 id="setup-keys-title" class="card-title text-base">Step 2 · Keys</h2>
+          <p class="text-sm text-base-content/70 mt-1">One keypair for the whole trio: generate it once and copy the secret key to every master.</p>
+        </div>
+      </div>
+      {% if pk_stored %}
+      <p class="text-sm text-base-content/70">The shared keypair is installed and the public key is stored. Use <strong>Repair</strong> if a master lost its key.</p>
+      {% elif can_setup %}
+      <form method="post" action="{{ url_for('pillar_secrets.setup') }}" class="flex flex-col gap-2" data-confirm="Generate or repair the shared NaCl keypair on the masters? An existing key is reused, never regenerated, and the public key is stored automatically.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-primary"><span class="icon-[lucide--sparkles] size-4" aria-hidden="true"></span>Set up NaCl on the masters</button>
+        <span class="text-xs text-base-content/60">Runs the commands below over the Kubernetes exec API: keygen on the first master, secret key copied to the others, public key stored. Existing keys are reused, never regenerated.</span>
+      </form>
+      {% endif %}
+      <details id="keygen" class="collapse collapse-arrow border border-base-300 rounded-lg">
+        <summary class="collapse-title text-xs font-medium min-h-0 py-2">Manual commands</summary>
+        <div class="collapse-content">
+          <div class="mockup-code text-xs overflow-x-auto">
+            <pre data-prefix="$"><code>NS=overstate</code></pre>
+            <pre data-prefix="$"><code>KEYDIR=/home/salt/data/keys/nacl</code></pre>
+            <pre data-prefix="$"><code>kubectl exec -n $NS salt-master-0 -- bash -c "</code></pre>
+            <pre data-prefix="$"><code>  install -d -m 0700 -o salt -g salt $KEYDIR &amp;&amp;</code></pre>
+            <pre data-prefix="$"><code>  runuser -u salt -- salt-call --local nacl.keygen sk_file=$KEYDIR/nacl"</code></pre>
+          </div>
+          <p class="text-xs text-base-content/60 mt-2">This writes <span class="font-mono">nacl</span> (secret) and <span class="font-mono">nacl.pub</span> (public) on the keys PVC.</p>
+          <div class="mockup-code text-xs overflow-x-auto mt-2">
+            <pre data-prefix="$"><code>SK=$(kubectl exec -n $NS salt-master-0 -- runuser -u salt -- cat $KEYDIR/nacl)</code></pre>
+            <pre data-prefix="$"><code>for POD in salt-master-1 salt-master-2; do</code></pre>
+            <pre data-prefix="$"><code>  printf '%s\n' "$SK" | kubectl exec -i -n $NS $POD -- bash -c "</code></pre>
+            <pre data-prefix="$"><code>    install -d -m 0700 -o salt -g salt $KEYDIR &amp;&amp;</code></pre>
+            <pre data-prefix="$"><code>    cat &gt; $KEYDIR/nacl &amp;&amp;</code></pre>
+            <pre data-prefix="$"><code>    chown salt:salt $KEYDIR/nacl &amp;&amp;</code></pre>
+            <pre data-prefix="$"><code>    chmod 0600 $KEYDIR/nacl"</code></pre>
+            <pre data-prefix="$"><code>done</code></pre>
+          </div>
+          <p class="text-xs text-base-content/60 mt-2">The secret key is 32 bytes, base64. Back it up offline; every master must hold the same one or a pillar request that lands on the wrong pod fails to decrypt.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="card card-border bg-base-100 min-w-0 xl:col-span-5" aria-labelledby="setup-pub-title">
+    <div class="card-body gap-3">
+      <div class="flex items-start gap-3">
+        <span class="icon-[lucide--shield-check] size-5 mt-1 text-base-content/60" aria-hidden="true"></span>
+        <div>
+          <h2 id="setup-pub-title" class="card-title text-base">Step 3 · Public key</h2>
+          <p class="text-sm text-base-content/70 mt-1">Overstate encrypts with the public key only; the secret key never leaves the masters.</p>
+        </div>
+      </div>
+      {% if pk_stored %}
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="badge badge-sm badge-success">stored</span>
+        {% if key_id %}<span class="font-mono text-xs">key id {{ key_id }}</span>{% endif %}
+      </div>
+      <div class="card-actions">
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_encryption.enc_index') }}">Manage key</a>
+      </div>
+      {% elif can_setup %}
+      <p class="text-sm text-base-content/70">Step 2 stores it automatically. To paste a key generated elsewhere, paste the <strong>public</strong> key (32 bytes, base64):</p>
+      <form method="post" action="{{ url_for('pillar_encryption.store') }}" class="flex flex-col gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="fieldset">
+          <span class="fieldset-legend">Public key</span>
+          <textarea name="pk" rows="2" class="textarea w-full font-mono" placeholder="base64 of the 32-byte nacl.pub key" aria-label="Master NaCl public key"></textarea>
+        </label>
+        <button class="btn btn-sm btn-outline">Store key</button>
+      </form>
+      {% else %}
+      <p class="text-sm text-base-content/70">An administrator needs to store the master public key.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card card-border bg-base-100 min-w-0 xl:col-span-7" aria-labelledby="setup-verify-title">
+    <div class="card-body gap-3">
+      <div class="flex items-start gap-3">
+        <span class="icon-[lucide--circle-check] size-5 mt-1 text-base-content/60" aria-hidden="true"></span>
+        <div>
+          <h2 id="setup-verify-title" class="card-title text-base">Step 4 · Verify</h2>
+          <p class="text-sm text-base-content/70 mt-1">Prove the master decrypts what Overstate encrypts: a throwaway value round-trips through one minion.</p>
+        </div>
+      </div>
+      {% if not collections %}
+      <p class="text-sm text-base-content/70">Create a collection and add a secret first — verification writes into a wired collection.</p>
+      <div class="card-actions">
+        <a class="btn btn-sm btn-outline" href="{{ url_for('pillar_secrets.index') }}">Open the editor</a>
+      </div>
+      {% elif not minions %}
+      <div class="alert alert-warning" role="status">
+        <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
+        <span>No accepted minions are available to verify against right now.</span>
+      </div>
+      {% else %}
+      <form method="post" action="{{ url_for('pillar_secrets.verify') }}" class="flex flex-wrap items-end gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="fieldset">
+          <span class="fieldset-legend">Collection</span>
+          <select name="collection" class="select select-sm" required>
+            {% for c in collections %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="fieldset">
+          <span class="fieldset-legend">Test minion</span>
+          <select name="minion" class="select select-sm" required>
+            {% for mid in minions %}<option value="{{ mid }}">{{ mid }}</option>{% endfor %}
+          </select>
+        </label>
+        <button class="btn btn-sm btn-primary"{% if not pk_stored %} disabled{% endif %}>Verify</button>
+      </form>
+      {% if verified_at %}<p class="text-sm text-base-content/60">Last verified {{ verified_at|reltime }}.</p>{% endif %}
+      {% endif %}
+      {% if pk_stored %}
+      <div class="card-actions">
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_secrets.index') }}">Done — open the editor</a>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+</main>
+{% endblock %}

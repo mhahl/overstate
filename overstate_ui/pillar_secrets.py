@@ -579,6 +579,40 @@ def top_wire():
     return redirect(url_for("pillar_secrets.index"))
 
 
+@bp.route("/setup", methods=["GET"])
+@login_required
+def setup_wizard():
+    """Guided onboarding: config check → keys → public key → verify."""
+    from .authz import authorize, rbac_mode, require
+
+    if rbac_mode() == "scoped" and not authorize(
+        current_user, "pillar.secret.write"
+    ):
+        require("pillar.read")
+    pk = get_setting(PK_SETTING)
+    from .dashboard import get_salt
+    from .minions import merged_cached_roster
+
+    statuses, _up, _reachable = merged_cached_roster(get_salt())
+    minions = sorted(m for m, st in statuses.items() if st == "accepted")
+    can_setup = (
+        current_user.role == "admin"
+        if rbac_mode() != "scoped"
+        else authorize(current_user, "settings.write")
+    )
+    return render_template(
+        "pillar_setup_wizard.html",
+        pk_stored=bool(pk),
+        key_id=key_id(pk) if pk else None,
+        verified_at=get_setting(VERIFIED_SETTING),
+        renderer=renderer_status(),
+        collections=[{"name": n} for n in list_collections()],
+        minions=minions,
+        can_setup=can_setup,
+        checkout=is_checkout(),
+    )
+
+
 @bp.post("/setup")
 @roles_required("admin")
 def setup():
