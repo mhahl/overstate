@@ -55,11 +55,18 @@ spec:
     name: overstate-internal-ca
     kind: Issuer
   # The app connects to https://salt-master-api:8000 (see app.yaml);
-  # the FQDN forms are included for the in-cluster resolver.
+  # the FQDN forms are included for the in-cluster resolver. The
+  # per-pod headless names are for the live key/presence fan-out
+  # (fleet.py) which talks to each master directly, not via the
+  # Service — without them verification fails with a hostname
+  # mismatch and the live panels read as unavailable.
   dnsNames:
     - salt-master-api
     - salt-master-api.overstate.svc
     - salt-master-api.overstate.svc.cluster.local
+    - salt-master-0.salt-master.overstate.svc.cluster.local
+    - salt-master-1.salt-master.overstate.svc.cluster.local
+    - salt-master-2.salt-master.overstate.svc.cluster.local
   usages:
     - digital signature
     - key encipherment
