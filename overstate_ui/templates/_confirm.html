@@ -36,13 +36,20 @@
     ok.disabled = true;
   }
   // Capture: runs before the pending-state spinner, which must not spin
-  // for a submit we are about to cancel.
+  // for a submit we are about to cancel. Reads data-confirm off either
+  // the form or the submitter button (buttons are used on the encrypted
+  // pillar and repo pages).
   document.addEventListener('submit', function (ev) {
     var form = ev.target;
     if (!form || form.tagName !== 'FORM') return;
-    var text = form.getAttribute('data-confirm');
+    var trigger = ev.submitter && ev.submitter.getAttribute ? ev.submitter : null;
+    function attr(name) {
+      var b = trigger && trigger.getAttribute(name);
+      return b || form.getAttribute(name);
+    }
+    var text = attr('data-confirm');
     if (!text || form.hasAttribute('data-confirmed')) return;
-    var gate = form.getAttribute('data-confirm-checkbox');
+    var gate = attr('data-confirm-checkbox');
     ev.preventDefault();
     ev.stopPropagation();
     pendingForm = form;
