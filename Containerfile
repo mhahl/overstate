@@ -11,9 +11,11 @@ FROM python:3.14-slim
 # git powers the Files page: fetch + pull --ff-only ("Sync now"),
 # single-file commits (edit saves), and upstream push (admin Push
 # button). openssh-client is for push over SSH deploy keys; https
-# remotes keep working for fetch/sync without it.
+# remotes keep working for fetch/sync without it. gnupg encrypts
+# encrypted-pillar values with the masters' public key only — the
+# private key never enters this container.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git openssh-client \
+    && apt-get install -y --no-install-recommends git openssh-client gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

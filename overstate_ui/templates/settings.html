@@ -67,6 +67,7 @@
         <li class="menu-title mt-2">Infrastructure</li>
         <li><a href="{{ url_for('state_repo.index') }}"><span class="icon-[lucide--git-branch] size-4" aria-hidden="true"></span>State repo</a></li>
         <li><a href="{{ url_for('masterconfig.index') }}"><span class="icon-[lucide--server] size-4" aria-hidden="true"></span>Master settings</a></li>
+        <li><a href="{{ url_for('pillar_encryption.enc_index') }}" class="{% if section == 'encryption' %}menu-active{% endif %}"{% if section == 'encryption' %} aria-current="page"{% endif %}><span class="icon-[lucide--key-round] size-4" aria-hidden="true"></span>Encrypted pillar</a></li>
         {% endif %}
       </ul>
     </div>

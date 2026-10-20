@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Encrypted pillar key · Overstate{% endblock %}
+{% block content %}
+{% import "_macros.html" as m %}
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  {{ m.page_heading("Encrypted pillar key", "The master's public key; never the private key.") }}
+  <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_secrets.index') }}">‹ Secrets editor</a>
+</div>
+
+{% if renderer is not none %}
+<div class="alert {% if renderer.renderer and renderer.keydir %}alert-success{% else %}alert-warning{% endif %} mb-4" role="status">
+  <span>Master config: {% if renderer.renderer %}<span class="badge badge-sm badge-success">gpg renderer</span>{% else %}<span class="badge badge-sm badge-error">renderer missing</span>{% endif %} {% if renderer.keydir %}<span class="badge badge-sm badge-success">gpg_keydir</span>{% else %}<span class="badge badge-sm badge-error">gpg_keydir missing</span>{% endif %} (<a class="link" href="{{ url_for('masterconfig.index') }}">Master settings</a>)</span>
+</div>
+{% endif %}
+
+<section class="card card-border bg-base-100 mb-4" aria-label="Master public key">
+  <div class="card-body gap-3">
+    <h2 class="card-title text-base">Master public key</h2>
+    {% if pk_stored %}
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <span class="badge badge-sm badge-success">stored</span>
+      {% if key_id %}<span class="font-mono text-xs">key id {{ key_id }}</span>{% endif %}
+      {% if verified_at %}<span class="text-base-content/60">verified {{ verified_at|reltime }}</span>{% endif %}
+    </div>
+    {% else %}
+    <p class="text-sm text-base-content/70">Nothing stored yet. Generate the keypair on a master with <code class="font-mono">salt-call --local nacl.keygen</code>? No — for gpg: <code class="font-mono">gpg --quick-generate-key</code> (see docs/guides/pillar-encryption.md) and paste the armored <strong>public</strong> key here.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('pillar_encryption.store') }}" class="flex flex-col gap-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="fieldset">
+        <span class="fieldset-legend">Armored public key</span>
+        <textarea name="pk" rows="6" class="textarea w-full font-mono" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" aria-label="Armored master public key"></textarea>
+      </label>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-sm btn-primary"{% if pk_stored %} data-confirm="Replace the stored public key? Values already encrypted with the old key stop decrypting until re-encrypted." data-confirm-checkbox="I understand existing values must be re-encrypted after replacing the key."{% endif %}>Store key</button>
+        {% if pk_stored %}
+        <form method="post" action="{{ url_for('pillar_encryption.clear') }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-ghost" data-confirm="Clear the stored public key? Existing ciphertext stays in git but nothing new can be encrypted until a key is stored again." data-confirm-checkbox="I understand clearing the key stops all new encryption.">Clear</button>
+        </form>
+        {% endif %}
+      </div>
+    </form>
+    <p class="text-sm text-base-content/60">The private key lives only on the masters. The app holds the public key to encrypt values you type; it can never decrypt anything.</p>
+  </div>
+</section>
+
+<p class="text-sm text-base-content/70">Step-by-step key generation and master import: <span class="font-mono">docs/guides/pillar-encryption.md</span>.</p>
+{% endblock %}

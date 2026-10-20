@@ -22,6 +22,8 @@ dependencies = [
     "gunicorn>=22.0",
     "Pygments>=2.19",
     "PyYAML>=6.0",
+    "python-gnupg>=0.5",
+    "ruamel.yaml>=0.18",
 ]
 
 [project.optional-dependencies]

@@ -76,6 +76,7 @@ _OPERATOR_DELTA = frozenset(
         "state.watch",
         "console.runner",
         "dashboard.probe",
+        "pillar.secret.write",
     }
 )
 
@@ -114,6 +115,7 @@ _TEAM_OPERATOR_DELTA = frozenset(
         "job.kill",
         "job.save",
         "job.batch",
+        "pillar.secret.write",
     }
 )
 
@@ -214,6 +216,7 @@ _FLEET_DOMAIN_PERMS = frozenset(
         "grant.admin",
         "console.runner",
         "dashboard.probe",
+        "pillar.secret.write",
     }
 )
 

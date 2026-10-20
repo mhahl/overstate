@@ -1,14 +1,21 @@
 {# Shared destructive-action confirm. Any form with data-confirm="message"
    pauses its submit in this dialog; Confirm resubmits once. Schedules and
    states templates already carry data-confirm attributes. Without JS the
-   form submits directly (same as before this partial existed). #}
+   form submits directly (same as before this partial existed).
+   data-confirm-checkbox="label" adds a checkbox the user must tick before
+   Confirm enables; on confirm the form gains a hidden confirm_box=1 so the
+   server can re-check the gate. #}
 <dialog id="confirm-modal" class="modal" aria-labelledby="confirm-modal-title">
   <div class="modal-box">
     <h3 id="confirm-modal-title" class="font-bold text-lg">Are you sure?</h3>
     <p id="confirm-modal-message" class="py-2 text-sm"></p>
+    <label id="confirm-modal-checkbox-row" class="flex items-center gap-2 py-1 text-sm hidden">
+      <input id="confirm-modal-checkbox" type="checkbox" class="checkbox checkbox-sm">
+      <span id="confirm-modal-checkbox-label"></span>
+    </label>
     <div class="modal-action">
       <button type="button" class="btn btn-sm btn-ghost" id="confirm-modal-cancel">Cancel</button>
-      <button type="button" class="btn btn-sm btn-error" id="confirm-modal-ok">Confirm</button>
+      <button type="button" class="btn btn-sm btn-error" id="confirm-modal-ok" disabled>Confirm</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
@@ -18,7 +25,16 @@
   var dialog = document.getElementById('confirm-modal');
   if (!dialog) return;
   var message = document.getElementById('confirm-modal-message');
+  var ok = document.getElementById('confirm-modal-ok');
+  var checkboxRow = document.getElementById('confirm-modal-checkbox-row');
+  var checkbox = document.getElementById('confirm-modal-checkbox');
+  var checkboxLabel = document.getElementById('confirm-modal-checkbox-label');
   var pendingForm = null;
+  function resetGate() {
+    checkboxRow.classList.add('hidden');
+    checkbox.checked = false;
+    ok.disabled = true;
+  }
   // Capture: runs before the pending-state spinner, which must not spin
   // for a submit we are about to cancel.
   document.addEventListener('submit', function (ev) {
@@ -26,18 +42,37 @@
     if (!form || form.tagName !== 'FORM') return;
     var text = form.getAttribute('data-confirm');
     if (!text || form.hasAttribute('data-confirmed')) return;
+    var gate = form.getAttribute('data-confirm-checkbox');
     ev.preventDefault();
     ev.stopPropagation();
     pendingForm = form;
     message.textContent = text;
+    if (gate) {
+      checkboxLabel.textContent = gate;
+      checkboxRow.classList.remove('hidden');
+      ok.disabled = true;
+    } else {
+      resetGate();
+      ok.disabled = false;
+    }
     dialog.showModal();
     document.getElementById('confirm-modal-cancel').focus();
   }, true);
-  document.getElementById('confirm-modal-ok').addEventListener('click', function () {
+  checkbox.addEventListener('change', function () {
+    ok.disabled = !checkbox.checked;
+  });
+  ok.addEventListener('click', function () {
     var form = pendingForm;
     pendingForm = null;
     dialog.close();
     if (form) {
+      if (checkbox.checked && !form.querySelector('input[name="confirm_box"]')) {
+        var hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'confirm_box';
+        hidden.value = '1';
+        form.appendChild(hidden);
+      }
       form.setAttribute('data-confirmed', '1');
       form.requestSubmit();
     }
@@ -45,8 +80,9 @@
   function cancel() {
     dialog.close();
     pendingForm = null;
+    resetGate();
   }
   document.getElementById('confirm-modal-cancel').addEventListener('click', cancel);
-  dialog.addEventListener('close', function () { pendingForm = null; });
+  dialog.addEventListener('close', function () { pendingForm = null; resetGate(); });
 })();
 </script>

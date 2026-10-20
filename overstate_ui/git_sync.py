@@ -256,20 +256,26 @@ def _oneline(value: str, limit: int = 128) -> str:
     return re.sub(r"[\s<>]+", " ", value or "").strip()[:limit]
 
 
-def git_commit_file(rel: str, subject: str, author: str) -> dict:
+def git_commit_file(
+    rel: str, subject: str, author: str, cwd: Path | None = None
+) -> dict:
     """Commit the working-tree changes to exactly one file.
 
     ``rel`` is a ``safe_join``-validated path relative to the checkout,
     passed as a single argv item (never a shell). Identity is fixed
     per-invocation so commits never depend on repo config; the operator
     is recorded as author. Refusals explain, never force.
+
+    ``cwd`` defaults to file roots; pass the checkout root (``_toplevel``)
+    to commit files outside ``salt/``, e.g. the ``pillar/`` tree.
     """
+    base = cwd or _root()
     with _single_flight() as free:
         if not free:
             return {"ok": False, "reason": "a sync is already running"}
         if not _is_checkout():
             return {"ok": False, "reason": "not a git checkout"}
-        add = _run("add", "--", rel)
+        add = _run("add", "--", rel, cwd=base)
         if add is None or add.returncode != 0:
             return {"ok": False, "reason": _failure(add, "git add failed")}
         who = _oneline(author, 64) or "overstate"
@@ -285,10 +291,11 @@ def git_commit_file(rel: str, subject: str, author: str) -> dict:
             _oneline(subject, 160),
             "--",
             rel,
+            cwd=base,
         )
         if proc is None or proc.returncode != 0:
             return {"ok": False, "reason": _failure(proc, "git commit failed")}
-        new = _run("rev-parse", "--short", "HEAD")
+        new = _run("rev-parse", "--short", "HEAD", cwd=base)
         new_sha = new.stdout.strip() if new and new.returncode == 0 else None
         return {"ok": True, "new": new_sha}
 

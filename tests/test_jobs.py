@@ -637,12 +637,19 @@ def test_new_marks_active_preset(client):
 
 
 def test_library_collapsed_by_default(client):
+    import re
+
+    def toggle(html):
+        m = re.search(r'<input[^>]*id="op-library-toggle"[^>]*>', html)
+        assert m, "operation-library toggle missing"
+        return m.group(0)
+
     html = client.get("/jobs/new").data.decode()
     assert 'id="op-library-toggle"' in html
-    assert "checked" not in html
+    assert "checked" not in toggle(html)
     html = client.get("/jobs/new?preset=ping").data.decode()
     assert 'id="op-library-toggle"' in html
-    assert "checked" in html
+    assert "checked" in toggle(html)
 
 
 def test_docs_slot_lives_in_rail_after_form(client):

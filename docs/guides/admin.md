@@ -358,3 +358,19 @@ verdict is written for it. A minion the roster cache currently shows as
 up but that a job marked `unreachable` renders as `missed` (its return
 was likely lost, not the minion down). Verdicts older than a day are
 flagged `stale`.
+
+## Encrypted pillar
+
+Values that must not sit in git in plaintext (NetBird setup keys, IPA
+passwords) use Salt's GPG renderer. Overstate manages them from
+**Pillar → Encrypted pillar**: per-file collections under
+`pillar/secrets/`, blind add/replace/delete, one-click top.sls wiring,
+and an end-to-end verify. The master **public** key is stored from
+**Settings → Infrastructure → Encrypted pillar**; the private key never
+enters the app. The app encrypts in memory and commits ciphertext, so
+`git log -p` never shows a value.
+
+`pillar.read` holders still see decrypted values in the Pillar explorer
+and in captured snapshots — scope that grant accordingly. Full
+runbook, key import, rotation, and failure modes:
+`docs/guides/pillar-encryption.md`.

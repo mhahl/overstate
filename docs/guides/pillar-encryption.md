@@ -190,3 +190,56 @@ from the offline backup.
 - `gpg: WARNING: unsafe permissions` in master logs: the homedir is
   not `0700 salt:salt` — fix ownership, GPG refuses to decrypt
   otherwise.
+
+## Managing from Overstate (web UI)
+
+Overstate can drive steps 4–6 without a workstation `gpg`. It never
+holds the private key: only the master **public** key is stored (as an
+app setting), values are encrypted in memory when you save, and the
+ciphertext alone lands in the pillar tree. The app cannot decrypt
+anything.
+
+**One-time setup**
+
+1. **Pillar → Encrypted pillar** shows the onboarding checklist: the
+   app reads the live master ConfigMap and reports whether
+   `renderer: … gpg` and `gpg_keydir` are set (step 3 above). It cannot
+   see inside the masters, so the private-key import (step 2) stays a
+   copy-paste `kubectl exec` checklist with the real pod names.
+2. **Settings → Infrastructure → Encrypted pillar** stores the armored
+   *public* key and shows its key id. Replacing the key requires the
+   confirmation checkbox — existing values stop decrypting until they
+   are re-entered.
+3. **Pillar → Encrypted pillar → Verify** writes a throwaway encrypted
+   key into a wired collection, runs `saltutil.refresh_pillar` on one
+   test minion, reads `pillar.items` back and checks the plaintext
+   matches, then removes the key. A green result proves the whole path
+   against the real master.
+
+**Daily use**
+
+- Create a collection (one `pillar/secrets/<name>.sls`), wire it into
+  `pillar/top.sls` with one click (idempotent), then add secrets by
+  dotted key (`netbird.setup_key`). Values are typed as plaintext and
+  encrypted with the stored public key.
+- **Replacing a value is blind**: the app cannot show the old
+  plaintext, so updates ask for a checkbox confirmation and always
+  overwrite. Ciphertext produced elsewhere cannot be imported; enter
+  the plaintext instead.
+- Each save is a single-file git commit (same flow as the Files page).
+  Push when you are ready; the master reads the working tree, so
+  `saltutil.refresh_pillar` (Jobs preset) is what makes minions pick
+  up a new value.
+- Deleting a key removes it from the file and commits.
+
+**What this does not change**
+
+- `pillar.items` returns decrypted values, so `pillar.read` holders
+  (including `secrets-reader`) and **Capture** snapshots still see
+  plaintext in the UI and Postgres — see "What encryption does and does
+  not cover" at the top of this guide.
+- Keypair rotation (step 6) stays a manual, master-side operation. The
+  web UI's job is storing the new public key and re-entering values.
+- A rescheduled master missing its keys PVC still decrypts nothing
+  until the import is repeated; the verify flow surfaces that
+  immediately.
