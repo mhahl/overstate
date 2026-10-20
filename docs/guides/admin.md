@@ -369,6 +369,10 @@ one-click top.sls wiring, and an end-to-end verify. The master
 **public** key is stored from **Settings → Infrastructure → Encrypted
 pillar**; the secret key never enters the app. The app encrypts in
 memory and commits ciphertext, so `git log -p` never shows a value.
+Admins can also run the master-side key setup from the onboarding card:
+the app holds `pods/exec` on the salt-master pods and generates/copies
+the shared NaCl key itself (an existing key is reused, never rotated
+silently).
 
 `pillar.read` holders still see decrypted values in the Pillar explorer
 and in captured snapshots — scope that grant accordingly. Full

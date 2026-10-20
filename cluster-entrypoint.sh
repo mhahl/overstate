@@ -489,4 +489,16 @@ if [ -n "${POD_NAME:-}" ] && [ -n "${POD_IP:-}" ]; then
   ) >>"$LOG" 2>&1 &
 fi
 
+# GPG is retired (encrypted pillar uses NaCl). The base image refuses to
+# start when $KEYS_DIR/gpgkeys exists and is non-empty but lacks
+# private.key/pubkey.gpg — a partial dir left by any earlier attempt
+# blocks the pod in CrashLoopBackOff. Remove that stale/partial dir so
+# the base's GPG setup skips cleanly. A *complete* GPG keypair is left
+# untouched.
+GPGKEYS_DIR="$KEYS_DIR/gpgkeys"
+if [ -d "$GPGKEYS_DIR" ] && [ ! -f "$GPGKEYS_DIR/private.key" ]; then
+  rm -rf "$GPGKEYS_DIR"
+  log "removed stale gpgkeys dir (GPG renderer retired)"
+fi
+
 exec /sbin/entrypoint.sh "$@"

@@ -406,6 +406,13 @@ def index():
     statuses, _up, _reachable = merged_cached_roster(get_salt())
     minions = sorted(m for m, st in statuses.items() if st == "accepted")
     renderer = renderer_status()
+    from .authz import authorize
+
+    can_setup = (
+        current_user.role == "admin"
+        if rbac_mode() != "scoped"
+        else authorize(current_user, "settings.write")
+    )
     return render_template(
         "pillar_secrets.html",
         collections=collections,
@@ -414,6 +421,7 @@ def index():
         key_id=key_id(pk) if pk else None,
         verified_at=get_setting(VERIFIED_SETTING),
         pk_stored=bool(pk),
+        can_setup=can_setup,
         checkout=is_checkout(),
     )
 
@@ -568,6 +576,38 @@ def top_wire():
         log_event(current_user.username, f"pillar-secret:wire:{name}")
     else:
         flash(f"Could not wire top.sls ({result['reason']}).", "error")
+    return redirect(url_for("pillar_secrets.index"))
+
+
+@bp.post("/setup")
+@roles_required("admin")
+def setup():
+    """Generate/repair the shared NaCl keypair on the masters via exec.
+
+    Admin-only: it writes the secret key onto every master and stores the
+    public key for the editor.
+    """
+    from .authz import rbac_mode, require
+
+    if rbac_mode() == "scoped":
+        require("settings.write")
+    from .pillar_setup import setup_nacl
+
+    result = setup_nacl(current_user.username)
+    if result["ok"]:
+        flash(
+            "NaCl keypair installed on all masters; the public key is stored.",
+            "success",
+        )
+    else:
+        failed = [s for s in result["steps"] if not s["ok"]]
+        detail = "; ".join(f"{s['step']}: {s['detail']}" for s in failed) or "unknown"
+        flash(f"NaCl setup failed — {detail}", "error")
+    log_event(
+        current_user.username,
+        "pillar-secret:master-setup",
+        detail="ok" if result["ok"] else "failed",
+    )
     return redirect(url_for("pillar_secrets.index"))
 
 

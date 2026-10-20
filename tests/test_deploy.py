@@ -144,7 +144,7 @@ def test_master_conf_seeds_reactor_stanza():
 def test_master_image_uses_the_validated_digest():
     sts = _salt_master_sts()
     (container,) = sts["spec"]["template"]["spec"]["containers"]
-    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg14"
+    assert container["image"] == "quay.io/sigaint/overstate-salt-master:lts-pg14-nacl2"
     # Floating tag rebuilds must reach the nodes.
     assert container["imagePullPolicy"] == "Always"
 

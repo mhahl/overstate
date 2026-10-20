@@ -20,6 +20,7 @@ stamping twice is harmless.
 from __future__ import annotations
 
 import base64
+import contextlib
 import datetime
 import json
 import os
@@ -126,12 +127,35 @@ def _default_transport(
         raise K8sError(f"kubernetes API unreachable: {exc}") from exc
 
 
-class K8sClient:
-    """Namespace-scoped API client. `transport` is injectable for tests."""
+def _exec_exit_code(status: str) -> int:
+    """Exit code from the v4 exec status channel (JSON), 0 when absent."""
+    if not status:
+        return 0
+    try:
+        payload = json.loads(status)
+    except ValueError:
+        return 1
+    if payload.get("status") == "Success":
+        return 0
+    for cause in (payload.get("details") or {}).get("causes") or []:
+        if cause.get("reason") == "ExitCode":
+            try:
+                return int(cause.get("message", "1"))
+            except (TypeError, ValueError):
+                return 1
+    return 1
 
-    def __init__(self, config: K8sConfig | None = None, transport=None) -> None:
+
+class K8sClient:
+    """Namespace-scoped API client. `transport` and `ws_factory` are
+    injectable for tests."""
+
+    def __init__(
+        self, config: K8sConfig | None = None, transport=None, ws_factory=None
+    ) -> None:
         self.config = config or K8sConfig.from_environment()
         self._transport = transport or _default_transport
+        self._ws_factory = ws_factory
         self.timeout = 10.0
 
     def _call(self, method: str, path: str, body: dict | None = None) -> dict:
@@ -153,6 +177,88 @@ class K8sClient:
         if status >= 400:
             raise K8sError(f"kubernetes API HTTP {status}")
         return payload
+
+    # -- Pod exec ----------------------------------------------------------
+
+    def exec_command(
+        self, pod: str, command: list[str], container: str | None = None,
+        timeout: float = 60.0,
+    ) -> dict:
+        """Run ``command`` (argv) in a pod over the exec subresource.
+
+        Returns ``{"ok", "exit_code", "stdout", "stderr"}``; a non-zero
+        exit is a result, not an exception. Connection/handshake failures
+        raise :class:`K8sError` so callers can tell "command failed" from
+        "cannot exec at all".
+
+        Uses the v4.channel.k8s.io websocket protocol (stdout=1,
+        stderr=2, status=3). ``ws_factory`` is injectable for tests.
+        """
+        if not self.config.available:
+            raise K8sUnavailableError(
+                "not running in a cluster; use kubectl from a workstation"
+            )
+        try:
+            import websocket
+        except ImportError as exc:  # pragma: no cover — dependency is pinned
+            raise K8sError("websocket-client is not installed") from exc
+
+        server = self.config.server or ""
+        ws_base = server.replace("https://", "wss://", 1).replace(
+            "http://", "ws://", 1
+        )
+        params = [("command", arg) for arg in command]
+        params += [("stdout", "1"), ("stderr", "1"), ("stdin", "0"), ("tty", "0")]
+        if container:
+            params.append(("container", container))
+        url = (
+            f"{ws_base}/api/v1/namespaces/{self.config.namespace}"
+            f"/pods/{pod}/exec?{urllib.parse.urlencode(params)}"
+        )
+        factory = self._ws_factory or websocket.create_connection
+        sslopt = {"ca_certs": self.config.ca_path} if self.config.ca_path else {}
+        try:
+            ws = factory(
+                url,
+                header=[f"Authorization: Bearer {self.config.token}"],
+                sslopt=sslopt,
+                subprotocols=["v4.channel.k8s.io"],
+                timeout=timeout,
+            )
+        except Exception as exc:  # socket/TLS/handshake
+            raise K8sError("could not open the exec stream") from exc
+
+        stdout: list[bytes] = []
+        stderr: list[bytes] = []
+        status = ""
+        try:
+            while True:
+                try:
+                    frame = ws.recv()
+                except Exception:  # noqa: BLE001 — timeout or clean close
+                    break
+                if not frame:
+                    break
+                if isinstance(frame, str):
+                    frame = frame.encode("utf-8")
+                channel, payload = frame[0], frame[1:]
+                if channel == 1:
+                    stdout.append(payload)
+                elif channel == 2:
+                    stderr.append(payload)
+                elif channel == 3:
+                    status = payload.decode("utf-8", "replace")
+        finally:
+            with contextlib.suppress(Exception):
+                ws.close()
+
+        exit_code = _exec_exit_code(status)
+        return {
+            "ok": exit_code == 0,
+            "exit_code": exit_code,
+            "stdout": b"".join(stdout).decode("utf-8", "replace"),
+            "stderr": b"".join(stderr).decode("utf-8", "replace"),
+        }
 
     # -- ConfigMaps --------------------------------------------------------
 

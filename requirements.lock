@@ -19,3 +19,4 @@ Pygments==2.21.0
 PyYAML==6.0.3
 pynacl==1.6.2
 ruamel.yaml==0.19.1
+websocket-client==1.9.2

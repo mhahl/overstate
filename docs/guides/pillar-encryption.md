@@ -190,9 +190,15 @@ one-way, so the app cannot decrypt anything.
 
 1. **Pillar → Encrypted pillar** shows the onboarding checklist: the
    app reads the live master ConfigMap and reports whether the `nacl`
-   renderer and `nacl.config` are set (step 3 above). It cannot see
-   inside the masters, so key generation and the copy to the other two
-   pods stay the copy-paste accordion there.
+   renderer and `nacl.config` are set (step 3 above). The admins-only
+   **Set up NaCl on the masters** button runs steps 1–2 for you over
+   the Kubernetes exec API (the app's role already grants
+   `pods/exec`): keygen on the first master, the same secret key
+   installed on the others with a digest check, and the public key
+   stored automatically. An existing key is reused, never regenerated,
+   so the button doubles as a repair for a master that lost its key.
+   The copy-paste accordion stays for clusters where the app has no
+   exec access.
 2. **Settings → Infrastructure → Encrypted pillar** stores the base64
    public key and shows its key id. Replacing the key requires the
    confirmation checkbox — existing values stop decrypting until they

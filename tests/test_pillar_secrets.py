@@ -510,6 +510,7 @@ def test_setup_card_has_nacl_keygen_accordion(secrets_env):
     assert "Generate the master keypair" in html
     assert "salt-call --local nacl.keygen" in html
     assert "nacl.config" in html
+    assert "Set up NaCl on the masters" in html  # admin exec action
     assert "gpg" not in html.lower()
     assert "_overstate_verify" not in html
 

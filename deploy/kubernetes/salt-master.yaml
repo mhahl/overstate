@@ -57,7 +57,7 @@ spec:
           # holds app images only; master images live in
           # quay.io/sigaint/overstate-salt-master.
           # Floating tag: rebuilds are intentional rollouts via apply.
-          image: quay.io/sigaint/overstate-salt-master:lts-pg14
+          image: quay.io/sigaint/overstate-salt-master:lts-pg14-nacl2
           # Pull the tag on each restart so rebuilds reach the nodes.
           imagePullPolicy: Always
           env:
