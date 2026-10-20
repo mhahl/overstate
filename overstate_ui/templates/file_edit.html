@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set file_ns = file_ns|default('files') %}
 {% block title %}Edit {{ rel }} · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
@@ -6,7 +7,7 @@
     <h1 class="text-xl font-bold font-mono tracking-tight break-all me-auto">{{ rel }}</h1>
   </div>
   <p class="text-sm opacity-70 mb-4">Saving commits this file locally{% if revision %} (checkout at <code class="font-mono">{{ revision }}</code>){% endif %}; an admin pushes it upstream separately.</p>
-  <form method="post" action="{{ url_for('files.save') }}">
+  <form method="post" action="{{ url_for(file_ns ~ '.save') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="path" value="{{ rel }}">
     <input type="hidden" name="base_sha" value="{{ base_sha }}">
@@ -24,7 +25,7 @@
       </div>
     </div>
     <div class="flex gap-2 mt-3 justify-end">
-      <a class="btn btn-sm btn-ghost" href="{{ url_for('files.view', path=rel) }}">Cancel</a>
+      <a class="btn btn-sm btn-ghost" href="{{ url_for(file_ns ~ '.view', path=rel) }}">Cancel</a>
       <button class="btn btn-sm btn-primary" type="submit">Save</button>
     </div>
   </form>

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 import secrets as pysecrets
+import time
 from pathlib import Path
 
 from flask import (
@@ -62,6 +63,13 @@ _rt = YAML(typ="rt")
 _rt.preserve_quotes = True
 _rt.width = 4096
 _rt.indent(mapping=2, sequence=4, offset=2)
+
+#: Verify read retry: ``saltutil.refresh_pillar`` returns before the
+#: minion finishes re-rendering, so the first ``pillar.items`` read may
+#: still serve the old cache. Bounded retries close that race without
+#: blocking a worker for long.
+VERIFY_READ_ATTEMPTS = 6
+VERIFY_READ_INTERVAL = 0.5
 
 
 # --- Pillar-tree access -------------------------------------------------
@@ -307,16 +315,42 @@ def verify_collection(name: str, minion: str, user: str) -> dict:
     if not commit["ok"]:
         return {"ok": False, "steps": steps + [{"step": "write", "ok": False, "detail": commit.get("reason")}]}
     steps.append({"step": "write", "ok": True, "detail": commit.get("new")})
+    # The master fileserver caches its file list; a brand-new collection
+    # file (or its top.sls wiring) is not servable until fileserver.update.
+    # Refresh before touching the minion, mirroring the Files page sync path.
+    try:
+        from .dashboard import get_salt
+
+        get_salt().runner("fileserver.update", http_timeout=30.0)
+        steps.append({"step": "fileserver", "ok": True, "detail": None})
+    except Exception as exc:  # noqa: BLE001 — advisory; read retry may still land
+        steps.append({"step": "fileserver", "ok": False, "detail": str(exc)[:200]})
     try:
         _refresh_pillar(minion)
         steps.append({"step": "refresh", "ok": True, "detail": None})
     except Exception as exc:  # noqa: BLE001 — report, then clean up
         steps.append({"step": "refresh", "ok": False, "detail": str(exc)[:200]})
-    read = _read_pillar(minion)
-    matched = read.get("_overstate_verify") == nonce
-    steps.append(
-        {"step": "read", "ok": matched, "detail": "plaintext matches" if matched else "value did not decrypt to the nonce"}
-    )
+    # saltutil.refresh_pillar returns once published, not once the minion
+    # has finished re-rendering; the first pillar.items read may still serve
+    # the old cache. Retry briefly so a normal refresh lands.
+    read: dict = {}
+    matched = False
+    for _ in range(VERIFY_READ_ATTEMPTS):
+        try:
+            read = _read_pillar(minion)
+        except Exception:  # noqa: BLE001 — a flaky read is not the verdict
+            read = {}
+        if read.get("_overstate_verify") == nonce:
+            matched = True
+            break
+        time.sleep(VERIFY_READ_INTERVAL)
+    if matched:
+        detail = "plaintext matches"
+    elif not read:
+        detail = "minion returned no pillar (target wrong, minion down, or not wired)"
+    else:
+        detail = "value did not decrypt to the nonce"
+    steps.append({"step": "read", "ok": matched, "detail": detail})
     # Remove the throwaway key (always).
     data = _load_rt(path)
     _del_path(data, "_overstate_verify")
@@ -324,7 +358,13 @@ def verify_collection(name: str, minion: str, user: str) -> dict:
     git_commit_file(
         _collection_rel(name), f"overstate({user}): remove pillar verify key", user, cwd=_toplevel()
     )
-    ok = all(s["ok"] for s in steps)
+    ok = all(
+        s["ok"]
+        for s in steps
+        # fileserver refresh is a means to the read, not the proof itself:
+        # if the throwaway value round-trips, verification holds regardless.
+        if s["step"] in ("encrypt", "write", "refresh", "read")
+    )
     if ok:
         import datetime as dt
 
@@ -654,6 +694,15 @@ def verify():
     if name not in list_collections():
         flash("Pick a collection first.", "error")
         return redirect(url_for("pillar_secrets.index"))
+    if not collection_wired(name):
+        # A minion only ever sees wired collections; verification would
+        # otherwise fail on a read that can never succeed. Wire it now
+        # (idempotent, one commit) so the end-to-end proof can run.
+        result = wire_collection(name, current_user.username)
+        if not result["ok"]:
+            flash(f"Could not wire secrets.{name} into pillar/top.sls ({result.get('reason')}).", "error")
+            return redirect(url_for("pillar_secrets.index"))
+        flash(f"Wired secrets.{name} into pillar/top.sls so the test minion can receive it.", "info")
     if not minion or any(c in minion for c in "*?[]"):
         flash("Pick one exact test minion.", "error")
         return redirect(url_for("pillar_secrets.index"))

@@ -320,6 +320,22 @@ view compares any two snapshots, or two minions, side by side. Use
 diffs to answer "what changed on this host last Tuesday" and to check
 that a whole role shares identical secrets.
 
+### Pillar files
+
+The **Pillar files** tab browses the pillar *source* tree the master
+renders: `top.sls`, plaintext pillar files (`common.sls`, per-role
+files), and the encrypted `secrets/` tree. It is the counterpart to the
+Pillar snapshots above — rendered data per minion versus the source
+files behind it.
+
+Browsing and viewing are open to the same readers as the Files page.
+Anything under `secrets/` is read-only in this browser: it holds only
+`NACL[...]` ciphertext, and editing there belongs to the **Encrypted
+pillar** editor (see `docs/guides/pillar-encryption.md`), which
+encrypts in memory with the master public key. Plaintext pillar files
+outside `secrets/` can be edited here by operators, saved as a single
+local git commit, exactly like the Files page edit flow.
+
 ## Files
 
 The Files page is the file explorer and nothing else: a folder tree

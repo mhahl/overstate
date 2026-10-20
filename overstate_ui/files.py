@@ -81,9 +81,9 @@ def roots() -> Path:
     return Path(current_app.config["FILE_ROOTS"]).resolve()
 
 
-def safe_join(rel: str) -> Path | None:
-    """Resolve ``rel`` inside roots; return None on traversal/absolute paths."""
-    base = roots()
+def safe_join(rel: str, base: Path | None = None) -> Path | None:
+    """Resolve ``rel`` inside ``base`` (or roots); None on traversal."""
+    base = base or roots()
     try:
         target = (base / rel).resolve()
     except (OSError, ValueError):
@@ -93,14 +93,15 @@ def safe_join(rel: str) -> Path | None:
     return target
 
 
-def list_tree(limit: int | None = None) -> list[dict]:
-    """Flat file listing under roots, sorted by path.
+def list_tree(limit: int | None = None, base: Path | None = None) -> list[dict]:
+    """Flat file listing under ``base`` (defaults to file roots), sorted
+    by path.
 
     ``limit`` bounds the walk itself: collection stops after
     ``limit`` entries so a huge checkout cannot balloon one request.
     ``None`` walks everything (kept for small-tree callers/tests).
     """
-    base = roots()
+    base = base or roots()
     entries = []
     if not base.is_dir():
         return entries
@@ -146,9 +147,9 @@ def normalize_dir(value: str) -> str:
     return "/".join(parts)
 
 
-def dir_crumbs(d: str) -> list[dict]:
-    """Breadcrumb segments for a dir prefix: Files plus each level."""
-    crumbs = [{"label": "Files", "dir": ""}]
+def dir_crumbs(d: str, root_label: str = "Files") -> list[dict]:
+    """Breadcrumb segments for a dir prefix: root label plus each level."""
+    crumbs = [{"label": root_label, "dir": ""}]
     prefix = []
     for seg in d.split("/"):
         if not seg:

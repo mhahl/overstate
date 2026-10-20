@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Pillar files · Overstate{% endblock %}
+{% block content %}
+{% include "_pillar_tabs.html" %}
+<div class="flex flex-col gap-4">
+  <header class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Pillar files</h1>
+      <p class="text-sm text-base-content/70 mt-1">Pillar source the master renders — <span class="font-mono">top.sls</span>, plaintext pillar, and the encrypted <span class="font-mono">secrets/</span> tree (read-only here).</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="badge badge-sm badge-ghost tabular-nums">{{ total }} file{% if total != 1 %}s{% endif %}</span>
+      {% if revision %}<span class="badge badge-sm badge-ghost font-mono" title="Current checkout revision">{{ revision }}</span>{% endif %}
+    </div>
+  </header>
+
+  <section id="pillar-file-workspace" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" aria-label="Pillar files workspace">
+    <nav class="card card-border bg-base-100 min-w-0 lg:col-span-3" aria-label="Pillar folder navigation">
+      <div class="card-body min-w-0 gap-3 p-3">
+        <div class="flex items-center gap-2">
+          <div class="flex items-center justify-center size-8 rounded-full bg-base-200 text-base-content/60"><span class="icon-[lucide--folder-tree] size-4" aria-hidden="true"></span></div>
+          <div>
+            <h2 class="font-medium text-sm">Folders</h2>
+            <p class="text-xs text-base-content/60">Pillar tree</p>
+          </div>
+          <a class="btn btn-sm btn-ghost ms-auto" href="{{ url_for('pillar_files.index') }}">All files</a>
+        </div>
+        <div id="file-tree" role="tree" aria-label="Pillar folder tree" class="max-w-full overflow-auto rounded-box border border-base-300 bg-base-200/50 p-2" data-index-url="{{ url_for('pillar_files.index') }}"></div>
+        <div id="file-tree-fallback" class="max-w-full overflow-auto rounded-box border border-base-300 bg-base-200/50 p-2" aria-label="Folder links">
+          {% macro dir_tree(nodes) %}
+          <ul class="menu menu-sm w-full p-0">
+            {% for n in nodes %}
+            <li>
+              {% if n.key == d %}<a href="{{ url_for('pillar_files.index', dir=n.key, q=q) }}" class="font-mono menu-active">
+              {% else %}<a href="{{ url_for('pillar_files.index', dir=n.key, q=q) }}" class="font-mono">{% endif %}
+                <span class="icon-[lucide--folder] size-4 shrink-0" aria-hidden="true"></span>{{ n.title }}/
+              </a>
+              {% if n.children %}{{ dir_tree(n.children) }}{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% endmacro %}
+          {% if tree_nodes %}{{ dir_tree(tree_nodes) }}{% else %}<p class="px-2 py-3 text-xs text-base-content/60">No subfolders in this root.</p>{% endif %}
+        </div>
+        <script type="application/json" id="file-tree-data">{{ tree_nodes|tojson }}</script>
+      </div>
+    </nav>
+
+    <section class="card card-border bg-base-100 min-w-0 lg:col-span-9" aria-label="Pillar file results">
+      <div class="card-body min-w-0 gap-0 p-0">
+        <div id="file-browser-toolbar" class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300 px-4 py-3">
+          <div class="min-w-0">
+            {% if d %}
+            <nav class="breadcrumbs max-w-full text-sm" aria-label="Current folder">
+              <ul>
+                {% for c in crumbs %}
+                {% if loop.last %}<li><span class="font-mono">{{ c.label }}/</span></li>{% else %}<li><a class="font-mono" href="{{ url_for('pillar_files.index', dir=c.dir, q=q) }}">{{ c.label }}</a></li>{% endif %}
+                {% endfor %}
+              </ul>
+            </nav>
+            {% else %}
+            <h2 class="font-medium">All pillar files</h2>
+            <p class="text-xs text-base-content/60 mt-1">Files in the pillar tree the master renders</p>
+            {% endif %}
+          </div>
+          <div class="flex w-full flex-wrap items-end justify-end gap-2 sm:w-auto sm:flex-nowrap">
+          <form method="get" action="{{ url_for('pillar_files.index') }}" role="search" class="flex flex-wrap items-end justify-end gap-2" aria-label="Search pillar files">
+            <input type="hidden" name="dir" value="{{ d }}">
+            {{ m.table_search_field("pillar-files-search", "q", q, "Search files", "Name or path…", "Search pillar files") }}
+            <button class="btn btn-sm btn-outline border-base-300 mb-1">Search</button>
+            {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('pillar_files.index', dir=d) }}">Clear</a>{% endif %}
+          </form>
+          {{ m.page_size_select('pillar_files.index', per_page, {'q': q, 'dir': d}) }}
+          </div>
+        </div>
+
+        {% if not checkout %}
+        <div class="px-4 pt-4">
+          <div class="alert alert-warning text-sm" role="status">
+            <span class="flex items-center justify-center size-5 shrink-0"><span class="icon-[lucide--triangle-alert] size-5" aria-hidden="true"></span></span>
+            <p>The pillar tree is read-only until this checkout exists (no git checkout at the file roots).</p>
+          </div>
+        </div>
+        {% endif %}
+        {% if not has_top %}
+        <div class="px-4 pt-4">
+          <div class="alert alert-warning text-sm" role="status">
+            <span class="flex items-center justify-center size-5 shrink-0"><span class="icon-[lucide--triangle-alert] size-5" aria-hidden="true"></span></span>
+            <p>No <span class="font-mono">pillar/top.sls</span> entry point is present — minions render no pillar until one exists.</p>
+          </div>
+        </div>
+        {% endif %}
+        {% if truncated %}<div class="px-4 pt-4"><div class="alert alert-warning text-sm" role="status"><span class="flex items-center justify-center size-5 shrink-0"><span class="icon-[lucide--triangle-alert] size-5" aria-hidden="true"></span></span><p>Listing capped at {{ total }} files. Narrow the search to see more.</p></div></div>{% endif %}
+
+        {% if not rows %}
+        <div class="flex flex-col items-center gap-2 px-4 py-10 text-center">
+          <div class="flex items-center justify-center size-10 rounded-full bg-base-200 text-base-content/60"><span class="icon-[lucide--files] size-5" aria-hidden="true"></span></div>
+          <p class="font-medium">{% if q %}No files match “{{ q }}”{% elif d %}No files under “{{ d }}”{% else %}No pillar files found{% endif %}</p>
+          <p class="text-sm text-base-content/70">{% if q %}Try a shorter query or clear the search.{% elif d %}This folder has no files. Browse another folder or return to the root.{% else %}The pillar tree is empty. Create one with the Encrypted pillar editor or in the checkout.{% endif %}</p>
+          <div class="flex flex-wrap justify-center gap-2">
+            {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_files.index', dir=d) }}">Clear search</a>{% elif d %}<a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_files.index') }}">Back to all files</a>{% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="max-w-full overflow-x-auto rounded-box">
+          <table class="table table-sm table-pin-rows w-full">
+            <thead><tr><th>File</th><th class="text-right w-24">Size</th></tr></thead>
+            <tbody>
+              {% for r in rows %}
+              {% if r.group is defined and not d %}
+              {% set group_dir = "" if r.group == "/" else r.group %}
+              {% set group_label = "Root files" if r.group == "/" else r.group + "/" %}
+              <tr class="bg-base-200/40"><th colspan="2"><a href="{{ url_for('pillar_files.index', dir=group_dir, q=q) }}" class="inline-flex items-center gap-2 font-mono text-xs font-medium text-base-content/70" aria-label="Open {{ group_label }}">{% if r.group == "/" %}<span class="icon-[lucide--files] size-4" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--folder] size-4" aria-hidden="true"></span>{% endif %}{{ group_label }}</a></th></tr>
+              {% elif r.group is not defined %}
+              <tr class="hover">
+                <td><a href="{{ url_for('pillar_files.view', path=r.rel) }}" class="flex items-center gap-3">
+                  {% if r.rel.startswith("secrets/") %}<span class="icon-[lucide--lock-keyhole] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>
+                  {% elif r.rel.endswith((".sls", ".yaml", ".yml", ".jinja")) %}<span class="icon-[lucide--file-code] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>
+                  {% elif r.rel.endswith(".json") %}<span class="icon-[lucide--file-json] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>
+                  {% else %}<span class="icon-[lucide--file-text] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>{% endif %}
+                  <span class="font-mono text-sm break-all">{{ r.rel }}</span>
+                  {% if r.rel.startswith("secrets/") %}<span class="badge badge-xs badge-outline badge-warning shrink-0">encrypted</span>{% endif %}
+                </a></td>
+                <td class="text-right"><span class="badge badge-sm badge-ghost tabular-nums">{{ r.size }} B</span></td>
+              </tr>
+              {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {% if pages > 1 %}
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-4 py-3">
+          <p class="text-sm text-base-content/70">{{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total]|min }} of {{ total }} files{% if q %} matching “{{ q }}”{% endif %}{% if d %} under “{{ d }}”{% endif %}</p>
+          {{ m.pagination_plain('pillar_files.index', page, pages, {'q': q, 'dir': d, 'per_page': per_page}, 'Pillar file pages') }}
+        </div>
+        {% elif total %}
+        <p class="border-t border-base-300 px-4 py-3 text-sm text-base-content/70">{{ total }} file{% if total != 1 %}s{% endif %}{% if q %} matching “{{ q }}”{% endif %}{% if d %} under “{{ d }}”{% endif %}</p>
+        {% endif %}
+      </div>
+    </section>
+  </section>
+  <link href="{{ url_for('static', filename='browser.bundle.css') }}" rel="stylesheet" type="text/css">
+  <script src="{{ url_for('static', filename='browser.bundle.js') }}"></script>
+</div>
+{% endblock %}

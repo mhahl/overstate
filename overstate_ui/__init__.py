@@ -22,6 +22,7 @@ from . import (
     mine,
     minions,
     pillar,
+    pillar_files,
     pillar_secrets,
     reactor,
     schedules,
@@ -94,6 +95,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     app.register_blueprint(mine.bp)
     app.register_blueprint(groups.bp)
     app.register_blueprint(pillar.bp)
+    app.register_blueprint(pillar_files.bp)
     app.register_blueprint(pillar_secrets.bp)
     app.register_blueprint(pillar_secrets.enc_bp)
     app.register_blueprint(reactor.bp)

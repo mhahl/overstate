@@ -598,19 +598,29 @@ def test_sidebar_has_one_pillar_entry(secrets_env):
 
 def test_tabs_mark_exactly_one_active(secrets_env):
     explorer = _pillar_tab_bar(secrets_env.get("/pillar/").data.decode())
-    assert len(explorer) == 2
+    assert len(explorer) == 3
     assert "tab-active" in explorer[0] and "pillar/secrets" not in explorer[0]
-    assert "tab-active" not in explorer[1] and "pillar/secrets" in explorer[1]
+    assert "tab-active" not in explorer[1]
+    assert "tab-active" not in explorer[2] and "pillar/secrets" in explorer[2]
     assert 'aria-current="page"' in explorer[0]
 
+    files = _pillar_tab_bar(secrets_env.get("/pillar/files/").data.decode())
+    assert len(files) == 3
+    assert "tab-active" not in files[0]
+    assert "tab-active" in files[1] and "/pillar/files" in files[1]
+    assert "tab-active" not in files[2]
+    assert 'aria-current="page"' in files[1]
+
     editor = _pillar_tab_bar(secrets_env.get("/pillar/secrets/").data.decode())
-    assert len(editor) == 2
+    assert len(editor) == 3
     assert "tab-active" not in editor[0] and "pillar/secrets" not in editor[0]
-    assert "tab-active" in editor[1] and "pillar/secrets" in editor[1]
-    assert 'aria-current="page"' in editor[1]
+    assert "tab-active" not in editor[1]
+    assert "tab-active" in editor[2] and "pillar/secrets" in editor[2]
+    assert 'aria-current="page"' in editor[2]
 
 
 def test_detail_keeps_explorer_tab_active(secrets_env):
     tabs = _pillar_tab_bar(secrets_env.get("/pillar/web-01").data.decode())
     assert "tab-active" in tabs[0]
     assert "tab-active" not in tabs[1]
+    assert "tab-active" not in tabs[2]
