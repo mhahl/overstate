@@ -572,3 +572,24 @@ def test_detail_keeps_explorer_tab_active(secrets_env):
     tabs = _pillar_tab_bar(secrets_env.get("/pillar/web-01").data.decode())
     assert "tab-active" in tabs[0]
     assert "tab-active" not in tabs[1]
+
+
+# --- Setup instructions / code blocks ---------------------------------
+
+def test_setup_card_has_keygen_accordion_and_code_blocks(secrets_env):
+    """Without a stored key the setup card renders command/config code
+    blocks and a collapse for generating the master keypair."""
+    html = secrets_env.get("/pillar/secrets/").data.decode()
+    assert "mockup-code" in html  # config + import commands as code blocks
+    assert 'id="keygen"' in html  # keygen accordion
+    assert "Generate the master keypair" in html
+    assert "gpg --quick-generate-key" in html
+    assert "kubectl cp pillar-gpg.key" in html
+
+
+def test_key_settings_page_has_keygen_code_block(secrets_env):
+    html = secrets_env.get("/settings/encryption/").data.decode()
+    assert "Generate the master keypair" in html
+    assert "mockup-code" in html
+    assert "gpg --quick-generate-key" in html
+    assert "salt-call --local nacl.keygen" not in html  # dead hint removed

@@ -23,7 +23,17 @@
       {% if verified_at %}<span class="text-base-content/60">verified {{ verified_at|reltime }}</span>{% endif %}
     </div>
     {% else %}
-    <p class="text-sm text-base-content/70">Nothing stored yet. Generate the keypair on a master with <code class="font-mono">salt-call --local nacl.keygen</code>? No — for gpg: <code class="font-mono">gpg --quick-generate-key</code> (see docs/guides/pillar-encryption.md) and paste the armored <strong>public</strong> key here.</p>
+    <p class="text-sm text-base-content/70">Generate the keypair on an offline workstation, then paste the armored <strong>public</strong> key here (never the private key).</p>
+    <details class="collapse collapse-arrow border border-base-300 rounded-lg mb-2">
+      <summary class="collapse-title text-xs font-medium min-h-0 py-2">Generate the master keypair</summary>
+      <div class="collapse-content">
+        <pre class="mockup-code text-xs overflow-x-auto"><code>gpg --quick-generate-key "overstate-pillar" rsa4096 cert never
+KEYID=$(gpg --list-keys --with-colons overstate-pillar | awk -F: '/^pub:/{getline; print $10; exit}')
+gpg --export --armor -o pillar-gpg.pub "$KEYID"
+gpg --export-secret-keys --armor -o pillar-gpg.key "$KEYID"</code></pre>
+        <p class="text-xs text-base-content/60 mt-2">Back up <span class="font-mono">pillar-gpg.key</span> offline; import it on all three masters (full runbook in <span class="font-mono">docs/guides/pillar-encryption.md</span>).</p>
+      </div>
+    </details>
     {% endif %}
     <form method="post" action="{{ url_for('pillar_encryption.store') }}" class="flex flex-col gap-2">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -42,8 +52,7 @@
       </div>
     </form>
     <p class="text-sm text-base-content/60">The private key lives only on the masters. The app holds the public key to encrypt values you type; it can never decrypt anything.</p>
+    <p class="text-sm text-base-content/70">Full step-by-step key generation and master import: <span class="font-mono">docs/guides/pillar-encryption.md</span>.</p>
   </div>
 </section>
-
-<p class="text-sm text-base-content/70">Step-by-step key generation and master import: <span class="font-mono">docs/guides/pillar-encryption.md</span>.</p>
 {% endblock %}
