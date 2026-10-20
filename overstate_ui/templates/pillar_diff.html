@@ -16,6 +16,8 @@
     <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.index') }}">Pillar inventory</a>
   </header>
 
+  {% include "_pillar_tabs.html" %}
+
   <form method="get" action="{{ url_for('pillar.diff') }}" class="card card-border bg-base-100 min-w-0" aria-label="Pillar comparison sources">
     <div class="card-body min-w-0 gap-4">
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">

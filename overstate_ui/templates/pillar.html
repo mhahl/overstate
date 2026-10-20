@@ -6,6 +6,7 @@
   {{ m.page_heading("Pillar", "Per-minion config the master renders; read-only here.") }}
   <a class="btn btn-sm btn-primary" href="{{ url_for('pillar.diff') }}">Compare</a>
 </div>
+{% include "_pillar_tabs.html" %}
 <section class="card card-border bg-base-100 min-w-0" aria-label="Pillar snapshots by minion">
 <div class="flex flex-wrap items-end justify-end gap-2 border-b border-base-300 px-4 py-3">
 <form method="get" action="{{ url_for('pillar.index') }}" role="search" class="flex flex-wrap items-end justify-end gap-2" aria-label="Search pillar snapshots">

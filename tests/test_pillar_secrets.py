@@ -529,3 +529,46 @@ def test_pillar_detail_banner_lists_encrypted_keys(secrets_env, monkeypatch):
 def test_pillar_detail_no_banner_without_secrets(secrets_env):
     html = secrets_env.get("/pillar/web-01").data.decode()
     assert "Encrypted pillar values are included" not in html
+
+
+# --- Pillar section tabs ----------------------------------------------
+
+def _pillar_tab_bar(html):
+    """The tab bar markup, split into one segment per tab link."""
+    bar = html.split('aria-label="Pillar views"', 1)[1].split("</div>", 1)[0]
+    return bar.split('role="tab"')[1:]
+
+
+def _aside(html):
+    return html.split('id="nav-panel"', 1)[1].split("</aside>", 1)[0]
+
+
+def test_sidebar_has_one_pillar_entry(secrets_env):
+    for path in ("/pillar/", "/pillar/secrets/"):
+        html = secrets_env.get(path).data.decode()
+        aside = _aside(html)
+        assert 'href="/pillar/"' in aside
+        # The editor is a tab now, not a second sidebar item.
+        assert 'href="/pillar/secrets/"' not in aside
+        # Exactly one nav item highlights for both pillar routes.
+        assert aside.count("menu-active") == 1
+
+
+def test_tabs_mark_exactly_one_active(secrets_env):
+    explorer = _pillar_tab_bar(secrets_env.get("/pillar/").data.decode())
+    assert len(explorer) == 2
+    assert "tab-active" in explorer[0] and "pillar/secrets" not in explorer[0]
+    assert "tab-active" not in explorer[1] and "pillar/secrets" in explorer[1]
+    assert 'aria-current="page"' in explorer[0]
+
+    editor = _pillar_tab_bar(secrets_env.get("/pillar/secrets/").data.decode())
+    assert len(editor) == 2
+    assert "tab-active" not in editor[0] and "pillar/secrets" not in editor[0]
+    assert "tab-active" in editor[1] and "pillar/secrets" in editor[1]
+    assert 'aria-current="page"' in editor[1]
+
+
+def test_detail_keeps_explorer_tab_active(secrets_env):
+    tabs = _pillar_tab_bar(secrets_env.get("/pillar/web-01").data.decode())
+    assert "tab-active" in tabs[0]
+    assert "tab-active" not in tabs[1]

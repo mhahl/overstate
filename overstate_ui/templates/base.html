@@ -159,11 +159,6 @@
             <span class="icon-[lucide--tag] size-4.5" aria-hidden="true"></span>
             Pillar</a></li>
           {% endif %}
-          {% if not rbac_scoped or can('pillar.read') %}
-          <li><a href="{{ url_for('pillar_secrets.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('pillar_secrets') }}">
-            <span class="icon-[lucide--key-round] size-4.5" aria-hidden="true"></span>
-            Encrypted pillar</a></li>
-          {% endif %}
           {% if not rbac_scoped or can('mine.read') %}
           <li><a href="{{ url_for('mine.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('mine') }}">
             <span class="icon-[lucide--database] size-4.5" aria-hidden="true"></span>
