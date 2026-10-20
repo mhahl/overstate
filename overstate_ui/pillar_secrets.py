@@ -1,11 +1,12 @@
 """Encrypted-pillar editor: per-file collections under ``pillar/secrets/``.
 
-Salt's ``gpg`` renderer decrypts ``-----BEGIN PGP MESSAGE-----`` values
-inside pillar files at render time on the master (renderer line set in
+Salt's ``nacl`` renderer decrypts ``NACL[...]`` values inside pillar
+files at render time on the master (renderer line + ``nacl.config`` in
 master.conf; see docs/guides/pillar-encryption.md). The app never holds
 the private key: values are typed as plaintext, encrypted in-memory with
-the master's *public* key (a Setting row), and only ciphertext lands in
-the git checkout. Decryption and plaintext display stay master-side.
+the master's *public* key (a Setting row) using NaCl sealedbox, and only
+ciphertext lands in the git checkout. Decryption and plaintext display
+stay master-side.
 
 Three surfaces share this module:
 
@@ -40,14 +41,14 @@ from ruamel.yaml import YAML
 from .audit import log_event
 from .auth import roles_required
 from .git_sync import _toplevel, git_commit_file, is_checkout
-from .pillar_gpg import GpgSetupError, encrypt_value, is_encrypted, key_id
+from .pillar_nacl import NaclSetupError, encrypt_value, is_encrypted, key_id
 from .settings import get_setting, set_setting
 
 bp = Blueprint("pillar_secrets", __name__, url_prefix="/pillar/secrets")
 enc_bp = Blueprint("pillar_encryption", __name__, url_prefix="/settings/encryption")
 
 #: Setting keys (public key material + verify stamp; never plaintext).
-PK_SETTING = "pillar_gpg_pk"
+PK_SETTING = "pillar_nacl_pk"
 VERIFIED_SETTING = "pillar_secret_verified_at"
 
 SECRETS_SUBDIR = "secrets"
@@ -129,7 +130,7 @@ def secret_key_names() -> list[str]:
     for collection in list_collections():
         try:
             data = _load_rt(_collection_path(collection))
-        except (GpgSetupError, OSError):
+        except (NaclSetupError, OSError):
             continue
         leaves: dict = {}
         _flatten("", data, leaves)
@@ -145,7 +146,7 @@ def _load_rt(path: Path):
         if path.is_file():
             return _rt.load(path.read_text(encoding="utf-8")) or {}
     except (OSError, ValueError) as exc:
-        raise GpgSetupError(f"could not read {path.name}") from exc
+        raise NaclSetupError(f"could not read {path.name}") from exc
     return {}
 
 
@@ -169,8 +170,6 @@ def _flatten(prefix: str, obj, out: dict) -> None:
 
 
 def _set_path(data: dict, dotted: str, value) -> None:
-    from ruamel.yaml.scalarstring import LiteralScalarString
-
     parts = dotted.split(".")
     node = data
     for part in parts[:-1]:
@@ -179,12 +178,9 @@ def _set_path(data: dict, dotted: str, value) -> None:
             child = {}
             node[part] = child
         elif not isinstance(child, dict):
-            raise GpgSetupError(f"'{part}' is not a mapping in the collection")
+            raise NaclSetupError(f"'{part}' is not a mapping in the collection")
         node = child
-    # Multiline armored blocks dump as literal ``|`` scalars (readable,
-    # matches the pillar-encryption guide) instead of quoted strings.
-    leaf = LiteralScalarString(value) if isinstance(value, str) and "\n" in value else value
-    node[parts[-1]] = leaf
+    node[parts[-1]] = value
 
 
 def _del_path(data: dict, dotted: str) -> bool:
@@ -213,11 +209,11 @@ def _del_path(data: dict, dotted: str) -> bool:
 def _validate_dotted_key(dotted: str) -> None:
     parts = (dotted or "").strip().split(".")
     if not parts or any(not p for p in parts):
-        raise GpgSetupError("the key must be dotted (e.g. app.db.password)")
+        raise NaclSetupError("the key must be dotted (e.g. app.db.password)")
     if len(parts) > MAX_KEY_DEPTH:
-        raise GpgSetupError(f"too many segments (max {MAX_KEY_DEPTH})")
+        raise NaclSetupError(f"too many segments (max {MAX_KEY_DEPTH})")
     if any(len(p) > 64 or not KEY_RE.match(p) for p in parts):
-        raise GpgSetupError("key segments: letters, digits, - and _ only")
+        raise NaclSetupError("key segments: letters, digits, - and _ only")
 
 
 # --- Top-file wiring ----------------------------------------------------
@@ -296,13 +292,13 @@ def verify_collection(name: str, minion: str, user: str) -> dict:
     nonce = pysecrets.token_hex(8)
     path = _collection_path(name)
     try:
-        armored = encrypt_value(nonce, get_setting(PK_SETTING))
-    except GpgSetupError as exc:
+        sealed = encrypt_value(nonce, get_setting(PK_SETTING))
+    except NaclSetupError as exc:
         return {"ok": False, "steps": [{"step": "encrypt", "ok": False, "detail": str(exc)}]}
     steps.append({"step": "encrypt", "ok": True, "detail": None})
     # Write the throwaway key.
     data = _load_rt(path)
-    _set_path(data, "_overstate_verify", armored)
+    _set_path(data, "_overstate_verify", sealed)
     path.parent.mkdir(parents=True, exist_ok=True)
     _dump_rt(data, path)
     commit = git_commit_file(
@@ -343,8 +339,9 @@ def verify_collection(name: str, minion: str, user: str) -> dict:
 # --- Renderer probe -----------------------------------------------------
 
 def renderer_status() -> dict | None:
-    """Whether master.conf enables the gpg renderer + keydir. None when
-    the ConfigMap cannot be read (app outside k8s, or not deployed)."""
+    """Whether master.conf enables the nacl renderer + key config. None
+    when the ConfigMap cannot be read (app outside k8s, or not
+    deployed)."""
     try:
         from .k8s import K8sClient
 
@@ -353,8 +350,9 @@ def renderer_status() -> dict | None:
     except Exception:  # noqa: BLE001 — probe is advisory
         return None
     return {
-        "renderer": bool(re.search(r"(?m)^\s*renderer\s*:.*\bgpg\b", conf)),
-        "keydir": bool(re.search(r"(?m)^\s*gpg_keydir\s*:", conf)),
+        "renderer": bool(re.search(r"(?m)^\s*renderer\s*:.*\bnacl\b", conf)),
+        "keys": bool(re.search(r"(?m)^\s*nacl\.config\s*:", conf))
+        and bool(re.search(r"(?m)^\s*sk_file\s*:", conf)),
     }
 
 
@@ -421,10 +419,11 @@ def index():
 
 
 def _preview(value: str) -> str:
-    """Head/tail of an armored block for the table (never plaintext)."""
-    lines = [ln for ln in value.splitlines() if ln.strip()]
-    head = next((ln for ln in lines if ln.startswith("hQ") or len(ln) > 20), "")
-    return head[:24] + "…" if head else "armored"
+    """Head of a NACL[...] envelope for the table (never plaintext)."""
+    body = value.strip()
+    if body.startswith("NACL["):
+        body = body[len("NACL[") : -1]
+    return body[:20] + "…" if body else "encrypted"
 
 
 @bp.post("/collection/create")
@@ -482,9 +481,9 @@ def _upsert_secret(blind: bool) -> tuple:
     try:
         _validate_dotted_key(dotted)
         if len(value.encode("utf-8")) > MAX_VALUE_BYTES:
-            raise GpgSetupError(f"value too large (limit {MAX_VALUE_BYTES} bytes)")
-        armored = encrypt_value(value, get_setting(PK_SETTING))
-    except GpgSetupError as exc:
+            raise NaclSetupError(f"value too large (limit {MAX_VALUE_BYTES} bytes)")
+        sealed = encrypt_value(value, get_setting(PK_SETTING))
+    except NaclSetupError as exc:
         flash(str(exc), "error")
         return redirect(url_for("pillar_secrets.index"))
     path = _collection_path(name)
@@ -497,9 +496,9 @@ def _upsert_secret(blind: bool) -> tuple:
         flash(f"'{dotted}' already exists — use Update to overwrite it blind.", "error")
         return redirect(url_for("pillar_secrets.index"))
     try:
-        _set_path(data, dotted, armored)
+        _set_path(data, dotted, sealed)
         _dump_rt(data, path)
-    except (OSError, ValueError, GpgSetupError) as exc:
+    except (OSError, ValueError, NaclSetupError) as exc:
         flash(str(exc), "error")
         return redirect(url_for("pillar_secrets.index"))
     result = git_commit_file(
@@ -624,19 +623,25 @@ def enc_index():
 @roles_required("admin")
 def store():
     _require_settings_admin()
-    armored = request.form.get("pk", "").strip()
-    if not armored:
-        flash("Paste the master public key (armored block).", "error")
+    pubkey = request.form.get("pk", "").strip()
+    if not pubkey:
+        flash("Paste the master public key (base64).", "error")
         return redirect(url_for("pillar_encryption.enc_index"))
-    if key_id(armored) is None:
-        flash("That does not look like a usable public key — nothing stored.", "error")
+    if key_id(pubkey) is None:
+        flash(
+            "That is not a valid NaCl public key (32 bytes, base64) — nothing stored.",
+            "error",
+        )
         return redirect(url_for("pillar_encryption.enc_index"))
     existing = get_setting(PK_SETTING)
-    if existing and existing != armored and request.form.get("confirm_box") != "1":
-        flash("A key is already stored — replacing it orphans existing values; confirm to replace.", "error")
+    if existing and existing != pubkey and request.form.get("confirm_box") != "1":
+        flash(
+            "A key is already stored — replacing it orphans existing values; confirm to replace.",
+            "error",
+        )
         return redirect(url_for("pillar_encryption.enc_index"))
-    set_setting(PK_SETTING, armored)
-    log_event(current_user.username, "pillar-secret:pk-stored", detail=f"keyid:{key_id(armored)}")
+    set_setting(PK_SETTING, pubkey)
+    log_event(current_user.username, "pillar-secret:pk-stored", detail=f"keyid:{key_id(pubkey)}")
     flash("Master public key stored.", "success")
     return redirect(url_for("pillar_encryption.enc_index"))
 

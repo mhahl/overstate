@@ -11,7 +11,7 @@ Entry point for all documentation. Paths are repo-root-relative.
 | [`docs/guides/developer.md`](guides/developer.md) | Contributor guide: conventions, module layout, tests, lint, coverage, deps |
 | [`docs/guides/install-kubernetes.md`](guides/install-kubernetes.md) | Production install runbook: secrets → apply → verify → restore |
 | [`docs/guides/cloud-init-salt-minion.md`](guides/cloud-init-salt-minion.md) | cloud-init user-data for a Salt minion on Fedora 44 / openSUSE Tumbleweed |
-| [`docs/guides/pillar-encryption.md`](guides/pillar-encryption.md) | GPG-encrypted pillar values (NetBird, IPA): keypair, renderer, rotation |
+| [`docs/guides/pillar-encryption.md`](guides/pillar-encryption.md) | NaCl-encrypted pillar values (NetBird, IPA): keypair, renderer, rotation |
 
 ## Reference — design and feature specifics
 

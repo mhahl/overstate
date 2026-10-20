@@ -26,11 +26,14 @@ data:
     # salt-master-cluster Secret (never in this file, never in the UI).
     include:
       - /home/salt/data/keys/cluster-identity.conf
-    # Encrypted pillar: decrypt PGP values master-side during pillar
-    # rendering (see docs/guides/pillar-encryption.md). gpg_keydir is
-    # the keys PVC dir holding the master private keyring.
-    renderer: jinja | yaml | gpg
-    gpg_keydir: /home/salt/data/keys/gpgkeys
+    # Encrypted pillar (NaCl): decrypt NACL[...] values master-side during
+    # pillar rendering (see docs/guides/pillar-encryption.md). The keypair
+    # lives on the keys PVC; every master holds the same secret key.
+    renderer: jinja | yaml | nacl
+    nacl.config:
+      box_type: sealedbox
+      sk_file: /home/salt/data/keys/nacl/nacl
+      pk_file: /home/salt/data/keys/nacl/nacl.pub
     cluster_id: overstate-masters
     cluster_port: 4507
     cluster_pool_port: 4507

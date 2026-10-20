@@ -362,15 +362,15 @@ flagged `stale`.
 ## Encrypted pillar
 
 Values that must not sit in git in plaintext (NetBird setup keys, IPA
-passwords) use Salt's GPG renderer. Overstate manages them from
-**Pillar → Encrypted pillar**: per-file collections under
-`pillar/secrets/`, blind add/replace/delete, one-click top.sls wiring,
-and an end-to-end verify. The master **public** key is stored from
-**Settings → Infrastructure → Encrypted pillar**; the private key never
-enters the app. The app encrypts in memory and commits ciphertext, so
-`git log -p` never shows a value.
+passwords) use Salt's **nacl** renderer (sealedbox) and `NACL[...]`
+values. Overstate manages them from **Pillar → Encrypted pillar**:
+per-file collections under `pillar/secrets/`, blind add/replace/delete,
+one-click top.sls wiring, and an end-to-end verify. The master
+**public** key is stored from **Settings → Infrastructure → Encrypted
+pillar**; the secret key never enters the app. The app encrypts in
+memory and commits ciphertext, so `git log -p` never shows a value.
 
 `pillar.read` holders still see decrypted values in the Pillar explorer
 and in captured snapshots — scope that grant accordingly. Full
-runbook, key import, rotation, and failure modes:
+runbook, key generation, rotation, and failure modes:
 `docs/guides/pillar-encryption.md`.

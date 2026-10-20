@@ -8,7 +8,8 @@ FROM ghcr.io/cdalvaro/docker-salt-master:lts@sha256:df5bb4555108f21655f97f5be11f
 
 RUN /opt/saltstack/salt/bin/pip install --no-cache-dir \
     "psycopg2-binary==2.9.13" \
-    "redis==6.4.0"
+    "redis==6.4.0" \
+    "pynacl==1.6.2"
 
 # Cluster identity is the stable pod DNS name (<POD_NAME>.<headless
 # service>), not the pod IP: upstream salt keys Raft membership, the

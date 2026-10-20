@@ -17,5 +17,5 @@ Authlib==1.8.0
 gunicorn==26.2.0
 Pygments==2.21.0
 PyYAML==6.0.3
-python-gnupg==0.5.7
+pynacl==1.6.2
 ruamel.yaml==0.19.1

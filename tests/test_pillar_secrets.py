@@ -1,15 +1,15 @@
-"""Encrypted-pillar tests: gpg service, YAML round-trip, editor routes,
-verify flow, and the encryption settings tab.
+"""Encrypted-pillar tests: NaCl sealedbox service, YAML round-trip, editor
+routes, verify flow, onboarding copy, and the encryption settings tab.
 
-Unit tests inject a fake gnupg backend (no gpg binary needed); one
-integration test exercises a real gpg round-trip and skips when the
-binary is absent (macOS homebrew/CI include it, containers build it).
+Encryption is pure PyNaCl, so the crypto tests run with real keys — no
+external binary and no skip paths.
 """
 
-import shutil
+import base64
 import subprocess
 
 import pytest
+from nacl.public import PrivateKey, SealedBox
 
 from overstate_ui import create_app
 from overstate_ui.auth import _ph, seed_admin
@@ -19,7 +19,15 @@ from overstate_ui.models import User
 
 PW = "pw"
 
-ARMORED = "-----BEGIN PGP MESSAGE-----\nhQIMA3+FAKE\n-----END PGP MESSAGE-----"
+# Deterministic stand-in for monkeypatched route tests. is_encrypted only
+# checks the envelope, so a literal marker is enough there.
+NACL = "NACL[ZmFrZS1jaXBoZXJ0ZXh0]"
+
+
+def _keypair() -> tuple[str, bytes]:
+    """(base64 public key, raw secret key) for real cryptography tests."""
+    secret = PrivateKey.generate()
+    return base64.b64encode(bytes(secret.public_key)).decode(), bytes(secret)
 
 
 def _git(cwd, *args):
@@ -63,121 +71,92 @@ def _login(c, username):
     c.post("/login", data={"username": username, "password": PW})
 
 
-def _store_pk(c, armored="-----BEGIN PGP PUBLIC KEY BLOCK-----\nabc\n-----END PGP PUBLIC KEY BLOCK-----"):
-    """Store the master public key setting directly (route tested below)."""
+def _store_pk(c):
+    """Store a real public key setting (route coverage is separate)."""
     from overstate_ui.settings import set_setting
 
+    pk, _sk = _keypair()
     with c.app.app_context():
-        set_setting("pillar_gpg_pk", armored)
+        set_setting("pillar_nacl_pk", pk)
+    return pk
 
 
 def _mk_collection(c, name="netbird"):
-    """Create a collection through the route."""
     c.post("/pillar/secrets/collection/create", data={"name": name})
 
 
-# --- gpg service -------------------------------------------------------
+# --- NaCl service ------------------------------------------------------
 
-def test_encrypt_requires_stored_key(monkeypatch, secrets_env):
-    import overstate_ui.pillar_secrets as psmod
-    from overstate_ui.pillar_gpg import GpgSetupError
+def test_encrypt_roundtrip_and_envelope():
+    from overstate_ui import pillar_nacl
 
-    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: (_ for _ in ()).throw(GpgSetupError("no key")))
-    with secrets_env.app.app_context():
-        from overstate_ui.settings import get_setting
-
-        assert get_setting("pillar_gpg_pk") == ""
-    with pytest.raises(GpgSetupError):
-        psmod.encrypt_value("x", "")
-
-
-def test_key_id_returns_short_fingerprint(monkeypatch):
-    import types
-
-    from overstate_ui import pillar_gpg
-
-    class FakeImport:
-        fingerprints = ("0123456789abcdef0123456789abcdef01234567",)
-
-    class FakeGPG:
-        def __init__(self, gnupghome=None):
-            self.encoding = "utf-8"
-
-        def import_keys(self, armored):
-            assert armored
-            return FakeImport()
-
-    monkeypatch.setattr(
-        pillar_gpg, "gnupg", types.SimpleNamespace(GPG=FakeGPG)
-    )
-    assert pillar_gpg.key_id("-----BEGIN PGP PUBLIC KEY BLOCK-----\n") == "89abcdef01234567"
+    pk, sk = _keypair()
+    block = pillar_nacl.encrypt_value("hello-world", pk)
+    assert block.startswith("NACL[") and block.endswith("]")
+    assert pillar_nacl.is_encrypted(block)
+    assert not pillar_nacl.is_encrypted("hello-world")
+    sealed = base64.b64decode(block[len("NACL[") : -1])
+    assert SealedBox(PrivateKey(sk)).decrypt(sealed) == b"hello-world"
+    # Sealedbox is randomized: same plaintext, different ciphertext.
+    assert pillar_nacl.encrypt_value("hello-world", pk) != block
 
 
-def test_encrypt_value_produces_armored_block():
-    import tempfile
+def test_key_id_is_short_and_stable():
+    from overstate_ui import pillar_nacl
 
-    import gnupg
+    pk, _ = _keypair()
+    pk2, _ = _keypair()
+    first = pillar_nacl.key_id(pk)
+    assert first and len(first) == 16
+    assert first == pillar_nacl.key_id(pk)
+    assert first != pillar_nacl.key_id(pk2)
 
-    if not shutil.which("gpg"):
-        pytest.skip("gpg binary not available")
-    from overstate_ui import pillar_gpg
 
-    # Generate a real keypair in a scratch homedir and encrypt to it.
-    with tempfile.TemporaryDirectory() as home:
-        g = gnupg.GPG(gnupghome=home, options=["--pinentry-mode", "loopback"])
-        g.encoding = "utf-8"
-        gen = g.gen_key(
-            "Key-Type: RSA\nKey-Length: 1024\nName-Real: t\n%no-protection\n%commit\n"
-        )
-        assert gen.fingerprint
-        pub = g.export_keys(gen.fingerprint)
-        block = pillar_gpg.encrypt_value("hello-world", pub)
-        assert block.strip().startswith(pillar_gpg.ARMOR_HEADER)
-        # Decrypt with the private key: proves a real round-trip.
-        decrypted = g.decrypt(block)
-        assert str(decrypted) == "hello-world"
-        assert pillar_gpg.is_encrypted(block)
-        assert not pillar_gpg.is_encrypted("hello-world")
+def test_bad_public_keys_raise():
+    from overstate_ui import pillar_nacl
+
+    for bad in ("", "not-base64!!", base64.b64encode(b"short").decode()):
+        with pytest.raises(pillar_nacl.NaclSetupError):
+            pillar_nacl.encrypt_value("x", bad)
+        assert pillar_nacl.key_id(bad) is None
 
 
 # --- YAML round-trip ---------------------------------------------------
 
-def test_roundtrip_preserves_comments_and_shebang(secrets_env):
+def test_roundtrip_preserves_comments(secrets_env):
     import overstate_ui.pillar_secrets as psmod
 
     with secrets_env.app.app_context():
         path = psmod._secrets_dir() / "netbird.sls"
         path.parent.mkdir(parents=True)
-        path.write_text(
-            "# netbird setup\nnetbird:\n  setup_key: |\n    -----BEGIN PGP MESSAGE-----\n\n    abc\n    -----END PGP MESSAGE-----\n"
-        )
+        path.write_text("# setup\nnetbird:\n  setup_key: NACL[abc]\n")
         data = psmod._load_rt(path)
-        assert data["netbird"]["setup_key"].startswith("-----BEGIN PGP MESSAGE-----")
-        psmod._set_path(data, "netbird.extra", ARMORED)
+        assert data["netbird"]["setup_key"] == "NACL[abc]"
+        psmod._set_path(data, "netbird.extra", NACL)
         psmod._dump_rt(data, path)
         text = path.read_text()
-        assert "# netbird setup" in text  # comment preserved
-        assert "extra:" in text
-        assert "-----BEGIN PGP MESSAGE-----" in text
+        assert "# setup" in text  # comment preserved
+        assert "NACL[abc]" in text
+        assert "NACL[ZmFrZS1jaXBoZXJ0ZXh0]" in text
 
 
 def test_del_prunes_empty_parents():
     from overstate_ui import pillar_secrets as psmod
 
-    data = {"a": {"b": {"c": ARMORED}, "keep": 1}}
+    data = {"a": {"b": {"c": NACL}, "keep": 1}}
     assert psmod._del_path(data, "a.b.c")
     assert data == {"a": {"keep": 1}}
 
 
 def test_dotted_key_validation():
     from overstate_ui import pillar_secrets as psmod
-    from overstate_ui.pillar_gpg import GpgSetupError
+    from overstate_ui.pillar_nacl import NaclSetupError
 
-    with pytest.raises(GpgSetupError):
+    with pytest.raises(NaclSetupError):
         psmod._validate_dotted_key("")
-    with pytest.raises(GpgSetupError):
+    with pytest.raises(NaclSetupError):
         psmod._validate_dotted_key("a..b")
-    with pytest.raises(GpgSetupError):
+    with pytest.raises(NaclSetupError):
         psmod._validate_dotted_key("a b")
     psmod._validate_dotted_key("app.db.password")
 
@@ -191,8 +170,9 @@ def test_index_lists_collections_and_keys(secrets_env, monkeypatch):
     _store_pk(secrets_env)
     _mk_collection(secrets_env, "netbird")
     with secrets_env.app.app_context():
-        path = psmod._collection_path("netbird")
-        path.write_text("netbird:\n  setup_key: |\n    -----BEGIN PGP MESSAGE-----\n\n    abc\n    -----END PGP MESSAGE-----\n")
+        psmod._collection_path("netbird").write_text(
+            "netbird:\n  setup_key: NACL[abc]\n"
+        )
     html = secrets_env.get("/pillar/secrets/").data.decode()
     assert "netbird" in html
     assert "netbird.setup_key" in html
@@ -215,7 +195,7 @@ def test_add_secret_encrypts_and_commits(secrets_env, monkeypatch):
 
     def fake_encrypt(value, pk):
         calls["value"] = value
-        return ARMORED
+        return NACL
 
     monkeypatch.setattr(psmod, "encrypt_value", fake_encrypt)
     _store_pk(secrets_env)
@@ -227,26 +207,31 @@ def test_add_secret_encrypts_and_commits(secrets_env, monkeypatch):
     )
     assert rv.status_code == 200
     assert "added" in rv.data.decode().lower()
-    # Ciphertext lands in the git tree as a literal block; parse it back.
     from ruamel.yaml import YAML
 
     parsed = YAML(typ="safe").load(
         (secrets_env.work / "pillar" / "secrets" / "netbird.sls").read_text()
     )
-    assert parsed["netbird"]["setup_key"] == ARMORED
+    assert parsed["netbird"]["setup_key"] == NACL
     text = (secrets_env.work / "pillar" / "secrets" / "netbird.sls").read_text()
     assert "S3cret!" not in text  # plaintext never hits disk
     proc = _git(secrets_env.work, "status", "--porcelain")
     assert proc.stdout.strip() == ""
     with secrets_env.app.app_context():
-        assert get_session().query(AuditEvent).filter_by(action="pillar-secret:add:netbird:netbird.setup_key").count() == 1
+        assert (
+            get_session()
+            .query(AuditEvent)
+            .filter_by(action="pillar-secret:add:netbird:netbird.setup_key")
+            .count()
+            == 1
+        )
 
 
 def test_update_requires_confirm_gate(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
 
     def varying(v, pk):
-        return f"-----BEGIN PGP MESSAGE-----\n{v}\n-----END PGP MESSAGE-----"
+        return f"NACL[{v}]"
 
     monkeypatch.setattr(psmod, "encrypt_value", varying)
     _store_pk(secrets_env)
@@ -263,7 +248,12 @@ def test_update_requires_confirm_gate(secrets_env, monkeypatch):
     assert "Confirm that the old value" in rv.data.decode()
     rv = secrets_env.post(
         "/pillar/secrets/secret/update",
-        data={"collection": "netbird", "key": "netbird.setup_key", "value": "new", "confirm_box": "1"},
+        data={
+            "collection": "netbird",
+            "key": "netbird.setup_key",
+            "value": "new",
+            "confirm_box": "1",
+        },
         follow_redirects=True,
     )
     assert "updated" in rv.data.decode().lower()
@@ -272,7 +262,7 @@ def test_update_requires_confirm_gate(secrets_env, monkeypatch):
 def test_add_refuses_existing_key_without_update(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
 
-    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: ARMORED)
+    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: NACL)
     _store_pk(secrets_env)
     _mk_collection(secrets_env, "netbird")
     secrets_env.post(
@@ -290,7 +280,7 @@ def test_add_refuses_existing_key_without_update(secrets_env, monkeypatch):
 def test_delete_removes_key_and_commits(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
 
-    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: ARMORED)
+    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: NACL)
     _store_pk(secrets_env)
     _mk_collection(secrets_env, "netbird")
     secrets_env.post(
@@ -323,12 +313,10 @@ def test_verify_roundtrip_success(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
     from overstate_ui.models import AuditEvent
 
-    # Fake encrypt that round-trips through a module dict so the fake
-    # read-back can "decrypt" the armored value back to its plaintext.
     store = {}
 
     def fake_encrypt(value, pk):
-        block = f"-----BEGIN PGP MESSAGE-----\n{value}\n-----END PGP MESSAGE-----"
+        block = f"NACL[{value}]"
         store[block] = value
         return block
 
@@ -355,17 +343,22 @@ def test_verify_roundtrip_success(secrets_env, monkeypatch):
         follow_redirects=True,
     )
     assert "verified end to end" in rv.data.decode()
-    # The throwaway key is gone from the tree.
     text = (secrets_env.work / "pillar" / "secrets" / "netbird.sls").read_text()
     assert "_overstate_verify" not in text
     with secrets_env.app.app_context():
-        assert get_session().query(AuditEvent).filter_by(action="pillar-secret:verify:netbird").count() == 1
+        assert (
+            get_session()
+            .query(AuditEvent)
+            .filter_by(action="pillar-secret:verify:netbird")
+            .count()
+            == 1
+        )
 
 
-def test_verify_reports_mismatch(secrets_env, monkeypatch):
+def test_verify_reports_mismatch_and_cleans_up(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
 
-    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: ARMORED)
+    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: NACL)
     monkeypatch.setattr(psmod, "_read_pillar", lambda m: {})
     monkeypatch.setattr(psmod, "_refresh_pillar", lambda m: None)
     _store_pk(secrets_env)
@@ -377,7 +370,7 @@ def test_verify_reports_mismatch(secrets_env, monkeypatch):
     )
     assert "Verification failed" in rv.data.decode()
     text = (secrets_env.work / "pillar" / "secrets" / "netbird.sls").read_text()
-    assert "_overstate_verify" not in text  # cleaned up even on failure
+    assert "_overstate_verify" not in text
 
 
 # --- RBAC --------------------------------------------------------------
@@ -385,7 +378,7 @@ def test_verify_reports_mismatch(secrets_env, monkeypatch):
 def test_viewer_cannot_write(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
 
-    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: ARMORED)
+    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: NACL)
     _store_pk(secrets_env)
     _mk_collection(secrets_env, "netbird")
     _login(secrets_env, "vie")
@@ -399,15 +392,14 @@ def test_viewer_cannot_write(secrets_env, monkeypatch):
 
 def test_viewer_can_read_editor(secrets_env):
     _login(secrets_env, "vie")
-    rv = secrets_env.get("/pillar/secrets/")
-    assert rv.status_code == 200
+    assert secrets_env.get("/pillar/secrets/").status_code == 200
 
 
 def test_scoped_operator_without_grant_forbidden(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
     from overstate_ui.models import Setting
 
-    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: ARMORED)
+    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: NACL)
     with secrets_env.app.app_context():
         get_session().add(Setting(key="rbac_mode", value="scoped"))
         get_session().add(
@@ -429,7 +421,7 @@ def test_scoped_operator_with_grant_can_write(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
     from overstate_ui.models import Grant, Setting
 
-    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: ARMORED)
+    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: NACL)
     with secrets_env.app.app_context():
         get_session().add(Setting(key="rbac_mode", value="scoped"))
         teamop = User(username="teamop", role="scoped", password_hash=_ph.hash(PW))
@@ -475,45 +467,69 @@ def test_settings_tab_store_and_replace_gate(secrets_env, monkeypatch):
     rv = secrets_env.post(
         "/settings/encryption/store", data={"pk": "BAD"}, follow_redirects=True
     )
-    assert "does not look like a usable" in rv.data.decode()
+    assert "not a valid NaCl public key" in rv.data.decode()
     rv = secrets_env.post(
-        "/settings/encryption/store",
-        data={"pk": "GOOD-PUBKEY"},
-        follow_redirects=True,
+        "/settings/encryption/store", data={"pk": "GOOD-PUBKEY"}, follow_redirects=True
     )
     assert "stored" in rv.data.decode().lower()
     with secrets_env.app.app_context():
-        assert get_setting("pillar_gpg_pk") == "GOOD-PUBKEY"
+        assert get_setting("pillar_nacl_pk") == "GOOD-PUBKEY"
     # Replace without the checkbox gate is refused.
     rv = secrets_env.post(
-        "/settings/encryption/store", data={"pk": "GOOD-PUBKEY-2"}, follow_redirects=True
+        "/settings/encryption/store",
+        data={"pk": "GOOD-PUBKEY-2"},
+        follow_redirects=True,
     )
     assert "confirm to replace" in rv.data.decode()
-    rv = secrets_env.post(
+    secrets_env.post(
         "/settings/encryption/store",
         data={"pk": "GOOD-PUBKEY-2", "confirm_box": "1"},
         follow_redirects=True,
     )
-    assert "stored" in rv.data.decode().lower()
     with secrets_env.app.app_context():
-        assert get_setting("pillar_gpg_pk") == "GOOD-PUBKEY-2"
+        assert get_setting("pillar_nacl_pk") == "GOOD-PUBKEY-2"
     # Clear requires the gate too.
     secrets_env.post("/settings/encryption/clear", data={})
     with secrets_env.app.app_context():
-        assert get_setting("pillar_gpg_pk") == "GOOD-PUBKEY-2"
+        assert get_setting("pillar_nacl_pk") == "GOOD-PUBKEY-2"
     secrets_env.post(
         "/settings/encryption/clear", data={"confirm_box": "1"}, follow_redirects=True
     )
     with secrets_env.app.app_context():
-        assert get_setting("pillar_gpg_pk") == ""
+        assert get_setting("pillar_nacl_pk") == ""
 
 
-# --- Pillar capture honesty -------------------------------------------
+# --- setup copy / onboarding ------------------------------------------
+
+def test_setup_card_has_nacl_keygen_accordion(secrets_env):
+    """Without a stored key the setup card renders the NaCl runbook:
+    code blocks, keygen accordion, no gpg remnants."""
+    html = secrets_env.get("/pillar/secrets/").data.decode()
+    assert "mockup-code" in html
+    assert 'id="keygen"' in html
+    assert "Generate the master keypair" in html
+    assert "salt-call --local nacl.keygen" in html
+    assert "nacl.config" in html
+    assert "gpg" not in html.lower()
+    assert "_overstate_verify" not in html
+
+
+def test_key_settings_page_uses_nacl(secrets_env):
+    html = secrets_env.get("/settings/encryption/").data.decode()
+    assert "Generate the master keypair" in html
+    assert "mockup-code" in html
+    assert "salt-call --local nacl.keygen" in html
+    assert "NACL" not in html.replace("nacl", "")  # no armored/uppercase leftovers
+    assert "gpg" not in html.lower()
+    assert "armor" not in html.lower()
+
+
+# --- pillar capture honesty -------------------------------------------
 
 def test_pillar_detail_banner_lists_encrypted_keys(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
 
-    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: ARMORED)
+    monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: NACL)
     _store_pk(secrets_env)
     _mk_collection(secrets_env, "netbird")
     secrets_env.post(
@@ -522,7 +538,7 @@ def test_pillar_detail_banner_lists_encrypted_keys(secrets_env, monkeypatch):
     )
     html = secrets_env.get("/pillar/web-01").data.decode()
     assert "Encrypted pillar values are included" in html
-    assert "netbird.setup_key" in html  # key name, never the value
+    assert "netbird.setup_key" in html
     assert "plaintext" in html
 
 
@@ -534,7 +550,6 @@ def test_pillar_detail_no_banner_without_secrets(secrets_env):
 # --- Pillar section tabs ----------------------------------------------
 
 def _pillar_tab_bar(html):
-    """The tab bar markup, split into one segment per tab link."""
     bar = html.split('aria-label="Pillar views"', 1)[1].split("</div>", 1)[0]
     return bar.split('role="tab"')[1:]
 
@@ -548,9 +563,7 @@ def test_sidebar_has_one_pillar_entry(secrets_env):
         html = secrets_env.get(path).data.decode()
         aside = _aside(html)
         assert 'href="/pillar/"' in aside
-        # The editor is a tab now, not a second sidebar item.
         assert 'href="/pillar/secrets/"' not in aside
-        # Exactly one nav item highlights for both pillar routes.
         assert aside.count("menu-active") == 1
 
 
@@ -572,24 +585,3 @@ def test_detail_keeps_explorer_tab_active(secrets_env):
     tabs = _pillar_tab_bar(secrets_env.get("/pillar/web-01").data.decode())
     assert "tab-active" in tabs[0]
     assert "tab-active" not in tabs[1]
-
-
-# --- Setup instructions / code blocks ---------------------------------
-
-def test_setup_card_has_keygen_accordion_and_code_blocks(secrets_env):
-    """Without a stored key the setup card renders command/config code
-    blocks and a collapse for generating the master keypair."""
-    html = secrets_env.get("/pillar/secrets/").data.decode()
-    assert "mockup-code" in html  # config + import commands as code blocks
-    assert 'id="keygen"' in html  # keygen accordion
-    assert "Generate the master keypair" in html
-    assert "gpg --quick-generate-key" in html
-    assert "kubectl cp pillar-gpg.key" in html
-
-
-def test_key_settings_page_has_keygen_code_block(secrets_env):
-    html = secrets_env.get("/settings/encryption/").data.decode()
-    assert "Generate the master keypair" in html
-    assert "mockup-code" in html
-    assert "gpg --quick-generate-key" in html
-    assert "salt-call --local nacl.keygen" not in html  # dead hint removed
