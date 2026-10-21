@@ -1,13 +1,19 @@
 {% extends "base.html" %}
-{% set file_ns = file_ns|default('files') %}
 {% block title %}Edit {{ rel }} · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
+    <nav class="breadcrumbs max-w-full text-sm mb-2" aria-label="File location">
+      <ul>
+        {% for c in crumbs %}
+        {% if loop.last %}<li><span class="font-mono">{{ c.label }}{% if not loop.first %}/{% endif %}</span></li>{% else %}<li><a class="font-mono" href="{{ url_for('files.index', dir=c.dir) }}">{{ c.label }}</a></li>{% endif %}
+        {% endfor %}
+      </ul>
+    </nav>
     <div class="flex flex-wrap items-center gap-2 mb-4">
     <h1 class="text-xl font-bold font-mono tracking-tight break-all me-auto">{{ rel }}</h1>
   </div>
   <p class="text-sm opacity-70 mb-4">Saving commits this file locally{% if revision %} (checkout at <code class="font-mono">{{ revision }}</code>){% endif %}; an admin pushes it upstream separately.</p>
-  <form method="post" action="{{ url_for(file_ns ~ '.save') }}">
+  <form method="post" action="{{ url_for('files.save') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="path" value="{{ rel }}">
     <input type="hidden" name="base_sha" value="{{ base_sha }}">
@@ -25,7 +31,7 @@
       </div>
     </div>
     <div class="flex gap-2 mt-3 justify-end">
-      <a class="btn btn-sm btn-ghost" href="{{ url_for(file_ns ~ '.view', path=rel) }}">Cancel</a>
+      <a class="btn btn-sm btn-ghost" href="{{ url_for('files.view', path=rel) }}">Cancel</a>
       <button class="btn btn-sm btn-primary" type="submit">Save</button>
     </div>
   </form>

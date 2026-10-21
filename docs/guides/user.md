@@ -320,22 +320,6 @@ view compares any two snapshots, or two minions, side by side. Use
 diffs to answer "what changed on this host last Tuesday" and to check
 that a whole role shares identical secrets.
 
-### Pillar files
-
-The **Pillar files** tab browses the pillar *source* tree the master
-renders: `top.sls`, plaintext pillar files (`common.sls`, per-role
-files), and the encrypted `secrets/` tree. It is the counterpart to the
-Pillar snapshots above — rendered data per minion versus the source
-files behind it.
-
-Browsing and viewing are open to the same readers as the Files page.
-Anything under `secrets/` is read-only in this browser: it holds only
-`NACL[...]` ciphertext, and editing there belongs to the **Encrypted
-pillar** editor (see `docs/guides/pillar-encryption.md`), which
-encrypts in memory with the master public key. Plaintext pillar files
-outside `secrets/` can be edited here by operators, saved as a single
-local git commit, exactly like the Files page edit flow.
-
 ## Files
 
 The Files page is the file explorer and nothing else: a folder tree
@@ -344,12 +328,22 @@ checkout — branch, revision, clean or uncommitted state, ahead/behind —
 and the **Check updates**, **Sync now**, **Sync modules**, and
 **Push** (admin) actions. Vendored formulas have their own page
 (**Formulas**), and the git source (clone, repoint, reset, re-clone)
-lives under Settings → **State repo**. The file browser shows the Salt
-file roots the app was pointed at:
-top files and SLS content, rendered as text with line numbers. Search
-narrows the listing, directories group the rows, and long listings
-page. Files too large or not readable as text show an explainer card
-instead of a blank error, and those files cannot be edited here.
+lives under Settings → **State repo**. The browser walks the whole
+cloned checkout — `salt/` (states and top.sls), `pillar/` (top.sls,
+plaintext pillar, and the encrypted `secrets/` tree), and anything else
+the repo holds — so pillar source is visible here alongside states.
+File contents render as text with line numbers. Search narrows the
+listing, directories group the rows, and long listings page. The
+listing sorts by **File**, **Size**, or **Modified** (click a column
+header), and the **Recently changed** button jumps straight to newest
+edits first; your sort and page size survive search and pagination.
+Files too large or not readable as text show an explainer card instead
+of a blank error, and those files cannot be edited here.
+
+Every file view shows where the file lives in the checkout (a
+breadcrumb back up the folder tree), plus git provenance — who last
+changed it, when, at which revision, and the commit subject — when the
+file is tracked.
 
 Operators and admins see an **Edit** button on text files. It opens a
 code editor (line numbers, YAML highlighting for SLS files) over a

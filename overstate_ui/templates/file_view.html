@@ -1,23 +1,28 @@
 {% extends "base.html" %}
-{% set file_ns = file_ns|default('files') %}
 {% block title %}{{ rel }} · Overstate{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
-    <div class="flex flex-wrap items-center gap-2 mb-4">
+    <nav class="breadcrumbs max-w-full text-sm mb-2" aria-label="File location">
+      <ul>
+        {% for c in crumbs %}
+        {% if loop.last %}<li><span class="font-mono">{{ c.label }}</span></li>{% else %}<li><a class="font-mono" href="{{ url_for('files.index', dir=c.dir) }}">{{ c.label }}</a></li>{% endif %}
+        {% endfor %}
+      </ul>
+    </nav>
+    <div class="flex flex-wrap items-center gap-2 mb-2">
     <h1 class="text-xl font-bold font-mono tracking-tight break-all me-auto">{{ rel }}</h1>
-    {% if is_secret and file_ns == 'pillar_files' %}
-    <span class="badge badge-sm badge-warning badge-outline">encrypted — edit in the Encrypted pillar editor</span>
-    {% elif content is not none and (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.write')) %}
-    <a class="btn btn-sm btn-outline" href="{{ url_for(file_ns ~ '.edit', path=rel) }}">Edit</a>
+    {% if content is not none and (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.write')) %}
+    <a class="btn btn-sm btn-outline" href="{{ url_for('files.edit', path=rel) }}">Edit</a>
     {% endif %}
   </div>
-  <p class="text-sm opacity-70 mb-4">Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.</p>
+  <p class="text-sm opacity-70 mb-4">Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.
+  {% if last_commit %}Last changed by <span class="font-medium">{{ last_commit.author }}</span> {{ last_commit.when }} (<code class="font-mono">{{ last_commit.sha }}</code>) — {{ last_commit.subject }}.{% endif %}</p>
   {% if content is none %}
   <div class="card card-border">
     <div class="card-body py-8 text-center">
       <p class="font-medium">Cannot display {{ rel }}</p>
       <p class="text-sm opacity-70">This file is {{ reason }} ({{ size }} bytes{% if max_bytes and reason.startswith("too large") %}; display limit is {{ max_bytes }} bytes{% endif %}). It exists in the checkout; open it in git instead. No content was changed.</p>
-      <p class="mt-3"><a class="btn btn-sm btn-outline" href="{{ url_for(file_ns ~ '.index') }}">Back to {{ 'pillar files' if file_ns == 'pillar_files' else 'files' }}</a></p>
+      <p class="mt-3"><a class="btn btn-sm btn-outline" href="{{ url_for('files.index', dir=parent) }}">Back to files</a></p>
     </div>
   </div>
   {% else %}

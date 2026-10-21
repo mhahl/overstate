@@ -52,9 +52,9 @@ def test_index_lists_files(rooted):
 def test_files_page_uses_a_cohesive_browser_workspace(rooted):
     html = rooted.get("/files/").data.decode()
     assert 'id="file-workspace"' in html
-    assert 'aria-label="State files workspace"' in html
+    assert 'aria-label="Checkout files workspace"' in html
     assert 'aria-label="Folder navigation"' in html
-    assert 'aria-label="State file results"' in html
+    assert 'aria-label="Checkout file results"' in html
     assert 'id="file-browser-toolbar"' in html
     assert 'class="flex w-full flex-wrap items-end justify-end gap-2 sm:w-auto sm:flex-nowrap"' in html
     assert 'id="file-tree-fallback"' in html
@@ -189,6 +189,95 @@ def test_missing_file_404(rooted):
 def test_no_write_routes_exist(rooted):
     assert rooted.post("/files/").status_code == 405
     assert rooted.post("/files/view", data={"path": "x"}).status_code == 405
+
+
+def test_srv_layout_browses_whole_checkout(tmp_path):
+    """The Files browser walks the git toplevel (the whole cloned repo),
+    not just the salt file roots: salt/, pillar/, and anything else the
+    checkout holds all appear in one listing."""
+    srv = tmp_path / "srv"
+    salt = srv / "salt"
+    pillar = srv / "pillar"
+    salt.mkdir(parents=True)
+    pillar.mkdir(parents=True)
+    (salt / "top.sls").write_text("base:\n  '*': []\n")
+    (pillar / "top.sls").write_text("base:\n  '*':\n    - secrets.netbird\n")
+    (pillar / "common.sls").write_text("ntp:\n  servers:\n    - pool.ntp.org\n")
+    _git(srv, "init", "-qb", "main")
+    _git(srv, "config", "user.email", "t@t")
+    _git(srv, "config", "user.name", "t")
+    _git(srv, "add", ".")
+    _git(srv, "commit", "-qm", "seed")
+    init_db("sqlite://")
+    app = create_app(TestConfig)
+    app.config["WTF_CSRF_ENABLED"] = False
+    app.config["FILE_ROOTS"] = str(salt)
+    with app.app_context():
+        create_all()
+        seed_admin(password="pw")
+    c = app.test_client()
+    c.post("/login", data={"username": "admin", "password": "pw"})
+    html = c.get("/files/").data.decode()
+    assert "salt/top.sls" in html
+    assert "pillar/top.sls" in html
+    assert "pillar/common.sls" in html
+    # Viewing a pillar file resolves against the checkout root, not the
+    # salt tree.
+    rv = c.get("/files/view", query_string={"path": "pillar/common.sls"})
+    assert rv.status_code == 200
+    assert b"pool.ntp.org" in rv.data
+    # Editing a pillar file also works from the whole-repo root.
+    rv = c.get("/files/edit", query_string={"path": "pillar/common.sls"})
+    assert rv.status_code == 200
+    assert 'id="editor-textarea"' in rv.data.decode()
+
+
+def test_index_sorts_by_size_and_mtime(rooted):
+    with rooted.app.app_context():
+        rooted.app.config["FILE_ROOTS"] = str(rooted.app.config["FILE_ROOTS"])
+    html = rooted.get("/files/", query_string={"sort": "size", "sd": "desc"}).data.decode()
+    assert 'aria-sort="desc"' in html
+    assert 'href="/files/?sort=size&amp;sd=asc' in html or "sort=size&sd=asc" in html
+    # Size column header carries the active sort state.
+    assert ">Size<" in html
+
+
+def test_index_sorts_by_mtime_defaults_and_toggle(rooted):
+    html = rooted.get("/files/").data.decode()
+    # Default name sort: no arrow on size/mtime headers.
+    assert 'aria-sort="none"' in html
+    # Recently changed quick-toggle links to mtime desc.
+    assert 'href="/files/?sort=mtime&amp;sd=desc' in html or "sort=mtime&sd=desc" in html
+    assert "Recently changed" in html
+    # Search form carries sort state so a query does not reset it.
+    assert 'name="sort" value="name"' in html
+
+
+def test_index_truncation_counts_filtered_subtree(rooted, tmp_path):
+    """The listing cap applies to the requested folder, not the whole
+    checkout, so a deep folder past the global cap is not empty."""
+    with rooted.app.app_context():
+        rooted.app.config["FILE_ROOTS"] = str(tmp_path)
+    for i in range(60):
+        (tmp_path / f"bulk-{i:02d}.sls").write_text("x:\n  test.nop: []\n")
+    (tmp_path / "deep").mkdir()
+    (tmp_path / "deep" / "only.sls").write_text("a:\n  test.nop: []\n")
+    html = rooted.get("/files/", query_string={"dir": "deep"}).data.decode()
+    assert "deep/only.sls" in html
+    assert "bulk-00.sls" not in html  # outside the folder stays out
+
+
+def test_push_confirm_attr_present(rooted):
+    html = rooted.get("/files/").data.decode()
+    assert 'data-confirm="Push local commits upstream' in html
+
+
+def test_view_shows_git_provenance(edit_checkout):
+    html = edit_checkout.get(
+        "/files/view", query_string={"path": "web.sls"}
+    ).data.decode()
+    assert "Last changed by" in html
+    assert "seed" in html  # commit subject
 
 
 def test_requires_login():
@@ -524,7 +613,9 @@ def test_stale_and_uncommitted_saves_leave_audit_rows(
     import overstate_ui.files as filesmod
 
     monkeypatch.setattr(
-        filesmod, "git_commit_file", lambda *a: {"ok": False, "reason": "boom"}
+        filesmod,
+        "git_commit_file",
+        lambda *a, **k: {"ok": False, "reason": "boom"},
     )
     fields = _base_fields(edit_checkout, "web.sls")
     edit_checkout.post(
@@ -669,10 +760,13 @@ def test_index_dir_survives_pagination(rooted, tmp_path):
     assert "big/keep-29.sls" in html
 
 
-def test_view_shows_file_path_without_breadcrumbs(rooted):
+def test_view_shows_breadcrumb_to_parent_folder(rooted):
     html = rooted.get("/files/view", query_string={"path": "sub/db.sls"}).data.decode()
     assert "sub/db.sls" in html
-    assert "breadcrumbs" not in html
+    # The view page carries a breadcrumb back up the folder tree, so a
+    # deep file is never a dead end.
+    assert 'aria-label="File location"' in html
+    assert 'href="/files/?dir=sub"' in html
 
 
 def test_browser_bundle_served_locally(rooted):

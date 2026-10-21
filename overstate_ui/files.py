@@ -81,6 +81,20 @@ def roots() -> Path:
     return Path(current_app.config["FILE_ROOTS"]).resolve()
 
 
+def browse_root() -> Path:
+    """Root the Files browser walks: the whole cloned repo when a checkout
+    exists (git toplevel), else the configured file roots.
+
+    ``roots()`` stays the salt tree for git/formulas internals; this is
+    the *viewing* root, so the browser shows everything the checkout
+    holds — ``salt/``, ``pillar/``, ``reactor/`` and any sibling files.
+    """
+    from .git_sync import _toplevel
+
+    top = _toplevel()
+    return top if top is not None else roots()
+
+
 def safe_join(rel: str, base: Path | None = None) -> Path | None:
     """Resolve ``rel`` inside ``base`` (or roots); None on traversal."""
     base = base or roots()
@@ -107,10 +121,10 @@ def list_tree(limit: int | None = None, base: Path | None = None) -> list[dict]:
         return entries
     for path, rel in _iter_files(base):
         try:
-            size = path.stat().st_size
+            st = path.stat()
         except OSError:
             continue
-        entries.append({"rel": rel, "size": size})
+        entries.append({"rel": rel, "size": st.st_size, "mtime": st.st_mtime})
         if limit is not None and len(entries) >= limit:
             break
     entries.sort(key=lambda e: e["rel"])
@@ -269,6 +283,30 @@ def sync_revision() -> str | None:
         path = path.parent
 
 
+def last_commit(rel: str) -> dict | None:
+    """Provenance of the last commit touching ``rel`` (short sha, author,
+    relative date, subject), or None when it is not a tracked checkout
+    file. Read-only; used by the file view page."""
+    top = browse_root()
+    if not (top / ".git").is_dir():
+        return None
+    try:
+        out = subprocess.run(
+            ["git", "log", "-1", "--format=%h%x1f%an%x1f%ar%x1f%s", "--", rel],
+            cwd=top,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    sha, author, when, subject = out.stdout.strip().split("\x1f", 3)
+    return {"sha": sha, "author": author, "when": when, "subject": subject}
+
+
 @bp.route("/")
 @login_required
 def index():
@@ -295,6 +333,13 @@ def _files_page_context():
         visible_prefixes(current_user) if rbac_mode() == "scoped" else None
     )
     q = request.args.get("q", "").strip().lower()
+    sort = request.args.get("sort", "name")
+    if sort not in ("name", "size", "mtime"):
+        sort = "name"
+    # ``sd`` (sort direction) avoids clashing with ``dir`` (folder path).
+    direction = request.args.get("sd", "asc")
+    if direction not in ("asc", "desc"):
+        direction = "asc"
     from .minions import resolve_page_size
 
     try:
@@ -303,24 +348,48 @@ def _files_page_context():
         page = 1
     per_page = resolve_page_size(request.args.get("per_page"))
     d = normalize_dir(request.args.get("dir", ""))
-    entries = list_tree(limit=LIST_LIMIT + 1)
+    base = browse_root()
+    full = list_tree(limit=LIST_LIMIT + 1, base=base)
     if prefixes is not None:
         # Listing drops entries outside every granted prefix.
-        entries = [e for e in entries if prefix_visible(prefixes, e["rel"])]
+        full = [e for e in full if prefix_visible(prefixes, e["rel"])]
+    tree_nodes = build_tree(full, active_dir=d)
+    if d:
+        # Walk only the requested subtree so the listing cap applies to
+        # this folder, not the whole checkout — a deep folder that sorts
+        # past the cap must not appear empty.
+        sub = base / d
+        if sub.is_dir():
+            scoped = list_tree(limit=LIST_LIMIT + 1, base=sub)
+            entries = [
+                {"rel": f"{d}/{e['rel']}", "size": e["size"], "mtime": e["mtime"]}
+                for e in scoped
+            ]
+        else:
+            entries = []
+        if prefixes is not None:
+            entries = [e for e in entries if prefix_visible(prefixes, e["rel"])]
+    else:
+        entries = full
     truncated = len(entries) > LIST_LIMIT
     entries = entries[:LIST_LIMIT]
-    tree_nodes = build_tree(entries, active_dir=d)
-    if d:
-        entries = [
-            e for e in entries if e["rel"] == d or e["rel"].startswith(d + "/")
-        ]
     if q:
         entries = [e for e in entries if q in e["rel"].lower()]
+    if sort == "size":
+        entries.sort(key=lambda e: e["size"], reverse=(direction == "desc"))
+    elif sort == "mtime":
+        entries.sort(key=lambda e: e["mtime"], reverse=(direction == "desc"))
+    else:
+        entries.sort(key=lambda e: e["rel"].lower(), reverse=(direction == "desc"))
     total = len(entries)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
     rows = group_rows(entries[(page - 1) * per_page : page * per_page])
-    has_top = (roots() / "top.sls").is_file()
+    # The state top.sls lives under salt/ in the srv layout, or at the
+    # browsed root when the checkout is at file roots (legacy layout).
+    has_top = (browse_root() / "salt" / "top.sls").is_file() or (
+        roots() / "top.sls"
+    ).is_file()
     from .file_sync_schedule import (
         FILE_SYNC_CRON_DEFAULT,
         LAST_MESSAGE_SETTING,
@@ -340,6 +409,8 @@ def _files_page_context():
         "revision": sync_revision(),
         "q": request.args.get("q", ""),
         "d": d,
+        "sort": sort,
+        "direction": direction,
         "crumbs": dir_crumbs(d),
         "tree_nodes": tree_nodes,
         "page": page,
@@ -483,7 +554,7 @@ def edit():
     form was read at; the save route checks them (stale bases refuse).
     """
     rel = request.args.get("path", "")
-    target = safe_join(rel)
+    target = safe_join(rel, base=browse_root())
     if not target or not target.is_file():
         abort(404)
     from .authz import rbac_mode, require
@@ -499,9 +570,11 @@ def edit():
     except OSError:
         abort(404)
     lang = "yaml" if target.suffix.lower() in YAML_SUFFIXES else "text"
+    parent = rel.rpartition("/")[0] if "/" in rel else ""
     return render_template(
         "file_edit.html",
         rel=rel,
+        crumbs=dir_crumbs(parent),
         content=content,
         lang=lang,
         base_sha=git_head() or "nogit",
@@ -520,7 +593,7 @@ def save():
     triggers the same advisory fileserver refresh as a sync.
     """
     rel = request.form.get("path", "")
-    target = safe_join(rel)
+    target = safe_join(rel, base=browse_root())
     if not target or not target.is_file():
         abort(404)
     from .authz import rbac_mode, require
@@ -580,11 +653,12 @@ def save():
         flash("Could not write the file. Nothing changed.", "error")
         log_event(current_user.username, f"file-save-refused:{rel}:write-failed")
         return redirect(url_for("files.view", path=rel))
-    rel_posix = target.relative_to(roots()).as_posix()
+    rel_posix = target.relative_to(browse_root()).as_posix()
     result = git_commit_file(
         rel_posix,
         f"overstate({current_user.username}): {rel_posix}",
         current_user.username,
+        cwd=browse_root(),
     )
     if not result["ok"]:
         flash(
@@ -639,13 +713,13 @@ def view():
     from .authz import rbac_mode, require
 
     rel = request.args.get("path", "")
-    target = safe_join(rel)
+    target = safe_join(rel, base=browse_root())
     if not target or not target.is_file():
         abort(404)
     if rbac_mode() == "scoped":
         require("file.read", prefix=rel)
     parent = rel.rpartition("/")[0] if "/" in rel else ""
-    crumbs = dir_crumbs(parent)
+    crumbs = dir_crumbs(parent) + [{"label": rel.rsplit("/", 1)[-1], "dir": None}]
     content = read_text(target)
     if content is not None:
         highlighted = (
@@ -655,12 +729,14 @@ def view():
             "file_view.html",
             rel=rel,
             crumbs=crumbs,
+            parent=parent,
             content=content,
             lines=content.splitlines(),
             highlighted=highlighted,
             reason=None,
             size=None,
             revision=sync_revision(),
+            last_commit=last_commit(rel),
         )
     # The file exists but cannot be shown as text: explain instead of
     # a bare 404 so operators know whether it is big or binary.
@@ -673,10 +749,12 @@ def view():
         "file_view.html",
         rel=rel,
         crumbs=crumbs,
+        parent=parent,
         content=None,
         lines=[],
         reason=reason,
         size=size,
         max_bytes=MAX_BYTES,
         revision=sync_revision(),
+        last_commit=last_commit(rel),
     )

@@ -1,17 +1,12 @@
-{# Horizontal tabs for the Pillar section. The routes are siblings
+{# Horizontal tabs for the Pillar section. The two routes are siblings
    under one sidebar entry, so the sidebar never highlights both: the
-   explorer tab covers every pillar.* page, the files tab covers
-   pillar_files.*, and the editor tab covers pillar_secrets.*. Pattern
-   matches the other in-tree tab sets. #}
+   explorer tab covers every pillar.* page, the editor tab covers
+   pillar_secrets.*. Pattern matches the other in-tree tab sets. #}
 {% set secrets_active = request.endpoint and request.endpoint.startswith('pillar_secrets') %}
-{% set files_active = request.endpoint and request.endpoint.startswith('pillar_files') %}
 <div role="tablist" class="tabs tabs-border mb-4" aria-label="Pillar views">
-  <a role="tab" href="{{ url_for('pillar.index') }}" class="tab{% if not secrets_active and not files_active %} tab-active{% endif %}"{% if not secrets_active and not files_active %} aria-current="page"{% endif %}>
+  <a role="tab" href="{{ url_for('pillar.index') }}" class="tab{% if not secrets_active %} tab-active{% endif %}"{% if not secrets_active %} aria-current="page"{% endif %}>
     <span class="icon-[lucide--tag] size-4" aria-hidden="true"></span>
     Pillar</a>
-  <a role="tab" href="{{ url_for('pillar_files.index') }}" class="tab{% if files_active %} tab-active{% endif %}"{% if files_active %} aria-current="page"{% endif %}>
-    <span class="icon-[lucide--folder-open] size-4" aria-hidden="true"></span>
-    Pillar files</a>
   <a role="tab" href="{{ url_for('pillar_secrets.index') }}" class="tab{% if secrets_active %} tab-active{% endif %}"{% if secrets_active %} aria-current="page"{% endif %}>
     <span class="icon-[lucide--key-round] size-4" aria-hidden="true"></span>
     Encrypted pillar</a>
