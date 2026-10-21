@@ -184,6 +184,33 @@ def test_index_lists_collections_and_keys(secrets_env, monkeypatch):
     assert "Overwrite '" in html
 
 
+def test_index_searches_and_paginates_keys(secrets_env):
+    """Key tables page independently and the toolbar filters by key."""
+    import overstate_ui.pillar_secrets as psmod
+
+    _store_pk(secrets_env)
+    _mk_collection(secrets_env, "svc")
+    keys = [f"svc.k{i:02d}" for i in range(30)] + ["svc.zebra"]
+    with secrets_env.app.app_context():
+        psmod._collection_path("svc").write_text(
+            "\n".join(f"{k}: NACL[{k}]" for k in keys) + "\n"
+        )
+
+    first = secrets_env.get("/pillar/secrets/?per_page=10").data.decode()
+    assert "Page 1 of 4" in first
+    assert "1–10 of 31 keys" in first
+    assert "cp_svc" in first  # per-collection page param in the links
+    assert "svc.k00" in first and "svc.k09" in first
+    assert "svc.k10" not in first
+
+    last = secrets_env.get("/pillar/secrets/?per_page=10&cp_svc=4").data.decode()
+    assert "Page 4 of 4" in last and "svc.zebra" in last
+
+    filtered = secrets_env.get("/pillar/secrets/?q=zebra").data.decode()
+    assert "svc.zebra" in filtered and "svc.k00" not in filtered
+    assert "No keys match" in secrets_env.get("/pillar/secrets/?q=nope").data.decode()
+
+
 def test_collection_create_commits(secrets_env):
     _mk_collection(secrets_env, "netbird")
     path = secrets_env.work / "pillar" / "secrets" / "netbird.sls"

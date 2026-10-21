@@ -418,6 +418,10 @@ def index():
         # the ordinary pillar read grant.
         require("pillar.read")
     pk = get_setting(PK_SETTING)
+    q = request.args.get("q", "").strip().lower()
+    from .minions import resolve_page_size
+
+    per_page = resolve_page_size(request.args.get("per_page"))
     collections = []
     for name in list_collections():
         path = _collection_path(name)
@@ -432,11 +436,28 @@ def index():
             }
             for dotted, value in sorted(leaves.items())
         ]
+        if q:
+            keys = [k for k in keys if q in k["key"].lower()]
+        key_total = len(keys)
+        key_pages = max(1, (key_total + per_page - 1) // per_page)
+        # Each collection table pages independently: cp_<name> carries
+        # only that table's page, so paging one never moves the others.
+        page_param = f"cp_{name}"
+        try:
+            key_page = max(1, int(request.args.get(page_param, 1)))
+        except ValueError:
+            key_page = 1
+        key_page = min(key_page, key_pages)
+        visible = keys[(key_page - 1) * per_page : key_page * per_page]
         collections.append(
             {
                 "name": name,
                 "wired": collection_wired(name),
-                "entries": keys,
+                "entries": visible,
+                "key_total": key_total,
+                "key_pages": key_pages,
+                "key_page": key_page,
+                "page_param": page_param,
                 "rel": _collection_rel(name),
             }
         )
@@ -456,6 +477,8 @@ def index():
     return render_template(
         "pillar_secrets.html",
         collections=collections,
+        q=q,
+        per_page=per_page,
         minions=minions,
         renderer=renderer,
         key_id=key_id(pk) if pk else None,
