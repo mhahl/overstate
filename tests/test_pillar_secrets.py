@@ -555,7 +555,7 @@ def test_key_settings_page_uses_nacl(secrets_env):
 
 # --- pillar capture honesty -------------------------------------------
 
-def test_pillar_detail_banner_lists_encrypted_keys(secrets_env, monkeypatch):
+def test_pillar_detail_banner_warns_plaintext(secrets_env, monkeypatch):
     import overstate_ui.pillar_secrets as psmod
 
     monkeypatch.setattr(psmod, "encrypt_value", lambda v, pk: NACL)
@@ -567,8 +567,11 @@ def test_pillar_detail_banner_lists_encrypted_keys(secrets_env, monkeypatch):
     )
     html = secrets_env.get("/pillar/web-01").data.decode()
     assert "Encrypted pillar values are included" in html
-    assert "netbird.setup_key" in html
     assert "plaintext" in html
+    # The banner warns without dumping internals: no storage backend,
+    # no key list.
+    assert "Postgres" not in html
+    assert "Keys:" not in html
 
 
 def test_pillar_detail_no_banner_without_secrets(secrets_env):

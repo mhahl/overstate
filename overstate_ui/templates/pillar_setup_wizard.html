@@ -63,7 +63,7 @@
       <form method="post" action="{{ url_for('pillar_secrets.setup') }}" class="flex flex-col gap-2" data-confirm="Generate or repair the shared NaCl keypair on the masters? An existing key is reused, never regenerated, and the public key is stored automatically.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-sm btn-primary"><span class="icon-[lucide--sparkles] size-4" aria-hidden="true"></span>Set up NaCl on the masters</button>
-        <span class="text-xs text-base-content/60">Runs the commands below over the Kubernetes exec API: keygen on the first master, secret key copied to the others, public key stored. Existing keys are reused, never regenerated.</span>
+        <span class="text-xs text-base-content/60">Existing keys are reused, never regenerated.</span>
       </form>
       {% endif %}
       <details id="keygen" class="collapse collapse-arrow border border-base-300 rounded-lg">
@@ -76,7 +76,6 @@
             <pre data-prefix="$"><code>  install -d -m 0700 -o salt -g salt $KEYDIR &amp;&amp;</code></pre>
             <pre data-prefix="$"><code>  runuser -u salt -- salt-call --local nacl.keygen sk_file=$KEYDIR/nacl"</code></pre>
           </div>
-          <p class="text-xs text-base-content/60 mt-2">This writes <span class="font-mono">nacl</span> (secret) and <span class="font-mono">nacl.pub</span> (public) on the keys PVC.</p>
           <div class="mockup-code text-xs overflow-x-auto mt-2">
             <pre data-prefix="$"><code>SK=$(kubectl exec -n $NS salt-master-0 -- runuser -u salt -- cat $KEYDIR/nacl)</code></pre>
             <pre data-prefix="$"><code>for POD in salt-master-1 salt-master-2; do</code></pre>
@@ -87,7 +86,7 @@
             <pre data-prefix="$"><code>    chmod 0600 $KEYDIR/nacl"</code></pre>
             <pre data-prefix="$"><code>done</code></pre>
           </div>
-          <p class="text-xs text-base-content/60 mt-2">The secret key is 32 bytes, base64. Back it up offline; every master must hold the same one or a pillar request that lands on the wrong pod fails to decrypt.</p>
+          <p class="text-xs text-base-content/60 mt-2">Back up the secret key offline; every master must hold the same key.</p>
         </div>
       </details>
     </div>

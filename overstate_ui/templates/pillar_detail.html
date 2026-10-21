@@ -34,9 +34,7 @@
     <span class="icon-[lucide--key-round] size-5 shrink-0" aria-hidden="true"></span>
     <div>
       <p class="font-medium">Encrypted pillar values are included</p>
-      <p class="text-sm">The master decrypts before serving, so this page and any
-      <strong>captured snapshot</strong> contain these values in plaintext —
-      snapshots are stored in Postgres. Keys: <span class="font-mono text-xs">{{ secret_keys|join(', ') }}</span>.</p>
+      <p class="text-sm">The master decrypts before serving, so this page and any captured snapshot contain these values in plaintext.</p>
     </div>
   </div>
   {% endif %}
@@ -60,7 +58,6 @@
           </div>
           <div class="me-auto">
             <h2 class="font-medium">Live rendered pillar</h2>
-            <p class="text-xs text-base-content/70">Current values returned for this minion</p>
           </div>
           {% if live is mapping %}
           <span class="badge badge-sm badge-soft badge-success">Available</span>
@@ -126,9 +123,9 @@
         <div class="flex flex-col items-start gap-2 px-4 py-8">
           <p class="font-medium">No snapshots captured</p>
           {% if can_capture %}
-          <p class="text-sm text-base-content/70">Capture the current render to create a point-in-time reference for future comparisons. The latest 10 captures are retained.</p>
+          <p class="text-sm text-base-content/70">Capture the current render to create a point-in-time reference for future comparisons.</p>
           {% else %}
-          <p class="text-sm text-base-content/70">A user with snapshot-capture permission can save a point-in-time reference. The latest 10 captures are retained.</p>
+          <p class="text-sm text-base-content/70">A user with snapshot-capture permission can save a point-in-time reference.</p>
           {% endif %}
         </div>
         {% endif %}
