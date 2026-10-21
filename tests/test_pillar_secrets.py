@@ -176,7 +176,8 @@ def test_index_lists_collections_and_keys(secrets_env, monkeypatch):
     html = secrets_env.get("/pillar/secrets/").data.decode()
     assert "netbird" in html
     assert "netbird.setup_key" in html
-    assert "encrypted" in html
+    assert "abc" in html  # ciphertext preview renders without a badge
+    assert "badge-success\">encrypted" not in html
 
 
 def test_collection_create_commits(secrets_env):
@@ -518,7 +519,8 @@ def test_configured_page_shows_editor_status(secrets_env, monkeypatch):
     monkeypatch.setattr(psmod, "key_id", lambda pk: "f1ce" if pk else None)
     _store_pk(secrets_env)
     html = secrets_env.get("/pillar/secrets/").data.decode()
-    assert "encryption configured" in html
+    assert "key f1ce" in html  # status strip keeps the key id, no badge
+    assert "encryption configured" not in html
     assert "Setup encryption" not in html  # empty state gone
     assert 'href="/pillar/secrets/setup"' in html  # repair link
 
