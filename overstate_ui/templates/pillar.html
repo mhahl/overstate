@@ -13,7 +13,7 @@
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="dir" value="{{ direction }}">
   {{ m.table_search_field("pillar-search", "q", q, "Search minion", "Search minion…", "Search minion") }}
-  <button class="btn btn-sm btn-primary">Filter</button>
+  <button class="btn btn-sm btn-primary mb-1">Filter</button>
   {% if q %}<a class="btn btn-sm btn-ghost" href="{{ url_for('pillar.index', sort=sort, dir=direction) }}">Clear</a>{% endif %}
 </form>
 {{ m.page_size_select('pillar.index', per_page, {'q': q, 'sort': sort, 'dir': direction}) }}

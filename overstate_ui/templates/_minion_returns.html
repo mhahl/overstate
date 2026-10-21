@@ -1,7 +1,7 @@
 {% import "_macros.html" as m %}
 <div id="minion-returns">
   {% if data.returns %}
-  <div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-base-300">
+  <div class="flex flex-wrap items-end gap-2 px-4 py-2 border-b border-base-300">
     {{ m.page_size_select('minions.detail', data.returns_per_page, {'mid': mid, 'tab': 'jobs', 'sort': sort, 'dir': direction}, action_params={'mid': mid}) }}
   </div>
   <div class="max-w-full overflow-x-auto rounded-box min-h-56">

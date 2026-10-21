@@ -1,7 +1,7 @@
 {% import "_macros.html" as macros %}
 <div id="conformity-table" class="min-w-0">
   {% if minions %}
-  <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+  <div class="flex flex-wrap items-end gap-2 px-4 py-2">
     {{ macros.page_size_select('states.index', per_page, {"status": status_filter, "q": q, "sort": sort, "dir": direction}) }}
   </div>
   <div class="max-w-full overflow-x-auto rounded-box">
