@@ -184,7 +184,7 @@
                   {% else %}<span class="icon-[lucide--file-text] size-4 text-base-content/60 shrink-0" aria-hidden="true"></span>{% endif %}
                   <span class="font-mono text-sm break-all">{{ r.rel }}</span>
                 </a></td>
-                <td class="text-right"><span class="badge badge-sm badge-ghost tabular-nums">{{ r.size|filesizeformat }}</span></td>
+                <td class="text-right whitespace-nowrap"><span class="badge badge-sm badge-ghost tabular-nums">{{ r.size|filesizeformat }}</span></td>
                 <td class="text-right whitespace-nowrap text-sm text-base-content/70">{{ r.mtime|reltime }}</td>
               </tr>
               {% endif %}
