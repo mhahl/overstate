@@ -26,6 +26,11 @@
       </a>
       {% endif %}
       <span class="badge badge-sm badge-ghost tabular-nums">{{ total }} file{% if total != 1 %}s{% endif %}</span>
+      {% if ignore_count %}
+      <a class="badge badge-sm badge-ghost" href="{{ url_for('settings.index') }}" title="Files are hidden by ignore patterns; edit them in Settings">
+        <span class="icon-[lucide--eye-off] size-3" aria-hidden="true"></span>{{ ignore_count }} ignore pattern{% if ignore_count != 1 %}s{% endif %}
+      </a>
+      {% endif %}
       {% if revision %}<span class="badge badge-sm badge-ghost font-mono" title="Current checkout revision">{{ revision }}</span>{% endif %}
     </div>
   </header>

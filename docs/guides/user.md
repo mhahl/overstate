@@ -340,6 +340,15 @@ edits first; your sort and page size survive search and pagination.
 Files too large or not readable as text show an explainer card instead
 of a blank error, and those files cannot be edited here.
 
+**Ignore patterns** hide clutter from the browser: a shared list of glob
+patterns under Settings → **File browser**, one per line. A pattern
+matching a file, or a folder name (which hides its whole subtree), keeps
+that path out of the listing, the folder tree, and search — for example
+`*.log` or `secrets`. An **N ignore patterns** badge on the Files page
+shows when any are active and links back to the editor. Ignoring a file
+only hides it from browsing: its direct path still opens and edits
+normally, since the filter is a viewing convenience, not access control.
+
 Every file view shows where the file lives in the checkout (a
 breadcrumb back up the folder tree), plus git provenance — who last
 changed it, when, at which revision, and the commit subject — when the

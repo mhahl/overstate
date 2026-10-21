@@ -89,6 +89,12 @@ DEFS = {
         "options": ["10", "25", "50", "100"],
         "default": "50",
     },
+    "file_ignore_patterns": {
+        "label": "File browser ignore patterns",
+        "help": "One glob per line, matched against file paths and folder names. A pattern matching a folder hides its whole subtree (e.g. `secrets` or `secrets/*` hides everything under secrets/). Blank lines and lines starting with # are ignored. Hidden files stay reachable by their direct path.",
+        "default": "",
+        "multiline": True,
+    },
 }
 
 
@@ -124,6 +130,11 @@ SECTIONS = [
         "title": "Display",
         "desc": "List density.",
         "keys": ["page_size"],
+    },
+    {
+        "title": "File browser",
+        "desc": "Shared ignore globs that hide files and folders from the Files listing, tree, and search.",
+        "keys": ["file_ignore_patterns"],
     },
 ]
 

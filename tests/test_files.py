@@ -800,6 +800,72 @@ def test_files_page_has_no_external_scripts(rooted):
     assert b'src="http' not in rv.data  # vendored only, CSP-safe
 
 
+def _set_ignore(app, patterns: str) -> None:
+    from overstate_ui.settings import set_setting
+
+    with app.app_context():
+        set_setting("file_ignore_patterns", patterns)
+
+
+def test_ignore_patterns_hide_files_from_listing(rooted):
+    _set_ignore(rooted.app, "*.log\n# a comment\n\n")
+    html = rooted.get("/files/").data.decode()
+    assert "web.sls" in html
+    assert "sub/db.sls" in html
+    # Ignore badge surfaces so users know something is hidden.
+    assert "1 ignore pattern" in html
+    assert 'href="/settings/"' in html
+
+
+def test_ignore_pattern_matching_dir_hides_subtree(rooted, tmp_path):
+    with rooted.app.app_context():
+        rooted.app.config["FILE_ROOTS"] = str(tmp_path)
+    (tmp_path / "top.sls").write_text("a:\n  test.nop: []\n")
+    (tmp_path / "skip").mkdir()
+    (tmp_path / "skip" / "a.sls").write_text("x:\n  test.nop: []\n")
+    (tmp_path / "skip" / "nested").mkdir()
+    (tmp_path / "skip" / "nested" / "b.sls").write_text("y:\n  test.nop: []\n")
+    _set_ignore(rooted.app, "skip")
+    html = rooted.get("/files/").data.decode()
+    assert "top.sls" in html
+    assert "skip/a.sls" not in html
+    assert "skip/nested/b.sls" not in html
+    # The tree hides the ignored folder too.
+    assert "skip" not in html
+
+
+def test_ignore_patterns_drop_from_search_and_dir_view(rooted, tmp_path):
+    with rooted.app.app_context():
+        rooted.app.config["FILE_ROOTS"] = str(tmp_path)
+    (tmp_path / "keep.sls").write_text("a:\n  test.nop: []\n")
+    (tmp_path / "skip.sls").write_text("b:\n  test.nop: []\n")
+    _set_ignore(rooted.app, "skip.*")
+    assert "skip.sls" not in rooted.get(
+        "/files/", query_string={"q": "skip"}
+    ).data.decode()
+    assert "keep.sls" in rooted.get(
+        "/files/", query_string={"q": "keep"}
+    ).data.decode()
+
+
+def test_ignored_file_still_viewable_by_direct_path(rooted, tmp_path):
+    with rooted.app.app_context():
+        rooted.app.config["FILE_ROOTS"] = str(tmp_path)
+    (tmp_path / "web.sls").write_text("nginx:\n  pkg.installed: []\n")
+    _set_ignore(rooted.app, "web.*")
+    rv = rooted.get("/files/view", query_string={"path": "web.sls"})
+    assert rv.status_code == 200
+    assert b"pkg.installed" in rv.data
+
+
+def test_ignore_patterns_setting_renders_on_settings_page(rooted):
+    _set_ignore(rooted.app, "secrets/*\n*.pem")
+    html = rooted.get("/settings/").data.decode()
+    assert "File browser ignore patterns" in html
+    assert 'name="file_ignore_patterns"' in html
+    assert "secrets/*" in html
+
+
 def test_third_party_licenses_list_the_tree():
     import pathlib
 

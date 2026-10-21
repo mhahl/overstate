@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import subprocess
+from fnmatch import fnmatch
 from pathlib import Path
 
 import httpx
@@ -41,6 +42,9 @@ from .git_sync import (
 from .salt_client import SaltApiError
 
 bp = Blueprint("files", __name__, url_prefix="/files")
+
+#: Setting key holding the shared file-browser ignore globs (one per line).
+IGNORE_SETTING = "file_ignore_patterns"
 
 MAX_BYTES = 256 * 1024
 LIST_LIMIT = 5000
@@ -147,6 +151,40 @@ def _iter_files(base: Path):
         if ".git" in rel.parts:
             continue
         yield path, str(rel)
+
+
+def ignore_patterns() -> list[str]:
+    """Shared file-browser ignore globs, one per line.
+
+    Blank lines and ``#`` comments are dropped. The list is global
+    (stored as a Setting) and only shapes browsing: an ignored file is
+    still reachable by its direct path.
+    """
+    from .settings import get_setting
+
+    raw = get_setting(IGNORE_SETTING)
+    patterns = []
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        patterns.append(line)
+    return patterns
+
+
+def ignored(rel: str, patterns: list[str]) -> bool:
+    """Whether ``rel`` is hidden by any ignore glob.
+
+    A pattern matches a file path, or any ancestor directory of it, so
+    ``secrets`` and ``secrets/*`` both hide the whole ``secrets/`` tree
+    (files inside carry it as a path prefix).
+    """
+    parts = rel.split("/")
+    for depth in range(1, len(parts) + 1):
+        candidate = "/".join(parts[:depth])
+        if any(fnmatch(candidate, pattern) for pattern in patterns):
+            return True
+    return False
 
 
 def normalize_dir(value: str) -> str:
@@ -349,7 +387,13 @@ def _files_page_context():
     per_page = resolve_page_size(request.args.get("per_page"))
     d = normalize_dir(request.args.get("dir", ""))
     base = browse_root()
+    patterns = ignore_patterns()
     full = list_tree(limit=LIST_LIMIT + 1, base=base)
+    if patterns:
+        # Shared ignore globs hide files (and whole directories, via
+        # ancestor matching) from the listing, tree, and search. Direct
+        # view/edit of an ignored path still works.
+        full = [e for e in full if not ignored(e["rel"], patterns)]
     if prefixes is not None:
         # Listing drops entries outside every granted prefix.
         full = [e for e in full if prefix_visible(prefixes, e["rel"])]
@@ -367,6 +411,8 @@ def _files_page_context():
             ]
         else:
             entries = []
+        if patterns:
+            entries = [e for e in entries if not ignored(e["rel"], patterns)]
         if prefixes is not None:
             entries = [e for e in entries if prefix_visible(prefixes, e["rel"])]
     else:
@@ -419,6 +465,7 @@ def _files_page_context():
         "total": total,
         "truncated": truncated,
         "has_top": has_top,
+        "ignore_count": len(patterns),
         "git": git_status(),
         "file_sync": file_sync,
     }
