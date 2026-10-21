@@ -178,6 +178,10 @@ def test_index_lists_collections_and_keys(secrets_env, monkeypatch):
     assert "netbird.setup_key" in html
     assert "abc" in html  # ciphertext preview renders without a badge
     assert "badge-success\">encrypted" not in html
+    # The save dialog is key-aware: static overwrite fallback stays for
+    # no-JS, plus a hook the script uses to reword per typed key.
+    assert "data-secret-save" in html
+    assert "Overwrite '" in html
 
 
 def test_collection_create_commits(secrets_env):
