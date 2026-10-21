@@ -375,16 +375,15 @@ def test_master_image_pins_base_digest():
     assert "ghcr.io/cdalvaro/docker-salt-master:lts@sha256:" in text
 
 
-def test_master_image_applies_stable_identity_patch():
+def test_master_image_applies_stable_cluster_patch():
     # The build redirects salt's interface-keyed cluster identity to
     # cluster_node_id and must fail loudly on upstream drift.
     text = (REPO / "Containerfile.salt-master").read_text(encoding="utf-8")
     assert (
-        "COPY salt-cluster-identity-patch.py /usr/local/bin/salt-cluster-identity-patch.py"
-        in text
+        "COPY patch-salt-cluster.py /usr/local/bin/patch-salt-cluster.py" in text
     )
-    assert "salt-cluster-identity-patch.py" in text
-    assert (REPO / "salt-cluster-identity-patch.py").exists()
+    assert "patch-salt-cluster.py" in text
+    assert (REPO / "patch-salt-cluster.py").exists()
 
 
 def test_keypair_secret_readable_by_salt_user():

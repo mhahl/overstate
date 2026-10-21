@@ -37,7 +37,7 @@ MERGED_ROSTER_CACHE_KEY = "minions:roster:merged"
 reachable master shows up; single-minion skip-live checks
 (:func:`minion_is_up`) stay on the sticky ROSTER_CACHE_KEY on purpose —
 a unioned up set would defeat the not-up skip and hang on foreign
-minions (see docs/plans/gather-budget.md)."""
+minions (see docs/reference/architecture-kubernetes.md §4, Key action)."""
 KEYS_CACHE_KEY = "keys:roster"
 KEYS_TTL = 30
 """Cached merged multi-pod key roster with fingerprints, same deal as

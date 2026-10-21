@@ -14,6 +14,7 @@ PLAN.md
 .idea/
 .agents/
 .muse/
+.kilo/
 .mypy_cache/
 .ruff_cache/
 kubectl

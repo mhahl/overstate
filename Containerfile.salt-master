@@ -3,7 +3,7 @@
 # redis-py for the shared Redis minion-data cache.
 # Used in local dev and production alike.
 # Pin :lts by digest so a retag cannot silently skip
-# salt-cluster-identity-patch.py anchors.
+# patch-salt-cluster.py anchors.
 FROM ghcr.io/cdalvaro/docker-salt-master:lts@sha256:df5bb4555108f21655f97f5be11f5404a5596bd475cb8181ab2c88bd91adb12c
 
 RUN /opt/saltstack/salt/bin/pip install --no-cache-dir \
@@ -41,9 +41,9 @@ COPY cluster-ready.py /usr/local/bin/cluster-ready.py
 # localfs Raft storage (independent of the global minion-data cache).
 # Resolve the installed tree rather than hardcoding a Python path, and
 # abort the build on any upstream anchor mismatch.
-COPY salt-cluster-identity-patch.py /usr/local/bin/salt-cluster-identity-patch.py
+COPY patch-salt-cluster.py /usr/local/bin/patch-salt-cluster.py
 RUN SALT_PY="$(ls /opt/saltstack/salt/bin/python3* | grep -v -e config -e -dbg | head -1)" \
-    && "$SALT_PY" /usr/local/bin/salt-cluster-identity-patch.py \
+    && "$SALT_PY" /usr/local/bin/patch-salt-cluster.py \
     "$("$SALT_PY" -c 'import os, salt; print(os.path.dirname(os.path.dirname(salt.__file__)))')"
 # N.B. setting ENTRYPOINT clears the base CMD, so restate it — without
 # args the base falls through to `exec "$@"` with nothing and the

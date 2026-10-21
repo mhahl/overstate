@@ -1,25 +1,30 @@
-"""salt-cluster-identity-patch.py tests: exact-once anchored replacement.
+"""patch-salt-cluster.py tests: exact-once anchored replacement.
 
-The patcher rewrites upstream Salt's interface-keyed cluster identity
-to the stable `cluster_node_id` opt at image build time. These tests
-exercise the application logic against synthetic trees (the real Salt
-tree only exists inside the image build); anchor drift against a new
-base Salt version fails the build loudly via PatchError, which is the
-production safety net and is covered here as a contract.
+The patcher surgically fixes upstream Salt's experimental cluster code
+at image build time: stable `cluster_node_id` identity, per-master
+localfs Raft storage, forkserver-safe readiness, founder join-existing,
+reconcile replay, and transport recovery. These tests exercise the
+application logic against synthetic trees (the real Salt tree only
+exists inside the image build); anchor drift against a new base Salt
+version fails the build loudly via PatchError, which is the production
+safety net and is covered here as a contract.
 """
 
 import importlib.util
 import pathlib
+import re
+import sys
 
 import pytest
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-PATCH_PY = REPO / "salt-cluster-identity-patch.py"
+PATCH_PY = REPO / "patch-salt-cluster.py"
 
 
 def _load():
-    spec = importlib.util.spec_from_file_location("identity_patch", PATCH_PY)
+    spec = importlib.util.spec_from_file_location("patch_salt_cluster", PATCH_PY)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -35,40 +40,72 @@ def _tree(tmp_path, files):
 def test_applies_each_patch_exactly_once(tmp_path):
     mod = _load()
     files = {}
-    for rel, old, _new in mod.PATCHES:
-        files.setdefault(rel, "")
-        files[rel] += f"# prefix {rel}\n{old}# suffix\n"
+    for patch in mod.PATCHES:
+        files.setdefault(patch.relpath, "")
+        files[patch.relpath] += f"# prefix {patch.relpath}\n{patch.anchor}# suffix\n"
     _tree(tmp_path, files)
     changed = mod.apply_patches(tmp_path)
-    assert len(changed) == len(mod.PATCHES)
-    assert sorted(set(changed)) == sorted({rel for rel, _, _ in mod.PATCHES})
-    for rel, old, new in mod.PATCHES:
-        text = (tmp_path / rel).read_text(encoding="utf-8")
-        assert old not in text
-        assert text.count(new) >= 1
+    assert set(changed) == {patch.relpath for patch in mod.PATCHES}
+    for patch in mod.PATCHES:
+        text = (tmp_path / patch.relpath).read_text(encoding="utf-8")
+        assert patch.anchor not in text
+        assert text.count(patch.replacement) >= 1
 
 
 def test_missing_anchor_is_a_hard_error(tmp_path):
     mod = _load()
-    rel, old, new = mod.PATCHES[0]
-    _tree(tmp_path, {rel: "# nothing to patch here\n"})
+    patch = mod.PATCHES[0]
+    _tree(tmp_path, {patch.relpath: "# nothing to patch here\n"})
     with pytest.raises(mod.PatchError):
-        mod.apply_patches(tmp_path, [(rel, old, new)])
+        mod.apply_patches(tmp_path, [patch])
 
 
 def test_duplicate_anchor_is_a_hard_error(tmp_path):
     mod = _load()
-    rel, old, new = mod.PATCHES[0]
-    _tree(tmp_path, {rel: f"{old}\n{old}\n"})
+    patch = mod.PATCHES[0]
+    _tree(tmp_path, {patch.relpath: f"{patch.anchor}\n{patch.anchor}\n"})
     with pytest.raises(mod.PatchError):
-        mod.apply_patches(tmp_path, [(rel, old, new)])
+        mod.apply_patches(tmp_path, [patch])
 
 
 def test_missing_file_is_a_hard_error(tmp_path):
     mod = _load()
-    rel, old, new = mod.PATCHES[0]
+    patch = mod.PATCHES[0]
     with pytest.raises(mod.PatchError):
-        mod.apply_patches(tmp_path, [(rel, old, new)])
+        mod.apply_patches(tmp_path, [patch])
+
+
+def test_error_names_the_patch_purpose(tmp_path):
+    mod = _load()
+    patch = mod.PATCHES[0]
+    _tree(tmp_path, {patch.relpath: "# nothing to patch here\n"})
+    with pytest.raises(mod.PatchError, match=re.escape(patch.purpose)):
+        mod.apply_patches(tmp_path, [patch])
+
+
+def test_dry_run_verifies_without_writing(tmp_path):
+    mod = _load()
+    files = {}
+    for patch in mod.PATCHES:
+        files.setdefault(patch.relpath, "")
+        files[patch.relpath] += f"# prefix {patch.relpath}\n{patch.anchor}# suffix\n"
+    _tree(tmp_path, files)
+    changed = mod.apply_patches(tmp_path, dry_run=True)
+    assert set(changed) == {patch.relpath for patch in mod.PATCHES}
+    for patch in mod.PATCHES:
+        text = (tmp_path / patch.relpath).read_text(encoding="utf-8")
+        assert patch.anchor in text, "dry run must not modify files"
+
+
+def test_apply_is_grouped_per_file_single_write(tmp_path):
+    mod = _load()
+    relpath = "salt/channel/server.py"
+    patches = [p for p in mod.PATCHES if p.relpath == relpath]
+    assert len(patches) >= 4, "channel/server.py carries multiple patches"
+    body = "".join(f"# prefix\n{p.anchor}# suffix\n" for p in patches)
+    _tree(tmp_path, {relpath: body})
+    changed = mod.apply_patches(tmp_path, patches)
+    assert changed == [relpath], "one patched file must be reported once"
 
 
 def test_transport_patch_drops_dead_client_without_retry(tmp_path):
@@ -78,8 +115,8 @@ def test_transport_patch_drops_dead_client_without_retry(tmp_path):
     publish could duplicate Raft RPCs and poison candidacies.
     """
     mod = _load()
-    entry = next(e for e in mod.PATCHES if e[0] == "salt/cluster/consensus/peer.py")
-    _rel, old, new = entry
+    entry = next(p for p in mod.PATCHES if p.relpath == "salt/cluster/consensus/peer.py")
+    _rel, old, new = entry.relpath, entry.anchor, entry.replacement
     assert "await client.send(raw)" in old
     assert "del pusher._consensus_async_client" in new
     assert "raise" in new.split("del pusher._consensus_async_client")[1]
@@ -101,9 +138,9 @@ def test_reconcile_replays_post_snapshot_config(tmp_path):
     """
     mod = _load()
     entry = next(
-        e for e in mod.PATCHES if e[0] == "salt/cluster/consensus/raft/node.py"
+        p for p in mod.PATCHES if p.relpath == "salt/cluster/consensus/raft/node.py"
     )
-    _rel, old, new = entry
+    _rel, old, new = entry.relpath, entry.anchor, entry.replacement
     assert "current_voters()" in old
     assert "LogEntryType.CONFIG" in new
     assert "membership_sm.apply(entry.cmd, index=entry.index)" in new
@@ -119,15 +156,15 @@ def test_raft_storage_uses_per_master_localfs_not_global_cache(tmp_path):
     mod = _load()
     entry = next(
         (
-            e
-            for e in mod.PATCHES
-            if e[0] == "salt/cluster/consensus/storage.py"
-            and 'driver="localfs"' in e[2]
+            p
+            for p in mod.PATCHES
+            if p.relpath == "salt/cluster/consensus/storage.py"
+            and 'driver="localfs"' in p.replacement
         ),
         None,
     )
     assert entry is not None, "Raft storage must not follow Salt's global cache driver"
-    rel, old, new = entry
+    rel, old, new = entry.relpath, entry.anchor, entry.replacement
     assert 'salt.cache.Cache(opts, driver="localfs")' in new
     _tree(tmp_path, {rel: f"# prefix\n{old}# suffix\n"})
     mod.apply_patches(tmp_path, [entry])
@@ -140,11 +177,12 @@ def test_patch_table_is_well_formed():
     mod = _load()
     assert mod.PATCHES, "no patches declared"
     files = set()
-    for entry in mod.PATCHES:
-        rel, old, new = entry
+    for patch in mod.PATCHES:
+        rel, old, new = patch.relpath, patch.anchor, patch.replacement
         assert rel.endswith(".py") and not rel.startswith("/")
         assert len(old.strip()) > 20, "anchor too short to be safe"
         assert old != new
+        assert patch.purpose, "every patch must state its purpose"
         assert (
             "cluster_node_id" in new
             or "READY_SENTINEL" in new

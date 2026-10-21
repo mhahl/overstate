@@ -26,14 +26,6 @@ Entry point for all documentation. Paths are repo-root-relative.
 | [`docs/reference/upstream-salt-patches.md`](reference/upstream-salt-patches.md) | Record of patches carried against upstream Salt |
 | [`docs/reference/ui-style-guide.md`](reference/ui-style-guide.md) | Shared UI styling conventions for navigation, settings, onboarding, and console |
 
-## Decision records and history
-
-| Location | Contents |
-|---|---|
-| [`docs/plans/`](plans/) | Feature design / decision records for current and shipped work. `docs/plans/scoped-rbac.md` is the build plan behind [`docs/reference/rbac.md`](reference/rbac.md). |
-| [`docs/history/`](history/) | Historical documents kept for context only: the original v1 product plan (`docs/history/PLAN.md`) and version decision records `docs/history/v3.md`–`docs/history/v3.9.md`. Not current scope. |
-| [`docs/reviews/`](reviews/) | Point-in-time codebase review snapshots. |
-
 ## Related top-level documents
 
 - [`README.md`](../README.md) — project overview and quickstart

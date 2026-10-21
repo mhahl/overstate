@@ -1,4 +1,4 @@
-"""Redirect Salt's cluster node identity from pod IP to a stable DNS name.
+"""Apply Overstate's surgical fixes to an installed Salt cluster tree.
 
 Upstream Salt 3008's experimental cluster keys Raft membership (and the
 join sentinel, founder election, and ring ownership) on
@@ -8,7 +8,10 @@ forever, and every master defers all minion/API traffic with
 ``cluster_retry`` (salt-api 401s, minion pillar/auth flap) until an
 operator wipes the Raft state on all pods at once.
 
-This patcher rewrites the handful of identity sites to prefer a new
+This patcher ships every cluster fix the deployment needs, not just
+identity: stable DNS node ids, per-master localfs Raft storage,
+forkserver-safe readiness, founder join-existing probes, membership
+reconcile replay, and transport recovery. Identity sites prefer a new
 free-form ``cluster_node_id`` opt (stamped by cluster-entrypoint.sh as
 ``<pod-name>.<headless-service>``, a DNS name that survives recreates)
 and fall back to ``interface`` when it is unset, so unpatched behavior
@@ -21,21 +24,36 @@ a half-patched tree (this is coupled to the base image's Salt version
 by design — see Containerfile.salt-master).
 
 Usage:
-  python3 salt-cluster-identity-patch.py [salt-root]
+  python3 patch-salt-cluster.py [--check] [--list] [salt-root]
   (default salt-root: directory containing the imported ``salt`` package)
 """
 
 from __future__ import annotations
 
+import argparse
 import pathlib
 import sys
+from collections.abc import Sequence
+from dataclasses import dataclass
 
+# Stable node identity expression, reused by every replacement that asks
+# "who am I" in Raft / ring / founder code. The DNS name survives pod
+# recreates; ``interface`` (the pod IP) stays the upstream default.
 SELF_NODE_ID = '(self.opts.get("cluster_node_id") or self.opts["interface"])'
 
-# (relative path, exact old text, exact new text). Each old text must
-# occur exactly once in its file; anything else is a hard error.
-PATCHES = [
-    (
+
+@dataclass(frozen=True)
+class Patch:
+    """One anchored source replacement in the installed Salt tree."""
+
+    relpath: str
+    anchor: str
+    replacement: str
+    purpose: str  # shown in --list and error messages
+
+
+PATCHES: tuple[Patch, ...] = (
+    Patch(
         "salt/cluster/consensus/storage.py",
         """\
 Implements :class:`salt.cluster.consensus.raft.BaseStorage` using the
@@ -49,8 +67,9 @@ Implements :class:`salt.cluster.consensus.raft.BaseStorage` using the
 ``cache:`` option is reserved for minion data and may point to shared Redis;
 it must not redirect consensus logs to a shared cache.
 """,
+        "module docstring: Raft state stays on the per-master PVC (localfs), never the shared cache",
     ),
-    (
+    Patch(
         "salt/cluster/consensus/storage.py",
         """\
         self._cache = salt.cache.Cache(opts)
@@ -61,8 +80,9 @@ it must not redirect consensus logs to a shared cache.
         # The durability helper below fsyncs the localfs log and metadata.
         self._cache = salt.cache.Cache(opts, driver="localfs")
 """,
+        "pin SaltStorage to the localfs driver regardless of the global cache: opt",
     ),
-    (
+    Patch(
         "salt/cluster/consensus/service.py",
         """\
         # Use the interface address as the Raft node-id so it matches the
@@ -78,8 +98,9 @@ it must not redirect consensus logs to a shared cache.
         # interface address (upstream default) when unset.
         node_id = opts.get("cluster_node_id") or opts["interface"]
 """,
+        "Raft node-id is the stable cluster_node_id (DNS name), not the pod IP",
     ),
-    (
+    Patch(
         "salt/cluster/consensus/service.py",
         """\
         return SaltPeer(
@@ -99,8 +120,9 @@ it must not redirect consensus logs to a shared cache.
             raft_group_id=raft_group_id,
         )
 """,
+        "SaltPeer advertises the same stable local id as the Raft node-id",
     ),
-    (
+    Patch(
         "salt/channel/server.py",
         """\
     if not opts.get("cluster_id"):
@@ -134,8 +156,9 @@ it must not redirect consensus logs to a shared cache.
         pass
     return False
 """,
+        "forkserver-safe cluster readiness: fall back to the health-file sentinel",
     ),
-    (
+    Patch(
         "salt/master.py",
         """\
                 if not ipc_publisher._has_joined_cluster() and not is_founder:
@@ -144,7 +167,7 @@ it must not redirect consensus logs to a shared cache.
                     ipc_publisher._discover_event = join_event
                     ipc_publisher.discover_peers()
 """,
-        """\
+        f"""\
                 _join_existing = False
                 if is_founder and not ipc_publisher._has_joined_cluster():
                     import socket as _sock
@@ -154,7 +177,7 @@ it must not redirect consensus logs to a shared cache.
                         or self.opts.get("cluster_pool_port")
                         or 4507
                     )
-                    _self = self.opts.get("cluster_node_id") or self.opts["interface"]
+                    _self = {SELF_NODE_ID}
                     for _peer in self.opts.get("cluster_peers") or []:
                         if _peer == _self:
                             continue
@@ -178,8 +201,9 @@ it must not redirect consensus logs to a shared cache.
                     ipc_publisher._discover_event = join_event
                     ipc_publisher.discover_peers()
 """,
+        "founder joins an existing cluster instead of founding a second one",
     ),
-    (
+    Patch(
         "salt/channel/server.py",
         """\
                 if bootstrap_pool and bootstrap_pool[0] == self.opts["interface"]:
@@ -188,8 +212,8 @@ it must not redirect consensus logs to a shared cache.
                         self.opts["cluster_id"],
                     )
 """,
-        """\
-                _self_id = self.opts.get("cluster_node_id") or self.opts["interface"]
+        f"""\
+                _self_id = {SELF_NODE_ID}
                 _is_founder = bool(bootstrap_pool) and bootstrap_pool[0] == _self_id
                 _join_existing = False
                 if _is_founder:
@@ -221,8 +245,9 @@ it must not redirect consensus logs to a shared cache.
                         self.opts["cluster_id"],
                     )
 """,
+        "founder join-existing probe on the publish-server path",
     ),
-    (
+    Patch(
         "salt/channel/server.py",
         """\
         interface = self.opts.get("interface") or "unknown"
@@ -232,8 +257,9 @@ it must not redirect consensus logs to a shared cache.
         node_id = self.opts.get("cluster_node_id") or self.opts.get("interface") or "unknown"
         return pathlib.Path(self.opts["cachedir"]) / f".cluster_joined.{node_id}"
 """,
+        "join sentinel is keyed by stable node id, not the pod IP",
     ),
-    (
+    Patch(
         "salt/channel/server.py",
         """\
                 bootstrap_pool = sorted(
@@ -245,8 +271,9 @@ it must not redirect consensus logs to a shared cache.
                     {{{SELF_NODE_ID}, *self.opts.get("cluster_peers", [])}}
                 )
 """,
+        "bootstrap_pool is built from the stable node id, not the pod IP",
     ),
-    (
+    Patch(
         "salt/master.py",
         """\
                 bootstrap_pool = sorted(
@@ -258,13 +285,15 @@ it must not redirect consensus logs to a shared cache.
                     {{{SELF_NODE_ID}, *self.opts.get("cluster_peers", [])}}
                 )
 """,
+        "bootstrap_pool is built from the stable node id, not the pod IP",
     ),
-    (
+    Patch(
         "salt/master.py",
         'bootstrap_pool[0] == self.opts["interface"]',
         f"bootstrap_pool[0] == {SELF_NODE_ID}",
+        "founder comparison uses the stable node id, not the pod IP",
     ),
-    (
+    Patch(
         "salt/cluster/ring_membership.py",
         """\
     node_id = opts.get("interface")
@@ -276,8 +305,9 @@ it must not redirect consensus logs to a shared cache.
     if node_id is None:
         # Defensive: opts without an interface (some test fixtures)
 """,
+        "ring ownership identity prefers cluster_node_id",
     ),
-    (
+    Patch(
         "salt/cluster/ring_membership.py",
         """\
     node_id = opts.get("interface")
@@ -291,8 +321,9 @@ it must not redirect consensus logs to a shared cache.
         return True
     if ring.owns(key, node_id):
 """,
+        "ring.owns() identity prefers cluster_node_id",
     ),
-    (
+    Patch(
         "salt/cluster/consensus/raft/node.py",
         """\
         if self.membership_sm is None:
@@ -321,8 +352,9 @@ it must not redirect consensus logs to a shared cache.
             # Nothing committed yet (e.g. fresh node before founding CONFIG).
             return
 """,
+        "reconcile replays committed CONFIG entries after snapshot restore",
     ),
-    (
+    Patch(
         "salt/cluster/consensus/peer.py",
         """\
         client = _TCPPubServerPublisher(
@@ -365,31 +397,50 @@ it must not redirect consensus logs to a shared cache.
             pass
         raise
 """,
+        "drop a dead cached Raft client on send failure; reconnect on the next send, never retry",
     ),
-]
+)
 
 
 class PatchError(Exception):
     """An anchor did not match exactly once (upstream drift)."""
 
 
-def apply_patches(root, patches=PATCHES):
-    """Apply every (relpath, old, new); return files changed. Raise PatchError."""
+def _group_by_file(patches: Sequence[Patch]) -> dict[str, list[Patch]]:
+    """Keep patch order per file so replacements can chain in sequence."""
+    grouped: dict[str, list[Patch]] = {}
+    for patch in patches:
+        grouped.setdefault(patch.relpath, []).append(patch)
+    return grouped
+
+
+def apply_patches(root, patches: Sequence[Patch] = PATCHES, dry_run: bool = False) -> list[str]:
+    """Apply every patch; return the patched relpaths. Raise PatchError.
+
+    Files are read once and written once after all of their patches
+    validate, so a failing anchor never leaves a half-patched file.
+    With ``dry_run=True`` every anchor is still verified, but nothing
+    is written — use it to validate a new base image.
+    """
     root = pathlib.Path(root)
     changed = []
-    for relpath, old, new in patches:
+    for relpath, file_patches in _group_by_file(patches).items():
         path = root / relpath
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise PatchError(f"{relpath}: cannot read: {exc}") from exc
-        count = text.count(old)
-        if count != 1:
-            raise PatchError(
-                f"{relpath}: anchor occurs {count}x (expected exactly once); "
-                "base Salt version drifted — update salt-cluster-identity-patch.py"
-            )
-        path.write_text(text.replace(old, new), encoding="utf-8")
+        for patch in file_patches:
+            count = text.count(patch.anchor)
+            if count != 1:
+                raise PatchError(
+                    f"{relpath} [{patch.purpose}]: anchor occurs {count}x "
+                    "(expected exactly once); base Salt version drifted — "
+                    "update patch-salt-cluster.py"
+                )
+            text = text.replace(patch.anchor, patch.replacement)
+        if not dry_run:
+            path.write_text(text, encoding="utf-8")
         changed.append(relpath)
     return changed
 
@@ -401,17 +452,36 @@ def salt_root():
     return pathlib.Path(salt.__file__).resolve().parent.parent
 
 
-def main(argv):
-    root = pathlib.Path(argv[1]) if len(argv) > 1 else salt_root()
-    changed = apply_patches(root)
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="patch-salt-cluster",
+        description="Apply Overstate's surgical fixes to an installed Salt cluster tree.",
+    )
+    parser.add_argument("salt_root", nargs="?", help="Salt install root (default: derived from the imported salt package)")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify every anchor matches exactly once without writing anything",
+    )
+    parser.add_argument("--list", action="store_true", help="list the patch set and exit")
+    args = parser.parse_args(argv)
+
+    if args.list:
+        for index, patch in enumerate(PATCHES, 1):
+            print(f"{index:2}. {patch.relpath} — {patch.purpose}")
+        return 0
+
+    root = pathlib.Path(args.salt_root) if args.salt_root else salt_root()
+    changed = apply_patches(root, dry_run=args.check)
+    verb = "would patch" if args.check else "patched"
     for relpath in changed:
-        print(f"patched {relpath}")
+        print(f"{verb} {relpath}")
     return 0
 
 
 if __name__ == "__main__":
     try:
-        sys.exit(main(sys.argv))
+        sys.exit(main())
     except PatchError as exc:
-        print(f"salt-cluster-identity-patch: {exc}", file=sys.stderr)
+        print(f"patch-salt-cluster: {exc}", file=sys.stderr)
         sys.exit(1)

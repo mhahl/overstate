@@ -18,46 +18,54 @@ Base at time of writing:
 
 ## Vehicle and safety net
 
-All changes ship through `salt-cluster-identity-patch.py` (repo root),
+All changes ship through `patch-salt-cluster.py` (repo root),
 applied once at image build time by `Containerfile.salt-master:43-46`:
 
 ```dockerfile
-COPY salt-cluster-identity-patch.py /usr/local/bin/salt-cluster-identity-patch.py
+COPY patch-salt-cluster.py /usr/local/bin/patch-salt-cluster.py
 RUN SALT_PY="$(ls /opt/saltstack/salt/bin/python3* ...)" \
-    && "$SALT_PY" /usr/local/bin/salt-cluster-identity-patch.py \
+    && "$SALT_PY" /usr/local/bin/patch-salt-cluster.py \
     "$("$SALT_PY" -c 'import os, salt; ...')"
 ```
 
 Mechanism:
 
-* `PATCHES` in `salt-cluster-identity-patch.py:37-369` is a list of
-  `(relpath, old, new)` tuples.
-* `apply_patches()` in `salt-cluster-identity-patch.py:376-394` requires
-  each `old` anchor to occur **exactly once** in its file. Zero matches
+* `PATCHES` in `patch-salt-cluster.py:55-402` is a tuple of `Patch`
+  dataclasses (`relpath`, `anchor`, `replacement`, `purpose`).
+* `apply_patches()` in `patch-salt-cluster.py:417-445` requires
+  each `anchor` to occur **exactly once** in its file. Zero matches
   (upstream removed/renamed the code) or 2+ matches (upstream duplicated
   it) raises `PatchError` and fails the image build loudly. There is no
-  runtime patching and no fuzzy matching.
+  runtime patching and no fuzzy matching. Files are read and written
+  once after all their patches validate, so a failing anchor never
+  leaves a half-patched file.
 * The resolver does not hardcode a Python version path; it asks the
   installed `salt` package for its own root (`salt_root()` in
-  `salt-cluster-identity-patch.py:397-401`).
+  `patch-salt-cluster.py:448-452`).
 * Patches are coupled to the base Salt version **by design**. A Salt
   upgrade that drifts any anchor is supposed to break the build so a
   human re-reads the upstream function completely before re-anchoring.
 
 Tests:
 
-* `tests/test_salt_cluster_patch.py:35-48`
+* `tests/test_patch_salt_cluster.py:37-50`
   `test_applies_each_patch_exactly_once` applies every entry against
   synthetic trees.
-* `tests/test_salt_cluster_patch.py:51-71` missing anchor, duplicate
+* `tests/test_patch_salt_cluster.py:52-73` missing anchor, duplicate
   anchor, and missing file are all hard errors.
-* `tests/test_salt_cluster_patch.py:74-91` pins the transport fix
+* `tests/test_patch_salt_cluster.py:75-81` `test_error_names_the_patch_purpose`
+  asserts the failing patch is named in the error.
+* `tests/test_patch_salt_cluster.py:83-95` `test_dry_run_verifies_without_writing`
+  pins `--check` behavior: anchors verified, nothing written.
+* `tests/test_patch_salt_cluster.py:97-106` `test_apply_is_grouped_per_file_single_write`
+  pins the grouped one-write-per-file application.
+* `tests/test_patch_salt_cluster.py:108-126` pins the transport fix
   semantics: exactly one send, drop cached client, re-raise.
-* `tests/test_salt_cluster_patch.py:94-114` pins the reconcile fix:
+* `tests/test_patch_salt_cluster.py:128-149` pins the reconcile fix:
   replay `CONFIG` entries after snapshot restore.
-* `tests/test_salt_cluster_patch.py:117-136` pins the storage fix:
+* `tests/test_patch_salt_cluster.py:151-171` pins the storage fix:
   `SaltStorage` must construct `Cache(opts, driver="localfs")`.
-* `tests/test_salt_cluster_patch.py:139-165` well-formedness: every
+* `tests/test_patch_salt_cluster.py:173-200` well-formedness: every
   replacement must mention its intent marker and every expected upstream
   file must be present.
 
@@ -144,21 +152,21 @@ Why `localfs` and not shared Redis for Raft:
 
 | # | Upstream file | Anchor subject | Patcher lines |
 |---|---|---|---|
-| 1 | `salt/cluster/consensus/storage.py` | module docstring: localfs for Raft | `salt-cluster-identity-patch.py:38-52` |
-| 2 | `salt/cluster/consensus/storage.py` | `SaltStorage.__init__` driver pin | `salt-cluster-identity-patch.py:53-64` |
-| 3 | `salt/cluster/consensus/service.py` | Raft `node_id` | `salt-cluster-identity-patch.py:65-81` |
-| 4 | `salt/cluster/consensus/service.py` | `SaltPeer` local id | `salt-cluster-identity-patch.py:82-102` |
-| 5 | `salt/channel/server.py` | `_cluster_is_ready` forkserver fallback | `salt-cluster-identity-patch.py:103-137` |
-| 6 | `salt/master.py` | founder join-existing | `salt-cluster-identity-patch.py:138-181` |
-| 7 | `salt/channel/server.py` | founder join-existing (publish path) | `salt-cluster-identity-patch.py:182-224` |
-| 8 | `salt/channel/server.py` | join-sentinel filename | `salt-cluster-identity-patch.py:225-235` |
-| 9 | `salt/channel/server.py` | `bootstrap_pool` identity | `salt-cluster-identity-patch.py:236-248` |
-| 10 | `salt/master.py` | `bootstrap_pool` identity | `salt-cluster-identity-patch.py:249-261` |
-| 11 | `salt/master.py` | founder comparison | `salt-cluster-identity-patch.py:262-266` |
-| 12 | `salt/cluster/ring_membership.py` | ownership check 1 | `salt-cluster-identity-patch.py:267-279` |
-| 13 | `salt/cluster/ring_membership.py` | ownership check 2 (`ring.owns`) | `salt-cluster-identity-patch.py:280-294` |
-| 14 | `salt/cluster/consensus/raft/node.py` | `reconcile_membership` replay | `salt-cluster-identity-patch.py:295-324` |
-| 15 | `salt/cluster/consensus/peer.py` | drop dead cached publisher | `salt-cluster-identity-patch.py:325-368` |
+| 1 | `salt/cluster/consensus/storage.py` | module docstring: localfs for Raft | `patch-salt-cluster.py:56-71` |
+| 2 | `salt/cluster/consensus/storage.py` | `SaltStorage.__init__` driver pin | `patch-salt-cluster.py:72-84` |
+| 3 | `salt/cluster/consensus/service.py` | Raft `node_id` | `patch-salt-cluster.py:85-102` |
+| 4 | `salt/cluster/consensus/service.py` | `SaltPeer` local id | `patch-salt-cluster.py:103-124` |
+| 5 | `salt/channel/server.py` | `_cluster_is_ready` forkserver fallback | `patch-salt-cluster.py:125-160` |
+| 6 | `salt/master.py` | founder join-existing | `patch-salt-cluster.py:161-205` |
+| 7 | `salt/channel/server.py` | founder join-existing (publish path) | `patch-salt-cluster.py:206-249` |
+| 8 | `salt/channel/server.py` | join-sentinel filename | `patch-salt-cluster.py:250-261` |
+| 9 | `salt/channel/server.py` | `bootstrap_pool` identity | `patch-salt-cluster.py:262-275` |
+| 10 | `salt/master.py` | `bootstrap_pool` identity | `patch-salt-cluster.py:276-289` |
+| 11 | `salt/master.py` | founder comparison | `patch-salt-cluster.py:290-295` |
+| 12 | `salt/cluster/ring_membership.py` | ownership check 1 | `patch-salt-cluster.py:296-309` |
+| 13 | `salt/cluster/ring_membership.py` | ownership check 2 (`ring.owns`) | `patch-salt-cluster.py:310-325` |
+| 14 | `salt/cluster/consensus/raft/node.py` | `reconcile_membership` replay | `patch-salt-cluster.py:326-356` |
+| 15 | `salt/cluster/consensus/peer.py` | drop dead cached publisher | `patch-salt-cluster.py:357-402` |
 
 ## 1. Stable cluster identity (`cluster_node_id`)
 
@@ -190,7 +198,7 @@ so behavior without the opt is byte-for-byte upstream:
 
 ```python
 SELF_NODE_ID = '(self.opts.get("cluster_node_id") or self.opts["interface"])'
-# salt-cluster-identity-patch.py:33
+# patch-salt-cluster.py:42
 ```
 
 Sites (patches 3–4, 8–13):
@@ -245,7 +253,7 @@ terms.
 
 ### Fix
 
-Patches 6–7 (`salt-cluster-identity-patch.py:138-224`) add a
+Patches 6–7 (`patch-salt-cluster.py:161-249`) add a
 `_join_existing` probe before any founding decision, in both the
 `SMaster` startup path (`salt/master.py`) and the publish-server path
 (`salt/channel/server.py`):
@@ -295,7 +303,7 @@ did not return a session key`; salt-api returns 401s.
 
 ### Fix
 
-Patch 5 (`salt-cluster-identity-patch.py:103-137`) keeps the fast
+Patch 5 (`patch-salt-cluster.py:125-160`) keeps the fast
 in-memory check and adds a filesystem fallback:
 
 ```python
@@ -360,7 +368,7 @@ all traffic even though its own log contained the committed voter set.
 
 ### Fix
 
-Patch 14 (`salt-cluster-identity-patch.py:295-324`) replays committed
+Patch 14 (`patch-salt-cluster.py:326-356`) replays committed
 `CONFIG` entries from the loaded log before evaluating, mirroring what
 the `cluster.members` runner already does when it replays the persisted
 log through a fresh `MembershipStateMachine`:
@@ -395,7 +403,7 @@ voters → `cluster_retry` → salt-api 401s on every node).
 
 ### Fix
 
-Patch 15 (`salt-cluster-identity-patch.py:325-368`) wraps the single
+Patch 15 (`patch-salt-cluster.py:357-402`) wraps the single
 send:
 
 ```python
@@ -473,7 +481,7 @@ still incorrect:
 
 ### Fix
 
-Patches 1–2 (`salt-cluster-identity-patch.py:38-64`):
+Patches 1–2 (`patch-salt-cluster.py:56-84`):
 
 * Docstring rewritten to state the invariant: global `cache:` is for
   minion data and may point at shared Redis; it must not redirect
@@ -536,7 +544,7 @@ Adding a patch:
 
 1. Read the full upstream function, not just the hunk.
 2. Choose the shortest anchor that still occurs exactly once (test in
-   `tests/test_salt_cluster_patch.py:139-165` enforces `len(old) > 20`).
+   `tests/test_patch_salt_cluster.py:173-200` enforces `len(anchor) > 20`).
 3. Prefer `opts.get("cluster_node_id") or opts[...]` fallback so unset
    means upstream behavior.
 4. Add the synthetic-tree test case alongside the patch; watch it fail

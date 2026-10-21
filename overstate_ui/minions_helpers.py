@@ -411,7 +411,8 @@ def merged_cached_roster(
     Lives on MERGED_ROSTER_CACHE_KEY, deliberately separate from the
     sticky ROSTER_CACHE_KEY that minion_is_up skip-live reads: a
     unioned up set there would defeat the not-up skip and hang on
-    foreign minions (see docs/plans/gather-budget.md). List pickers
+    foreign minions (see docs/reference/architecture-kubernetes.md §4,
+    Key action). List pickers
     (minions, groups, schedules, onboard) read this so a minion known
     to any reachable master shows up.
     """

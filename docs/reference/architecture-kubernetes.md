@@ -299,7 +299,7 @@ exactly the master StatefulSet.
   flap) and in each pod's `_cluster/peers/` store (stalled join,
   `KeyError: 'aes'`). Identity is now `<POD_NAME>.<headless-svc>`
   (`id`, `cluster_node_id`, `cluster_peers`, peer key files); a
-  build-time patch (`salt-cluster-identity-patch.py`, fails loudly on
+  build-time patch (`patch-salt-cluster.py`, fails loudly on
   upstream drift) redirects salt's interface-keyed identity (Raft
   node-id, join sentinel, founder sort, ring ownership) to
   `cluster_node_id`, while `interface` keeps the pod IP for binding.

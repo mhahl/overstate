@@ -5,7 +5,7 @@ is not installed in this repo's venv (it exists only inside the master
 image), and neither is ``psycopg2`` (the venv carries psycopg v3).
 Every ``salt.*`` / ``psycopg2`` name the module touches is therefore
 stubbed in ``sys.modules`` before loading the file from disk — the same
-importlib pattern as ``tests/test_salt_cluster_patch.py``. What is real:
+importlib pattern as ``tests/test_patch_salt_cluster.py``. What is real:
 
 - the SQL string the module issues (the entire point of the module),
 - the parameter order and Json wrapping (must match stock semantics),

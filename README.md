@@ -68,9 +68,9 @@ the compose stack above is for local development only.
 
 [`docs/README.md`](docs/README.md) is the index. It covers the how-tos in
 `docs/guides/` (user guide, admin guide, Kubernetes install,
-developer guide), the design notes in `docs/reference/` (RBAC, SSO,
+developer guide) and the design notes in `docs/reference/` (RBAC, SSO,
 TLS, returner, topology, upstream Salt patches, the Kubernetes
-architecture), plus `docs/plans/` and `docs/history/`.
+architecture).
 
 ## Layout
 

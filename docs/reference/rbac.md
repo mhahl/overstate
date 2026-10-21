@@ -4,8 +4,7 @@ Two authorization models exist. **Legacy** is the ladder: viewer,
 operator, admin, higher implies lower. **Scoped** replaces the ladder
 with grants: a built-in role on a scope. Fresh installs run legacy;
 nothing about scoped mode activates until you select it on Settings.
-The `docs/plans/scoped-rbac.md` file is the build plan, not the
-manual; this page is the manual.
+This page is the manual for scoped mode.
 
 ## How it works
 
