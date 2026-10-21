@@ -422,8 +422,16 @@ def index():
     from .minions import resolve_page_size
 
     per_page = resolve_page_size(request.args.get("per_page"))
+    # A ?collection= filter narrows the page to one collection's card.
+    # The dropdown still needs every collection, so build the options
+    # from the full list and render only the selected card.
+    collection_names = list_collections()
+    selected = request.args.get("collection", "").strip()
+    if selected not in collection_names:
+        selected = ""
+    visible_names = [selected] if selected else collection_names
     collections = []
-    for name in list_collections():
+    for name in visible_names:
         path = _collection_path(name)
         data = _load_rt(path)
         leaves: dict[str, object] = {}
@@ -477,6 +485,8 @@ def index():
     return render_template(
         "pillar_secrets.html",
         collections=collections,
+        collection_names=collection_names,
+        selected_collection=selected,
         q=q,
         per_page=per_page,
         minions=minions,

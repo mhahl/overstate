@@ -194,6 +194,52 @@ def test_secrets_search_sits_on_a_card_surface(secrets_env):
     assert not searches_off_card(html)
 
 
+def test_collection_filter_narrows_to_one_card(secrets_env):
+    """?collection= renders only that collection's card, and the filter
+    survives search/paging links."""
+    _mk_collection(secrets_env, "alpha")
+    _mk_collection(secrets_env, "beta")
+    _set_keys(secrets_env, "alpha", ["alpha.k1"])
+    _set_keys(secrets_env, "beta", ["beta.k1"])
+
+    html = secrets_env.get("/pillar/secrets/?collection=beta").data.decode()
+    assert "beta.k1" in html
+    assert "alpha.k1" not in html
+    assert 'aria-labelledby="collection-beta"' in html
+    assert 'aria-labelledby="collection-alpha"' not in html
+    assert 'value="beta" selected' in html  # dropdown keeps the filter
+
+    # Clear resets the collection filter.
+    clear = secrets_env.get("/pillar/secrets/?collection=beta&q=beta").data.decode()
+    assert 'href="/pillar/secrets/"' in clear  # Clear link drops q + collection
+    all_cards = secrets_env.get("/pillar/secrets/").data.decode()
+    assert "alpha.k1" in all_cards and "beta.k1" in all_cards
+
+
+def test_every_key_row_has_an_edit_flow(secrets_env):
+    """Rows carry an Edit button that opens the shared overwrite modal."""
+    _store_pk(secrets_env)
+    _mk_collection(secrets_env, "svc")
+    _set_keys(secrets_env, "svc", ["svc.a", "svc.b"])
+
+    html = secrets_env.get("/pillar/secrets/").data.decode()
+    assert html.count('data-edit-secret data-collection') == 2
+    assert 'data-collection="svc" data-key="svc.a"' in html
+    assert 'id="edit-secret-dialog"' in html
+    assert 'name="value"' in html and 'name="key"' in html
+    assert 'name="collection"' in html
+    assert "data-edit-secret" in html
+
+
+def _set_keys(c, name, keys):
+    import overstate_ui.pillar_secrets as psmod
+
+    with c.app.app_context():
+        psmod._collection_path(name).write_text(
+            "\n".join(f"{k}: NACL[{k}]" for k in keys) + "\n"
+        )
+
+
 def test_index_searches_and_paginates_keys(secrets_env):
     """Key tables page independently and the toolbar filters by key."""
     import overstate_ui.pillar_secrets as psmod
