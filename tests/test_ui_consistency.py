@@ -160,8 +160,22 @@ def test_form_controls_have_accessible_names():
     assert not offenders, "unlabeled controls:\n" + "\n".join(offenders)
 
 
-def test_list_pages_offer_page_size_dropdown():
-    # Mine/pillar/keys/files/vulns dropdowns are covered in their own
+def test_table_searches_sit_on_a_card_surface():
+    """A search toolbar belongs on the raised card surface.
+
+    Pages that render on DB data alone. The encrypted-pillar page and
+    the other salt-backed lists assert the same rule in their own
+    suites with their fixtures.
+    """
+    from ui_assertions import searches_off_card
+
+    c = make_client()
+    for path in FILTER_PAGES + ["/users/"]:
+        offenders = searches_off_card(c.get(path).data.decode())
+        assert not offenders, f"{path}: search outside a card: {offenders}"
+
+
+def test_list_pages_offer_page_size_dropdown():    # Mine/pillar/keys/files/vulns dropdowns are covered in their own
     # suites with salt fixtures; these routes render on DB data alone.
     c = make_client()
     for path in (

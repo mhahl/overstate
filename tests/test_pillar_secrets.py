@@ -184,6 +184,16 @@ def test_index_lists_collections_and_keys(secrets_env, monkeypatch):
     assert "Overwrite '" in html
 
 
+def test_secrets_search_sits_on_a_card_surface(secrets_env):
+    """The toolbar must not sit on the grey page background."""
+    from ui_assertions import searches_off_card
+
+    _mk_collection(secrets_env, "svc")
+    html = secrets_env.get("/pillar/secrets/").data.decode()
+    assert 'aria-label="Search secrets"' in html
+    assert not searches_off_card(html)
+
+
 def test_index_searches_and_paginates_keys(secrets_env):
     """Key tables page independently and the toolbar filters by key."""
     import overstate_ui.pillar_secrets as psmod
