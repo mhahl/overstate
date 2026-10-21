@@ -44,8 +44,8 @@
     <div class="card-body gap-4">
       <div class="flex flex-wrap items-start gap-3">
         <div role="tablist" class="tabs tabs-border" aria-label="Formula views">
-          <a role="tab" href="{{ url_for('formulas.index', fsub='tracked') }}" class="tab{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
-          <a role="tab" href="{{ url_for('formulas.index', fsub='untracked') }}" class="tab{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>On disk <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
+          <a role="tab" href="{{ url_for('formulas.index', fsub='tracked') }}" class="tab gap-2{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
+          <a role="tab" href="{{ url_for('formulas.index', fsub='untracked') }}" class="tab gap-2{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>On disk <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
         </div>
         {% if may_edit %}
         <button class="btn btn-sm btn-primary ms-auto" onclick="document.getElementById('formula-add').showModal()">Add formula</button>
