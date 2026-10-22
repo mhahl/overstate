@@ -111,9 +111,14 @@ def test_list_tables_pin_headers():
     for path in ("/audit/", "/users/", "/pillar/"):
         html = c.get(path).data.decode()
         assert "table-pin-rows" in html, path
-    # The Keys table only renders with live roster data.
-    keys_src = (TEMPLATES / "keys.html").read_text()
-    assert "table-pin-rows" in keys_src
+    # The Keys and Formulas tables only render with live roster/checkout
+    # data, so pin their source instead.
+    for name in ("keys.html", "formulas.html"):
+        src = (TEMPLATES / name).read_text()
+        assert "table-pin-rows" in src, name
+        assert "rounded-box border border-base-300" not in src, (
+            name + ": tables are framed by the card, not an inner border"
+        )
 
 
 def test_list_tables_have_no_zebra_striping():

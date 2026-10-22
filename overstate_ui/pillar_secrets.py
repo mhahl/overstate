@@ -422,53 +422,57 @@ def index():
     from .minions import resolve_page_size
 
     per_page = resolve_page_size(request.args.get("per_page"))
-    # A ?collection= filter narrows the page to one collection's card.
-    # The dropdown still needs every collection, so build the options
-    # from the full list and render only the selected card.
+    # A ?collection= filter narrows the page to one collection. The
+    # dropdown still needs every collection, so options come from the
+    # full list while only the selected one contributes rows.
     collection_names = list_collections()
     selected = request.args.get("collection", "").strip()
     if selected not in collection_names:
         selected = ""
     visible_names = [selected] if selected else collection_names
-    collections = []
+
+    # Wired state is per collection; read top.sls once for all of them.
+    wired_by_name = {name: collection_wired(name) for name in collection_names}
+    rows: list[dict] = []
     for name in visible_names:
         path = _collection_path(name)
         data = _load_rt(path)
         leaves: dict[str, object] = {}
         _flatten("", data, leaves)
-        keys = [
-            {
-                "key": dotted,
-                "encrypted": is_encrypted(value),
-                "preview": _preview(value) if is_encrypted(value) else "",
-            }
-            for dotted, value in sorted(leaves.items())
-        ]
-        if q:
-            keys = [k for k in keys if q in k["key"].lower()]
-        key_total = len(keys)
-        key_pages = max(1, (key_total + per_page - 1) // per_page)
-        # Each collection table pages independently: cp_<name> carries
-        # only that table's page, so paging one never moves the others.
-        page_param = f"cp_{name}"
-        try:
-            key_page = max(1, int(request.args.get(page_param, 1)))
-        except ValueError:
-            key_page = 1
-        key_page = min(key_page, key_pages)
-        visible = keys[(key_page - 1) * per_page : key_page * per_page]
-        collections.append(
-            {
-                "name": name,
-                "wired": collection_wired(name),
-                "entries": visible,
-                "key_total": key_total,
-                "key_pages": key_pages,
-                "key_page": key_page,
-                "page_param": page_param,
-                "rel": _collection_rel(name),
-            }
+        for dotted, value in sorted(leaves.items()):
+            rows.append(
+                {
+                    "collection": name,
+                    "rel": _collection_rel(name),
+                    "wired": wired_by_name[name],
+                    "key": dotted,
+                    "encrypted": is_encrypted(value),
+                    "preview": _preview(value) if is_encrypted(value) else "",
+                }
+            )
+    if q:
+        rows = [r for r in rows if q in r["key"].lower()]
+    total = len(rows)
+    pages = max(1, (total + per_page - 1) // per_page)
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    page = min(page, pages)
+    visible_rows = rows[(page - 1) * per_page : page * per_page]
+    # Show the "Wire into top.sls" action once per unwired collection,
+    # on its first visible row, instead of repeating it on every row.
+    wire_shown: set[str] = set()
+    for row in visible_rows:
+        row["wire"] = (
+            not row["wired"] and row["collection"] not in wire_shown
         )
+        if row["wire"]:
+            wire_shown.add(row["collection"])
+    # The verify card lists every collection regardless of the filter.
+    collections = [
+        {"name": name, "wired": wired_by_name[name]} for name in collection_names
+    ]
     from .dashboard import get_salt
     from .minions import merged_cached_roster
 
@@ -485,6 +489,10 @@ def index():
     return render_template(
         "pillar_secrets.html",
         collections=collections,
+        rows=visible_rows,
+        total=total,
+        pages=pages,
+        page=page,
         collection_names=collection_names,
         selected_collection=selected,
         q=q,

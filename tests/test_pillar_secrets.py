@@ -194,8 +194,8 @@ def test_secrets_search_sits_on_a_card_surface(secrets_env):
     assert not searches_off_card(html)
 
 
-def test_collection_filter_narrows_to_one_card(secrets_env):
-    """?collection= renders only that collection's card, and the filter
+def test_collection_filter_narrows_to_one_table(secrets_env):
+    """?collection= shows only that collection's rows, and the filter
     survives search/paging links."""
     _mk_collection(secrets_env, "alpha")
     _mk_collection(secrets_env, "beta")
@@ -205,15 +205,14 @@ def test_collection_filter_narrows_to_one_card(secrets_env):
     html = secrets_env.get("/pillar/secrets/?collection=beta").data.decode()
     assert "beta.k1" in html
     assert "alpha.k1" not in html
-    assert 'aria-labelledby="collection-beta"' in html
-    assert 'aria-labelledby="collection-alpha"' not in html
     assert 'value="beta" selected' in html  # dropdown keeps the filter
+    assert 'aria-label="Encrypted secrets"' in html  # single table card
 
     # Clear resets the collection filter.
     clear = secrets_env.get("/pillar/secrets/?collection=beta&q=beta").data.decode()
     assert 'href="/pillar/secrets/"' in clear  # Clear link drops q + collection
-    all_cards = secrets_env.get("/pillar/secrets/").data.decode()
-    assert "alpha.k1" in all_cards and "beta.k1" in all_cards
+    all_rows = secrets_env.get("/pillar/secrets/").data.decode()
+    assert "alpha.k1" in all_rows and "beta.k1" in all_rows
 
 
 def test_every_key_row_has_an_edit_flow(secrets_env):
@@ -226,6 +225,7 @@ def test_every_key_row_has_an_edit_flow(secrets_env):
     assert html.count('data-edit-secret data-collection') == 2
     assert 'data-collection="svc" data-key="svc.a"' in html
     assert 'id="edit-secret-dialog"' in html
+    assert 'id="add-secret-dialog"' in html  # one shared add dialog
     assert 'name="value"' in html and 'name="key"' in html
     assert 'name="collection"' in html
     assert "data-edit-secret" in html
@@ -241,7 +241,8 @@ def _set_keys(c, name, keys):
 
 
 def test_index_searches_and_paginates_keys(secrets_env):
-    """Key tables page independently and the toolbar filters by key."""
+    """All collections share one table; the toolbar filters by key and
+    collection."""
     import overstate_ui.pillar_secrets as psmod
 
     _store_pk(secrets_env)
@@ -255,11 +256,10 @@ def test_index_searches_and_paginates_keys(secrets_env):
     first = secrets_env.get("/pillar/secrets/?per_page=10").data.decode()
     assert "Page 1 of 4" in first
     assert "1–10 of 31 keys" in first
-    assert "cp_svc" in first  # per-collection page param in the links
     assert "svc.k00" in first and "svc.k09" in first
     assert "svc.k10" not in first
 
-    last = secrets_env.get("/pillar/secrets/?per_page=10&cp_svc=4").data.decode()
+    last = secrets_env.get("/pillar/secrets/?per_page=10&page=4").data.decode()
     assert "Page 4 of 4" in last and "svc.zebra" in last
 
     filtered = secrets_env.get("/pillar/secrets/?q=zebra").data.decode()

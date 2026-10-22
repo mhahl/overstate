@@ -96,9 +96,9 @@
       {% endif %}
       {% else %}
       {% if formulas %}
-      <div class="max-w-full overflow-x-auto rounded-box border border-base-300">
-        <table class="table table-sm w-full">
-          <thead><tr><th>Formula</th><th>Source</th><th class="w-32 whitespace-nowrap">Status</th><th class="text-right">Actions</th></tr></thead>
+      <div class="max-w-full overflow-x-auto rounded-box">
+        <table class="table table-sm table-pin-rows w-full">
+          <thead><tr><th scope="col">Formula</th><th scope="col">Source</th><th scope="col" class="w-32 whitespace-nowrap">Status</th><th scope="col" class="text-right">Actions</th></tr></thead>
           <tbody>
             {% for f in formulas %}
             <tr class="hover">
