@@ -40,14 +40,14 @@
   </div>
   {% endif %}
 
-  <nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" role="tablist" aria-label="Formula views">
+  <nav class="tabs tabs-border max-w-full overflow-x-auto" role="tablist" aria-label="Formula views">
     <a role="tab" href="{{ url_for('formulas.index', fsub='tracked') }}" class="tab gap-2{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
     <a role="tab" href="{{ url_for('formulas.index', fsub='untracked') }}" class="tab gap-2{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>On disk <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
   </nav>
 
   <section class="card card-border bg-base-100 min-w-0" aria-label="Formula views">
-    <div class="card-body gap-4">
-      <div class="flex flex-wrap items-start gap-3">
+    <div class="px-4 py-3 border-b border-base-300">
+      <div class="flex flex-wrap items-center gap-2">
         {% if may_edit %}
         <button class="btn btn-sm btn-primary ms-auto" onclick="openDialog('formula-add')">Add formula</button>
         {% if formula_summary.missing %}
@@ -57,8 +57,9 @@
         </form>
         {% endif %}
         {% endif %}
-        <span class="w-full text-xs text-base-content/60">{% if formula_summary.missing %}{{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing on disk.{% endif %} {% if formula_summary.untracked %}{{ formula_summary.untracked }} dir{% if formula_summary.untracked != 1 %}s{% endif %} on disk without a row{% if formula_summary.from_git %} — {{ formula_summary.from_git }} from the states repo{% endif %}.{% endif %}</span>
       </div>
+      <p class="mt-2 text-xs text-base-content/60">{% if formula_summary.missing %}{{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing on disk.{% endif %} {% if formula_summary.untracked %}{{ formula_summary.untracked }} dir{% if formula_summary.untracked != 1 %}s{% endif %} on disk without a row{% if formula_summary.from_git %} — {{ formula_summary.from_git }} from the states repo{% endif %}.{% endif %}</p>
+    </div>
 
       {% if fsub_active == 'untracked' %}
       {% if untracked %}
@@ -93,7 +94,7 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="text-sm text-base-content/70">Every <span class="font-mono">init.sls</span> directory is tracked.</p>
+      <p class="text-sm text-base-content/70 px-4 py-3">Every <span class="font-mono">init.sls</span> directory is tracked.</p>
       {% endif %}
       {% else %}
       {% if formulas %}
@@ -142,12 +143,11 @@
           </tbody>
         </table>
       </div>
-      <p class="text-xs text-base-content/60">Formulas live outside git (added to <span class="font-mono">.git/info/exclude</span>) so they never conflict with the states repo. The master and Files browser still see them.</p>
+      <p class="text-xs text-base-content/60 px-4 py-3">Formulas live outside git (added to <span class="font-mono">.git/info/exclude</span>) so they never conflict with the states repo. The master and Files browser still see them.</p>
       {% else %}
-      <p class="text-sm text-base-content/70">No formulas tracked yet.{% if may_edit %} Add one above, or pick up a directory under Untracked.{% endif %}</p>
+      <p class="text-sm text-base-content/70 px-4 py-3">No formulas tracked yet.{% if may_edit %} Add one above, or pick up a directory under Untracked.{% endif %}</p>
       {% endif %}
       {% endif %}
-    </div>
   </section>
 </div>
 
