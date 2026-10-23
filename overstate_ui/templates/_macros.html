@@ -9,21 +9,23 @@
 <a href="{{ href }}" hx-get="{{ href }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true" class="{{ cls }}">{{ text|safe }}</a>
 {% endmacro %}
 
-{% macro sort_th_plain(endpoint, col, label, sort, direction, params) %}
+{% macro sort_th_plain(endpoint, col, label, sort, direction, params, dir_param="dir") %}
 {% set active = (sort == col) %}
 {% set next_dir = 'desc' if (active and direction == 'asc') else 'asc' %}
-{% set href = url_for(endpoint, sort=col, dir=next_dir, **params) %}
+{% set qs = dict(sort=col, **dict({dir_param: next_dir}, **params)) %}
+{% set href = url_for(endpoint, **qs) %}
 <th aria-sort="{{ direction if active else 'none' }}" class="whitespace-nowrap"><a href="{{ href }}" class="inline-flex items-center gap-1 hover:underline">{{ label }}{% if active %}{% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
 {% endmacro %}
 
-{% macro sort_th(endpoint, col, label, sort, direction, params, target, reset_page=true) %}
+{% macro sort_th(endpoint, col, label, sort, direction, params, target, reset_page=true, dir_param="dir") %}
 {% set active = (sort == col) %}
 {% set next_dir = 'desc' if (active and direction == 'asc') else 'asc' %}
 {% if reset_page %}
-{% set href = url_for(endpoint, sort=col, dir=next_dir, page=1, **params) %}
+{% set qs = dict(sort=col, page=1, **dict({dir_param: next_dir}, **params)) %}
 {% else %}
-{% set href = url_for(endpoint, sort=col, dir=next_dir, **params) %}
+{% set qs = dict(sort=col, **dict({dir_param: next_dir}, **params)) %}
 {% endif %}
+{% set href = url_for(endpoint, **qs) %}
 <th aria-sort="{{ direction if active else 'none' }}" class="whitespace-nowrap"><a href="{{ href }}" hx-get="{{ href }}" hx-target="{{ target }}" hx-swap="outerHTML" hx-push-url="true" class="inline-flex items-center gap-1 hover:underline">{{ label }}{% if active %}{% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
 {% endmacro %}
 
@@ -98,7 +100,7 @@
   <legend class="fieldset-legend">{{ field_label }}</legend>
   <label class="input input-sm w-full min-w-0 gap-2">
     <span class="icon-[lucide--search] size-4 text-base-content/60" aria-hidden="true"></span>
-    <input id="{{ id }}" type="search" name="{{ name }}" value="{{ value }}" placeholder="{{ placeholder }}" aria-label="{{ aria_label or field_label }}" autocomplete="off" class="grow min-w-0">
+    <input id="{{ id }}" type="search" name="{{ name }}" value="{{ value }}" placeholder="{{ placeholder }}" aria-label="{{ aria_label or field_label }}" autocomplete="off" onfocus="this.select()" class="grow min-w-0">
   </label>
 </fieldset>
 {% endmacro %}

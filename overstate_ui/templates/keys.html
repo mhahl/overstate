@@ -4,7 +4,7 @@
 {% import "_macros.html" as m %}
 <div class="flex flex-wrap items-center gap-3 mb-4">
   {{ m.page_heading("Keys", "Accept, reject, or delete minion keys.") }}
-  <span class="badge badge-sm badge-soft badge-warning">{{ counts.pending }} pending</span>
+  <span class="badge badge-sm badge-warning">{{ counts.pending }} pending</span>
 </div>
 {% if syndic_masters %}
 <div class="alert alert-info mb-4" role="note">
@@ -22,7 +22,7 @@
 {% import "_macros.html" as m %}
 <nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" aria-label="Key states">
   {% for name in ["pending", "accepted", "rejected", "denied"] %}
-  <a href="{{ url_for('keys.index', tab=name, q=q, sort=sort, dir=direction) }}" class="tab{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }} <span class="badge badge-sm badge-soft {{ 'badge-warning' if name == 'pending' else 'badge-ghost' }} ms-1">{{ counts[name] }}</span></a>
+  <a href="{{ url_for('keys.index', tab=name, q=q, sort=sort, dir=direction) }}" class="tab{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }} <span class="badge badge-sm {{ 'badge-warning' if name == 'pending' else 'badge-ghost' }} ms-1">{{ counts[name] }}</span></a>
   {% endfor %}
 </nav>
 <section class="card card-border bg-base-100 min-w-0" aria-label="{{ tab|capitalize }} keys">
@@ -32,8 +32,8 @@
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
     {{ m.table_search_field("keys-search", "q", q, "Search", "Search id or fingerprint…", "Search keys") }}
-    <button class="btn btn-sm btn-primary mb-0.5">Filter</button>
-    {% if q %}<a class="btn btn-sm btn-ghost mb-0.5" href="{{ url_for('keys.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
+    <button class="btn btn-sm btn-primary mb-1">Filter</button>
+    {% if q %}<a class="btn btn-sm btn-ghost mb-1" href="{{ url_for('keys.index', tab=tab, sort=sort, dir=direction) }}">Clear</a>{% endif %}
   </form>
   {{ m.page_size_select('keys.index', per_page, {'tab': tab, 'q': q, 'sort': sort, 'dir': direction}) }}
   </div>
@@ -54,7 +54,7 @@
       <tr class="hover">
         <td><a class="link font-mono text-xs" href="{{ url_for('minions.detail', mid=row.id) }}">{{ row.id }}</a></td>
         <td class="font-mono text-xs break-all">{{ row.fingerprint }}</td>
-        <td class="text-xs whitespace-nowrap">{% for pod, state in (row.states or {}).items() %}<span class="badge badge-sm badge-soft {{ 'badge-success' if state == 'accepted' else 'badge-warning' if state == 'pending' else 'badge-error' if state in ('rejected', 'denied') else 'badge-ghost' }} me-1">{{ pod }}: {{ state }}</span>{% endfor %}</td>
+        <td class="text-xs whitespace-nowrap">{% for pod, state in (row.states or {}).items() %}<span class="badge badge-sm {{ 'badge-success' if state == 'accepted' else 'badge-warning' if state == 'pending' else 'badge-error' if state in ('rejected', 'denied') else 'badge-ghost' }} me-1">{{ pod }}: {{ state }}</span>{% endfor %}</td>
         {% if ns.show_actions %}<td class="text-right">
           {% set may_delete = legacy_operator or (rbac_scoped and can('key.delete', minion=row.id)) %}
           {% if (tab == 'pending' and may_accept) or (tab in ('rejected', 'denied') and (may_accept or may_delete)) or (tab == 'accepted' and may_delete) %}<div class="join join-horizontal">

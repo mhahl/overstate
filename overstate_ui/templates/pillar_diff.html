@@ -114,10 +114,10 @@
             <tr>
               <th class="font-mono text-xs break-all">{{ r.path }}</th>
               <td>
-                {% if r.kind == "added" %}<span class="badge badge-sm badge-soft badge-success">added</span>
-                {% elif r.kind == "removed" %}<span class="badge badge-sm badge-soft badge-error">removed</span>
+                {% if r.kind == "added" %}<span class="badge badge-sm badge-success">added</span>
+                {% elif r.kind == "removed" %}<span class="badge badge-sm badge-error">removed</span>
                 {% elif r.kind == "same" %}<span class="badge badge-sm badge-ghost">same</span>
-                {% else %}<span class="badge badge-sm badge-soft badge-warning">changed</span>{% endif %}
+                {% else %}<span class="badge badge-sm badge-warning">changed</span>{% endif %}
               </td>
               <td class="max-w-md">
                 {% if r.kind != "added" %}<pre class="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs"><code>{{ render_value(r.old) }}</code></pre>

@@ -511,7 +511,7 @@ def test_minion_raw_tab_is_own_panel():
     client = app.test_client()
     _login(client, "op")
     html = client.get("/minions/web-01", query_string={"tab": "raw"}).data.decode()
-    assert 'tab-active">Raw' in html
+    assert 'aria-current="page">Raw' in html
     assert "Diagnostic dump" in html
     assert "mystate" in html  # stored payload, uncollapsed
     assert "state.highstate" in html  # schedule payload, uncollapsed

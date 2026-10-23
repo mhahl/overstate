@@ -180,7 +180,8 @@ def test_table_searches_sit_on_a_card_surface():
         assert not offenders, f"{path}: search outside a card: {offenders}"
 
 
-def test_list_pages_offer_page_size_dropdown():    # Mine/pillar/keys/files/vulns dropdowns are covered in their own
+def test_list_pages_offer_page_size_dropdown():
+    # Mine/pillar/keys/files/vulns dropdowns are covered in their own
     # suites with salt fixtures; these routes render on DB data alone.
     c = make_client()
     for path in (
@@ -465,3 +466,75 @@ def test_shared_visual_system_covers_app_shell_settings_and_console():
     assert 'aria-label="Secondary"' not in shell
     assert 'id="content"' not in shell
     assert not (TEMPLATES / "_nav.html").exists()
+
+
+def test_ratchet_deprecated_visual_classes():
+    # Resolved conflicts from the design-system review: badge-soft,
+    # btn-warning, and xs inputs/selects are deprecated everywhere.
+    # Inner table borders are deprecated only on TABLE wrappers — code
+    # viewers and the file tree keep their border as content surfaces.
+    offenders = []
+    for name in sorted(TEMPLATES.glob("*.html")):
+        src = name.read_text()
+        for token in ("badge-soft", "btn-warning", "input-xs", "select-xs"):
+            if token in src:
+                offenders.append(f"{name.name}: {token}")
+        # A bordered rounded-box that wraps a <table> is the old table
+        # pattern; the card must be the only frame.
+        for i, line in enumerate(src.splitlines()):
+            if "overflow-x-auto rounded-box border border-base-300" in line:
+                window = " ".join(src.splitlines()[i : i + 3])
+                if "<table" in window:
+                    offenders.append(f"{name.name}: bordered table wrapper")
+    assert not offenders, "deprecated classes: " + "; ".join(offenders)
+
+
+def test_ratchet_tabs_live_outside_cards():
+    # The design guideline fixes tab placement above the card. These
+    # pages previously embedded tabs inside the card body.
+    for name in ("jobs.html", "minion_detail.html", "formulas.html"):
+        src = (TEMPLATES / name).read_text()
+        card_at = src.find('<section class="card')
+        if card_at == -1:
+            card_at = src.find('<div class="card')
+        tab_at = src.find('class="tabs tabs-border')
+        assert tab_at != -1, name
+        assert card_at != -1, name
+        assert tab_at < card_at, f"{name}: tabs must precede the card"
+
+
+def test_ratchet_sidebar_items_declare_current_page():
+    # Every sidebar menu item that can show menu-active must pair it with
+    # aria-current="page" so assistive tech hears the current section.
+    # (The palette's client-side JS toggles menu-active at runtime and is
+    # not a static sidebar item, so it is out of scope here.)
+
+    src = (TEMPLATES / "base.html").read_text()
+    sidebar = src.split('<ul class="menu w-full gap-0.5">')[1].split("</ul>")[0]
+    offenders = []
+    for line in sidebar.splitlines():
+        if "menu-active" in line and "aria-current" not in line:
+            offenders.append(line.strip()[:90])
+    assert not offenders, "menu-active without aria-current: " + "; ".join(offenders)
+
+
+def test_ratchet_form_dialogs_open_with_focus():
+    # Form dialogs open through the shared openDialog() helper, which
+    # moves focus to the first field. Inline onclick="openDialog('id')"
+    # is the only sanctioned opener; internal dialog scripts that manage
+    # their own focus (the global confirm, edit-secret, minion removal,
+    # palette) are exempt.
+    src = (TEMPLATES / "base.html").read_text()
+    assert "window.openDialog = function" in src
+    exempt = ("_confirm.html", "pillar_secrets.html", "minions.html", "base.html")
+    for name in sorted(TEMPLATES.glob("*.html")):
+        if name.name in exempt:
+            continue
+        for line in name.read_text().splitlines():
+            if "showModal()" in line and "openDialog" not in line:
+                assert False, f"{name.name} hand-rolls showModal: {line.strip()[:80]}"
+
+
+def test_ratchet_search_fields_select_on_focus():
+    src = (TEMPLATES / "_macros.html").read_text()
+    assert "onfocus=\"this.select()\"" in src

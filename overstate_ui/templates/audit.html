@@ -37,7 +37,7 @@
             <td class="whitespace-nowrap text-xs opacity-70">{{ e.created_at|reltime }}</td>
             <td class="font-medium">{{ e.user }}</td>
             <td class="font-mono text-xs">{{ e.action }}</td>
-            <td><span class="badge badge-sm badge-soft {{ 'badge-error' if e.outcome == 'deny' else 'badge-success' if e.outcome == 'allow' else 'badge-ghost' }}">{{ 'Denied' if e.outcome == 'deny' else 'Allowed' if e.outcome == 'allow' else 'Legacy' }}</span></td>
+            <td><span class="badge badge-sm {{ 'badge-error' if e.outcome == 'deny' else 'badge-success' if e.outcome == 'allow' else 'badge-ghost' }}">{{ 'Denied' if e.outcome == 'deny' else 'Allowed' if e.outcome == 'allow' else 'Legacy' }}</span></td>
             <td class="font-mono text-xs">{{ e.permission or '—' }}</td>
             <td class="font-mono text-xs">{{ e.minion_id or '—' }}</td>
             <td>{% if e.jid %}<a class="link link-primary font-mono text-xs" href="{{ url_for('jobs.detail', jid=e.jid) }}">{{ e.jid }}</a>{% else %}<span class="opacity-40">—</span>{% endif %}</td>

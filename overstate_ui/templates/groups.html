@@ -29,9 +29,9 @@
   <section class="card card-border bg-base-100 min-w-0" aria-label="Node group list">
     <div class="card-body gap-4">
       {% if groups %}
-      <div class="max-w-full overflow-x-auto rounded-box border border-base-300">
-        <table class="table table-sm w-full">
-          <thead><tr><th>Name</th><th>Expression</th><th class="text-right w-48">Actions</th></tr></thead>
+      <div class="max-w-full overflow-x-auto rounded-box">
+        <table class="table table-sm table-pin-rows w-full">
+          <thead><tr><th scope="col">Name</th><th scope="col">Expression</th><th scope="col" class="text-right w-48">Actions</th></tr></thead>
           <tbody>
             {% for ng_name, ng_expr in groups.items() %}
             <tr class="hover">

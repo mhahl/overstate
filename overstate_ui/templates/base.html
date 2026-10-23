@@ -108,30 +108,30 @@
       <nav class="p-3 overflow-y-auto grow">
         <ul class="menu w-full gap-0.5">
           <li class="menu-title">Operate</li>
-          <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'menu-active' if request.endpoint == 'dashboard.index' }}">
+          <li><a href="{{ url_for('dashboard.index') }}" class="{{ 'menu-active' if request.endpoint == 'dashboard.index' }}"{% if request.endpoint == 'dashboard.index' %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--layout-dashboard] size-4.5" aria-hidden="true"></span>
             Dashboard</a></li>
           <li><a href="{{ url_for('minions.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('minions') }}"{% if request.endpoint and request.endpoint.startswith('minions') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--cpu] size-4.5" aria-hidden="true"></span>
             Minions</a></li>
-          <li><a href="{{ url_for('groups.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('groups') }}">
+          <li><a href="{{ url_for('groups.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('groups') }}"{% if request.endpoint and request.endpoint.startswith('groups') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--users] size-4.5" aria-hidden="true"></span>
             Node groups</a></li>
-          <li><a href="{{ url_for('keys.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('keys') }}">
+          <li><a href="{{ url_for('keys.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('keys') }}"{% if request.endpoint and request.endpoint.startswith('keys') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--key] size-4.5" aria-hidden="true"></span>
             Keys</a></li>
-          <li><a href="{{ url_for('jobs.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('jobs') }}">
+          <li><a href="{{ url_for('jobs.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('jobs') }}"{% if request.endpoint and request.endpoint.startswith('jobs') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--play] size-4.5" aria-hidden="true"></span>
             Jobs</a></li>
-          <li><a href="{{ url_for('console.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('console') }}">
+          <li><a href="{{ url_for('console.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('console') }}"{% if request.endpoint and request.endpoint.startswith('console') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--terminal] size-4.5" aria-hidden="true"></span>
             Console</a></li>
           <li class="menu-title mt-2">Configure</li>
-          <li><a href="{{ url_for('states.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('states') }}">
+          <li><a href="{{ url_for('states.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('states') }}"{% if request.endpoint and request.endpoint.startswith('states') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--badge-check] size-4.5" aria-hidden="true"></span>
             States</a></li>
           {% if not rbac_scoped or can('file.read') %}
-          <li><a href="{{ url_for('files.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('files') }}">
+          <li><a href="{{ url_for('files.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('files') }}"{% if request.endpoint and request.endpoint.startswith('files') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--file-text] size-4.5" aria-hidden="true"></span>
             Files</a></li>
           {% endif %}
@@ -141,48 +141,48 @@
             Formulas</a></li>
           {% endif %}
           {% if not rbac_scoped or can('reactor.read') %}
-          <li><a href="{{ url_for('reactor.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('reactor') }}">
+          <li><a href="{{ url_for('reactor.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('reactor') }}"{% if request.endpoint and request.endpoint.startswith('reactor') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--workflow] size-4.5" aria-hidden="true"></span>
             Reactor</a></li>
           {% endif %}
-          <li><a href="{{ url_for('schedules.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('schedules') }}">
+          <li><a href="{{ url_for('schedules.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('schedules') }}"{% if request.endpoint and request.endpoint.startswith('schedules') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--clock] size-4.5" aria-hidden="true"></span>
             Schedules</a></li>
           <li class="menu-title mt-2">Observe</li>
           {% if not rbac_scoped or can('event.read') %}
-          <li><a href="{{ url_for('events.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('events') }}">
+          <li><a href="{{ url_for('events.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('events') }}"{% if request.endpoint and request.endpoint.startswith('events') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--zap] size-4.5" aria-hidden="true"></span>
             Events</a></li>
           {% endif %}
           {% if not rbac_scoped or can('pillar.read') %}
-          <li><a href="{{ url_for('pillar.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('pillar') }}">
+          <li><a href="{{ url_for('pillar.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('pillar') }}"{% if request.endpoint and request.endpoint.startswith('pillar') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--tag] size-4.5" aria-hidden="true"></span>
             Pillar</a></li>
           {% endif %}
           {% if not rbac_scoped or can('mine.read') %}
-          <li><a href="{{ url_for('mine.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('mine') }}">
+          <li><a href="{{ url_for('mine.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('mine') }}"{% if request.endpoint and request.endpoint.startswith('mine') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--database] size-4.5" aria-hidden="true"></span>
             Mine</a></li>
           {% endif %}
           {% if not rbac_scoped or can('audit.read') %}
-          <li><a href="{{ url_for('audit.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('audit') }}">
+          <li><a href="{{ url_for('audit.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('audit') }}"{% if request.endpoint and request.endpoint.startswith('audit') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--scroll-text] size-4.5" aria-hidden="true"></span>
             Audit</a></li>
           {% endif %}
           <li class="menu-title mt-2">Security</li>
           {% if not rbac_scoped or can('mine.read') %}
-          <li><a href="{{ url_for('vulns.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('vulns') }}">
+          <li><a href="{{ url_for('vulns.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('vulns') }}"{% if request.endpoint and request.endpoint.startswith('vulns') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--shield-alert] size-4.5" aria-hidden="true"></span>
             Vulnerabilities</a></li>
           {% endif %}
           <li class="menu-title mt-2">System</li>
           {% if not rbac_scoped or can('settings.read') %}
-          <li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith(('settings', 'masterconfig')) }}">
+          <li><a href="{{ url_for('settings.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith(('settings', 'masterconfig')) }}"{% if request.endpoint and request.endpoint.startswith(('settings', 'masterconfig')) %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--settings] size-4.5" aria-hidden="true"></span>
             Settings</a></li>
           {% endif %}
           {% if current_user.is_authenticated and (current_user.role == 'admin' or (rbac_scoped and can('user.read'))) %}
-          <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('users.') }}">
+          <li><a href="{{ url_for('users.index') }}" class="{{ 'menu-active' if request.endpoint and request.endpoint.startswith('users.') }}"{% if request.endpoint and request.endpoint.startswith('users.') %} aria-current="page"{% endif %}>
             <span class="icon-[lucide--users] size-4.5" aria-hidden="true"></span>
             Users</a></li>
           {% endif %}
@@ -520,6 +520,23 @@
       first.focus();
     }
   });
+})();
+</script>
+<script>
+(function () {
+  // Shared dialog opener: showModal() + focus the first form field.
+  // Destructive confirmations (the global _confirm dialog) manage their
+  // own focus, so this helper is only for form dialogs; pages open with
+  // onclick="openDialog('id')".
+  window.openDialog = function (id) {
+    var dialog = document.getElementById(id);
+    if (!dialog) return;
+    dialog.showModal();
+    var field = dialog.querySelector(
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea'
+    );
+    if (field && !dialog.hasAttribute("data-no-autofocus")) field.focus();
+  };
 })();
 </script>
 <script>

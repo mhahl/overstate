@@ -61,7 +61,7 @@
       <div class="flex flex-wrap items-center gap-2 mb-4 border border-base-300 bg-base-100 p-2 rounded-lg" role="toolbar" aria-label="Master actions">
         <form method="post" action="{{ url_for('masterconfig.restart') }}" data-confirm="Restart the Salt masters? Connected minions reconnect, but the restart can interrupt in-flight jobs.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-sm btn-warning" type="submit">
+          <button class="btn btn-sm btn-primary" type="submit">
             <span class="icon-[lucide--rotate-cw] size-4 shrink-0" aria-hidden="true"></span>
             Restart masters
           </button>

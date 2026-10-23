@@ -4,15 +4,6 @@
 {% block content %}
 {% set may_sync = (current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('file.sync')) %}
 {% set may_git = (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
-{# Files-local sortable header: the shared sort_th_plain macro drives sort
-   direction with ``dir``, which this page already uses for the folder path,
-   so a separate ``sd`` param keeps the two apart. #}
-{% macro file_sort_th(col, label, classes="") %}
-{% set active = (sort == col) %}
-{% set next_sd = 'desc' if (active and direction == 'asc') else 'asc' %}
-{% set href = url_for('files.index', sort=col, sd=next_sd, d=d, q=q, per_page=per_page) %}
-<th scope="col" aria-sort="{{ direction if active else 'none' }}" class="{{ classes }}"><a href="{{ href }}" class="inline-flex items-center gap-1 hover:underline whitespace-nowrap">{{ label }}{% if active %}{% if direction == 'asc' %}<span class="icon-[lucide--arrow-up] size-3.5" aria-hidden="true"></span>{% else %}<span class="icon-[lucide--arrow-down] size-3.5" aria-hidden="true"></span>{% endif %}{% endif %}</a></th>
-{% endmacro %}
 <div class="flex flex-col gap-4">
   <header class="flex flex-wrap items-end justify-between gap-3">
     {{ m.page_heading("Files", "Browse the cloned repo — states, pillar, and everything the checkout holds — for review or editing.") }}
@@ -168,7 +159,7 @@
         {% else %}
         <div class="max-w-full overflow-x-auto rounded-box">
           <table class="table table-sm table-pin-rows w-full">
-            <thead><tr>{{ file_sort_th('name', 'File') }}{{ file_sort_th('size', 'Size', 'text-right w-24') }}{{ file_sort_th('mtime', 'Modified', 'text-right w-32') }}</tr></thead>
+            <thead><tr>{{ m.sort_th_plain('files.index', 'name', 'File', sort, direction, {'d': d, 'q': q, 'per_page': per_page}, 'sd') }}{{ m.sort_th_plain('files.index', 'size', 'Size', sort, direction, {'d': d, 'q': q, 'per_page': per_page}, 'sd') }}{{ m.sort_th_plain('files.index', 'mtime', 'Modified', sort, direction, {'d': d, 'q': q, 'per_page': per_page}, 'sd') }}</tr></thead>
             <tbody>
               {% for r in rows %}
               {% if r.group is defined and not d and sort == "name" %}

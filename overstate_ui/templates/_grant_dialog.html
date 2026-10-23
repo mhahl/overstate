@@ -3,7 +3,7 @@
    one text field except group scopes, which post scope_value_group,
    and grain scopes, which post grain_key/grain_value. #}
 {% macro grant_dialog(dialog_id, title, post_url, rows, groups, grain_keys, role_groups, delegate=False) %}
-<button class="btn btn-sm btn-outline" onclick="document.getElementById('{{ dialog_id }}').showModal()">Grants</button>
+<button class="btn btn-sm btn-outline" onclick="openDialog('{{ dialog_id }}')">Grants</button>
 <dialog id="{{ dialog_id }}" class="modal" aria-labelledby="{{ dialog_id }}-title">
   <div class="modal-box max-w-2xl">
     <h3 id="{{ dialog_id }}-title" class="font-bold text-lg">{{ title }}</h3>

@@ -40,15 +40,16 @@
   </div>
   {% endif %}
 
+  <nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" role="tablist" aria-label="Formula views">
+    <a role="tab" href="{{ url_for('formulas.index', fsub='tracked') }}" class="tab gap-2{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
+    <a role="tab" href="{{ url_for('formulas.index', fsub='untracked') }}" class="tab gap-2{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>On disk <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
+  </nav>
+
   <section class="card card-border bg-base-100 min-w-0" aria-label="Formula views">
     <div class="card-body gap-4">
       <div class="flex flex-wrap items-start gap-3">
-        <div role="tablist" class="tabs tabs-border" aria-label="Formula views">
-          <a role="tab" href="{{ url_for('formulas.index', fsub='tracked') }}" class="tab gap-2{% if fsub_active == 'tracked' %} tab-active{% endif %}"{% if fsub_active == 'tracked' %} aria-current="page"{% endif %}>Tracked <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.tracked }}</span></a>
-          <a role="tab" href="{{ url_for('formulas.index', fsub='untracked') }}" class="tab gap-2{% if fsub_active == 'untracked' %} tab-active{% endif %}"{% if fsub_active == 'untracked' %} aria-current="page"{% endif %}>On disk <span class="badge badge-sm badge-ghost tabular-nums">{{ formula_summary.untracked }}</span></a>
-        </div>
         {% if may_edit %}
-        <button class="btn btn-sm btn-primary ms-auto" onclick="document.getElementById('formula-add').showModal()">Add formula</button>
+        <button class="btn btn-sm btn-primary ms-auto" onclick="openDialog('formula-add')">Add formula</button>
         {% if formula_summary.missing %}
         <form method="post" action="{{ url_for('formulas.re_vendor') }}" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -78,12 +79,12 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="name" value="{{ u.name }}">
             {% if u.in_git %}
-            <input type="text" name="url" class="input input-xs w-44" placeholder="source URL" aria-label="Source URL for {{ u.name }}" required disabled>
-            <input type="text" name="branch" class="input input-xs w-24" placeholder="ref" aria-label="Ref for {{ u.name }}" disabled>
+            <input type="text" name="url" class="input input-sm w-44" placeholder="source URL" aria-label="Source URL for {{ u.name }}" required disabled>
+            <input type="text" name="branch" class="input input-sm w-24" placeholder="ref" aria-label="Ref for {{ u.name }}" disabled>
             <button class="btn btn-xs btn-outline" disabled title="Source is the states repo; tracking is not needed.">Track</button>
             {% else %}
-            <input type="text" name="url" class="input input-xs w-44" placeholder="source URL" aria-label="Source URL for {{ u.name }}" required>
-            <input type="text" name="branch" class="input input-xs w-24" placeholder="ref" aria-label="Ref for {{ u.name }}">
+            <input type="text" name="url" class="input input-sm w-44" placeholder="source URL" aria-label="Source URL for {{ u.name }}" required>
+            <input type="text" name="branch" class="input input-sm w-24" placeholder="ref" aria-label="Ref for {{ u.name }}">
             <button class="btn btn-xs btn-outline">Track</button>
             {% endif %}
           </form>
@@ -121,12 +122,12 @@
                   {% if may_edit %}
                   <form method="post" action="{{ url_for('formulas.update', name=f.name) }}" class="inline-flex items-center gap-1">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select name="auth" class="select select-xs w-24" aria-label="Auth for {{ f.name }} update">
+                    <select name="auth" class="select select-sm w-24" aria-label="Auth for {{ f.name }} update">
                       <option value="shared" selected>shared</option>
                       <option value="ssh">ssh</option>
                       <option value="token">token</option>
                     </select>
-                    <input type="password" name="token" class="input input-xs w-24" autocomplete="off" placeholder="token" aria-label="Token for {{ f.name }} update">
+                    <input type="password" name="token" class="input input-sm w-24" autocomplete="off" placeholder="token" aria-label="Token for {{ f.name }} update">
                     <button class="btn btn-xs btn-outline" data-confirm="Update '{{ f.name }}' to the latest upstream commit?">Update</button>
                   </form>
                   <form method="post" action="{{ url_for('formulas.remove', name=f.name) }}" class="inline">

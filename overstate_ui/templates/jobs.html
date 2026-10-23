@@ -8,6 +8,12 @@
   <a class="btn btn-sm btn-ghost" href="{{ url_for('jobs.orchestrate') }}">Orchestrate</a>
   <button id="live-toggle" class="btn btn-sm btn-ghost" title="Pauses auto-refresh on the job and minion lists" aria-label="Pause live updates on job and minion lists" aria-pressed="false">Pause live updates</button>
 </div>
+<nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" aria-label="Job lists">
+  {% for name in ["running", "history", "saved"] %}
+  {% set href = url_for('jobs.index', tab=name, sort=sort, dir=direction, q=q, per_page=per_page) %}
+  <a href="{{ href }}" class="tab gap-2{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-outline tabular-nums">{{ running|length }}</span>{% endif %}</a>
+  {% endfor %}
+</nav>
 <section class="card card-border bg-base-100 min-w-0" aria-label="Job lists">
 <div class="flex flex-row flex-wrap items-end justify-end gap-2 px-4 py-3 border-b border-base-300">
 <form id="jobs-filter" method="get" action="{{ url_for('jobs.index') }}" hx-get="{{ url_for('jobs.index') }}" hx-target="#jobs-region" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit" role="search" aria-label="Filter jobs">
