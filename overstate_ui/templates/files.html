@@ -6,7 +6,7 @@
 {% set may_git = (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('file.git')) %}
 <div class="flex flex-col gap-4">
   <header class="flex flex-wrap items-end justify-between gap-3">
-    {{ m.page_heading("Files", "Browse the cloned repo — states, pillar, and everything the checkout holds — for review or editing.") }}
+    {{ m.page_heading("Files", "Browse the cloned repo: states, pillar, and everything the checkout holds.") }}
     <div class="flex flex-wrap items-center gap-2">
       <a class="btn btn-sm btn-ghost" href="{{ url_for('formulas.index') }}">
         <span class="icon-[lucide--package] size-4" aria-hidden="true"></span>Formulas

@@ -189,7 +189,7 @@ def _write_nodegroups(groups: dict[str, str]) -> str | None:
     try:
         new_rv = client.replace_configmap(name, updated, revision)
     except K8sConflictError:
-        return "the config changed since you opened it — reload and re-apply"
+        return "the config changed since you opened it. Reload and re-apply."
     except K8sError as exc:
         return f"the app could not write the live config: {exc}"
     set_restart_needed()

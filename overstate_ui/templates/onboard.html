@@ -76,7 +76,7 @@
       {% else %}
       <div class="alert alert-warning" role="status">
         <span class="icon-[lucide--triangle-alert] size-5 shrink-0" aria-hidden="true"></span>
-        <span>Master IP addresses are not configured. Configure at least two before generating an installer.</span>
+        <span>No master IPs configured. Set at least two before generating an installer.</span>
       </div>
       {% endif %}
       <a class="link text-sm" href="{{ url_for('settings.index') }}">Manage master IPs in Settings</a>
@@ -111,7 +111,7 @@
         <span class="icon-[lucide--key-round] size-5 text-base-content/60" aria-hidden="true"></span>
         <h2 id="onboard-accept-title" class="card-title text-base">Step 3 · Verify and accept the key</h2>
       </div>
-      <p class="text-sm text-base-content/70">Compare the fingerprint from <code class="font-mono">salt-call key.finger</code> on the machine with the pending key before accepting it.</p>
+      <p class="text-sm text-base-content/70">Compare <code class="font-mono">salt-call key.finger</code> on the machine with the pending key before accepting.</p>
       {% if pending %}
       <div class="flex flex-wrap items-center gap-2"><span class="badge badge-warning badge-outline">{{ pending|length }} pending</span><span class="text-sm text-base-content/60">Select the ID you just installed:</span></div>
       <ul class="list">
@@ -126,7 +126,7 @@
       {% else %}
       <div class="flex items-start gap-2 text-sm text-base-content/70">
         <span class="icon-[lucide--timer] size-4 mt-0.5 shrink-0" aria-hidden="true"></span>
-        <span>No pending keys yet. Start the minion and allow a minute for its request to reach a master.</span>
+        <span>No pending keys yet. Start the minion and wait a minute for its request to reach a master.</span>
       </div>
       {% endif %}
       <div class="card-actions">

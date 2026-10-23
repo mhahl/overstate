@@ -582,7 +582,7 @@ def _upsert_secret(blind: bool) -> tuple:
     data = _load_rt(path)
     existing = _flatten_copy(data).get(dotted)
     if existing is not None and not blind:
-        flash(f"'{dotted}' already exists — use Update to overwrite it blind.", "error")
+        flash(f"'{dotted}' already exists; use Update to overwrite it blind.", "error")
         return redirect(url_for("pillar_secrets.index"))
     try:
         _set_path(data, dotted, sealed)
@@ -717,7 +717,7 @@ def setup():
     else:
         failed = [s for s in result["steps"] if not s["ok"]]
         detail = "; ".join(f"{s['step']}: {s['detail']}" for s in failed) or "unknown"
-        flash(f"NaCl setup failed — {detail}", "error")
+        flash(f"NaCl setup failed: {detail}", "error")
     log_event(
         current_user.username,
         "pillar-secret:master-setup",
@@ -756,7 +756,7 @@ def verify():
     else:
         failed = [s for s in result["steps"] if not s["ok"]]
         detail = "; ".join(f"{s['step']}: {s['detail']}" for s in failed) or "unknown"
-        flash(f"Verification failed — {detail}", "error")
+        flash(f"Verification failed: {detail}", "error")
     return redirect(url_for("pillar_secrets.index"))
 
 
@@ -793,14 +793,14 @@ def store():
         return redirect(url_for("pillar_encryption.enc_index"))
     if key_id(pubkey) is None:
         flash(
-            "That is not a valid NaCl public key (32 bytes, base64) — nothing stored.",
+            "That is not a valid NaCl public key (32 bytes, base64). Nothing stored.",
             "error",
         )
         return redirect(url_for("pillar_encryption.enc_index"))
     existing = get_setting(PK_SETTING)
     if existing and existing != pubkey and request.form.get("confirm_box") != "1":
         flash(
-            "A key is already stored — replacing it orphans existing values; confirm to replace.",
+            "A key is already stored. Replacing it orphans existing values; confirm to replace.",
             "error",
         )
         return redirect(url_for("pillar_encryption.enc_index"))

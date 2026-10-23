@@ -161,7 +161,7 @@ def _cmd_salt(argv: list[str]) -> dict:
             positional.append(tok)
         i += 1
     if len(positional) < 2:
-        raise ConsoleError("Usage: salt <target> <function> [args...] — see `help`.")
+        raise ConsoleError("Usage: salt <target> <function> [args...]. See `help`.")
     tgt, fun, args = positional[0], positional[1], positional[2:]
     if not tgt:
         raise ConsoleError("An empty target never fires.")
@@ -389,7 +389,7 @@ def _compact(value, depth: int = 0, budget: list | None = None) -> str:
 
 def _cmd_runner(argv: list[str]) -> dict:
     if not argv:
-        raise ConsoleError("Usage: salt-run <runner> [k=v...] — see `help`.")
+        raise ConsoleError("Usage: salt-run <runner> [k=v...]. See `help`.")
     fun = argv[0]
     if fun not in RUNNER_ALLOW:
         raise ConsoleError(
@@ -692,7 +692,7 @@ def run():
         else:
             raise ConsoleError(
                 f"Unknown command {head}: this console runs salt, "
-                "salt-key, salt-run, help, clear — nothing else."
+                "salt-key, salt-run, help, clear. Nothing else."
             )
     except ConsoleError as exc:
         return jsonify({"ok": False, "output": exc.message}), exc.status

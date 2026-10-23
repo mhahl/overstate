@@ -6,7 +6,7 @@
 {% import "_macros.html" as m %}
 <div class="flex flex-col gap-4">
   <header class="flex flex-wrap items-end gap-3">
-    {{ m.page_heading("States &amp; conformity", "Latest state verdict per minion, from the most recent state job.") }}
+    {{ m.page_heading("States &amp; conformity", "Latest state verdict per minion from the most recent state job.") }}
     <div class="flex flex-wrap items-center gap-2">
       <a class="btn btn-sm btn-primary" href="{{ url_for('jobs.new', preset='highstate-dry') }}"><span class="flex items-center justify-center size-4"><span class="icon-[lucide--shield-check] size-4" aria-hidden="true"></span></span>Dry-run highstate</a>
       {% if may_watch %}
@@ -119,7 +119,7 @@
           <p class="text-sm text-base-content/70">Watched SLS files narrow verdicts to matching state returns. If a return cannot be isolated, the whole-job result is used.</p>
           {% if missing_watch %}
           <div class="alert alert-warning" role="status">
-            <span>One or more watched names match no state file — their verdicts stay whole-job until the files exist.</span>
+            <span>One or more watched names match no state file. Their verdicts stay whole-job until the files exist.</span>
           </div>
           {% endif %}
           {% else %}
@@ -161,7 +161,7 @@
             </li>
             <li class="flex items-start gap-2">
               <span class="badge badge-sm badge-warning shrink-0">missed</span>
-              <p class="text-sm text-base-content/70">Targeted but silent while the roster shows it up — the return was likely lost, not the minion down.</p>
+              <p class="text-sm text-base-content/70">Targeted but silent while the roster shows it up. The return was likely lost, not the minion down.</p>
             </li>
             <li class="flex items-start gap-2">
               <span class="badge badge-sm badge-neutral shrink-0">unknown</span>

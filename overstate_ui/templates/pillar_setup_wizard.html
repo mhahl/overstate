@@ -110,7 +110,7 @@
         <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_encryption.enc_index') }}">Manage key</a>
       </div>
       {% elif can_setup %}
-      <p class="text-sm text-base-content/70">Step 2 stores it automatically. To paste a key generated elsewhere, paste the <strong>public</strong> key (32 bytes, base64):</p>
+      <p class="text-sm text-base-content/70">Step 2 stores it automatically. To use a key generated elsewhere, paste the <strong>public</strong> key (32 bytes, base64):</p>
       <form method="post" action="{{ url_for('pillar_encryption.store') }}" class="flex flex-col gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="fieldset">
@@ -135,7 +135,7 @@
         </div>
       </div>
       {% if not collections %}
-      <p class="text-sm text-base-content/70">Create a collection and add a secret first — verification writes into a wired collection.</p>
+      <p class="text-sm text-base-content/70">Create a collection and add a secret first. Verification writes into a wired collection.</p>
       <div class="card-actions">
         <a class="btn btn-sm btn-outline" href="{{ url_for('pillar_secrets.index') }}">Open the editor</a>
       </div>
@@ -165,7 +165,7 @@
       {% endif %}
       {% if pk_stored %}
       <div class="card-actions">
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_secrets.index') }}">Done — open the editor</a>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('pillar_secrets.index') }}">Done · open the editor</a>
       </div>
       {% endif %}
     </div>

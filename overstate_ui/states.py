@@ -369,7 +369,7 @@ def watch():
         if _sls_file(sls) is None:
             flash(
                 f"Watching '{sls}', but no state file matches it under the file "
-                "roots — verdicts stay whole-job until the file exists.",
+                "roots. Verdicts stay whole-job until the file exists.",
                 "warning",
             )
         else:

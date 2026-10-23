@@ -23,7 +23,7 @@
       {% if verified_at %}<span class="text-base-content/60">verified {{ verified_at|reltime }}</span>{% endif %}
     </div>
     {% else %}
-    <p class="text-sm text-base-content/70">Nothing stored yet. Generate the keypair on a master, then paste the <strong>public</strong> key (32 bytes, base64) here — never the secret key. Full runbook: <span class="font-mono">docs/guides/pillar-encryption.md</span>.</p>
+    <p class="text-sm text-base-content/70">Nothing stored yet. Generate the keypair on a master, then paste the <strong>public</strong> key (32 bytes, base64) here. Never the secret key. Runbook: <span class="font-mono">docs/guides/pillar-encryption.md</span>.</p>
     <details class="collapse collapse-arrow border border-base-300 rounded-lg mb-2">
       <summary class="collapse-title text-xs font-medium min-h-0 py-2">Generate the master keypair</summary>
       <div class="collapse-content">
@@ -35,7 +35,7 @@
           <pre data-prefix="$"><code>  runuser -u salt -- salt-call --local nacl.keygen sk_file=$KEYDIR/nacl"</code></pre>
           <pre data-prefix="$"><code>kubectl exec -n $NS salt-master-0 -- runuser -u salt -- cat $KEYDIR/nacl.pub</code></pre>
         </div>
-        <p class="text-xs text-base-content/60 mt-2">Copy the same secret key to salt-master-1 and -2 (accordion on the secrets page), and back the secret key up offline.</p>
+        <p class="text-xs text-base-content/60 mt-2">Copy the same secret key to salt-master-1 and salt-master-2 (accordion on the secrets page), and back it up offline.</p>
       </div>
     </details>
     {% endif %}
@@ -55,7 +55,7 @@
         {% endif %}
       </div>
     </form>
-    <p class="text-sm text-base-content/60">Saved values cannot be shown back here — only the public key is stored.</p>
+    <p class="text-sm text-base-content/60">Saved values cannot be shown. Only the public key is stored.</p>
   </div>
 </section>
 {% endblock %}

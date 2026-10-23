@@ -1335,7 +1335,7 @@ def create_token(uid: int):
     session.commit()
     log_token_event(current_user.username, "token-create", prefix, name)
     flash(
-        f"Token '{name}' created — copy it now, it will not be shown again: {raw}",
+        f"Token '{name}' created. Copy it now; it will not be shown again: {raw}",
         "success",
     )
     return redirect(url_for("users.index"))

@@ -74,7 +74,7 @@
       <ul class="flex flex-col gap-1">
         <li>Delete the inventory row: grains, conformity verdict, last seen.</li>
         <li>Keep the job history.</li>
-        <li>Leave the Salt key on the master, so the minion rejoins this list. Tick the box to delete the key too.</li>
+        <li>Leave the Salt key on the master so the minion rejoins this list. Tick the box to delete the key too.</li>
       </ul>
       <form id="remove-modal-form" method="post" action="">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -82,7 +82,7 @@
           <input type="checkbox" id="remove-modal-delete-key" name="delete_key" value="yes" class="checkbox checkbox-sm">
           <span class="label">Also delete its Salt key on every master</span>
         </label>
-        <p class="opacity-70">A minion that is still running asks for a new key and returns as pending. Stop the minion first to fully remove it.</p>
+        <p class="opacity-70">A running minion asks for a new key and returns as pending. Stop the minion first to fully remove it.</p>
         <div class="modal-action">
           <button type="button" id="remove-modal-cancel" class="btn btn-sm btn-ghost" onclick="document.getElementById('remove-modal').close()">Cancel</button>
           <button type="submit" class="btn btn-sm btn-error">Remove</button>

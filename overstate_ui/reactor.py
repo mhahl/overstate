@@ -535,8 +535,8 @@ def add():
         return redirect(url_for("reactor.index"))
     if not sls_exists(sls):
         flash(
-            f"No reactor SLS file matches '{sls}' under the reactor roots — "
-            "the mapping will fail when the event fires until the file exists.",
+            f"No reactor SLS file matches '{sls}' under the reactor roots. "
+            "The mapping fails when the event fires until the file exists.",
             "warning",
         )
     # Fan out to every pod: publish buses and reactor systems are

@@ -277,7 +277,7 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
         ]
         if deciders:
             name, tab = deciders[0]
-            skipped.append((mid, f"explicit {tab} on {name} — human decides"))
+            skipped.append((mid, f"explicit {tab} on {name}; decide by hand"))
             continue
         pending_on = [name for name, tab in state.items() if tab == "pending"]
         if not pending_on:
@@ -297,7 +297,7 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
                     (
                         mid,
                         f"accepted on {', '.join(accepted_on)} but key file "
-                        + f"absent on {', '.join(absent_on)} — backfill the "
+                        + f"absent on {', '.join(absent_on)}. Backfill the "
                         + "accepted key by hand (reconcile cannot accept a "
                         + "key that was never pending there)",
                     )
@@ -309,7 +309,7 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
             if state[name] == "accepted" and mid in fingers["accepted"]
         ]
         if not trusted:
-            skipped.append((mid, "trusted nowhere — accept by hand"))
+            skipped.append((mid, "trusted nowhere; accept by hand"))
             continue
         for pod in pending_on:
             here = per_pod[pod][1]["pending"].get(mid)

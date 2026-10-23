@@ -96,7 +96,7 @@
         <div class="flex flex-wrap items-start gap-3">
           <div class="me-auto">
             <h2 class="card-title text-base">salt-api health</h2>
-            <p class="text-sm text-base-content/70 mt-1">Authentication and execution doors.</p>
+            <p class="text-sm text-base-content/70 mt-1">Authentication and execution status.</p>
           </div>
           {% if stats.reachable %}
           <span class="badge badge-success badge-outline">Reachable</span>
@@ -152,7 +152,7 @@
         <div class="flex flex-wrap items-center gap-3">
           <div class="me-auto">
             <h2 class="card-title text-base">Salt masters</h2>
-            <p class="text-sm text-base-content/70 mt-1">Cluster rollout and pod readiness.</p>
+            <p class="text-sm text-base-content/70 mt-1">Rollout and pod readiness.</p>
           </div>
           {% if masters and masters.available %}
           {% if masters.complete %}<span class="badge badge-success badge-outline">Ready</span>{% else %}<span class="badge badge-warning badge-outline">Rollout progressing</span>{% endif %}
@@ -174,7 +174,7 @@
         {% if masters.images_differ %}<div class="alert alert-warning py-2" role="status"><span>Master pods are running different images. Check the StatefulSet after rollout.</span></div>{% endif %}
         <p class="text-xs text-base-content/70">Config revision <span class="font-mono">{{ masters.config_revision or "unknown" }}</span>{% if (current_user.role == "admin" and not rbac_scoped) or (rbac_scoped and can('master.read')) %} · <a class="link" href="{{ url_for('masterconfig.index') }}">Master Settings</a>{% endif %}</p>
         {% elif masters or not probing %}
-        <div class="py-5 text-center"><p class="font-medium">Master status unavailable</p><p class="text-sm text-base-content/70 mt-1">No cluster connection is available from this dashboard.</p></div>
+        <div class="py-5 text-center"><p class="font-medium">Master status unavailable</p><p class="text-sm text-base-content/70 mt-1">No cluster connection from this dashboard.</p></div>
         {% else %}
         <p class="text-sm text-base-content/70 py-3">Probing masters…</p>
         {% endif %}
@@ -184,7 +184,7 @@
     <section class="card card-border bg-base-100 min-w-0 xl:col-span-5" aria-label="Salt versions">
       <div class="card-body p-0">
         <div class="flex flex-wrap items-center gap-3 px-4 py-4 border-b border-base-300">
-          <div class="me-auto"><h2 class="card-title text-base">Salt versions</h2><p class="text-sm text-base-content/70 mt-1">Version distribution across the visible fleet.</p></div>
+          <div class="me-auto"><h2 class="card-title text-base">Salt versions</h2><p class="text-sm text-base-content/70 mt-1">Versions across the visible fleet.</p></div>
           {% if stats.versions_live %}<span class="badge badge-success badge-outline">Live</span>{% else %}<span class="badge badge-ghost">Snapshot</span>{% endif %}
         </div>
         {% if stats.versions %}
@@ -195,7 +195,7 @@
           </table>
         </div>
         {% else %}
-        <p class="text-sm text-base-content/70 px-4 py-5">No Salt version data is available in the current snapshot.</p>
+        <p class="text-sm text-base-content/70 px-4 py-5">No Salt version data in the current snapshot.</p>
         {% endif %}
       </div>
     </section>

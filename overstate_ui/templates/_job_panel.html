@@ -6,7 +6,7 @@ in both paths. #}
 <details id="panel-{{ r.minion_id }}" data-panel-mid="{{ r.minion_id }}" data-live="{{ '1' if r.live|default(False) else '0' }}" class="collapse bg-base-100 border {{ 'border-error' if not r.success else 'border-base-300' }}" {% if not r.success %}open{% endif %}>
   <summary class="collapse-title font-mono text-sm flex items-center gap-2">
     {% if r.success %}<span class="status status-success"></span>{% else %}<span class="status status-error"></span>{% endif %}
-    <span class="me-auto">{{ r.minion_id }} — {{ "ok" if r.success else ("failed, retcode " ~ r.retcode) }}</span>
+    <span class="me-auto">{{ r.minion_id }} · {{ "ok" if r.success else ("failed, retcode " ~ r.retcode) }}</span>
     {% if r.live|default(False) %}<span class="badge badge-xs badge-info">live</span>{% endif %}
     {% if view.summary %}<span class="text-xs opacity-70">{{ view.summary.succeeded }} succeeded, {{ view.summary.failed }} failed{% if view.failed_names %} · <span class="font-mono text-error">Failed: {{ view.failed_names|join(", ") }}</span>{% endif %}</span>
     {% elif view.text %}<span class="text-xs opacity-70">{{ view.text }}</span>{% endif %}

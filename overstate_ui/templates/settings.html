@@ -89,11 +89,11 @@
     <div class="card-body gap-3">
       <div>
         <h2 id="rbac-mode" class="card-title text-base">Scoped RBAC</h2>
-        <p class="text-sm opacity-70 mt-0.5">Grants instead of the global ladder. Only enable scoped mode on an image with scoped SSO provisioning, after staging mappings and grants. Entering scoped mode rebuilds fleet ladder mappings from the OIDC group boxes on Single sign-on.</p>
+        <p class="text-sm opacity-70 mt-0.5">Grants replace the global ladder. Only enable scoped mode on an image with scoped SSO provisioning, after staging mappings and grants. Enabling it rebuilds fleet ladder mappings from the OIDC group boxes on Single sign-on.</p>
       </div>
       {% if rbac_fallback_value != "off" %}
       <div class="alert alert-warning" role="note">
-        <span class="text-sm">Role fallback is on: accounts with no grant keep their role column as fleet access. Turn it off after backfill is checked.</span>
+        <span class="text-sm">Role fallback is on: accounts with no grant keep their role column as fleet access. Turn it off once backfill is checked.</span>
       </div>
       {% endif %}
       <form method="post" action="{{ url_for('settings.save') }}" class="flex flex-wrap items-end gap-2">

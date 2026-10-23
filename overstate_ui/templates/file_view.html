@@ -16,7 +16,7 @@
     {% endif %}
   </div>
   <p class="text-sm opacity-70 mb-4">Synced from git{% if revision %} at <code class="font-mono">{{ revision }}</code>{% endif %}.
-  {% if last_commit %}Last changed by <span class="font-medium">{{ last_commit.author }}</span> {{ last_commit.when }} (<code class="font-mono">{{ last_commit.sha }}</code>) — {{ last_commit.subject }}.{% endif %}</p>
+  {% if last_commit %}Last changed by <span class="font-medium">{{ last_commit.author }}</span> {{ last_commit.when }} (<code class="font-mono">{{ last_commit.sha }}</code>) · {{ last_commit.subject }}.{% endif %}</p>
   {% if content is none %}
   <div class="card card-border">
     <div class="card-body py-8 text-center">

@@ -58,7 +58,7 @@
         {% endif %}
         {% endif %}
       </div>
-      <p class="mt-2 text-xs text-base-content/60">{% if formula_summary.missing %}{{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing on disk.{% endif %} {% if formula_summary.untracked %}{{ formula_summary.untracked }} dir{% if formula_summary.untracked != 1 %}s{% endif %} on disk without a row{% if formula_summary.from_git %} — {{ formula_summary.from_git }} from the states repo{% endif %}.{% endif %}</p>
+      <p class="mt-2 text-xs text-base-content/60">{% if formula_summary.missing %}{{ formula_summary.missing }} tracked formula{% if formula_summary.missing != 1 %}s{% endif %} missing on disk.{% endif %} {% if formula_summary.untracked %}{{ formula_summary.untracked }} dir{% if formula_summary.untracked != 1 %}s{% endif %} on disk without a row{% if formula_summary.from_git %}, {{ formula_summary.from_git }} from the states repo{% endif %}.{% endif %}</p>
     </div>
 
       {% if fsub_active == 'untracked' %}
@@ -143,7 +143,7 @@
           </tbody>
         </table>
       </div>
-      <p class="text-xs text-base-content/60 px-4 py-3">Formulas live outside git (added to <span class="font-mono">.git/info/exclude</span>) so they never conflict with the states repo. The master and Files browser still see them.</p>
+      <p class="text-xs text-base-content/60 px-4 py-3">Formulas live outside git in <span class="font-mono">.git/info/exclude</span>, so they never conflict with the states repo. The master and Files browser still see them.</p>
       {% else %}
       <p class="text-sm text-base-content/70 px-4 py-3">No formulas tracked yet.{% if may_edit %} Add one above, or pick up a directory under Untracked.{% endif %}</p>
       {% endif %}
@@ -155,14 +155,14 @@
 <dialog id="formula-add" class="modal" aria-labelledby="formula-add-title">
   <div class="modal-box max-w-xl">
     <h3 id="formula-add-title" class="font-bold text-lg">Add formula</h3>
-    <p class="text-sm text-base-content/70 mt-1">Clones the formula repo and vendors it at <span class="font-mono">salt/&lt;name&gt;/</span>. From there it is visible to the master and the Files browser. Git ignores the directory so it never conflicts with the states repo.</p>
+    <p class="text-sm text-base-content/70 mt-1">Clones the formula repo and vendors it at <span class="font-mono">salt/&lt;name&gt;/</span>, visible to the master and the Files browser. Git ignores the directory so it never conflicts with the states repo.</p>
     <form method="post" action="{{ url_for('formulas.add') }}" class="flex flex-col gap-3 mt-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <fieldset class="fieldset"><legend class="fieldset-legend">Name (salt/&lt;name&gt;/)</legend>
       <input type="text" name="name" class="input input-sm w-full font-mono" placeholder="nginx" aria-label="Formula name" required autocomplete="off"></fieldset>
       <fieldset class="fieldset"><legend class="fieldset-legend">Repo URL (https or SSH)</legend>
       <input type="text" name="url" class="input input-sm w-full font-mono" placeholder="https://github.com/saltstack-formulas/nginx-formula" aria-label="Formula repo URL" required></fieldset>
-      <fieldset class="fieldset"><legend class="fieldset-legend">Ref (tag, branch, or SHA — blank = default)</legend>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Ref (tag, branch, or SHA; blank = default)</legend>
       <input type="text" name="branch" class="input input-sm w-full font-mono" aria-label="Formula ref" autocomplete="off"></fieldset>
       <fieldset class="fieldset"><legend class="fieldset-legend">Authenticate with</legend>
       <select name="auth" class="select select-sm w-full" aria-label="Authentication">

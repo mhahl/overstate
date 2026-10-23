@@ -99,7 +99,7 @@
 <div class="card card-border bg-base-100 mb-4">
 <div class="card-body">
 <h2 class="font-semibold">Repoint origin</h2>
-<p class="text-sm opacity-70 mb-2">Refuses on dirty trees and unpushed commits. Repointing under either orphans work onto the wrong remote.</p>
+<p class="text-sm opacity-70 mb-2">Refuses on dirty trees and unpushed commits. Repointing can strand work under either remote.</p>
 <form method="post" action="{{ url_for('state_repo.set_remote') }}" class="flex flex-wrap items-end gap-2 max-w-xl">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="fieldset flex-1"><legend class="fieldset-legend">New origin URL</legend>

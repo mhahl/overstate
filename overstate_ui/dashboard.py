@@ -483,6 +483,6 @@ def capability_checks(caps: dict) -> list:
     for c in CAPABILITY_CHECKS:
         check = {**c, "ok": bool(caps.get(c["key"]))}
         if c["key"] == "ping_ok" and not check["ok"] and not caps.get("ping_target"):
-            check["grant"] = "No minion to ping yet — enroll one first"
+            check["grant"] = "No minion to ping yet. Enroll one first"
         checks.append(check)
     return checks

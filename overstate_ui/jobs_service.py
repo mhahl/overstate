@@ -247,7 +247,7 @@ def build_sls_preview(
                     minion,
                     (
                         "Preview unavailable: render still "
-                        "running — firing stays available."
+                        "running. Firing stays available."
                     ),
                 )
             if status != "ready":

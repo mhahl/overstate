@@ -467,7 +467,7 @@ def test_clone_refuses_into_nonempty_non_checkout(ctx, tmp_path):
         assert not gs.is_checkout()
         result = gs._clone(f"file://{bare}", None)
     assert not result["ok"]
-    assert result["reason"] == "directory not empty — re-clone to replace it"
+    assert result["reason"] == "directory not empty; re-clone to replace it"
     assert (srv / "foreign.sls").is_file()  # nothing was destroyed
     assert (srv / "salt" / "seed.sls").is_file()
 

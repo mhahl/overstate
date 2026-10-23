@@ -225,11 +225,11 @@
             <td class="font-mono text-xs break-all whitespace-pre-wrap">{{ data.mine_value | tojson(indent=1) }}</td></tr>
         </tbody></table>
     </div>
-    <p class="text-xs opacity-70">Mine data is cached. The minion reported it on its schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>.</p>
+    <p class="text-xs opacity-70">Mine data is cached; the minion reported it on its schedule. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>.</p>
     {% else %}
     <div class="py-8 text-center">
       <p class="font-medium">Mine has nothing stored for {{ data.mine_fun }}</p>
-      <p class="text-sm opacity-70">This minion did not report that function. Minions report only functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then retry the lookup.</p>
+      <p class="text-sm opacity-70">This minion did not report that function. Minions report only functions listed in their <span class="font-mono">mine_functions</span> config. <a class="link" href="{{ url_for('jobs.new', preset='mine-update') }}">Refresh mine data</a>, then retry.</p>
     </div>
     {% endif %}
     {% endif %}
@@ -420,7 +420,7 @@
   {% elif tab == "raw" %}
   <div class="p-4 flex flex-col gap-4">
     <p class="text-xs opacity-70">Diagnostic dump with the exact payloads behind the States, Schedule, and Pillar tabs.</p>
-    <p class="font-medium text-sm">States — last stored return{% if data.stored %} · <span class="font-mono">{{ data.stored.fun }}</span> in <a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=data.stored.jid) }}">{{ data.stored.jid }}</a>{% endif %}</p>
+    <p class="font-medium text-sm">States · last stored return{% if data.stored %} · <span class="font-mono">{{ data.stored.fun }}</span> in <a class="link font-mono text-xs" href="{{ url_for('jobs.detail', jid=data.stored.jid) }}">{{ data.stored.jid }}</a>{% endif %}</p>
     {% if data.stored %}<pre class="mockup-code text-xs overflow-x-auto"><code>{{ data.stored.raw | tojson(indent=1) }}</code></pre>
     {% else %}<p class="text-sm opacity-70">No stored state run for {{ mid }}.</p>{% endif %}
     <p class="font-medium text-sm">Schedule</p>

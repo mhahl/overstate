@@ -79,7 +79,7 @@
         {% else %}
         <div class="flex flex-col items-start gap-2 px-4 py-8">
           <p class="font-medium">No live values available</p>
-          <p class="text-sm text-base-content/70">Refresh Pillar to request a new render. Any saved snapshots remain available in the history panel.</p>
+          <p class="text-sm text-base-content/70">Refresh Pillar for a new render. Saved snapshots stay in the history panel.</p>
           <a class="btn btn-sm btn-outline border-base-300 mt-2" href="{{ url_for('jobs.new', preset='refresh-pillar') }}">Refresh Pillar</a>
         </div>
         {% endif %}
@@ -123,7 +123,7 @@
         <div class="flex flex-col items-start gap-2 px-4 py-8">
           <p class="font-medium">No snapshots captured</p>
           {% if can_capture %}
-          <p class="text-sm text-base-content/70">Capture the current render to create a point-in-time reference for future comparisons.</p>
+          <p class="text-sm text-base-content/70">Capture the current render as a point-in-time reference for future comparisons.</p>
           {% else %}
           <p class="text-sm text-base-content/70">A user with snapshot-capture permission can save a point-in-time reference.</p>
           {% endif %}

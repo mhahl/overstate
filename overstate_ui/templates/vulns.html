@@ -59,9 +59,9 @@
 {% else %}
 <div class="py-8 px-4 text-center">
   <p class="font-medium">No vulnerability data</p>
-  <p class="text-sm opacity-70">{% if q %}Nothing matches “{{ q }}”.{% else %}No minion has reported a grype scan yet. Scans publish through the <span class="font-mono">grype-cve-scan</span> schedule on each minion (see the admin guide); <span class="font-mono">mine.update</span> does not refresh this data. Trigger one now with <a class="link" href="{{ url_for('jobs.new', preset='vuln-scan') }}">Run scan now</a>.{% endif %}</p>
+  <p class="text-sm opacity-70">{% if q %}Nothing matches “{{ q }}”.{% else %}No minion has reported a grype scan yet. Scans publish through the <span class="font-mono">grype-cve-scan</span> schedule on each minion (see the admin guide). <span class="font-mono">mine.update</span> does not refresh this data. <a class="link" href="{{ url_for('jobs.new', preset='vuln-scan') }}">Run a scan</a> to populate it.{% endif %}</p>
 </div>
 {% endif %}
-<p class="text-xs opacity-70 px-4 py-3 border-t border-base-300">Summaries stay cached: minions push them on the daily schedule. Scanned ages come from each minion's own report.</p>
+<p class="text-xs opacity-70 px-4 py-3 border-t border-base-300">Summaries stay cached. Minions push them on the daily schedule; scanned ages come from each minion's own report.</p>
 </section>
 {% endblock %}

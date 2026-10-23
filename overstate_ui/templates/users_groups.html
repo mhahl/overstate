@@ -106,7 +106,7 @@
               {% for m in g.mappings %}
               <div>{{ m.role }} · {% if m.scope_kind == "fleet" %}fleet{% else %}{{ m.scope_kind }}:{{ m.scope_value }}{% endif %} <span class="opacity-70">({{ m.origin }})</span></div>
               {% else %}
-              <span class="opacity-50">no mapping — members get nothing from this group</span>
+              <span class="opacity-50">no mapping; members get nothing from this group</span>
               {% endfor %}
             </td>
           </tr>

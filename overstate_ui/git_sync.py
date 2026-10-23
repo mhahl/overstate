@@ -369,7 +369,7 @@ def _failure(proc: subprocess.CompletedProcess[str] | None, fallback: str) -> st
     if "no upstream" in lowered or "no tracking information" in lowered:
         return "no upstream configured"
     if "already exists and is not an empty directory" in lowered:
-        return "directory not empty — re-clone to replace it"
+        return "directory not empty; re-clone to replace it"
     if "remote branch" in lowered and "not found" in lowered:
         return "branch not found on the remote"
     if (
@@ -448,7 +448,7 @@ def _push_failure(proc: subprocess.CompletedProcess[str] | None) -> str:
         # A non-fast-forward push always means true divergence (local
         # commits plus unseen upstream ones): sync can never fix it, so
         # point at the shell instead of sending the operator in a loop.
-        return "branches have diverged — merge or rebase outside the app first"
+        return "branches have diverged; merge or rebase outside the app first"
     return "git push refused"
 
 
@@ -470,7 +470,7 @@ def git_push_now() -> dict:
         if dirty:
             return {
                 "ok": False,
-                "reason": "dirty tree — commit or revert local changes first",
+                "reason": "dirty tree; commit or revert local changes first",
             }
         upstream = _run("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
         if upstream is None or upstream.returncode != 0 or not upstream.stdout.strip():
@@ -668,7 +668,7 @@ def _clone(
             return {"ok": False, "reason": "that branch name cannot be used"}
         branch = check["branch"]
     if _is_checkout():
-        return {"ok": False, "reason": "already a git checkout — use re-clone"}
+        return {"ok": False, "reason": "already a git checkout; use re-clone"}
     srv = _srv()
     salt_name = _root().name
     try:
@@ -676,13 +676,13 @@ def _clone(
     except OSError:
         return {"ok": False, "reason": "cannot read the checkout directory"}
     if entries - {salt_name, "reactor", CREDENTIALS_NAME}:
-        return {"ok": False, "reason": "directory not empty — re-clone to replace it"}
+        return {"ok": False, "reason": "directory not empty; re-clone to replace it"}
     salt_dir = srv / salt_name
     doomed = _tree_names(salt_dir) if salt_dir.exists() or salt_dir.is_symlink() else []
     if doomed and not replace:
         return {
             "ok": False,
-            "reason": f"existing {salt_name}/ tree — confirm to replace it",
+            "reason": f"existing {salt_name}/ tree; confirm to replace it",
             "confirm_replace": doomed,
         }
     staged = _stage_clone(url, branch, token)
@@ -776,7 +776,7 @@ def reset_preview() -> dict:
         return {"ok": False, "reason": "not a git checkout"}
     branch = _run("symbolic-ref", "--quiet", "--short", "HEAD")
     if branch is None or branch.returncode != 0 or not branch.stdout.strip():
-        return {"ok": False, "reason": "detached HEAD — checkout a branch first"}
+        return {"ok": False, "reason": "detached HEAD; checkout a branch first"}
     fetch = _run("fetch", "--prune")
     if fetch is None or fetch.returncode != 0:
         return {"ok": False, "reason": _failure(fetch, "git fetch failed")}
@@ -822,14 +822,14 @@ def reset_hard(clean_untracked: bool = False, force: bool = False) -> dict:
             return {"ok": False, "reason": "not a git checkout"}
         branch = _run("symbolic-ref", "--quiet", "--short", "HEAD")
         if branch is None or branch.returncode != 0 or not branch.stdout.strip():
-            return {"ok": False, "reason": "detached HEAD — checkout a branch first"}
+            return {"ok": False, "reason": "detached HEAD; checkout a branch first"}
         ahead = _ahead_count()
         if ahead is None:
             return {"ok": False, "reason": "cannot reach the remote"}
         if ahead > 0 and not force:
             return {
                 "ok": False,
-                "reason": "unpushed commits would be destroyed — push first",
+                "reason": "unpushed commits would be destroyed; push first",
             }
         reset = _run("reset", "--hard", "@{u}")
         if reset is None or reset.returncode != 0:
@@ -952,7 +952,7 @@ def _reclone(url: str, branch: str | None, token: str | None = None, force: bool
         if ahead > 0:
             return {
                 "ok": False,
-                "reason": "unpushed commits would be destroyed — push first",
+                "reason": "unpushed commits would be destroyed; push first",
             }
     staged = _stage_clone(url, branch, token)
     if not staged["ok"]:
@@ -1013,7 +1013,7 @@ def _set_remote(url: str) -> dict:
     if dirty:
         return {
             "ok": False,
-            "reason": "dirty tree — commit or reset first",
+            "reason": "dirty tree; commit or reset first",
         }
     ahead = _ahead_count()
     if ahead is None:
@@ -1021,7 +1021,7 @@ def _set_remote(url: str) -> dict:
     if ahead > 0:
         return {
             "ok": False,
-            "reason": "unpushed commits — push first",
+            "reason": "unpushed commits; push first",
         }
     proc = _run("remote", "set-url", "origin", url)
     if proc is None or proc.returncode != 0:

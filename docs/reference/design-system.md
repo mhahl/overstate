@@ -361,7 +361,8 @@ When extending the UI:
 - **Empty state:** centered `py-8/py-10 text-center` block with `font-medium` title, muted explanation, and one ghost action. Never a bare "No data" string.
 - **Destructive action:** wrap in a form with `data-confirm="specific message naming the subject"`; use `data-confirm-checkbox` + server `confirm_box` re-check for irreversible/blind-overwrite cases; Confirm button is `btn-error`.
 - **Dialog:** HTML `<dialog class="modal">` + `modal-box` + `modal-action` (Cancel ghost left, primary right) + `modal-backdrop` form. `aria-labelledby` on the dialog. Open form dialogs with `onclick="openDialog('id')"` — never hand-roll `showModal()`.
-- **New page heading:** `m.page_heading(title, blurb)`. Never a bare `<h1>`.
+- **New page heading:** `m.page_heading(title, blurb)`. Never a bare `<h1>`. Keep the blurb to one line (12 words or fewer) per §9.
+- **Copy:** every user-facing string follows §9. Plain words, active voice, no em dashes, no filler, no marketing. Shorter is better.
 - **Badges:** `badge badge-sm` for status, colored only for semantic state (`success`/`warning`/`error`); `badge-ghost` for neutral meta. No `badge-soft`. Never badge something obvious from context.
 - **Buttons in `items-end` rows beside fieldsets:** add `mb-1`.
 - **Card section naming:** if the card has a visible heading, use `aria-labelledby` pointing at it; if it's a pure container (no internal heading), use `aria-label`.
@@ -396,3 +397,28 @@ The following are pinned by `tests/test_ui_consistency.py` so a future edit cann
 - `test_ratchet_search_fields_select_on_focus` — the shared search field selects its contents on focus.
 
 These join the pre-existing rules (table pinning, no zebra, Filter-primary, labelled controls, search-on-card) as the executable contract. Run `pytest tests/test_ui_consistency.py` after any template change.
+
+## 9. Copy and voice (normative)
+
+Every user-facing string follows these rules. They apply to page blurbs, empty states, alerts, dialogs, confirmations, flash messages, labels, placeholders, and help text.
+
+- **Plain words.** Say what happens. No marketing, no sales tone, no metaphor. "Clones the repo" not "seamlessly vendors your formula".
+- **Active voice.** Name the actor: you, the app, the master, the minion. "The master decrypts the value" not "the value is decrypted".
+- **No em dashes or en dashes.** Use a period, comma, colon, or parentheses. A lone `—` as an empty-cell placeholder is a symbol, not prose, and stays.
+- **No filler.** Cut "simply", "just", "actually", "really", "in order to", "please note", "it is important to", "note that", "ensure".
+- **No adverb padding.** "The pod is destroyed" not "the pod is automatically destroyed".
+- **One idea per sentence.** Two short sentences beat one long one.
+- **Short by surface:**
+  - Page blurb: one line, 12 words or fewer.
+  - Empty state: what happened, then what to do. Two sentences maximum.
+  - Alert: the fact, then the action. Two sentences maximum.
+  - Dialog description: two sentences maximum.
+  - Confirmation: name the subject and the consequence. "Delete key for 'web-01'? A running minion reappears as pending."
+- **No "not X, but Y".** State Y directly.
+- **No exclamation marks, emoji, or "successfully".**
+- **Sentence case** for headings, labels, and buttons.
+- **Errors:** what failed, then what to do next. Never blame the user. The word "refused" is fine; "invalid input" on its own is not.
+- **Domain words keep their product spelling:** minion, master, pillar, state, job, SLS, formula, top.sls.
+- **Counts use the singular/plural pair** already in the templates (`{{ n }} minion{{ "s" if n != 1 }}`).
+
+Before shipping a string, read it aloud. If a shorter sentence says the same thing, use the shorter one.

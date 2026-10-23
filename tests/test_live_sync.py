@@ -145,7 +145,7 @@ def test_db_rows_win_no_duplicates():
         assert [(r.minion_id, r.success) for r in rows] == [("web-01", True)]
     html = c.get("/jobs/j-live").data.decode()
     assert LIVE_BADGE not in html  # covered by the DB row, not merged
-    assert html.count("web-01 — ok") == 1
+    assert html.count("web-01 · ok") == 1
 
 
 def test_live_returns_handles_scalar():

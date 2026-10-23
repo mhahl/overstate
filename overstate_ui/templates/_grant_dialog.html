@@ -45,7 +45,7 @@
         </optgroup>
         {% endfor %}
       </select></fieldset>
-      {% if delegate %}<p class="text-xs opacity-70">Delegates grant team roles inside their own scope only. Fleet and file-prefix scopes stay with a fleet admin.</p>
+      {% if delegate %}<p class="text-xs opacity-70">Delegates grant team roles within their own scope only. Fleet and file-prefix scopes stay with a fleet admin.</p>
       {% else %}<p class="text-xs opacity-70">Global roles apply to the whole fleet, including pillar. Prefer a team role on a scope.</p>{% endif %}
       <div class="flex flex-wrap gap-2">
       <fieldset class="fieldset flex-1 min-w-36"><legend class="fieldset-legend">Scope kind</legend>
