@@ -503,6 +503,29 @@ def test_ratchet_tabs_live_outside_cards():
         assert tab_at < card_at, f"{name}: tabs must precede the card"
 
 
+def test_ratchet_tab_bars_share_count_badge_form():
+    # Tab bars are one visual system: every tab anchor uses gap-2, and a
+    # count badge inside a tab is neutral metadata (badge-ghost
+    # tabular-nums) — never a colored state badge, and never spaced with
+    # ms-1 (gap-2 on the anchor is the spacing).
+    offenders = []
+    for name in sorted(TEMPLATES.glob("*.html")):
+        src = name.read_text()
+        if 'class="tabs tabs-border' not in src:
+            continue
+        for i, line in enumerate(src.splitlines()):
+            if '<a' not in line or 'class="tab' not in line:
+                continue
+            if "badge" in line:
+                if "ms-1" in line:
+                    offenders.append(f"{name.name}:{i + 1} badge spaced with ms-1")
+                if "badge-warning" in line or "badge-error" in line or "badge-success" in line:
+                    offenders.append(f"{name.name}:{i + 1} colored tab count badge")
+                if "tabular-nums" not in line:
+                    offenders.append(f"{name.name}:{i + 1} tab count badge lacks tabular-nums")
+    assert not offenders, "tab-bar drift: " + "; ".join(offenders)
+
+
 def test_ratchet_sidebar_items_declare_current_page():
     # Every sidebar menu item that can show menu-active must pair it with
     # aria-current="page" so assistive tech hears the current section.

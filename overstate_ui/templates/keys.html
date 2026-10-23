@@ -22,7 +22,7 @@
 {% import "_macros.html" as m %}
 <nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" aria-label="Key states">
   {% for name in ["pending", "accepted", "rejected", "denied"] %}
-  <a href="{{ url_for('keys.index', tab=name, q=q, sort=sort, dir=direction) }}" class="tab{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }} <span class="badge badge-sm {{ 'badge-warning' if name == 'pending' else 'badge-ghost' }} ms-1">{{ counts[name] }}</span></a>
+  <a href="{{ url_for('keys.index', tab=name, q=q, sort=sort, dir=direction) }}" class="tab gap-2{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }} <span class="badge badge-sm badge-ghost tabular-nums">{{ counts[name] }}</span></a>
   {% endfor %}
 </nav>
 <section class="card card-border bg-base-100 min-w-0" aria-label="{{ tab|capitalize }} keys">

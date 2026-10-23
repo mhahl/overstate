@@ -11,7 +11,7 @@
 <nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" aria-label="Job lists">
   {% for name in ["running", "history", "saved"] %}
   {% set href = url_for('jobs.index', tab=name, sort=sort, dir=direction, q=q, per_page=per_page) %}
-  <a href="{{ href }}" class="tab gap-2{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-outline tabular-nums">{{ running|length }}</span>{% endif %}</a>
+  <a href="{{ href }}" class="tab gap-2{% if tab == name %} tab-active{% endif %}"{% if tab == name %} aria-current="page"{% endif %}>{{ name|capitalize }}{% if name == "running" %} <span class="badge badge-sm badge-ghost tabular-nums">{{ running|length }}</span>{% endif %}</a>
   {% endfor %}
 </nav>
 <section class="card card-border bg-base-100 min-w-0" aria-label="Job lists">

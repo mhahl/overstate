@@ -229,7 +229,7 @@ Canonical: tabs are a **standalone partial included above the card**, not inside
 
 Source: `_pillar_tabs.html:6-13`, `_users_tabs.html:6-13`, used by `pillar.html:9`, `users.html:10`, `jobs.html`, `minion_detail.html`, `formulas.html`, `keys.html`.
 
-Tab anchor form: `class="tab gap-2"` + `tab-active` + `aria-current="page"` on the active tab, optional `badge badge-sm` count inside the tab. Tabs are always **outside the card** (enforced by `test_ratchet_tabs_live_outside_cards`). The jobs tab bar is plain links above the card — the htmx swap region contains only the table body.
+Tab anchor form: `class="tab gap-2"` + `tab-active` + `aria-current="page"` on the active tab, optional `badge badge-sm badge-ghost tabular-nums` count inside the tab (counts are metadata, so they are neutral — never colored; the page header carries any warning state). Tabs are always **outside the card** (enforced by `test_ratchet_tabs_live_outside_cards`). The jobs tab bar is plain links above the card — the htmx swap region contains only the table body.
 
 ### 3.8 Modals / dialogs
 
