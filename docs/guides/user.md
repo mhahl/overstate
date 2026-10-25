@@ -157,11 +157,19 @@ salt-call --local key.finger
 Accept moves the key to accepted. Reject and delete remove it. Deleted
 minions that still run reappear as pending, which is normal.
 
+A first check-in lands pending on exactly one master pod (your minion
+talks to one pod at a time), and wheel accept cannot create trust where
+no pending key exists — so accepting also copies the accepted key to
+every other reachable pod automatically, verified per pod. The success
+flash names the pods it reached; anything left behind is reported, not
+hidden.
+
 Each row also shows which master pod holds which state. After a master
 scale-up or outage, a minion can sit pending on one pod while accepted
 on another pod — finish it with **Review & reconcile**, which accepts a
 key on a pod only if another pod already trusts the identical
-fingerprint. Keys nobody trusts, mismatched fingerprints, and anything
+fingerprint, and copies byte-identical accepted keys onto pods missing
+them. Keys nobody trusts, mismatched fingerprints, and anything
 rejected stay for you to decide by hand. An hourly job runs the same
 check automatically; use reject (not single-pod delete) to quarantine a
 minion, so automation never re-completes a key you removed.

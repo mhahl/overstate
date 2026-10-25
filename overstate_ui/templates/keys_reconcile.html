@@ -14,6 +14,13 @@
 {% else %}
 <p class="text-sm mb-4">Nothing to accept.</p>
 {% endif %}
+{% if backfill_plan %}
+<h2 class="font-semibold">Keys to copy ({{ backfill_plan|length }})</h2>
+<p class="text-sm mb-2">Accepted on one pod but missing on another (first check-in or outage split). Confirming copies the byte-identical accepted key there — same trust, verified by re-read.</p>
+<ul class="list-disc ms-5 text-sm mb-4">
+  {% for pod, mid in backfill_plan %}<li><span class="font-mono">{{ mid }}</span> to {{ pod }}</li>{% endfor %}
+</ul>
+{% endif %}
 {% if report.skipped %}
 <h2 class="font-semibold">Needs human review ({{ report.skipped|length }})</h2>
 <ul class="list-disc ms-5 text-sm mb-4">
@@ -24,8 +31,8 @@
 <p class="text-sm text-warning mb-4">Unreachable: {{ report.unreachable|join(", ") }}. Their keys keep the current state.</p>
 {% endif %}
 <div class="flex gap-2">
-  {% if report.accepted %}
-  <form method="post" action="{{ url_for('keys.reconcile') }}" data-confirm="Accept {{ report.accepted|length }} key(s) on the listed pods?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="1"><button class="btn btn-sm btn-success">Confirm reconcile</button></form>
+  {% if report.accepted or backfill_plan %}
+  <form method="post" action="{{ url_for('keys.reconcile') }}" data-confirm="Accept {{ report.accepted|length }} key(s) on the listed pods{% if backfill_plan %} and copy {{ backfill_plan|length }} accepted key(s){% endif %}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="1"><button class="btn btn-sm btn-success">Confirm reconcile</button></form>
   {% endif %}
   <a class="btn btn-sm btn-ghost" href="{{ url_for('keys.index') }}">Back to keys</a>
 </div>

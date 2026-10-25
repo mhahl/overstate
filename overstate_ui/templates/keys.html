@@ -19,6 +19,13 @@
   <form method="post" action="{{ url_for('keys.reconcile') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm">Review &amp; reconcile</button></form>
 </div>
 {% endif %}
+{% if missing and ((current_user.role in ["operator", "admin"] and not rbac_scoped) or (rbac_scoped and can('key.accept'))) %}
+<div class="alert alert-warning mb-4" role="note">
+  <span class="icon-[lucide--info] size-5 shrink-0" aria-hidden="true"></span>
+  <span>{{ missing }} accepted key(s) are missing on another pod (first check-in or outage split). Review &amp; reconcile copies the accepted key there.</span>
+  <form method="post" action="{{ url_for('keys.reconcile') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm">Review &amp; reconcile</button></form>
+</div>
+{% endif %}
 {% import "_macros.html" as m %}
 <nav class="tabs tabs-border max-w-full overflow-x-auto mb-4" aria-label="Key states">
   {% for name in ["pending", "accepted", "rejected", "denied"] %}

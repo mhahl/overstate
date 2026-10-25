@@ -319,7 +319,14 @@ def _cmd_key(argv: list[str]) -> dict:
             failed.append(name)
     from .tasks_queue import clear_key_caches
 
-    if failed or unapplied:
+    # First check-ins land pending on one pod only, so the fan-out above
+    # no-ops elsewhere: replicate the accepted pubkey there (verified).
+    bf = {"backfilled": [], "errors": []}
+    if action == "accept" and len(failed) < len(pods):
+        from .keys import backfill_key
+
+        bf = backfill_key(mid, pods)
+    if failed or unapplied or bf["errors"]:
         if len(failed) < len(pods):
             # Some masters applied it: drop the roster caches even
             # though this reports as an error.
@@ -332,12 +339,25 @@ def _cmd_key(argv: list[str]) -> dict:
                 f"{', '.join(unapplied)} left it in another state "
                 "(delete the key there if that state is wrong)"
             )
+        if bf["errors"]:
+            bits.append(
+                "backfill failed on "
+                + ", ".join(f"{pod} ({reason})" for pod, reason in bf["errors"])
+            )
         tail = "nothing changed." if len(failed) == len(pods) else (
             "partial: other masters applied it."
         )
         raise ConsoleError(f"{'; '.join(bits)}: {tail}", status=502)
     clear_key_caches()
     log_event(current_user.username, f"console:key.{action}:{mid}", minion_id=mid)
+    backfilled = ""
+    if bf["backfilled"]:
+        backfilled = f" Backfilled to {', '.join(bf['backfilled'])}."
+        log_event(
+            current_user.username,
+            f"console:backfill-key:{mid}:{','.join(bf['backfilled'])}",
+            minion_id=mid,
+        )
     if action == "delete":
         # Same split-store trap as the Keys page: the minion list unions
         # the snapshot cache with the live roster, so the snapshot row
@@ -351,7 +371,7 @@ def _cmd_key(argv: list[str]) -> dict:
                 "output": f"{mid}: key.delete applied on every master. "
                 "Inventory row removed."
             }
-    return {"output": f"{mid}: key.{action} applied on every master."}
+    return {"output": f"{mid}: key.{action} applied on every master.{backfilled}"}
 
 
 def _compact(value, depth: int = 0, budget: list | None = None) -> str:

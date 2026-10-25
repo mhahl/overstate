@@ -6,7 +6,9 @@ merges all pods with per-pod state chips; an unreachable pod degrades to
 a warning, never a silent split.
 """
 
+import hashlib
 import re
+import shlex
 
 from flask import (
     Blueprint,
@@ -24,6 +26,7 @@ from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
 from .fleet import pod_clients
+from .k8s import K8sClient, K8sError
 from .models import Minion
 from .salt_client import SaltApiError, SaltClient
 
@@ -226,17 +229,15 @@ def _attribute_fingerprints(node, listed: dict[str, set]) -> dict[str, dict]:
     return out
 
 
-def reconcile_keys(clients, execute: bool = True) -> dict:
-    """Complete key trust across pods; never create it.
+def _fleet_key_states(
+    clients: list[tuple[str, SaltClient]],
+) -> tuple[dict, list[str]]:
+    """Per-pod ``(listed, fingers)`` plus unreachable pod names.
 
-    For each minion pending on a reachable pod, accept it there iff
-    another reachable pod reports it accepted with the same fingerprint.
-    Globally-pending keys, fingerprint mismatches, and anything
-    rejected/denied anywhere stay for a human. With execute=False the
-    same plan is returned but no wheel accept fires (preview).
-
-    Returns {"accepted": [(pod, id)], "skipped": [(id, reason)],
-    "unreachable": [pod], "errors": [(pod, id)]}.
+    Shared classification read for reconcile and backfill so both act on
+    the same fleet picture: ``listed`` is ``{tab: set(ids)}`` from
+    ``key.list_all`` and ``fingers`` the attributed
+    ``{tab: {id: fingerprint}}`` from ``key.finger``.
     """
     per_pod: dict[str, tuple] = {}
     unreachable: list[str] = []
@@ -255,6 +256,22 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
         except (SaltApiError, KeyError, IndexError, TypeError):
             node = None
         per_pod[name] = (listed, _attribute_fingerprints(node, listed))
+    return per_pod, unreachable
+
+
+def reconcile_keys(clients, execute: bool = True) -> dict:
+    """Complete key trust across pods; never create it.
+
+    For each minion pending on a reachable pod, accept it there iff
+    another reachable pod reports it accepted with the same fingerprint.
+    Globally-pending keys, fingerprint mismatches, and anything
+    rejected/denied anywhere stay for a human. With execute=False the
+    same plan is returned but no wheel accept fires (preview).
+
+    Returns {"accepted": [(pod, id)], "skipped": [(id, reason)],
+    "unreachable": [pod], "errors": [(pod, id)]}.
+    """
+    per_pod, unreachable = _fleet_key_states(clients)
     by_name = dict(clients)
     accepted: list[tuple[str, str]] = []
     skipped: list[tuple[str, str]] = []
@@ -328,6 +345,279 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
         "skipped": skipped,
         "unreachable": unreachable,
         "errors": errors,
+    }
+
+
+# --- Accepted-key backfill ----------------------------------------------
+
+CLUSTER_PKI_DIR = "/home/salt/data/keys/_cluster"
+"""Where minion pubkeys live on each master pod.
+
+Mirrors ``cluster_pki_dir`` in master.conf. Because ``cluster_id`` is set,
+Salt's localfs_key driver (``salt/cache/localfs_key.py::init_kwargs``)
+stores the master PKI under the cluster dir instead of ``pki_dir``, so an
+accepted minion pubkey is ``<dir>/minions/<id>``. Every read (list, fetch,
+auth) hits the filesystem — no in-memory cache — so a file copied here
+takes effect live with no restart.
+"""
+
+_POD_CLIENT_RE = re.compile(r"^pod-(\d+)$")
+
+
+def _k8s_pod_names(
+    clients: list[tuple[str, SaltClient]], k8s_pods: dict | None = None
+) -> dict | None:
+    """{salt client name: K8s pod name} for exec backfill, or None.
+
+    An explicit ``k8s_pods`` mapping (tests, callers that already mapped)
+    wins. Otherwise ``pod-{i}`` derives ``{STATEFULSET}-{i}`` from app
+    config. None means backfill is unavailable — single-master fallback,
+    no app context, or K8s unreachable — and callers keep today's
+    fan-out-only behavior.
+    """
+    if k8s_pods is not None:
+        return dict(k8s_pods)
+    try:
+        sts = current_app.config["MASTER_STATEFULSET"]
+        if not K8sClient().config.available:
+            return None
+    except (RuntimeError, KeyError, AttributeError, K8sError):
+        return None
+    names = {}
+    for name, _ in clients:
+        match = _POD_CLIENT_RE.match(name)
+        if not match:
+            return None
+        names[name] = f"{sts}-{match.group(1)}"
+    return names
+
+
+def _backfill_candidates(per_pod: dict) -> tuple[list, list]:
+    """[(mid, fingerprint, accepted_on, absent_on)] needing a copy.
+
+    Only unanimous, human-approved trust replicates: accepted on at least
+    one reachable pod, key file missing on at least one other reachable
+    pod, nothing rejected/denied anywhere, every accepted copy carrying
+    the same fingerprint. Everything else stays for reconcile (pending)
+    or a human (conflicts, quarantine).
+    """
+    planned: list = []
+    skipped: list = []
+    ids = sorted(
+        {
+            mid
+            for listed, _ in per_pod.values()
+            for ids in listed.values()
+            for mid in ids
+        }
+    )
+    for mid in ids:
+        state = {
+            name: next((tab for tab, ids in listed.items() if mid in ids), None)
+            for name, (listed, _) in per_pod.items()
+        }
+        if any(tab in ("rejected", "denied") for tab in state.values() if tab):
+            continue  # quarantine wins; reconcile reports it
+        accepted_on = sorted(n for n, tab in state.items() if tab == "accepted")
+        if not accepted_on:
+            continue  # trusted nowhere: reconcile's lane
+        absent_on = sorted(n for n, tab in state.items() if tab is None)
+        if not absent_on:
+            continue  # converged
+        fps = {per_pod[n][1]["accepted"].get(mid) for n in accepted_on}
+        if len(fps) != 1 or None in fps:
+            skipped.append(
+                (
+                    mid,
+                    "accepted copies disagree or lack fingerprints; decide by hand",
+                )
+            )
+            continue
+        (fingerprint,) = fps
+        planned.append((mid, fingerprint, accepted_on, absent_on))
+    return planned, skipped
+
+
+def _read_accepted_pubkey(clients_by_name: dict, source: str, mid: str) -> str | None:
+    """PEM bytes the source pod trusts for mid, or None (fail closed).
+
+    Reads ``key.key_str`` from a pod whose ``key.list_all`` already shows
+    mid accepted, and only trusts the ``minions`` (accepted) section.
+    """
+    try:
+        result = clients_by_name[source].wheel("key.key_str", match=mid)
+    except SaltApiError:
+        return None
+    try:
+        node = result[0] if isinstance(result, list) and result else result
+        if isinstance(node, dict):
+            data = node.get("data")
+            if isinstance(data, dict) and "return" in data:
+                node = data["return"]
+        sections = node if isinstance(node, dict) else {}
+        accepted = sections.get("minions")
+        pem = accepted.get(mid) if isinstance(accepted, dict) else None
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return None
+    if not isinstance(pem, str) or "PUBLIC KEY" not in pem or not pem.strip():
+        return None
+    return pem
+
+
+def _backfill_script(pem: str, dest: str) -> list[str]:
+    """Atomic accepted-key install: temp file, verify-by-hash downstream.
+
+    The caller compares the script's sha256 stdout against the source
+    digest, then re-reads ``key.list_all`` on the target: bytes and
+    state both confirmed before the pod counts as backfilled.
+    """
+    script = (
+        "set -eu; "
+        f"dest={shlex.quote(dest)}; "
+        'dir=$(dirname "$dest"); '
+        'test -d "$dir" || install -d -m 0755 -o salt -g salt "$dir"; '
+        'tmp=$(mktemp "$dir/.backfill.XXXXXX"); '
+        f"printf '%s' {shlex.quote(pem)} > \"$tmp\"; "
+        'chown salt:salt "$tmp"; chmod 0644 "$tmp"; '
+        'mv -f "$tmp" "$dest"; '
+        "sha256sum \"$dest\" | awk '{print $1}'"
+    )
+    return ["/bin/bash", "-c", script]
+
+
+def _backfill_one(
+    mid: str,
+    fingerprint: str,
+    accepted_on: list[str],
+    absent_on: list[str],
+    clients_by_name: dict,
+    k8s_pods: dict,
+    k8s_client,
+) -> tuple[list, list, list]:
+    """Copy mid's accepted pubkey onto absent pods. Returns
+    (backfilled, skipped, errors) with pod-qualified entries."""
+    backfilled: list = []
+    skipped: list = []
+    errors: list = []
+    if "/" in mid or "\x00" in mid or mid in (".", "..") or mid.startswith("."):
+        return (
+            backfilled,
+            [(mid, "unsafe key id; copy the accepted key by hand")],
+            errors,
+        )
+    pem = _read_accepted_pubkey(clients_by_name, accepted_on[0], mid)
+    if pem is None:
+        return (
+            backfilled,
+            [(mid, f"{accepted_on[0]}: accepted key unreadable")],
+            errors,
+        )
+    digest = hashlib.sha256(pem.encode()).hexdigest()
+    dest = f"{CLUSTER_PKI_DIR}/minions/{mid}"
+    for pod in absent_on:
+        target = k8s_pods.get(pod)
+        if target is None:
+            skipped.append((mid, f"{pod}: no pod mapping"))
+            continue
+        try:
+            res = k8s_client.exec_command(
+                target, _backfill_script(pem, dest), timeout=60.0
+            )
+        except K8sError as exc:
+            errors.append((pod, f"{mid}: exec failed ({str(exc)[:120]})"))
+            continue
+        if not res.get("ok") or res.get("stdout", "").strip() != digest:
+            errors.append((pod, f"{mid}: copy unverified"))
+            continue
+        try:
+            listed = clients_by_name[pod].wheel("key.list_all")[0]["data"]["return"]
+            now = listed.get("minions", []) or []
+        except (SaltApiError, KeyError, IndexError, TypeError):
+            errors.append((pod, f"{mid}: re-read failed"))
+            continue
+        if mid in now:
+            backfilled.append(pod)
+        else:
+            errors.append((pod, f"{mid}: not accepted after copy"))
+    return backfilled, skipped, errors
+
+
+def backfill_absent_keys(
+    clients: list[tuple[str, SaltClient]],
+    k8s_pods: dict | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Replicate unanimously-trusted accepted keys onto pods missing them.
+
+    The fan-out accept cannot reach pods that never saw the key: wheel
+    ``key.accept`` only moves pending keys, and a first check-in lands
+    pending on exactly one pod (single-homed minions). This copies the
+    byte-identical accepted pubkey there instead — same trust, new pods —
+    and verifies hash plus re-read state per pod. Never overrides
+    reject/deny, never invents trust (fingerprint-unanimous sources
+    only), never writes on ``dry_run``.
+
+    Returns {"plan": [(pod, mid)], "backfilled": [(pod, mid)],
+    "skipped": [(mid, reason)], "errors": [(pod, reason)],
+    "unreachable": [pod], "unavailable": bool}.
+    """
+    per_pod, unreachable = _fleet_key_states(clients)
+    planned, skipped = _backfill_candidates(per_pod)
+    report = {
+        "plan": [(pod, mid) for mid, _, _, absent in planned for pod in absent],
+        "backfilled": [],
+        "skipped": skipped,
+        "errors": [],
+        "unreachable": unreachable,
+        "unavailable": False,
+    }
+    if dry_run or not planned:
+        return report
+    mapping = _k8s_pod_names(clients, k8s_pods)
+    if mapping is None:
+        report["unavailable"] = True
+        return report
+    try:
+        k8s_client = K8sClient()
+    except K8sError:
+        report["unavailable"] = True
+        return report
+    clients_by_name = dict(clients)
+    for mid, _fingerprint, accepted_on, absent_on in planned:
+        done, skip, errs = _backfill_one(
+            mid,
+            _fingerprint,
+            accepted_on,
+            absent_on,
+            clients_by_name,
+            mapping,
+            k8s_client,
+        )
+        report["backfilled"].extend((pod, mid) for pod in done)
+        report["skipped"].extend(skip)
+        report["errors"].extend(errs)
+    return report
+
+
+def backfill_key(
+    mid: str,
+    clients: list[tuple[str, SaltClient]],
+    k8s_pods: dict | None = None,
+) -> dict:
+    """Ensure every reachable pod trusts mid's accepted key (single id).
+
+    Thin wrapper over :func:`backfill_absent_keys` for the accept paths:
+    after a fan-out accept, replicate mid where it is still absent and
+    verify. Returns {"backfilled": [pod], "skipped": [(mid, reason)],
+    "errors": [(pod, reason)], "unavailable": bool}.
+    """
+    report = backfill_absent_keys(clients, k8s_pods=k8s_pods)
+    return {
+        "backfilled": [pod for pod, _m in report["backfilled"] if _m == mid],
+        "skipped": [s for s in report["skipped"] if s[0] == mid],
+        "errors": [e for e in report["errors"] if e[1].startswith(f"{mid}:")],
+        "unavailable": report["unavailable"],
+        "plan": [pod for pod, _m in report["plan"] if _m == mid],
     }
 
 
@@ -415,6 +705,18 @@ def index():
         - {p for p, s in states.items() if s == "accepted"}
         and "accepted" in states.values()
     )
+    # First-check-in / outage splits: accepted on some reachable pod but
+    # the key file never arrived on another (accept fans out, but wheel
+    # key.accept cannot create trust where no pending key exists). One
+    # Reconcile click copies the byte-identical accepted key there.
+    reachable = len(clients) - len(failed)
+    missing = sum(
+        1
+        for states in by_id.values()
+        if "accepted" in states.values()
+        and not any(s in ("rejected", "denied") for s in states.values())
+        and len(states) < reachable
+    )
     return render_template(
         "keys.html",
         tab=tab,
@@ -426,6 +728,7 @@ def index():
         counts=counts,
         syndic_masters=masters,
         completable=completable,
+        missing=missing,
         q=q,
         sort=sort,
         direction=direction,
@@ -447,30 +750,61 @@ def reconcile():
         if len(report["unreachable"]) == len(clients):
             flash("Salt API error: no master is reachable. Nothing changed.", "error")
         else:
+            # Copy byte-identical accepted keys onto pods missing them
+            # (first check-ins, outage splits): same unanimous-trust
+            # rule as the accept path, verified per pod by re-read.
+            bf = backfill_absent_keys(clients)
             from .tasks_queue import clear_key_caches
 
             clear_key_caches()
             n = len(report["accepted"])
+            m = len(bf["backfilled"])
             log_event(current_user.username, f"reconcile-keys:{n}")
+            if bf["backfilled"]:
+                log_event(
+                    current_user.username,
+                    f"backfill-keys:{m}:{','.join(pod for pod, _ in bf['backfilled'])}",
+                    permission="key.accept",
+                )
             detail = "; ".join(
                 [f"{mid}: {reason}" for mid, reason in report["skipped"]]
                 + [f"{pod}/{mid}: accept failed" for pod, mid in report["errors"]]
+                + [reason for _, reason in bf["errors"]]
+                + [f"{mid}: {reason}" for mid, reason in bf["skipped"]]
+                + (
+                    ["backfill unavailable (no pod mapping or K8s access)"]
+                    if bf["unavailable"] and bf["plan"]
+                    else []
+                )
                 + (
                     [f"unreachable: {', '.join(report['unreachable'])}"]
                     if report["unreachable"]
                     else []
                 )
             )
+            summary = f"Reconciled {n} key(s)."
+            if m:
+                summary += (
+                    f" Backfilled {m} key(s) "
+                    f"({', '.join(f'{mid} on {pod}' for pod, mid in bf['backfilled'])})."
+                )
             flash(
-                f"Reconciled {n} key(s)." + (f" {detail}" if detail else ""),
-                "success" if n and not detail else "warning" if n else "info",
+                summary + (f" {detail}" if detail else ""),
+                "success"
+                if (n or m) and not detail
+                else "warning"
+                if (n or m)
+                else "info",
             )
         return redirect(url_for("keys.index"))
     report = reconcile_keys(clients, execute=False)
     if len(report["unreachable"]) == len(clients):
         flash("Salt API error: no master is reachable. Nothing changed.", "error")
         return redirect(url_for("keys.index"))
-    return render_template("keys_reconcile.html", report=report)
+    plan = backfill_absent_keys(clients, dry_run=True)
+    return render_template(
+        "keys_reconcile.html", report=report, backfill_plan=plan["plan"]
+    )
 
 
 @bp.post("/<action>")
@@ -530,6 +864,22 @@ def act(action: str):
     if len(failed) == len(clients):
         flash("Salt API error: no master is reachable. Nothing changed.", "error")
         return redirect(url_for("keys.index", **keep))
+    # A first check-in lands pending on exactly one pod (single-homed
+    # minions), so the fan-out above no-ops on the others: wheel
+    # key.accept only moves keys already filed there. Replicate the
+    # now-accepted pubkey onto reachable pods still missing it
+    # (byte-identical, fingerprint-unanimous) and verify by re-read.
+    bf = (
+        backfill_key(mid, clients)
+        if action == "accept"
+        else {
+            "backfilled": [],
+            "skipped": [],
+            "errors": [],
+            "unavailable": False,
+            "plan": [],
+        }
+    )
     from .tasks_queue import clear_key_caches
 
     clear_key_caches()
@@ -554,8 +904,36 @@ def act(action: str):
                 minion_id=mid,
             )
     suffix = " Inventory row removed." if removed else ""
+    if bf["backfilled"]:
+        suffix += f" Backfilled to {', '.join(bf['backfilled'])}."
+        log_event(
+            current_user.username,
+            f"backfill-key:{mid}:{','.join(bf['backfilled'])}",
+            permission="key.accept",
+            minion_id=mid,
+        )
     unanswered = sorted(set(failed) | set(unapplied))
-    if failed or unapplied:
+    bf_errors = "; ".join(reason for _, reason in bf["errors"])
+    if bf["unavailable"] and bf["plan"] and not (failed or unapplied):
+        # Accepted here, but the copy step could not reach the missing
+        # pods (dev box, no K8s). Say so instead of flashing full
+        # convergence: the fleet is still split.
+        bits = [
+            f"accepted here but not copied to {', '.join(bf['plan'])} "
+            "(backfill unavailable)"
+        ]
+        flash(
+            f"{mid}: {past} on the converged masters. "
+            f"{'; '.join(bits)}. Retry to converge.{suffix}",
+            "warning",
+        )
+        log_event(
+            current_user.username,
+            f"{action}-key-partial:{mid}:backfill-unavailable",
+            permission="key.delete" if action == "delete" else "key.accept",
+            minion_id=mid,
+        )
+    elif failed or unapplied or bf["errors"]:
         bits = []
         if failed:
             bits.append(f"{', '.join(failed)} did not answer")
@@ -567,6 +945,8 @@ def act(action: str):
                 f"{', '.join(unapplied)} left it in another state "
                 "(delete the key there if that state is wrong)"
             )
+        if bf["errors"]:
+            bits.append(f"backfill failed ({bf_errors})")
         flash(
             f"{mid}: {past} on the converged masters. "
             f"{'; '.join(bits)}. Retry to converge.{suffix}",

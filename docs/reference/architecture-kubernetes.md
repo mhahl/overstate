@@ -75,7 +75,7 @@ Component inventory (all in `deploy/kubernetes/`):
 | `srv-data` | PVC 10Gi RWX Longhorn | Shared volume | App writes (git checkout), masters mount read-only file roots |
 | `salt-master-config` | ConfigMap (owned) | — | Whole master config, UI-editable, versioned |
 | `salt-master-config-history` | ConfigMap | — | Last 20 config snapshots |
-| `key-reconcile` | CronJob, hourly | One Job at a time (`Forbid`) | Completes same-fingerprint key trust across pods; read-only on the cluster |
+| `key-reconcile` | CronJob, hourly | One Job at a time (`Forbid`) | Completes same-fingerprint key trust across pods; copies byte-identical accepted keys onto pods missing them (dedicated `key-reconcile` identity: pods/exec only) |
 | `salt-master-db` | Secret (owner-held) | — | `returner.conf` drop-in (PG password) |
 | `salt-master-cache` | Secret (owner-held) | — | `cache.conf` drop-in (Redis minion-data cache credentials) |
 | `salt-master-keys` | Secret (owner-held) | — | Shared master keypair (fleet identity) |
@@ -106,7 +106,14 @@ concurrently (no locking — shared writes corrupt it). Hence accepted
 keys live on **per-pod PVCs** that survive reschedules, and every key
 mutation (accept, reject, delete) is fanned out to all three pods by
 `overstate_ui/keys.py` (idempotent wheel calls on every reachable pod).
-The Keys roster shown in the
+Fan-out alone cannot reach a pod that never saw the key: wheel
+`key.accept` only moves keys already filed there, and a first check-in
+lands pending on exactly one pod (single-homed minions). So an accept
+also backfills the byte-identical accepted pubkey onto reachable pods
+still missing it — same fingerprint on every accepted copy, verified
+per pod by re-read — and the hourly/one-click reconcile does the same
+for older splits. Reject and deny are never copied over. The Keys
+roster shown in the
 UI is the **union** of all three pods with per-pod state chips.
 
 **3.3 Job history lives in Postgres, not on any master.**
@@ -143,7 +150,9 @@ in the Kubernetes install guide.
   connection → executes → returns to its attached pod → returner writes
   to shared PG → UI reads merged history from PG.
 - **Key action:** UI → idempotent wheel call on every reachable pod →
-  union roster refresh. An unreachable pod is shown degraded, not fatal.
+  accepted keys additionally copied onto pods missing them (verified
+  by re-read) → union roster refresh. An unreachable pod is shown
+  degraded, not fatal.
 - **Master config edit:** admin-only UI → whole-ConfigMap PUT-replace
   (with resourceVersion) → snapshot appended to history (cap 20) →
   StatefulSet rolls one pod at a time → health poll per pod.
@@ -203,15 +212,17 @@ exactly the master StatefulSet.
    pod; no distributed transaction, no retry queue. Divergence is
    reconciled by re-running the action, not by automation.
 3. **Key state converges within the hour, not instantly.**
-   The key fan-out replicates what the UI does; the hourly reconcile
-   (plus the one-click button) completes same-fingerprint trust after
-   scale-ups and outages. Anything rejected/denied, globally pending,
-   or fingerprint-mismatched still needs a human, surfaced via the
-   per-pod chips and the Keys-page banner.
-4. **Keys accepted before a pod existed are unknown to it.** Keys
-   accepted before a later pod joined (e.g. pod-2) are unknown there
-   until re-accepted or reconciled; minions that land on the new pod
-   show as pending there.
+   The key fan-out replicates what the UI does, and an accept also
+   backfills the byte-identical accepted key onto pods that never saw
+   it; the hourly reconcile (plus the one-click button) completes
+   same-fingerprint trust after scale-ups and outages. Anything
+   rejected/denied, globally pending, or fingerprint-mismatched still
+   needs a human, surfaced via the per-pod chips and the Keys-page banner.
+4. **Keys accepted before a pod existed are copied to it.** Keys
+   accepted before a later pod joined (e.g. pod-2) are backfilled onto
+   it once it is reachable — by the next accept, the hourly reconcile,
+   or the one-click button — instead of waiting for a minion to land
+   there and re-file as pending.
 5. **Clocks and DNS are trustworthy.** Same-JID fan-out assumes all
    pods agree on time; per-pod fan-out assumes headless DNS resolves.
 6. **The out-of-repo halves exist.** Traefik 4505/4506 entrypoints, DNS,
@@ -237,10 +248,13 @@ exactly the master StatefulSet.
   Pre-pair keys (assumption 4), actions during a pod outage
   (assumption 2), and manual `salt-key` drift are completed by the
   hourly `key-reconcile` CronJob plus the one-click **Review &
-  reconcile** on the Keys page. Both apply one rule only: accept on a
-  pod what another pod already trusts with the identical fingerprint.
-  Residual gap: quarantine by single-pod delete (instead of reject)
-  gets re-completed on next minion contact — documented in `docs/guides/user.md`.
+  reconcile** on the Keys page. Two rules, both trust-preserving:
+  accept on a pod what another pod already trusts with the identical
+  fingerprint, and copy a byte-identical accepted key onto pods whose
+  key file never arrived (verified per pod by re-read). Reject and deny
+  are never copied over. Residual gap: quarantine by single-pod delete
+  (instead of reject) gets re-completed on next minion contact —
+  documented in `docs/guides/user.md`.
 - **8.3 Postgres is instances: 1.** The shared job cache — the one
   component all masters depend on for consistent history — is a
   single instance. CNPG will recover it, but during the outage returns
