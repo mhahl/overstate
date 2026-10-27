@@ -17,8 +17,8 @@
 # One apply only. `kubectl apply` of this file twice breaks the build
 # (a second apply refuses the immutable Job pod-spec, and it re-creates
 # the context-loader pod, whose RWO PVC mount then blocks the kaniko
-# pod from attaching). The kaniko pod cannot attach until
-# context-loader is deleted, so there is no race with the tarball copy.
+# pod from attaching). The kaniko pod runs an await-context init
+# container so it never starts before the tarball is on the PVC.
 #
 # The regcred secret (quay.io push credentials, kubernetes.io/dockerconfigjson
 # type) is created once and survives between releases:
@@ -73,6 +73,19 @@ spec:
         app.kubernetes.io/component: image-build
     spec:
       restartPolicy: Never
+      initContainers:
+        # The context-loader pod feeds the tarball onto the shared PVC;
+        # the kaniko pod may attach first (RWO attach ordering is racy),
+        # so wait for the tarball instead of starting blind.
+        - name: await-context
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "while [ ! -f /context/context.tar.gz ]; do sleep 2; done"
+          volumeMounts:
+            - name: ctx
+              mountPath: /context
       containers:
         - name: kaniko
           image: gcr.io/kaniko-project/executor:latest
