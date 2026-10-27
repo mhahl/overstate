@@ -28,6 +28,8 @@ class CountingClient:
 
     def runner(self, fun, **kwargs):
         self.runner_calls += 1
+        if fun == "manage.list_state":
+            return [["web-01"]]
         return [{"up": ["web-01"], "down": []}]
 
 

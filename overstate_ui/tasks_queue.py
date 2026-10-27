@@ -28,9 +28,10 @@ PRESENCE_TTL = 15
 ROSTER_CACHE_KEY = "minions:roster"
 ROSTER_TTL = 30
 """Cached ({minion_id: key_status}, [up ids]) from key.list_all +
-manage.status. The minion list and key pages render from this instead of
-paying two Salt round trips per view (and per filter keystroke); key
-mutations clear it so trust changes show up immediately."""
+master-local presence (manage.list_state). The minion list and key
+pages render from this instead of paying two Salt round trips per view
+(and per filter keystroke); key mutations clear it so trust changes
+show up immediately. Never written from a failed presence read."""
 MERGED_ROSTER_CACHE_KEY = "minions:roster:merged"
 """Merged multi-pod roster, same shape as ROSTER_CACHE_KEY. List pickers
 (minions, groups, schedules, onboard) read this so a minion known to any

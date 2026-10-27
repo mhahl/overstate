@@ -58,10 +58,8 @@ class SaltSpy:
             fun = body.get("fun", "")
             if client == "runner" and fun == "jobs.lookup_jid":
                 return httpx.Response(200, json={"return": [{}]})
-            if client == "runner" and fun == "manage.status":
-                return httpx.Response(
-                    200, json={"return": [{"up": ["web-01"], "down": ["db-01"]}]}
-                )
+            if client == "runner" and fun == "manage.list_state":
+                return httpx.Response(200, json={"return": [["web-01"]]})
             if client == "wheel":
                 return httpx.Response(
                     200,

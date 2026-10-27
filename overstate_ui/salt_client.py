@@ -240,7 +240,7 @@ class SaltClient:
         try:
             self.wheel("key.list_all")
             out["wheel_ok"] = True
-            self.runner("manage.status")
+            self.runner("manage.status", timeout=1, gather_job_timeout=1)
             out["runner_ok"] = True
             out["reachable"] = True
             out["token_age"] = self.token_age

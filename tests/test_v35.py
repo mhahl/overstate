@@ -41,9 +41,7 @@ def fake_transport() -> httpx.MockTransport:
                 },
             )
         if body.get("client") == "runner":
-            return httpx.Response(
-                200, json={"return": [{"up": ["web-01"], "down": []}]}
-            )
+            return httpx.Response(200, json={"return": [["web-01"]]})
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)
@@ -223,6 +221,21 @@ def test_presence_endpoint(client):
     rv = client.get("/minions/presence")
     assert rv.status_code == 200
     assert rv.get_json() == {"web-01": "up", "web-02": "dead", "db-01": "down"}
+
+
+def test_presence_endpoint_empty_when_presence_read_failed(monkeypatch, client):
+    """A failed presence half must never paint the fleet "down": the
+    endpoint yields {} so in-place dots keep what the page rendered."""
+    import overstate_ui.minions as minions_mod
+
+    monkeypatch.setattr(
+        minions_mod,
+        "merged_cached_roster",
+        lambda client: ({"web-01": "accepted", "db-01": "pending"}, set(), True, False),
+    )
+    rv = client.get("/minions/presence")
+    assert rv.status_code == 200
+    assert rv.get_json() == {}
 
 
 def test_bulk_selection_survives_swaps_hook(client):

@@ -49,6 +49,8 @@ def fake_transport() -> httpx.MockTransport:
                     ]
                 },
             )
+        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
+            return httpx.Response(200, json={"return": [["web-01"]]})
         if body.get("client") == "runner":
             # Both minions answer: the capture tests need live pillar
             # from each, and the roster gate skips minions that are

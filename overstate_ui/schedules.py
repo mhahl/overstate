@@ -94,7 +94,7 @@ def index():
     client = get_salt()
     # Accepted on any pod counts: a minion pinned to another pod's
     # MQ is still schedulable from here (jobs fan out to all pods).
-    statuses, _, _ = merged_cached_roster(client)
+    statuses, _, _, _ = merged_cached_roster(client)
     accepted = sorted(m for m, st in statuses.items() if st == "accepted")
     if rbac_mode() == "scoped" and not has_fleet(current_user, "schedule.read"):
         allowed = minions_with(current_user, "schedule.read")
@@ -195,7 +195,7 @@ def all_schedules():
             audit_deny("schedule.read", detail="fleet-view-required")
             abort(403)
     client = get_salt()
-    statuses, _up, _reachable = merged_cached_roster(client)
+    statuses, _up, _reachable, _presence_ok = merged_cached_roster(client)
     accepted = sorted(m for m, st in statuses.items() if st == "accepted")
     rows: list[dict] = []
     error = None

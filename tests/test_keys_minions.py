@@ -88,6 +88,8 @@ def fake_transport() -> httpx.MockTransport:
                 return httpx.Response(
                     200, json={"return": [{"data": {"return": {}, "success": True}}]}
                 )
+        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
+            return httpx.Response(200, json={"return": [["web-01"]]})
         if body.get("client") == "runner":
             return httpx.Response(
                 200, json={"return": [{"up": ["web-01"], "down": []}]}
@@ -933,6 +935,7 @@ def test_onboard_renders_form_and_pending(client):
     html = client.get("/minions/onboard").data.decode()
     assert "Onboard a minion" in html
     assert 'name="mid"' in html and 'name="distro"' in html
+    assert 'value="freebsd"' in html and "FreeBSD (pkg)" in html
     assert 'name="masters"' not in html
     assert 'name="topology"' not in html
     assert "Single master" not in html
@@ -1040,9 +1043,15 @@ def test_build_onboard_script_distros():
         build_onboard_script("rhel", "failover", masters, "h"),
         build_onboard_script("fedora", "failover", masters, "h"),
         build_onboard_script("suse", "failover", masters, "h"),
+        build_onboard_script("freebsd", "failover", masters, "h"),
     )
     assert "dnf" in scripts[0] and "dnf" in scripts[1]
     assert "zypper" in scripts[2] and "packages.broadcom.com" not in scripts[2]
+    assert "pkg install -y py311-salt" in scripts[3]
+    assert 'sysrc salt_minion_enable="YES"' in scripts[3]
+    assert "service salt_minion start" in scripts[3]
+    assert "/usr/local/etc/salt/minion.d" in scripts[3]
+    assert "systemctl" not in scripts[3]
     assert "salt-install-guide/releases/latest/download/salt.repo" in scripts[0]
     assert '  - "2001:db8::10"' in scripts[0]
     for script in scripts:
@@ -1153,10 +1162,8 @@ def test_schedule_renders_table_and_pillar_highlighted():
                     ]
                 },
             )
-        if body.get("client") == "runner" and body.get("fun") == "manage.status":
-            return httpx.Response(
-                200, json={"return": [{"up": ["web-01"], "down": []}]}
-            )
+        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
+            return httpx.Response(200, json={"return": [["web-01"]]})
         return httpx.Response(200, json={"return": [payloads.get(body.get("fun"), {})]})
 
     init_db("sqlite://")

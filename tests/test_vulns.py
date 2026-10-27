@@ -74,6 +74,8 @@ def fake_transport() -> httpx.MockTransport:
                 200, json={"return": [{"token": "tok", "expire": 99}]}
             )
         body = json.loads(request.content or b"{}")
+        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
+            return httpx.Response(200, json={"return": [["web-01", "web-02"]]})
         if body.get("client") == "runner":
             return httpx.Response(
                 200, json={"return": [{"up": ["web-01", "web-02"], "down": []}]}

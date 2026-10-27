@@ -171,6 +171,31 @@ def test_probe_ping_uses_short_salt_timeout(app):
     assert seen.get("timeout") == PING_SALT_TIMEOUT
 
 
+def test_presence_probes_bound_manage_status_timeout(app):
+    """manage.status waits out the master timeout for every missing
+    returner; fleet_presence_now and the capability runner door carry
+    timeout=1/gather_job_timeout=1 so a dead minion cannot stretch
+    them past the HTTP backstop."""
+    from overstate_ui.tasks import fleet_presence_now, probe_capabilities
+
+    seen: dict = {}
+
+    class RecordingClient(StubClient):
+        def runner(self, fun, **kwargs):
+            seen[fun] = kwargs
+            return super().runner(fun, **kwargs)
+
+    with app.app_context():
+        presence = fleet_presence_now(RecordingClient())
+    assert presence == {"reachable": True, "up": 1, "down": 0}
+    assert seen["manage.status"].get("timeout") == 1
+    assert seen["manage.status"].get("gather_job_timeout") == 1
+    with app.app_context():
+        probe_capabilities(RecordingClient(), ping_target="m1")
+    assert seen["manage.status"].get("timeout") == 1
+    assert seen["manage.status"].get("gather_job_timeout") == 1
+
+
 def test_ping_hint_without_target_points_at_enrollment():
     from overstate_ui.dashboard import capability_checks
 

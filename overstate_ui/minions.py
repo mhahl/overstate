@@ -306,8 +306,10 @@ def index():
     # for the ids on this page, not the whole fleet. Single-minion
     # skip-live checks stay on the sticky roster on purpose — a
     # unioned up set would defeat the not-up skip.
-    statuses, up, reachable = merged_cached_roster(get_salt())
-    entries = minion_entries(statuses, up, q, status_filter, sort, direction)
+    statuses, up, reachable, presence_ok = merged_cached_roster(get_salt())
+    entries = minion_entries(
+        statuses, up, q, status_filter, sort, direction, presence_ok=presence_ok
+    )
     if allowed is not None:
         entries = [e for e in entries if e["id"] in allowed]
     total = len(entries)
@@ -367,9 +369,14 @@ def presence():
         return jsonify(cached)
     # Presence needs no grains: the lightweight merge carries everything
     # presence_of reads, so a cache miss costs columns, not snapshots.
-    # Merged across pods: manage.status is a per-pod bus, so a single
-    # pod's up set undercounts the fleet.
-    statuses, up, _ = merged_cached_roster(get_salt())
+    # Merged across pods: manage.list_state is per-master TCP presence,
+    # so a single pod's up set undercounts the fleet.
+    statuses, up, _, presence_ok = merged_cached_roster(get_salt())
+    if not presence_ok:
+        # The live presence half failed: keep the dots the page already
+        # rendered instead of repainting the whole fleet "down" from a
+        # read that did not happen.
+        return jsonify({})
     entries = minion_entries(statuses, up, "", "", sort="id")
     if allowed is not None:
         entries = [e for e in entries if e["id"] in allowed]
@@ -392,8 +399,10 @@ def export_csv():
     status_filter = request.args.get("status", "")
     if status_filter not in ("", "accepted", "pending", "rejected", "denied"):
         status_filter = ""
-    statuses, up, _ = merged_cached_roster(get_salt())
-    rows = minion_rows(statuses, up, q, status_filter)
+    statuses, up, _, presence_ok = merged_cached_roster(get_salt())
+    rows = minion_rows(
+        statuses, up, q, status_filter, presence_ok=presence_ok
+    )
     if allowed is not None:
         rows = [r for r in rows if r["id"] in allowed]
     buf = io.StringIO()
@@ -419,7 +428,13 @@ def export_csv():
             [
                 r["id"],
                 r["key_status"],
-                "up" if r["up"] else ("accepted, dead" if r["dead"] else "down"),
+                "up"
+                if r["up"]
+                else (
+                    "accepted, dead"
+                    if r["dead"]
+                    else ("unknown" if r.get("presence_unknown") else "down")
+                ),
                 g.get("osfinger", ""),
                 g.get("osrelease", ""),
                 g.get("fqdn", ""),
@@ -484,7 +499,7 @@ def refresh_one(mid: str):
     if row is None:
         from .minions_helpers import merged_cached_roster
 
-        statuses, _, reachable = merged_cached_roster(get_salt())
+        statuses, _, reachable, _ = merged_cached_roster(get_salt())
         if mid not in statuses and not reachable:
             # Indistinguishable from an outage: fail open to the live
             # call below instead of a wrong "unknown" error.
@@ -679,7 +694,7 @@ def onboard():
 
     # A pending key may land on any pod (minions pin to one MQ),
     # so the onboard pending list reads the merged roster.
-    statuses, _, reachable = merged_cached_roster(get_salt())
+    statuses, _, reachable, _ = merged_cached_roster(get_salt())
     pending = sorted(m for m, st in statuses.items() if st == "pending")
     master_ips = get_setting("master_ips")
     inputs = onboard_inputs(request.args)

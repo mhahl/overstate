@@ -44,8 +44,8 @@
         <fieldset class="fieldset min-w-0">
           <label class="label" for="onboard-distro">Distribution</label>
           <select id="onboard-distro" name="distro" class="select select-sm w-full">
-            {% for d in ["rhel", "fedora", "suse"] %}
-            <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE (OS repos)"}[d] }}</option>
+            {% for d in ["rhel", "fedora", "suse", "freebsd"] %}
+            <option value="{{ d }}"{% if request.args.get('distro', 'rhel') == d %} selected{% endif %}>{{ {"rhel": "RHEL", "fedora": "Fedora", "suse": "SUSE (OS repos)", "freebsd": "FreeBSD (pkg)"}[d] }}</option>
             {% endfor %}
           </select>
         </fieldset>

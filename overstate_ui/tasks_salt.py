@@ -61,9 +61,10 @@ def refresh_now(client, only_ids: list[str] | None = None) -> int:
     from .minions import live_roster
     from .tasks_queue import write_roster_cache
 
-    statuses, up, _ = live_roster(client)
+    statuses, up, _, presence_ok = live_roster(client)
     count = refresh_inventory(client, statuses, only_ids=only_ids)
-    write_roster_cache(statuses, up)
+    if presence_ok:
+        write_roster_cache(statuses, up)
     return count
 
 
@@ -130,9 +131,16 @@ def fleet_keys_task() -> dict:
 
 def fleet_presence_now(client, http_timeout: float | None = None) -> dict:
     """Up/down presence. Raises SaltApiError on failure. Fans out to
-    minions, so a dead minion burns the HTTP backstop — keys, versions,
-    and capabilities resolve in their own jobs meanwhile."""
-    status = client.runner("manage.status", http_timeout=http_timeout)[0]
+    minions, so the runner args are bounded hard: manage.status waits
+    out the master timeout for every missing returner, so without
+    timeout=1/gather_job_timeout=1 one dead minion would stretch every
+    presence stat past the HTTP backstop."""
+    status = client.runner(
+        "manage.status",
+        http_timeout=http_timeout,
+        timeout=1,
+        gather_job_timeout=1,
+    )[0]
     return {
         "reachable": True,
         "up": len(status.get("up", [])),
@@ -324,7 +332,15 @@ def probe_capabilities(
     attempt("wheel_ok", lambda: client.wheel("key.list_all", http_timeout=http_timeout))
     attempt(
         "runner_ok",
-        lambda: client.runner("manage.status", http_timeout=http_timeout),
+        # Bounded like fleet_presence_now: manage.status waits out the
+        # master timeout for missing returners, so without runner args
+        # a dead minion would stall the capability probe as well.
+        lambda: client.runner(
+            "manage.status",
+            http_timeout=http_timeout,
+            timeout=1,
+            gather_job_timeout=1,
+        ),
     )
     attempt(
         "history_ok",

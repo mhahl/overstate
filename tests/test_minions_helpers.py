@@ -75,28 +75,30 @@ class StubClient:
 
 
 KEYS = [{"data": {"return": {"minions": ["web-01"], "minions_pre": []}}}]
-STATUS = [{"up": ["web-01"], "down": []}]
+CONNECTED = [["web-01"]]
 EMPTY_KEYS = [{"data": {"return": {}}}]
-EMPTY_STATUS = [{"up": [], "down": []}]
+EMPTY_CONNECTED = [[]]
 
 
 def test_roster_keeps_keys_when_presence_fails(caplog):
     client = StubClient(wheel=KEYS, runner=SaltApiError("runner down"))
     with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
-        statuses, up, reachable = live_roster(client)
+        statuses, up, reachable, presence_ok = live_roster(client)
     assert statuses == {"web-01": "accepted"}
     assert up == set()
     assert reachable is True
+    assert presence_ok is False
     assert "live presence unavailable" in caplog.text
 
 
 def test_roster_keeps_presence_when_keys_fail(caplog):
-    client = StubClient(wheel=SaltApiError("wheel down"), runner=STATUS)
+    client = StubClient(wheel=SaltApiError("wheel down"), runner=CONNECTED)
     with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
-        statuses, up, reachable = live_roster(client)
+        statuses, up, reachable, presence_ok = live_roster(client)
     assert statuses == {}
     assert up == {"web-01"}
     assert reachable is True
+    assert presence_ok is True
     assert "live key list unavailable" in caplog.text
 
 
@@ -105,29 +107,32 @@ def test_roster_unreachable_when_both_fail(caplog):
         wheel=SaltApiError("wheel down"), runner=SaltApiError("runner down")
     )
     with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
-        statuses, up, reachable = live_roster(client)
+        statuses, up, reachable, presence_ok = live_roster(client)
     assert statuses == {}
     assert up == set()
     assert reachable is False
+    assert presence_ok is False
 
 
 def test_empty_fleet_is_reachable_not_an_outage(caplog):
-    client = StubClient(wheel=EMPTY_KEYS, runner=EMPTY_STATUS)
+    client = StubClient(wheel=EMPTY_KEYS, runner=EMPTY_CONNECTED)
     with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
-        statuses, up, reachable = live_roster(client)
+        statuses, up, reachable, presence_ok = live_roster(client)
     assert statuses == {}
     assert up == set()
     assert reachable is True
+    assert presence_ok is True
     assert caplog.text == ""
 
 
 def test_roster_happy_path_silent(caplog):
-    client = StubClient(wheel=KEYS, runner=STATUS)
+    client = StubClient(wheel=KEYS, runner=CONNECTED)
     with caplog.at_level(logging.WARNING, logger="overstate_ui.minions_helpers"):
-        statuses, up, reachable = live_roster(client)
+        statuses, up, reachable, presence_ok = live_roster(client)
     assert statuses == {"web-01": "accepted"}
     assert up == {"web-01"}
     assert reachable is True
+    assert presence_ok is True
     assert caplog.text == ""
 
 
@@ -141,34 +146,59 @@ def test_merged_roster_unions_status_and_presence():
     reports and unions the per-pod up sets."""
     pod0 = _pod(
         wheel=[{"data": {"return": {"minions": ["web-01"], "minions_pre": ["new-01"]}}}],
-        runner=[{"up": ["web-01"], "down": []}],
+        runner=[["web-01"]],
     )
     pod1 = _pod(
         wheel=[{"data": {"return": {"minions": ["new-01"], "minions_pre": []}}}],
-        runner=[{"up": ["new-01"], "down": []}],
+        runner=[["new-01"]],
     )
-    statuses, up, reachable = merged_live_roster([("pod-0", pod0), ("pod-1", pod1)])
+    statuses, up, reachable, presence_ok = merged_live_roster(
+        [("pod-0", pod0), ("pod-1", pod1)]
+    )
     # Accepted anywhere beats pending elsewhere; both up sets merge.
     assert statuses == {"web-01": "accepted", "new-01": "accepted"}
     assert up == {"web-01", "new-01"}
     assert reachable is True
+    assert presence_ok is True
 
 
 def test_merged_roster_ignores_unreachable_pod():
     """A dead pod contributes nothing: its ids keep the live pod's
     status instead of vanishing."""
-    live = _pod(wheel=KEYS, runner=STATUS)
+    live = _pod(wheel=KEYS, runner=CONNECTED)
     dead = _pod(
         wheel=SaltApiError("wheel down"), runner=SaltApiError("runner down")
     )
-    statuses, up, reachable = merged_live_roster([("pod-0", live), ("pod-1", dead)])
+    statuses, up, reachable, presence_ok = merged_live_roster(
+        [("pod-0", live), ("pod-1", dead)]
+    )
     assert statuses == {"web-01": "accepted"}
     assert up == {"web-01"}
     assert reachable is True
-    statuses, up, reachable = merged_live_roster(
+    assert presence_ok is True
+    statuses, up, reachable, presence_ok = merged_live_roster(
         [("pod-0", dead), ("pod-1", dead)]
     )
-    assert (statuses, up, reachable) == ({}, set(), False)
+    assert (statuses, up, reachable, presence_ok) == ({}, set(), False, False)
+
+
+def test_merged_roster_presence_unknown_when_every_presence_read_fails():
+    """Keys-only pods still merge statuses, but presence_ok stays False
+    so callers never render the empty up set as "everyone down"."""
+    pod0 = _pod(wheel=KEYS, runner=SaltApiError("presence down"))
+    pod1 = _pod(wheel=KEYS, runner=CONNECTED)
+    statuses, up, reachable, presence_ok = merged_live_roster(
+        [("pod-0", pod0), ("pod-1", pod1)]
+    )
+    assert statuses == {"web-01": "accepted"}
+    assert up == {"web-01"}
+    assert presence_ok is True
+    statuses, up, reachable, presence_ok = merged_live_roster(
+        [("pod-0", pod0), ("pod-1", pod0)]
+    )
+    assert (statuses, up) == ({"web-01": "accepted"}, set())
+    assert reachable is True
+    assert presence_ok is False
 
 
 def test_summarize_schedule_humanizes_intervals():
@@ -252,3 +282,26 @@ def test_entries_carry_no_grains_until_hydrated(app):
         # Live-only ids hydrate to a bare {}.
         ghost = hydrate_entries(minion_entries({"ghost-01": "pending"}, set(), "", ""))
         assert ghost[0]["grains"] == {}
+
+
+def test_entries_failed_presence_read_is_unknown_not_down(app):
+    """An empty up set from a failed presence read must never classify
+    accepted minions as dead/down: rows carry presence_unknown and the
+    presence payload would be empty."""
+    _seed(app)
+    statuses = {"web-01": "accepted", "web-02": "accepted"}
+    with app.app_context():
+        rows = minion_entries(statuses, set(), "", "", presence_ok=False)
+        by_id = {r["id"]: r for r in rows}
+        assert by_id["web-01"]["up"] is False
+        assert by_id["web-01"]["dead"] is False
+        assert by_id["web-01"]["presence_unknown"] is True
+        assert by_id["web-02"]["presence_unknown"] is True
+        # A *successful* empty read (genuinely all down) still classifies
+        # accepted keys as dead, exactly as before.
+        dead_rows = minion_entries(statuses, set(), "", "", presence_ok=True)
+        assert {r["id"]: r["dead"] for r in dead_rows} == {
+            "web-01": True,
+            "web-02": True,
+        }
+        assert all(not r["presence_unknown"] for r in dead_rows)

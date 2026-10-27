@@ -32,7 +32,7 @@ OS_ICONS = (
 )
 
 PRESENCE_ORDER = {"up": 0, "dead": 1, "down": 2}
-ONBOARD_DISTROS = ("rhel", "fedora", "suse")
+ONBOARD_DISTROS = ("rhel", "fedora", "suse", "freebsd")
 SALT_REPO_URL = (
     "https://github.com/saltstack/salt-install-guide/releases/latest/download/salt.repo"
 )
@@ -142,12 +142,15 @@ client default — on every filter keystroke, no less."""
 
 def live_roster(
     client, http_timeout: float | None = ROSTER_HTTP_TIMEOUT
-) -> tuple[dict[str, str], set[str], bool]:
-    """Return ({minion_id: key_status}, {up minion ids}, reachable).
+) -> tuple[dict[str, str], set[str], bool, bool]:
+    """Return (statuses, up ids, reachable, presence_ok).
 
     Offline-safe: each half fails independently and logs. Reachable is
     true when either call succeeds, even with zero minions — an empty
     fleet is not an outage, and the banner must not claim one.
+    presence_ok says the live presence read itself succeeded; callers
+    must never read absence (an empty up set) from a failed read as
+    "down".
     """
     from .salt_client import SaltApiError
 
@@ -174,14 +177,23 @@ def live_roster(
     else:
         keys_ok = True
     try:
-        up = set(
-            client.runner("manage.status", http_timeout=http_timeout)[0].get("up", [])
-        )
+        # Master-local presence: manage.list_state is CkMinions.
+        # connected_ids — the master's own TCP table matched against
+        # cached minion grains — so no test.ping fans out and a dead
+        # minion cannot stretch the call to the full master timeout the
+        # way manage.status does (it waits out the window for every
+        # missing returner). A dead minion only drops itself.
+        # Anything but the documented list payload counts as a failed
+        # read (unknown, never "everyone down").
+        connected = client.runner("manage.list_state", http_timeout=http_timeout)[0]
+        if not isinstance(connected, list):
+            raise TypeError("manage.list_state returned a non-list payload")
+        up = set(connected)
     except (SaltApiError, KeyError, IndexError, TypeError) as exc:
         logger.warning("live presence unavailable: %s", exc)
     else:
         presence_ok = True
-    return statuses, up, keys_ok or presence_ok
+    return statuses, up, keys_ok or presence_ok, presence_ok
 
 
 def normalize_grains(grains) -> dict:
@@ -205,6 +217,7 @@ def minion_entries(
     status_filter: str,
     sort: str = "id",
     direction: str = "asc",
+    presence_ok: bool = True,
 ) -> list[dict]:
     """Lightweight per-minion merge: id, key_status, up, dead, last_seen.
 
@@ -212,7 +225,9 @@ def minion_entries(
     loads no grains: one narrow column scan instead of full snapshot
     JSON per minion. Callers hydrate only the ids they render (see
     :func:`hydrate_entries`), so listing a fleet costs a page of grains,
-    not the whole table.
+    not the whole table. ``presence_ok`` is False when the live presence
+    half failed; rows then carry ``presence_unknown`` and are never
+    classified dead/down from a read that did not happen.
     """
     from .db import get_session
     from .models import Minion
@@ -252,7 +267,16 @@ def minion_entries(
     rows = []
     for row in by_id.values():
         row["up"] = row["id"] in up
-        row["dead"] = row["key_status"] == "accepted" and not row["up"] and bool(up)
+        # An empty up set from a *failed* presence read is unknown, not
+        # "everyone down": dead/down labels must never derive from a
+        # read that did not happen.
+        row["presence_unknown"] = not presence_ok
+        row["dead"] = (
+            row["key_status"] == "accepted"
+            and not row["up"]
+            and presence_ok
+            and bool(up)
+        )
         if q and q not in row["id"]:
             continue
         if status_filter and row["key_status"] != status_filter:
@@ -318,6 +342,7 @@ def minion_rows(
     status_filter: str,
     sort: str = "id",
     direction: str = "asc",
+    presence_ok: bool = True,
 ) -> list[dict]:
     """Full rows with the historical contract: filter, sort, hydrate all.
 
@@ -325,19 +350,21 @@ def minion_rows(
     with :func:`hydrate_entries` on the visible slice instead.
     """
     return hydrate_entries(
-        minion_entries(statuses, up, q, status_filter, sort, direction)
+        minion_entries(
+            statuses, up, q, status_filter, sort, direction, presence_ok=presence_ok
+        )
     )
 
 
 def minion_is_up(client, mid: str) -> bool | None:
     """Whether mid is in the live up set.
 
-    None when the roster itself was unreachable — callers must fail
-    open (keep the live call) and never read absence-from-a-failed-read
-    as "down".
+    None when the roster itself was unreachable or the presence half
+    failed — callers must fail open (keep the live call) and never read
+    absence-from-a-failed-read as "down".
     """
-    _, up, reachable = cached_roster(client)
-    if not reachable:
+    _, up, reachable, presence_ok = cached_roster(client)
+    if not reachable or not presence_ok:
         return None
     return mid in up
 
@@ -348,12 +375,15 @@ def cached_roster(
     dict[str, str],
     set[str],
     bool,
+    bool,
 ]:
-    """(statuses, up, reachable) from the roster cache when warm.
+    """(statuses, up, reachable, presence_ok) from the roster cache when warm.
 
     Falls back to a live read and refreshes the cache when reachable.
     Total outages are never cached, so recovery shows up on the next
-    view instead of at TTL expiry.
+    view instead of at TTL expiry — and neither is a failed presence
+    read: an empty up set may only reach the cache when the read that
+    produced it actually happened.
     """
     from .tasks_queue import read_roster_cache, write_roster_cache
 
@@ -363,11 +393,13 @@ def cached_roster(
         and isinstance(cached.get("statuses"), dict)
         and isinstance(cached.get("up"), list)
     ):
-        return dict(cached["statuses"]), set(cached["up"]), True
-    statuses, up, reachable = live_roster(client, http_timeout=http_timeout)
-    if reachable:
+        return dict(cached["statuses"]), set(cached["up"]), True, True
+    statuses, up, reachable, presence_ok = live_roster(
+        client, http_timeout=http_timeout
+    )
+    if reachable and presence_ok:
         write_roster_cache(statuses, up)
-    return statuses, up, reachable
+    return statuses, up, reachable, presence_ok
 
 
 # Accepted everywhere beats pending anywhere: a freshly accepted key
@@ -378,35 +410,40 @@ _STATUS_RANK = {"accepted": 0, "rejected": 1, "denied": 2, "pending": 3}
 
 def merged_live_roster(
     clients, http_timeout: float | None = ROSTER_HTTP_TIMEOUT
-) -> tuple[dict[str, str], set[str], bool]:
-    """Union of live_roster across pods: (statuses, up, reachable).
+) -> tuple[dict[str, str], set[str], bool, bool]:
+    """Union of live_roster across pods: (statuses, up, reachable, presence_ok).
 
     Status per minion is the strongest any reachable pod reports;
-    up is the union (manage.status is a per-pod publish bus, so a
+    up is the union (manage.list_state is per-master TCP presence, so a
     single-pod read undercounts). Unreachable pods contribute
-    nothing; reachable means any pod answered either half.
+    nothing; reachable means any pod answered either half; presence_ok
+    means any pod answered the presence half.
     """
     statuses: dict[str, str] = {}
     up: set[str] = set()
     reachable = False
+    presence_ok = False
     for _name, client in clients:
-        sub, sub_up, sub_ok = live_roster(client, http_timeout=http_timeout)
+        sub, sub_up, sub_ok, sub_presence = live_roster(
+            client, http_timeout=http_timeout
+        )
         if not sub_ok:
             continue
         reachable = True
+        presence_ok = presence_ok or sub_presence
         up |= sub_up
         for mid, st in sub.items():
             if mid not in statuses or _STATUS_RANK.get(
                 st, 99
             ) < _STATUS_RANK.get(statuses[mid], 99):
                 statuses[mid] = st
-    return statuses, up, reachable
+    return statuses, up, reachable, presence_ok
 
 
 def merged_cached_roster(
     default_client, http_timeout: float | None = ROSTER_HTTP_TIMEOUT
-) -> tuple[dict[str, str], set[str], bool]:
-    """(statuses, up, reachable) merged across pods, on its own cache.
+) -> tuple[dict[str, str], set[str], bool, bool]:
+    """(statuses, up, reachable, presence_ok) merged across pods, on its own cache.
 
     Lives on MERGED_ROSTER_CACHE_KEY, deliberately separate from the
     sticky ROSTER_CACHE_KEY that minion_is_up skip-live reads: a
@@ -414,7 +451,9 @@ def merged_cached_roster(
     foreign minions (see docs/reference/architecture-kubernetes.md §4,
     Key action). List pickers
     (minions, groups, schedules, onboard) read this so a minion known
-    to any reachable master shows up.
+    to any reachable master shows up. Cached reads are only ever the
+    product of a live read whose presence half succeeded, so a warm
+    cache implies presence_ok.
     """
     from .fleet import pod_clients
     from .tasks_queue import read_merged_roster_cache, write_merged_roster_cache
@@ -425,13 +464,13 @@ def merged_cached_roster(
         and isinstance(cached.get("statuses"), dict)
         and isinstance(cached.get("up"), list)
     ):
-        return dict(cached["statuses"]), set(cached["up"]), True
-    statuses, up, reachable = merged_live_roster(
+        return dict(cached["statuses"]), set(cached["up"]), True, True
+    statuses, up, reachable, presence_ok = merged_live_roster(
         pod_clients(default_client), http_timeout=http_timeout
     )
-    if reachable:
+    if reachable and presence_ok:
         write_merged_roster_cache(statuses, up)
-    return statuses, up, reachable
+    return statuses, up, reachable, presence_ok
 
 
 def refresh_sync(only_ids: list[str] | None = None) -> None:
@@ -447,12 +486,16 @@ def refresh_sync(only_ids: list[str] | None = None) -> None:
     try:
         # Always live: this is the explicit Refresh button, and its
         # fresh statuses repopulate the roster cache for the views.
-        statuses, up, _ = live_roster(client)
+        statuses, up, _, presence_ok = live_roster(client)
         count = refresh_inventory(client, statuses, only_ids=only_ids)
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
     else:
-        write_roster_cache(statuses, up)
+        # A failed presence half must not poison the sticky cache that
+        # skip-live checks read (an empty up set would read as "all
+        # down"); keep the previous snapshot until the next success.
+        if presence_ok:
+            write_roster_cache(statuses, up)
         flash(f"Inventory refreshed: {count} minions.", "success")
 
 
@@ -463,8 +506,10 @@ def build_onboard_script(
 
     RPM distros install from the official Broadcom Salt repo via the
     canonical salt.repo. SUSE installs from OS repos (Broadcom does not
-    publish SUSE repos). The four-argument signature is retained for the
-    signed onboarding URL; only the failover topology is accepted.
+    publish SUSE repos). FreeBSD installs the py311-salt package and is
+    configured under /usr/local/etc/salt. The four-argument signature is
+    retained for the signed onboarding URL; only the failover topology
+    is accepted.
     """
     from .settings import parse_master_ips
 
@@ -477,10 +522,18 @@ def build_onboard_script(
     if distro == "suse":
         setup_cmds = """zypper --gpg-auto-import-keys --non-interactive refresh
 zypper --non-interactive install salt-minion"""
+        config_dir = "/etc/salt"
+        enable_cmd = "systemctl enable --now salt-minion"
+    elif distro == "freebsd":
+        setup_cmds = "pkg install -y py311-salt"
+        config_dir = "/usr/local/etc/salt"
+        enable_cmd = 'sysrc salt_minion_enable="YES"\nservice salt_minion start'
     else:
         setup_cmds = f"""curl -fsSL {SALT_REPO_URL} -o /etc/yum.repos.d/salt.repo
 dnf clean expire-cache
 dnf -y install salt-minion"""
+        config_dir = "/etc/salt"
+        enable_cmd = "systemctl enable --now salt-minion"
 
     master_config = "master:\n" + "".join(f'  - "{master}"\n' for master in master_ips)
     master_config += "master_type: failover\nmaster_alive_interval: 30\n"
@@ -490,11 +543,11 @@ dnf -y install salt-minion"""
 set -eu
 [ "$(id -u)" -eq 0 ] || {{ echo "Run with sudo: curl ... | sudo sh" >&2; exit 1; }}
 {setup_cmds}
-install -d -m 0755 /etc/salt/minion.d
-cat > /etc/salt/minion.d/overstate.conf <<'MINION'
+install -d -m 0755 {config_dir}/minion.d
+cat > {config_dir}/minion.d/overstate.conf <<'MINION'
 {master_config}id: "{mid}"
 MINION
-systemctl enable --now salt-minion
+{enable_cmd}
 echo "Minion '{mid}' started. Accept its key in Overstate > Keys, then run test.ping."
 """
 

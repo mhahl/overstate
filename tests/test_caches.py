@@ -47,9 +47,53 @@ def test_minion_is_up_tristate(monkeypatch, fake_redis):
     assert minion_is_up(object(), "unknown-01") is False
     # Unreachable roster fails open: None means "keep the live call".
     monkeypatch.setattr(
-        helpers_mod, "cached_roster", lambda client, **kwargs: ({}, set(), False)
+        helpers_mod, "cached_roster", lambda client, **kwargs: ({}, set(), False, False)
     )
     assert minion_is_up(object(), "web-01") is None
+    # So does a failed presence half: absence from a read that did not
+    # happen is unknown, never "down".
+    monkeypatch.setattr(
+        helpers_mod,
+        "cached_roster",
+        lambda client, **kwargs: ({"web-01": "accepted"}, set(), True, False),
+    )
+    assert minion_is_up(object(), "web-01") is None
+
+
+def test_failed_presence_read_never_poisons_roster_cache(monkeypatch, fake_redis):
+    """cached_roster must not write a keys-only roster (empty up set)
+    into the sticky cache: skip-live checks would read "everyone down"
+    for the cache TTL."""
+    import overstate_ui.minions_helpers as helpers_mod
+    from overstate_ui.minions_helpers import cached_roster
+    from overstate_ui.tasks_queue import read_roster_cache
+
+    def live_presence_missing(client, **kwargs):
+        return {"web-01": "accepted"}, set(), True, False
+
+    monkeypatch.setattr(helpers_mod, "live_roster", live_presence_missing)
+    statuses, up, reachable, presence_ok = cached_roster(object())
+    assert (statuses, up, reachable, presence_ok) == (
+        {"web-01": "accepted"},
+        set(),
+        True,
+        False,
+    )
+    assert read_roster_cache() is None
+    # A successful read still refreshes the cache as before.
+    monkeypatch.setattr(
+        helpers_mod,
+        "live_roster",
+        lambda client, **kwargs: ({"web-01": "accepted"}, {"web-01"}, True, True),
+    )
+    statuses, up, reachable, presence_ok = cached_roster(object())
+    assert (statuses, up, reachable, presence_ok) == (
+        {"web-01": "accepted"},
+        {"web-01"},
+        True,
+        True,
+    )
+    assert read_roster_cache()["up"] == ["web-01"]
 
 
 def test_redis_client_reused_per_url(app):
@@ -188,8 +232,13 @@ def test_cached_roster_serves_warm_cache_without_salt(monkeypatch, fake_redis):
         raise AssertionError("Salt must not be touched on a cache hit")
 
     monkeypatch.setattr(helpers_mod, "live_roster", _boom)
-    statuses, up, reachable = cached_roster(object())
-    assert (statuses, up, reachable) == ({"web-01": "accepted"}, {"web-01"}, True)
+    statuses, up, reachable, presence_ok = cached_roster(object())
+    assert (statuses, up, reachable, presence_ok) == (
+        {"web-01": "accepted"},
+        {"web-01"},
+        True,
+        True,
+    )
 
 
 def test_cached_roster_never_caches_outages(monkeypatch, fake_redis):
@@ -198,9 +247,9 @@ def test_cached_roster_never_caches_outages(monkeypatch, fake_redis):
     from overstate_ui.tasks_queue import ROSTER_CACHE_KEY
 
     monkeypatch.setattr(
-        helpers_mod, "live_roster", lambda client, **kwargs: ({}, set(), False)
+        helpers_mod, "live_roster", lambda client, **kwargs: ({}, set(), False, False)
     )
-    assert cached_roster(object()) == ({}, set(), False)
+    assert cached_roster(object()) == ({}, set(), False, False)
     assert ROSTER_CACHE_KEY not in fake_redis.store
 
 
@@ -212,9 +261,14 @@ def test_cached_roster_writes_through_when_reachable(monkeypatch, fake_redis):
     monkeypatch.setattr(
         helpers_mod,
         "live_roster",
-        lambda client, **kwargs: ({"web-01": "accepted"}, {"web-01"}, True),
+        lambda client, **kwargs: ({"web-01": "accepted"}, {"web-01"}, True, True),
     )
-    assert cached_roster(object()) == ({"web-01": "accepted"}, {"web-01"}, True)
+    assert cached_roster(object()) == (
+        {"web-01": "accepted"},
+        {"web-01"},
+        True,
+        True,
+    )
     assert read_roster_cache() == {
         "statuses": {"web-01": "accepted"},
         "up": ["web-01"],

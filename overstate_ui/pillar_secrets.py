@@ -476,7 +476,7 @@ def index():
     from .dashboard import get_salt
     from .minions import merged_cached_roster
 
-    statuses, _up, _reachable = merged_cached_roster(get_salt())
+    statuses, _up, _reachable, _presence_ok = merged_cached_roster(get_salt())
     minions = sorted(m for m, st in statuses.items() if st == "accepted")
     renderer = renderer_status()
     from .authz import authorize
@@ -674,7 +674,7 @@ def setup_wizard():
     from .dashboard import get_salt
     from .minions import merged_cached_roster
 
-    statuses, _up, _reachable = merged_cached_roster(get_salt())
+    statuses, _up, _reachable, _presence_ok = merged_cached_roster(get_salt())
     minions = sorted(m for m, st in statuses.items() if st == "accepted")
     can_setup = (
         current_user.role == "admin"
