@@ -20,6 +20,19 @@
 # pod from attaching). The kaniko pod runs an await-context init
 # container so it never starts before the tarball is on the PVC.
 #
+# The RWO race can flip: if the JOB pod wins the PVC attach first, the
+# context-loader never becomes ready (Multi-Attach error). Recovery:
+# do NOT delete the kaniko pod (with backoffLimit: 0 that fails the
+# job) — instead delete the failed job, keep the PVC (the tarball is
+# already on it, or re-copy), and apply only the Job document:
+#
+#   kubectl -n overstate delete job overstate-build
+#   sed "s/__TAG__/${TAG}/" deploy/kubernetes/kaniko-build.yaml \
+#     | awk 'BEGIN{p=0} /^kind: Job$/{p=1} p' | kubectl apply -f -
+#   kubectl -n overstate wait --for=condition=complete job/overstate-build --timeout=900s
+#
+# The loader-free job finds the tarball already on the PVC and builds.
+#
 # The regcred secret (quay.io push credentials, kubernetes.io/dockerconfigjson
 # type) is created once and survives between releases:
 #
