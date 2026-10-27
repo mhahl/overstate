@@ -265,8 +265,12 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
     For each minion pending on a reachable pod, accept it there iff
     another reachable pod reports it accepted with the same fingerprint.
     Globally-pending keys, fingerprint mismatches, and anything
-    rejected/denied anywhere stay for a human. With execute=False the
-    same plan is returned but no wheel accept fires (preview).
+    rejected/denied anywhere stay for a human. A key accepted on one
+    pod but whose key file never arrived on another (key-file drift)
+    is not a human decision either: the copy lane
+    (:func:`backfill_absent_keys`, run in the same confirm flow and
+    the hourly cron) replicates it automatically. With execute=False
+    the same plan is returned but no wheel accept fires (preview).
 
     Returns {"accepted": [(pod, id)], "skipped": [(id, reason)],
     "unreachable": [pod], "errors": [(pod, id)]}.
@@ -304,21 +308,16 @@ def reconcile_keys(clients, execute: bool = True) -> dict:
             # (wheel key.accept only moves pending keys, so fan-out can
             # never create trust there; the minion only auths to the
             # master it is attached to, so the blind master never even
-            # files it as pending). Skipping silently here produced
-            # "0 accepted, 0 skipped" with a blind master in the fleet:
-            # report the drift, still accepting nothing by hand.
-            accepted_on = [name for name, tab in state.items() if tab == "accepted"]
-            absent_on = [name for name, tab in state.items() if tab is None]
-            if accepted_on and absent_on:
-                skipped.append(
-                    (
-                        mid,
-                        f"accepted on {', '.join(accepted_on)} but key file "
-                        + f"absent on {', '.join(absent_on)}. Backfill the "
-                        + "accepted key by hand (reconcile cannot accept a "
-                        + "key that was never pending there)",
-                    )
-                )
+            # files it as pending). Nothing to accept, and nothing for a
+            # human either: the copy step (backfill_absent_keys, run in
+            # this same confirm flow and the hourly cron) replicates the
+            # byte-identical accepted key automatically, and its own
+            # skipped list names the cases it cannot copy (fingerprint
+            # disagreement, unsafe id, unreadable source). Pre-backfill
+            # this said "backfill the accepted key by hand" — stale
+            # advice once the copy lane existed, and skipping it
+            # silently was what hid a blind master behind "0 accepted,
+            # 0 skipped".
             continue  # absent elsewhere or already accepted everywhere
         trusted = [
             (name, fingers["accepted"][mid])

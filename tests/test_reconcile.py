@@ -3,8 +3,10 @@
 A minion pending on one pod but accepted on another (same fingerprint)
 is finished scale-up / outage drift: safe to accept. Everything else —
 globally pending, fingerprint mismatch, reject/deny anywhere, missing
-fingerprints, accepted-elsewhere-but-key-file-absent — stays for a human
-(the last one is reported, never silent).
+fingerprints — stays for a human. A key accepted on one pod but whose
+key file never arrived on another is the copy lane's job
+(backfill_absent_keys, automatic in the same flow / hourly cron), not
+a manual step.
 """
 
 import json
@@ -178,10 +180,14 @@ def test_missing_fingerprints_fail_closed():
     assert seen_a == seen_b == []
 
 
-def test_absent_where_trusted_is_reported_not_silent():
-    # Accepted on pod-0, key file never arrived on pod-1: reconcile must
-    # not accept anything (trust is never created), but it must say so —
-    # the old silent noop hid a blind master behind "0 accepted, 0 skipped".
+def test_absent_drift_left_to_copy_step_not_by_hand():
+    # Accepted on pod-0, key file never arrived on pod-1: reconcile has
+    # nothing to accept (a pending key was never filed there) — and it
+    # must not tell the operator to copy the key by hand. The copy step
+    # (backfill_absent_keys, same confirm flow / hourly cron) replicates
+    # the byte-identical accepted key automatically; the preview shows
+    # that plan under "Keys to copy" and backfill's own skips name the
+    # cases it cannot copy.
     seen_a, seen_b = [], []
     clients = _clients(
         seen_a,
@@ -194,8 +200,7 @@ def test_absent_where_trusted_is_reported_not_silent():
     )
     report = keys_mod.reconcile_keys(clients)
     assert report["accepted"] == [] and seen_a == seen_b == []
-    ((mid, reason),) = report["skipped"]
-    assert mid == "web1" and "absent on pod-1" in reason
+    assert not any("by hand" in reason for _, reason in report["skipped"])
 
 
 @pytest.fixture()
