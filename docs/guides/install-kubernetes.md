@@ -121,14 +121,15 @@ git push
 kubectl create secret docker-registry regcred -n overstate \
   --docker-server=quay.io --docker-username=<user> --docker-password=<token>
 
-# 4. In-cluster build + push (dockerfile is Containerfile; steps below
-#    are idempotent, cleanup at the end).
-git archive --format=tar.gz -o /tmp/overstate-context.tar.gz HEAD
-kubectl apply -f deploy/kubernetes/kaniko-build.yaml
+# 4. In-cluster build + push (dockerfile is Containerfile; one apply,
+#    cleanup at the end). One apply only: a second apply refuses the
+#    immutable Job pod-spec and re-creates the context-loader pod,
+#    whose RWO PVC mount then blocks the kaniko pod from attaching.
+git archive --format=tar.gz -o /tmp/overstate-context.tar.gz "$TAG"
+sed "s/__TAG__/${TAG}/" deploy/kubernetes/kaniko-build.yaml | kubectl apply -f -
 kubectl -n overstate wait --for=condition=ready pod/context-loader --timeout=120s
 kubectl cp /tmp/overstate-context.tar.gz overstate/context-loader:/context/context.tar.gz
 kubectl -n overstate delete pod context-loader
-sed "s/__TAG__/${TAG}/" deploy/kubernetes/kaniko-build.yaml | kubectl apply -f -
 kubectl -n overstate wait --for=condition=complete job/overstate-build --timeout=900s
 kubectl -n overstate delete job overstate-build
 kubectl -n overstate delete pvc build-context

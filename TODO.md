@@ -11,6 +11,11 @@
   root). Otherwise use the dev container if one is set up.
 - GitHub pushes go through `gh` (https remote + `gh auth setup-git`);
   SSH needs the FIDO key attached (`id_ed25519_sk`).
+- Release flow: image tag = the CODE commit sha (capture `TAG` before
+  the pin commit); the kaniko flow in `kaniko-build.yaml` header /
+  `docs/guides/install-kubernetes.md` §2 is a SINGLE sed'd apply —
+  double-applying it fails on the immutable Job spec and re-creates the
+  RWO context-loader pod, which blocks the kaniko pod's attach.
 - `ruff` from pkg (0.17.x) flags many pre-existing findings (new default
   rules) and wants to reformat old files: compare against baseline rather
   than chasing a zero-diff on the whole tree.

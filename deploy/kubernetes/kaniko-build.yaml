@@ -3,16 +3,22 @@
 # Applied ad hoc (NOT part of the kustomization `resources:` list) —
 # see docs/guides/install-kubernetes.md §2 for the release flow:
 #
-#   TAG=$(git rev-parse --short HEAD)
-#   git archive --format=tar.gz -o /tmp/overstate-context.tar.gz HEAD
-#   kubectl apply -f deploy/kubernetes/kaniko-build.yaml
+#   TAG=<short sha of the CODE commit being shipped — same sha the
+#        kustomization newTag pins; capture it BEFORE the pin commit>
+#   git archive --format=tar.gz -o /tmp/overstate-context.tar.gz $TAG
+#   sed "s/__TAG__/${TAG}/" deploy/kubernetes/kaniko-build.yaml | kubectl apply -f -
 #   kubectl -n overstate wait --for=condition=ready pod/context-loader --timeout=120s
 #   kubectl cp /tmp/overstate-context.tar.gz overstate/context-loader:/context/context.tar.gz
 #   kubectl -n overstate delete pod context-loader
-#   sed "s/__TAG__/${TAG}/" deploy/kubernetes/kaniko-build.yaml | kubectl apply -f -
 #   kubectl -n overstate wait --for=condition=complete job/overstate-build --timeout=900s
 #   kubectl -n overstate delete job overstate-build
 #   kubectl -n overstate delete pvc build-context
+#
+# One apply only. `kubectl apply` of this file twice breaks the build
+# (a second apply refuses the immutable Job pod-spec, and it re-creates
+# the context-loader pod, whose RWO PVC mount then blocks the kaniko
+# pod from attaching). The kaniko pod cannot attach until
+# context-loader is deleted, so there is no race with the tarball copy.
 #
 # The regcred secret (quay.io push credentials, kubernetes.io/dockerconfigjson
 # type) is created once and survives between releases:
