@@ -41,8 +41,8 @@ def fake_transport() -> httpx.MockTransport:
                     ]
                 },
             )
-        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
-            return httpx.Response(200, json={"return": [["web-01"]]})
+        if body.get("client") == "runner" and body.get("fun") == "manage.status":
+            return httpx.Response(200, json={"return": [{"up": ["web-01"], "down": []}]})
         if body.get("client") == "runner":
             return httpx.Response(
                 200, json={"return": [{"up": ["web-01"], "down": []}]}

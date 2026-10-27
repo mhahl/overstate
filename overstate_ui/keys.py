@@ -441,11 +441,14 @@ def _backfill_candidates(per_pod: dict) -> tuple[list, list]:
 def _read_accepted_pubkey(clients_by_name: dict, source: str, mid: str) -> str | None:
     """PEM bytes the source pod trusts for mid, or None (fail closed).
 
-    Reads ``key.key_str`` from a pod whose ``key.list_all`` already shows
+    Reads ``key.print`` from a pod whose ``key.list_all`` already shows
     mid accepted, and only trusts the ``minions`` (accepted) section.
+    ``key.print`` is the salt-api name: ``salt/wheel/key.py`` aliases the
+    ``key_str`` function to ``print`` (``__func_alias__`` renames it away,
+    so ``key.key_str`` is not callable from salt-api).
     """
     try:
-        result = clients_by_name[source].wheel("key.key_str", match=mid)
+        result = clients_by_name[source].wheel("key.print", match=mid)
     except SaltApiError:
         return None
     try:

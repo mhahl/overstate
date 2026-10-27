@@ -36,8 +36,8 @@ def _transport() -> httpx.MockTransport:
                     ]
                 },
             )
-        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
-            return httpx.Response(200, json={"return": [[]]})
+        if body.get("client") == "runner" and body.get("fun") == "manage.status":
+            return httpx.Response(200, json={"return": [{"up": [], "down": []}]})
         if body.get("client") == "runner":
             return httpx.Response(200, json={"return": [{"up": [], "down": []}]})
         return httpx.Response(200, json={"return": [{}]})

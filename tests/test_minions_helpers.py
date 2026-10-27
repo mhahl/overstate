@@ -75,9 +75,9 @@ class StubClient:
 
 
 KEYS = [{"data": {"return": {"minions": ["web-01"], "minions_pre": []}}}]
-CONNECTED = [["web-01"]]
+CONNECTED = [{"up": ["web-01"], "down": []}]
 EMPTY_KEYS = [{"data": {"return": {}}}]
-EMPTY_CONNECTED = [[]]
+EMPTY_CONNECTED = [{"up": [], "down": []}]
 
 
 def test_roster_keeps_keys_when_presence_fails(caplog):
@@ -146,11 +146,11 @@ def test_merged_roster_unions_status_and_presence():
     reports and unions the per-pod up sets."""
     pod0 = _pod(
         wheel=[{"data": {"return": {"minions": ["web-01"], "minions_pre": ["new-01"]}}}],
-        runner=[["web-01"]],
+        runner=[{"up": ["web-01"], "down": []}],
     )
     pod1 = _pod(
         wheel=[{"data": {"return": {"minions": ["new-01"], "minions_pre": []}}}],
-        runner=[["new-01"]],
+        runner=[{"up": ["new-01"], "down": []}],
     )
     statuses, up, reachable, presence_ok = merged_live_roster(
         [("pod-0", pod0), ("pod-1", pod1)]
@@ -297,11 +297,15 @@ def test_entries_failed_presence_read_is_unknown_not_down(app):
         assert by_id["web-01"]["dead"] is False
         assert by_id["web-01"]["presence_unknown"] is True
         assert by_id["web-02"]["presence_unknown"] is True
-        # A *successful* empty read (genuinely all down) still classifies
-        # accepted keys as dead, exactly as before.
-        dead_rows = minion_entries(statuses, set(), "", "", presence_ok=True)
-        assert {r["id"]: r["dead"] for r in dead_rows} == {
-            "web-01": True,
-            "web-02": True,
+        # A *successful* empty read is "genuinely all minions down":
+        # no test.ping returned, so every accepted key is offline. dead*
+        # never derives from an empty up set (minion_entries requires
+        # bool(up) to classify dead, so the label is "down"), but the
+        # offline read is real — never unknown.
+        down_rows = minion_entries(statuses, set(), "", "", presence_ok=True)
+        assert {r["id"]: r["dead"] for r in down_rows} == {
+            "web-01": False,
+            "web-02": False,
+            "new-01": False,
         }
-        assert all(not r["presence_unknown"] for r in dead_rows)
+        assert all(not r["presence_unknown"] for r in down_rows)

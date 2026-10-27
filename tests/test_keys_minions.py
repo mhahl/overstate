@@ -88,8 +88,8 @@ def fake_transport() -> httpx.MockTransport:
                 return httpx.Response(
                     200, json={"return": [{"data": {"return": {}, "success": True}}]}
                 )
-        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
-            return httpx.Response(200, json={"return": [["web-01"]]})
+        if body.get("client") == "runner" and body.get("fun") == "manage.status":
+            return httpx.Response(200, json={"return": [{"up": ["web-01"], "down": []}]})
         if body.get("client") == "runner":
             return httpx.Response(
                 200, json={"return": [{"up": ["web-01"], "down": []}]}
@@ -1371,8 +1371,8 @@ def test_schedule_renders_table_and_pillar_highlighted():
                     ]
                 },
             )
-        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
-            return httpx.Response(200, json={"return": [["web-01"]]})
+        if body.get("client") == "runner" and body.get("fun") == "manage.status":
+            return httpx.Response(200, json={"return": [{"up": ["web-01"], "down": []}]})
         return httpx.Response(200, json={"return": [payloads.get(body.get("fun"), {})]})
 
     init_db("sqlite://")

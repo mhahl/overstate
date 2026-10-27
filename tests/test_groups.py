@@ -38,8 +38,8 @@ def fake_transport() -> httpx.MockTransport:
                     ]
                 },
             )
-        if body.get("fun") == "manage.list_state":
-            return httpx.Response(200, json={"return": [[]]})
+        if body.get("fun") == "manage.status":
+            return httpx.Response(200, json={"return": [{"up": [], "down": []}]})
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)

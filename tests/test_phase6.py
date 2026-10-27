@@ -43,8 +43,8 @@ def fake_transport() -> httpx.MockTransport:
                     ]
                 },
             )
-        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
-            return httpx.Response(200, json={"return": [["web-01"]]})
+        if body.get("client") == "runner" and body.get("fun") == "manage.status":
+            return httpx.Response(200, json={"return": [{"up": ["web-01"], "down": []}]})
         if body.get("client") == "runner":
             return httpx.Response(
                 200, json={"return": [{"up": ["web-01"], "down": []}]}
@@ -428,8 +428,8 @@ def test_schedules_empty_string_payload(client):
                     ]
                 },
             )
-        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
-            return httpx.Response(200, json={"return": [["web-01"]]})
+        if body.get("client") == "runner" and body.get("fun") == "manage.status":
+            return httpx.Response(200, json={"return": [{"up": ["web-01"], "down": []}]})
         if body.get("client") == "runner":
             return httpx.Response(
                 200, json={"return": [{"up": ["web-01"], "down": []}]}
@@ -493,8 +493,8 @@ def test_schedules_blank_yaml_shows_empty_state():
                     ]
                 },
             )
-        if body.get("client") == "runner" and body.get("fun") == "manage.list_state":
-            return httpx.Response(200, json={"return": [["web-01"]]})
+        if body.get("client") == "runner" and body.get("fun") == "manage.status":
+            return httpx.Response(200, json={"return": [{"up": ["web-01"], "down": []}]})
         if body.get("client") == "runner":
             return httpx.Response(
                 200, json={"return": [{"up": ["web-01"], "down": []}]}

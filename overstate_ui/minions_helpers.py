@@ -177,18 +177,27 @@ def live_roster(
     else:
         keys_ok = True
     try:
-        # Master-local presence: manage.list_state is CkMinions.
-        # connected_ids — the master's own TCP table matched against
-        # cached minion grains — so no test.ping fans out and a dead
-        # minion cannot stretch the call to the full master timeout the
-        # way manage.status does (it waits out the window for every
-        # missing returner). A dead minion only drops itself.
-        # Anything but the documented list payload counts as a failed
-        # read (unknown, never "everyone down").
-        connected = client.runner("manage.list_state", http_timeout=http_timeout)[0]
-        if not isinstance(connected, list):
-            raise TypeError("manage.list_state returned a non-list payload")
-        up = set(connected)
+        # Live, bounded presence. manage.status publishes test.ping and
+        # reports who actually returned. Salt's address-based presence
+        # (manage.list_state -> CkMinions.connected_ids) is not usable in
+        # this fleet: it only counts a minion as up when one of its
+        # cached ipv4/ipv6 grains equals the source address of an
+        # established publish-port connection, which never matches for
+        # NAT'd / internet-facing minions (their connection comes from
+        # the gateway or ingress, not from a grain address) — so every
+        # healthy remote minion would read offline. manage.status reaches
+        # them. It fans out, so cap the wait hard (the same bound the
+        # dashboard's fleet_presence_now already uses): one dead minion
+        # cannot stretch the call past that window.
+        status = client.runner(
+            "manage.status",
+            http_timeout=http_timeout,
+            timeout=1,
+            gather_job_timeout=1,
+        )[0]
+        if not isinstance(status, dict):
+            raise TypeError("manage.status returned a non-dict payload")
+        up = set(status.get("up") or [])
     except (SaltApiError, KeyError, IndexError, TypeError) as exc:
         logger.warning("live presence unavailable: %s", exc)
     else:

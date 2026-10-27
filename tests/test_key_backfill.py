@@ -84,7 +84,10 @@ class FakeSaltClient:
                 self.denied.discard(mid)
                 self.accepted.add(mid)
             return [{"data": {"return": self._listing(), "success": True}}]
-        if fun == "key.key_str":
+        if fun == "key.print":
+            # salt/wheel/key.py aliases key_str -> print; key.key_str is
+            # not callable over salt-api (the loader registers only the
+            # aliased name), so this mock must not accept the old name.
             mid = kwargs.get("match")
             sections = {}
             if mid in self.accepted and mid in self.pubkeys:
@@ -278,6 +281,39 @@ def test_backfill_script_is_atomic_and_quoted(tmp_path):
     assert shlex.quote(pem) in script
     assert f"dest={shlex.quote(dest)};" in script
     assert "mktemp" in script and "mv -f" in script and "sha256sum" in script
+
+
+def test_read_pubkey_uses_callable_key_print_alias():
+    """salt/wheel/key.py aliases key_str -> print (__func_alias__), so the
+    backfill must call ``key.print`` over salt-api. A client that only
+    answers ``key.print`` (and would error out of the blue on anything
+    else) proves the code no longer calls the non-callable ``key.key_str``.
+    """
+    PEM = PEM_A
+    calls = []
+
+    class AliasClient:
+        def wheel(self, fun, **kwargs):
+            calls.append(fun)
+            assert fun == "key.print"  # key.key_str must never be issued
+            assert kwargs["match"] == "web1"
+            return [{"data": {"return": {"minions": {"web1": PEM}}}}]
+
+    pem = keys_mod._read_accepted_pubkey({"pod-0": AliasClient()}, "pod-0", "web1")
+    assert pem == PEM
+    assert calls == ["key.print"]
+
+
+def test_read_pubkey_fails_closed_on_error_return():
+    """A salt-api ``success:false`` (unknown wheel fun / auth loss) returns
+    an error string or empty data in ``return``; the backfill must treat
+    that as unreadable, not fabricate a key."""
+    class ErrorClient:
+        def wheel(self, fun, **kwargs):
+            return [{"data": {"return": "Key not found: key.print"}, "success": False}]
+
+    pem = keys_mod._read_accepted_pubkey({"pod-0": ErrorClient()}, "pod-0", "web1")
+    assert pem is None
 
 
 @pytest.fixture()
