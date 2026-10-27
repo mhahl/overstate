@@ -547,7 +547,20 @@ def remove(mid: str):
     asks for it — on every reachable master pod, like the Keys page, so
     the key (and the minion) cannot survive elsewhere. When no master
     answers, a failed key delete leaves the snapshot in place instead
-    of half-finishing."""
+    of half-finishing.
+
+    Convergence never dead-ends while the key may survive: when the
+    snapshot row is already gone but the key is still live anywhere (a
+    previous partial key fan-out, or an earlier remove that kept the
+    key), this removes the key again instead of flashing "Unknown
+    minion" — the minion list unions the live roster with the snapshot,
+    so a key still on any pod keeps the minion visible. "Unknown
+    minion" is claimed only when every master pod answers a fresh
+    roster read and none of them lists the key: a pod that does not
+    answer may still hold it (the merged roster only unions pods that
+    did), so remove re-runs the fan-out instead of trusting a partial
+    view.
+    """
     mid = _exact_mid(mid)
     from .authz import rbac_mode, require
 
@@ -557,13 +570,36 @@ def remove(mid: str):
             require("key.delete", minion=mid)
     session = get_session()
     row = session.get(Minion, mid)
-    if row is None:
-        flash(f"Unknown minion '{mid}'.", "error")
-        return redirect(url_for("minions.index"))
     delete_key = request.form.get("delete_key") == "yes"
+    clients = pod_clients(get_salt())
+    statuses, _, reachable, _ = merged_cached_roster(get_salt())
+    live = mid in statuses
+    if row is None and not live:
+        if not reachable:
+            flash("Salt API unreachable — cannot verify or remove.", "error")
+            return redirect(url_for("minions.index"))
+        if not delete_key:
+            # Nothing to converge: the snapshot row is already gone and
+            # no key is being touched.
+            flash(f"Unknown minion '{mid}'.", "error")
+            return redirect(url_for("minions.index"))
+        # The cached roster only unions pods that answered: one that was
+        # down when the cache filled (or is down now) may still hold the
+        # key, so absence on that view never proves the minion is gone.
+        # Ask every pod directly; only an all-answered read may claim
+        # "Unknown minion" — otherwise fall through and let the
+        # key.delete fan-out converge on the reachable pods.
+        confirmed_absent = True
+        for _name, cli in clients:
+            sub, _, sub_ok, _ = live_roster(cli)
+            if not sub_ok or mid in sub:
+                confirmed_absent = False
+                break
+        if confirmed_absent:
+            flash(f"Unknown minion '{mid}'.", "error")
+            return redirect(url_for("minions.index"))
     partial: list[str] = []
     if delete_key:
-        clients = pod_clients(get_salt())
         for name, cli in clients:
             try:
                 cli.wheel("key.delete", match=mid)
@@ -586,14 +622,15 @@ def remove(mid: str):
             log_event(
                 current_user.username, f"delete-key:{mid}", minion_id=mid
             )
-    session.delete(row)
-    session.commit()
-    log_event(
-        current_user.username,
-        f"minion-remove:{mid}",
-        permission="minion.remove",
-        minion_id=mid,
-    )
+    if row is not None:
+        session.delete(row)
+        session.commit()
+        log_event(
+            current_user.username,
+            f"minion-remove:{mid}",
+            permission="minion.remove",
+            minion_id=mid,
+        )
     if delete_key:
         if partial:
             flash(
@@ -603,8 +640,18 @@ def remove(mid: str):
             )
         else:
             flash(f"{mid} removed. Salt key deleted.", "success")
+    elif row is not None:
+        flash(
+            f"{mid} removed from the inventory cache. Its Salt key was kept — "
+            "it still appears until deleted in Keys.",
+            "success",
+        )
     else:
-        flash(f"{mid} removed from the inventory cache.", "success")
+        flash(
+            f"{mid} had no inventory row to remove. Its Salt key was kept — "
+            "it still appears until deleted in Keys.",
+            "success",
+        )
     return redirect(url_for("minions.index"))
 
 

@@ -735,6 +735,162 @@ def test_minion_row_remove_key_failure_keeps_snapshot(client, monkeypatch):
     assert "Salt API error" in client.get(rv.headers["Location"]).data.decode()
 
 
+def test_minion_remove_converges_when_row_missing_but_key_live(client, monkeypatch):
+    """A partial key fan-out (or a remove that kept the key) can leave
+    the key alive while the snapshot row is already gone — the minion
+    still appears because the list unions the live roster. Remove must
+    re-run the key delete instead of dead-ending on 'Unknown minion'."""
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+    calls = []
+    salt = client.app.extensions["salt_client"]
+    orig_wheel = salt.wheel
+
+    def rec(fun, **kwargs):
+        calls.append(fun)
+        return orig_wheel(fun, **kwargs)
+
+    monkeypatch.setattr(salt, "wheel", rec)
+    rv = client.post("/minions/web-01/remove", data={"delete_key": "yes"})
+    assert rv.status_code == 302
+    assert "key.delete" in calls
+    html = client.get(rv.headers["Location"]).data.decode()
+    assert "Unknown minion" not in html
+    assert "Salt key deleted" in html
+
+
+def test_minion_remove_unknown_only_when_gone_everywhere(client, monkeypatch):
+    """With the row missing AND every pod confirming the key is absent,
+    remove stays a no-op error — but only then."""
+    import overstate_ui.minions as minions_mod
+
+    calls = []
+    salt = client.app.extensions["salt_client"]
+    orig_wheel = salt.wheel
+
+    def rec(fun, **kwargs):
+        calls.append(fun)
+        return orig_wheel(fun, **kwargs)
+
+    monkeypatch.setattr(salt, "wheel", rec)
+    monkeypatch.setattr(
+        minions_mod,
+        "merged_cached_roster",
+        lambda client: ({"other-01": "accepted"}, set(), True, True),
+    )
+    # Every pod answers a fresh roster read and none lists web-01:
+    # absence is proven, so no key.delete fan-out runs.
+    monkeypatch.setattr(
+        minions_mod,
+        "pod_clients",
+        lambda default: [("pod-0", object()), ("pod-1", object())],
+    )
+    monkeypatch.setattr(
+        minions_mod,
+        "live_roster",
+        lambda client: ({"other-01": "accepted"}, set(), True, True),
+    )
+    rv = client.post("/minions/web-01/remove", data={"delete_key": "yes"})
+    assert rv.status_code == 302
+    assert "key.delete" not in calls
+    assert "Unknown minion" in client.get(rv.headers["Location"]).data.decode()
+
+
+def test_minion_remove_unknown_not_claimed_while_pod_down(client, monkeypatch):
+    """A down pod makes absence unprovable: even with no snapshot row
+    and the key missing from every reachable roster, remove must re-run
+    the key.delete fan-out instead of claiming 'Unknown minion' — the
+    key may be on the pod that did not answer."""
+    import overstate_ui.minions as minions_mod
+    from overstate_ui.salt_client import SaltApiError
+
+    calls: list[str] = []
+
+    class Pod:
+        def __init__(self, name: str):
+            self._name = name
+
+        def wheel(self, fun, **kwargs):
+            calls.append(self._name)
+            assert fun == "key.delete"
+            assert kwargs == {"match": "web-01"}
+            return [{"data": {"return": {}, "success": True}}]
+
+    class DeadPod(Pod):
+        def wheel(self, fun, **kwargs):
+            calls.append(self._name)
+            raise SaltApiError("pod down")
+
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+    monkeypatch.setattr(
+        minions_mod,
+        "merged_cached_roster",
+        lambda client: ({"other-01": "accepted"}, set(), True, True),
+    )
+    monkeypatch.setattr(
+        minions_mod,
+        "pod_clients",
+        lambda default: [("pod-0", Pod("pod-0")), ("pod-1", DeadPod("pod-1"))],
+    )
+
+    def roster_of(cli):
+        if getattr(cli, "_name", None) == "pod-1":
+            return {}, set(), False, False
+        return {"other-01": "accepted"}, set(), True, True
+
+    monkeypatch.setattr(minions_mod, "live_roster", roster_of)
+    rv = client.post("/minions/web-01/remove", data={"delete_key": "yes"})
+    assert rv.status_code == 302
+    assert sorted(calls) == ["pod-0", "pod-1"]
+    html = client.get(rv.headers["Location"]).data.decode()
+    assert "Unknown minion" not in html
+    assert "did not answer" in html
+
+
+def test_minion_remove_partial_converges_without_row(client, monkeypatch):
+    """Retry after a partial fan-out (row gone, key on one live pod)
+    re-attempts every pod and reports the survivors."""
+    import overstate_ui.minions as minions_mod
+    from overstate_ui.salt_client import SaltApiError
+
+    calls: list[str] = []
+
+    class Pod:
+        def __init__(self, name: str):
+            self._name = name
+
+        def wheel(self, fun, **kwargs):
+            calls.append(self._name)
+            assert fun == "key.delete"
+            assert kwargs == {"match": "web-01"}
+            return [{"data": {"return": {}, "success": True}}]
+
+    class DeadPod(Pod):
+        def wheel(self, fun, **kwargs):
+            calls.append(self._name)
+            raise SaltApiError("pod down")
+
+    with client.app.app_context():
+        assert get_session().get(Minion, "web-01") is None
+    monkeypatch.setattr(
+        minions_mod,
+        "pod_clients",
+        lambda default: [("pod-0", Pod("pod-0")), ("pod-1", DeadPod("pod-1"))],
+    )
+    monkeypatch.setattr(
+        minions_mod,
+        "merged_cached_roster",
+        lambda client: ({"web-01": "accepted"}, set(), True, True),
+    )
+    rv = client.post("/minions/web-01/remove", data={"delete_key": "yes"})
+    assert rv.status_code == 302
+    assert sorted(calls) == ["pod-0", "pod-1"]
+    html = client.get(rv.headers["Location"]).data.decode()
+    assert "Unknown minion" not in html
+    assert "did not answer" in html
+
+
 def test_key_delete_removes_snapshot_row(client):
     """Deleting a key must clear the inventory snapshot too. The minion
     list unions the snapshot cache with the live roster, so a key delete
@@ -748,6 +904,59 @@ def test_key_delete_removes_snapshot_row(client):
     assert rv.status_code == 302
     with client.app.app_context():
         assert get_session().get(Minion, "web-01") is None
+
+
+def test_key_delete_converges_when_holding_pod_down(client, monkeypatch):
+    """The Keys delete gate must not block on a partial roster: the
+    union only spans pods that answered, so a pod that did not may still
+    hold the key. Delete falls through and the idempotent fan-out
+    converges instead of flashing 'missing from the current list'."""
+    import overstate_ui.keys as keys_mod
+    from overstate_ui.salt_client import SaltApiError
+
+    calls: list[str] = []
+
+    class Pod:
+        def __init__(self, name: str):
+            self._name = name
+
+        def wheel(self, fun, **kwargs):
+            calls.append(f"{self._name}:{fun}")
+            assert fun == "key.delete"
+            assert kwargs == {"match": "ghost-01"}
+            return [{"data": {"return": {}, "success": True}}]
+
+    class DeadPod(Pod):
+        def wheel(self, fun, **kwargs):
+            calls.append(f"{self._name}:{fun}")
+            raise SaltApiError("pod down")
+
+    monkeypatch.setattr(
+        keys_mod,
+        "pod_clients",
+        lambda default: [("pod-0", Pod("pod-0")), ("pod-1", DeadPod("pod-1"))],
+    )
+    monkeypatch.setattr(
+        keys_mod,
+        "merged_key_data",
+        lambda clients: (
+            {
+                "pending": [],
+                "accepted": [
+                    {"id": "web-01", "fingerprint": FP, "states": {"pod-0": "accepted"}}
+                ],
+                "rejected": [],
+                "denied": [],
+            },
+            ["pod-1"],
+        ),
+    )
+    rv = client.post("/keys/delete", data={"id": "ghost-01", "tab": "accepted"})
+    assert rv.status_code == 302
+    assert sorted(calls) == ["pod-0:key.delete", "pod-1:key.delete"]
+    html = client.get(rv.headers["Location"]).data.decode()
+    assert "missing from the current list" not in html
+    assert "did not answer" in html
 
 
 def test_key_accept_keeps_snapshot_row(client):

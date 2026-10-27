@@ -837,9 +837,15 @@ def act(action: str):
         else:
             require("key.accept")
     clients = pod_clients(get_salt())
-    roster, _ = merged_key_data(clients)
+    roster, failed = merged_key_data(clients)
     current_ids = {row["id"] for rows in roster.values() for row in rows}
-    if mid not in current_ids:
+    # A delete must not gate on the union roster: the merged view only
+    # spans pods that answered, so a pod that did not may still hold the
+    # key. Only an all-answered read may claim the key is missing —
+    # otherwise the idempotent key.delete fan-out below converges on the
+    # reachable pods. Accept/reject move nothing on a phantom id, so
+    # they keep the gate.
+    if mid not in current_ids and (action != "delete" or not failed):
         # An empty union means no master answered: say so plainly.
         flash("That key is missing from the current list.", "error")
         return redirect(url_for("keys.index", **keep))
