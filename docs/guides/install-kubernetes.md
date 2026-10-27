@@ -101,13 +101,50 @@ kubectl apply -k deploy/kubernetes
 ```
 
 The kustomization pins the app/worker image tag (`images:`) — bump
-`newTag` per release and re-apply. Build the image for `linux/amd64`
-explicitly — a native Apple-Silicon build produces arm64, which the
-cluster nodes cannot execute:
+`newTag` per release and re-apply. Images are built inside the cluster
+with kaniko (no local Linux container runtime needed), from the
+committed tree at HEAD:
 
 ```sh
-podman build --platform linux/amd64 -t quay.io/sigaint/overstate:<short-sha> -f Containerfile .
-podman push quay.io/sigaint/overstate:<short-sha>
+# 1. Tag = the commit you are shipping.
+git commit -am "fix: ..."
+TAG=$(git rev-parse --short HEAD)
+git push   # via gh: gh auth setup-git + https remote (see below)
+
+# 2. Pin the release and re-verify the pin is part of what you ship.
+sed -i "s/^\(    newTag:\) .*/\1 \"$TAG\"/" deploy/kubernetes/kustomization.yaml
+git commit -am "deploy: pin app image to $TAG"
+git push
+
+# 3. First release only: quay.io push credentials as a dockerconfigjson
+#    secret (survives between releases).
+kubectl create secret docker-registry regcred -n overstate \
+  --docker-server=quay.io --docker-username=<user> --docker-password=<token>
+
+# 4. In-cluster build + push (dockerfile is Containerfile; steps below
+#    are idempotent, cleanup at the end).
+git archive --format=tar.gz -o /tmp/overstate-context.tar.gz HEAD
+kubectl apply -f deploy/kubernetes/kaniko-build.yaml
+kubectl -n overstate wait --for=condition=ready pod/context-loader --timeout=120s
+kubectl cp /tmp/overstate-context.tar.gz overstate/context-loader:/context/context.tar.gz
+kubectl -n overstate delete pod context-loader
+sed "s/__TAG__/${TAG}/" deploy/kubernetes/kaniko-build.yaml | kubectl apply -f -
+kubectl -n overstate wait --for=condition=complete job/overstate-build --timeout=900s
+kubectl -n overstate delete job overstate-build
+kubectl -n overstate delete pvc build-context
+```
+
+Kaniko builds for the node platform; if the fleet is arm64 and the
+image must be `linux/amd64`, add `--custom-platform=linux/amd64` to the
+job args in `deploy/kubernetes/kaniko-build.yaml`.
+
+Pushing to GitHub uses the `gh` CLI, not an SSH key:
+
+```sh
+gh auth login          # scopes need 'repo'
+gh auth setup-git      # git over https uses gh's token
+git remote set-url origin https://github.com/<org>/overstate.git
+git push -u origin main
 ```
 
 The app Deployment resolves its
