@@ -117,9 +117,13 @@ def index():
             # return_yaml=False keeps this a real mapping: an empty
             # schedule arrives as {} (empty state), not blank YAML text
             # (which the raw fallback would render as a "schedule: {}" box).
-            value = client.local(
-                mid, "schedule.list", tgt_type="list", kwarg={"return_yaml": False}
-            )[0].get(mid, {})
+            # Routed to the miner's owning master pod (buses are per-master).
+            from .fleet import local_one
+
+            value = (
+                local_one(client, mid, "schedule.list", kwarg={"return_yaml": False})
+                or {}
+            )
             entries = parse_schedule_list(value)
             if not entries and isinstance(value, str) and value.strip():
                 raw = value
@@ -309,9 +313,11 @@ def add(mid: str):
             audit_deny("schedule.write", minion_id=mid, detail="no-grant")
             abort(403)
     client = get_salt()
+    from .fleet import local_one, local_one_raw
+
     try:
         entries = parse_schedule_list(
-            client.local(mid, "schedule.list", tgt_type="list")[0].get(mid, {})
+            local_one(client, mid, "schedule.list") or {}
         )
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
@@ -320,13 +326,7 @@ def add(mid: str):
         flash(f"{mid} already has a scheduled job named '{name}'.", "error")
         return redirect(url_for("schedules.index", minion=mid))
     try:
-        result = client.local(
-            mid,
-            "schedule.add",
-            arg=[name],
-            tgt_type="list",
-            kwarg=kwarg,
-        )
+        result = local_one_raw(client, mid, "schedule.add", arg=[name], kwarg=kwarg)
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")
     else:
@@ -353,9 +353,11 @@ def act(mid: str, action: str):
     if not job_name:
         flash("Select a scheduled job first. An empty selection runs nothing.", "error")
         return redirect(url_for("schedules.index", minion=mid))
+    from .fleet import local_one_raw
+
     try:
-        payload = get_salt().local(
-            mid, SCHEDULE_ACTIONS[action], arg=[job_name], tgt_type="list"
+        payload = local_one_raw(
+            get_salt(), mid, SCHEDULE_ACTIONS[action], arg=[job_name]
         )
     except SaltApiError as exc:
         flash(f"salt-api error: {exc}", "error")

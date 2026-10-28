@@ -41,7 +41,7 @@ def fake_transport() -> httpx.MockTransport:
                 },
             )
         if body.get("client") == "runner":
-            return httpx.Response(200, json={"return": [["web-01"]]})
+            return httpx.Response(200, json={"return": [{"up": ["web-01"], "down": []}]})
         return httpx.Response(200, json={"return": [{}]})
 
     return httpx.MockTransport(handler)

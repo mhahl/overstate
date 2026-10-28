@@ -151,7 +151,7 @@ def test_gate_trips_and_stops(monkeypatch, app):
             )
         )
         session.commit()
-        seed_returns("w1", [("web-01", False)])
+        seed_returns("batch-g1-w1", [("web-01", False)])
         out = run_wave_batch(
             "g1", [["web-01"], ["web-02"]], "test.ping", [], 1, "admin", wave_timeout=0
         )
@@ -183,8 +183,8 @@ def test_complete_batch_and_audit(monkeypatch, app):
             )
         )
         session.commit()
-        seed_returns("w1", [("web-01", True)])
-        seed_returns("w2", [("web-02", True), ("db-01", True)])
+        seed_returns("batch-g2-w1", [("web-01", True)])
+        seed_returns("batch-g2-w2", [("web-02", True), ("db-01", True)])
         out = run_wave_batch(
             "g2",
             [["web-01"], ["web-02", "db-01"]],
@@ -237,13 +237,19 @@ def test_cancel_stops_before_first_wave(monkeypatch, app):
 
 
 def test_batched_run_view_inline(monkeypatch, app, admin):
+    import uuid
+
     import overstate_ui.tasks as tasks_mod
 
+    # Pin the batch group so the wave JIDs are knowable for seeding.
+    fixed = uuid.UUID(int=7)
+    monkeypatch.setattr(uuid, "uuid4", lambda: fixed)
     stub = StubSalt()
     monkeypatch.setattr(tasks_mod, "build_client", lambda: stub)
+    group = fixed.hex[:16]
     with app.app_context():
-        seed_returns("w1", [("web-01", True)])
-        seed_returns("w2", [("web-02", True)])
+        seed_returns(f"batch-{group}-w1", [("web-01", True)])
+        seed_returns(f"batch-{group}-w2", [("web-02", True)])
     rv = admin.post(
         "/jobs/run",
         data={
@@ -270,13 +276,18 @@ def test_batch_parent_page_aggregates_wave_returns(monkeypatch, app, admin):
     """The batch parent row is a grouping record Salt never ran: its
     page must aggregate the wave returns instead of showing a complete
     batch above a permanent 'No returns yet'."""
+    import uuid
+
     import overstate_ui.tasks as tasks_mod
 
+    fixed = uuid.UUID(int=8)
+    monkeypatch.setattr(uuid, "uuid4", lambda: fixed)
     stub = StubSalt()
     monkeypatch.setattr(tasks_mod, "build_client", lambda: stub)
+    group = fixed.hex[:16]
     with app.app_context():
-        seed_returns("w1", [("web-01", True)])
-        seed_returns("w2", [("web-02", False)])
+        seed_returns(f"batch-{group}-w1", [("web-01", True)])
+        seed_returns(f"batch-{group}-w2", [("web-02", False)])
     rv = admin.post(
         "/jobs/run",
         data={

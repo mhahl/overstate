@@ -312,3 +312,117 @@ def test_dashboard_without_worker_shows_snapshot(app, admin):
     assert "Capability checks" in html
     assert "Background worker unreachable" in html
     assert "No capability data yet." in html
+
+
+class MergedPod:
+    """Per-pod stub for the merged dashboard task fan-outs."""
+
+    def __init__(self, accepted=(), pending=(), up=(), active=None, versions=None):
+        self.accepted = set(accepted)
+        self.pending = set(pending)
+        self.up = set(up)
+        self.active = dict(active or {})
+        self.versions = dict(versions or {})
+
+    def wheel(self, fun, **kwargs):
+        assert fun == "key.list_all"
+        return [
+            {
+                "data": {
+                    "return": {
+                        "minions": sorted(self.accepted),
+                        "minions_pre": sorted(self.pending),
+                        "minions_rejected": [],
+                        "minions_denied": [],
+                    }
+                }
+            }
+        ]
+
+    def runner(self, fun, **kwargs):
+        if fun == "jobs.active":
+            return [self.active]
+        if fun == "manage.status":
+            return [{"up": sorted(self.up), "down": []}]
+        if fun == "manage.versions":
+            return [self.versions]
+        return [{}]
+
+
+def _no_app_worker(monkeypatch):
+    """Run *_task fan-outs without a real worker app: patch out the
+    isolated-app builder and the unused build_client, and count only on
+    the pod_clients stub."""
+    import contextlib
+
+    from overstate_ui import tasks_salt as ts
+
+    monkeypatch.setattr(ts, "isolated_app", lambda: contextlib.nullcontext())
+    monkeypatch.setattr("overstate_ui.tasks.build_client", lambda: object())
+
+
+def test_fleet_keys_task_unions_pods(monkeypatch):
+    from overstate_ui import tasks_salt as ts
+    from overstate_ui.tasks import fleet_keys_task
+
+    _no_app_worker(monkeypatch)
+    a = MergedPod(accepted=["web-01"], pending=["new-01"], active={"1": {}})
+    b = MergedPod(accepted=["web-02", "web-01"], active={"2": {}})
+    monkeypatch.setattr(ts, "pod_clients", lambda default: [("pod-0", a), ("pod-1", b)])
+
+    out = fleet_keys_task()
+    assert out["accepted"] == 2  # web-01 appears on both pods: counted once
+    assert out["pending"] == 1
+    assert out["active_jids"] == ["1", "2"]
+    assert out["active_live"] is True
+
+
+def test_fleet_keys_task_raises_when_all_pods_silent(monkeypatch):
+    from overstate_ui import tasks_salt as ts
+    from overstate_ui.salt_client import SaltApiError
+    from overstate_ui.tasks import fleet_keys_task
+
+    _no_app_worker(monkeypatch)
+
+    class Dead:
+        def wheel(self, fun, **kwargs):
+            raise SaltApiError("down")
+
+        def runner(self, fun, **kwargs):
+            raise SaltApiError("down")
+
+    monkeypatch.setattr(ts, "pod_clients", lambda default: [("pod-0", Dead())])
+    try:
+        fleet_keys_task()
+        raise AssertionError("expected SaltApiError")
+    except SaltApiError:
+        pass
+
+
+def test_fleet_presence_task_unions_up_and_counts_down(monkeypatch):
+    from overstate_ui import tasks_salt as ts
+    from overstate_ui.tasks import fleet_presence_task
+
+    _no_app_worker(monkeypatch)
+    a = MergedPod(accepted=["web-01"], up=["web-01"])
+    # web-02 attached to pod-1 appears "down" on pod-0's view; the merge
+    # must not double count it as down when pod-1 sees it up.
+    b = MergedPod(accepted=["web-02"], up=["web-02"])
+    monkeypatch.setattr(ts, "pod_clients", lambda default: [("pod-0", a), ("pod-1", b)])
+
+    out = fleet_presence_task()
+    assert out["up"] == 2
+    assert out["down"] == 0
+
+
+def test_fleet_versions_task_sums_pods(monkeypatch):
+    from overstate_ui import tasks_salt as ts
+    from overstate_ui.tasks import fleet_versions_task
+
+    _no_app_worker(monkeypatch)
+    a = MergedPod(versions={"3008.2": {"web-01": "3008.2"}})
+    b = MergedPod(versions={"3008.2": {"web-02": "3008.2", "db-01": "3008.2"}})
+    monkeypatch.setattr(ts, "pod_clients", lambda default: [("pod-0", a), ("pod-1", b)])
+
+    out = fleet_versions_task()
+    assert out["versions"] == {"3008.2": 3}

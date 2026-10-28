@@ -283,3 +283,96 @@ def test_destructive_set_covers_package_changes():
     assert {"state.apply", "state.highstate", "pkg.install", "service.restart"} <= set(
         CONFIRM_FUNS
     )
+
+
+class RecordingPod:
+    """Named pod stub recording runner and local calls."""
+
+    def __init__(self, name, up=(), payloads=None):
+        self.name = name
+        self.up = set(up)
+        self.payloads = dict(payloads or {})
+        self.runners = []
+        self.locals = []
+
+    def runner(self, fun, **kwargs):
+        self.runners.append((fun, kwargs))
+        if fun == "manage.status":
+            return [{"up": sorted(self.up), "down": []}]
+        return [{}]
+
+    def local(self, tgt, fun, **kwargs):
+        self.locals.append((tgt, fun, kwargs))
+        return [{tgt: self.payloads.get(fun, {"return": "ok"})}]
+
+
+def test_fleet_pod_map_routes_local_one_to_owning_pod(monkeypatch):
+    import overstate_ui.fleet as fleet_mod
+    import overstate_ui.tasks_queue as tq_mod
+
+    pod_a = RecordingPod("pod-0", up={"web-01"})
+    pod_b = RecordingPod("pod-1", up={"web-02"})
+    default = RecordingPod("master")
+    monkeypatch.setattr(fleet_mod, "pod_clients", lambda default: [("pod-0", pod_a), ("pod-1", pod_b)])
+    monkeypatch.setattr(tq_mod, "read_pod_map_cache", lambda: None)
+    monkeypatch.setattr(tq_mod, "write_pod_map_cache", lambda payload: None)
+
+    mapping = fleet_mod.fleet_pod_map(default)
+    assert mapping == {"web-01": "pod-0", "web-02": "pod-1"}
+
+    # web-02 is attached to pod-1: the read must hit pod-1, not the VIP.
+    out = fleet_mod.local_one(default, "web-02", "mine.get", arg=["web-02", "x"])
+    assert pod_b.locals and pod_b.locals[0][1] == "mine.get"
+    assert pod_a.locals == []
+    assert out == {"return": "ok"}
+
+
+def test_fleet_pod_map_empty_falls_back_to_default(monkeypatch):
+    import overstate_ui.fleet as fleet_mod
+    import overstate_ui.tasks_queue as tq_mod
+
+    pod_a = RecordingPod("pod-0", up={"web-01"})
+    default = RecordingPod("master", payloads={"test.ping": "pong"})
+    # web-02 is not up anywhere: local_one must fall back to the default
+    # client (single-master behavior) instead of guessing a pod.
+    monkeypatch.setattr(fleet_mod, "pod_clients", lambda default: [("pod-0", pod_a)])
+    monkeypatch.setattr(tq_mod, "read_pod_map_cache", lambda: None)
+    monkeypatch.setattr(tq_mod, "write_pod_map_cache", lambda payload: None)
+
+    out = fleet_mod.local_one(default, "web-02", "test.ping")
+    assert out == "pong"
+    assert pod_a.locals == []
+
+
+def test_kill_fans_out_to_all_pods(monkeypatch, client):
+    import overstate_ui.jobs as jobs_mod
+
+    pod_a = RecordingPod("pod-0")
+    pod_b = RecordingPod("pod-1")
+    monkeypatch.setattr(jobs_mod, "pod_clients", lambda default: [("pod-0", pod_a), ("pod-1", pod_b)])
+    with client.app.app_context():
+        session = get_session()
+        session.add(
+            Job(
+                jid="20261028000000000001",
+                fun="state.apply",
+                tgt="web-*",
+                tgt_type="glob",
+                user="admin",
+                complete=False,
+            )
+        )
+        session.commit()
+    rv = client.post("/jobs/20261028000000000001/kill", follow_redirects=True)
+    assert rv.status_code == 200
+    # Both pods got the kill publish under the SAME shared kill JID.
+    assert len(pod_a.locals) == 1 and len(pod_b.locals) == 1
+    (ta, fa, ka), = pod_a.locals
+    (tb, fb, kb), = pod_b.locals
+    assert fa == "saltutil.kill_job" and fb == "saltutil.kill_job"
+    assert ka["arg"] == ["20261028000000000001"]
+    assert ka["asynchronous"] is True and kb["asynchronous"] is True
+    assert ka["jid"] == kb["jid"]
+    with client.app.app_context():
+        row = get_session().get(Job, ka["jid"])
+        assert row is not None and row.fun == "saltutil.kill_job"

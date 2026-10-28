@@ -298,14 +298,13 @@ def test_entries_failed_presence_read_is_unknown_not_down(app):
         assert by_id["web-01"]["presence_unknown"] is True
         assert by_id["web-02"]["presence_unknown"] is True
         # A *successful* empty read is "genuinely all minions down":
-        # no test.ping returned, so every accepted key is offline. dead*
-        # never derives from an empty up set (minion_entries requires
-        # bool(up) to classify dead, so the label is "down"), but the
-        # offline read is real — never unknown.
+        # every test.ping failed on every pod, so every accepted key is
+        # dead (presence_ok says the read really happened; only a
+        # *failed* read is unknown). Pending keys are never dead.
         down_rows = minion_entries(statuses, set(), "", "", presence_ok=True)
         assert {r["id"]: r["dead"] for r in down_rows} == {
-            "web-01": False,
-            "web-02": False,
+            "web-01": True,
+            "web-02": True,
             "new-01": False,
         }
         assert all(not r["presence_unknown"] for r in down_rows)

@@ -25,13 +25,20 @@ CAPABILITY_CACHE_KEY = "salt:capabilities"
 CAPABILITY_TTL = 300
 PRESENCE_CACHE_KEY = "minions:presence"
 PRESENCE_TTL = 15
+POD_MAP_CACHE_KEY = "minions:pod-map"
+POD_MAP_TTL = 15
+"""Per-minion owning-pod map ``{minion_id: pod_name}`` from per-pod
+manage.status, for routing single-minion live calls to the master the
+minion is attached to (publish buses are per-master). Short TTL: a
+minion reconnects to another pod on failover, and the map must follow."""
 ROSTER_CACHE_KEY = "minions:roster"
 ROSTER_TTL = 30
 """Cached ({minion_id: key_status}, [up ids]) from key.list_all +
-master-local presence (manage.list_state). The minion list and key
-pages render from this instead of paying two Salt round trips per view
-(and per filter keystroke); key mutations clear it so trust changes
-show up immediately. Never written from a failed presence read."""
+per-master presence (manage.status per pod, unioned across the pair).
+The minion list and key pages render from this instead of paying two
+Salt round trips per view (and per filter keystroke); key mutations
+clear it so trust changes show up immediately. Never written from a
+failed presence read."""
 MERGED_ROSTER_CACHE_KEY = "minions:roster:merged"
 """Merged multi-pod roster, same shape as ROSTER_CACHE_KEY. List pickers
 (minions, groups, schedules, onboard) read this so a minion known to any
@@ -39,6 +46,10 @@ reachable master shows up; single-minion skip-live checks
 (:func:`minion_is_up`) stay on the sticky ROSTER_CACHE_KEY on purpose —
 a unioned up set would defeat the not-up skip and hang on foreign
 minions (see docs/reference/architecture-kubernetes.md §4, Key action)."""
+MERGED_ROSTER_TTL = 60
+"""The merged roster costs one manage.status (test.ping fan-out) per pod
+to rebuild, so it gets a longer TTL than the sticky single-master
+roster; presence dots ride the 15 s presence cache on top of it."""
 KEYS_CACHE_KEY = "keys:roster"
 KEYS_TTL = 30
 """Cached merged multi-pod key roster with fingerprints, same deal as
@@ -266,6 +277,28 @@ def write_presence_cache(payload: dict) -> None:
         pass
 
 
+def read_pod_map_cache() -> dict | None:
+    """Cached {minion_id: pod name} for single-minion live routing."""
+    import redis
+
+    try:
+        raw = get_redis_client().get(POD_MAP_CACHE_KEY)
+        return json.loads(raw) if raw else None
+    except (redis.exceptions.RedisError, ValueError):
+        return None
+
+
+def write_pod_map_cache(payload: dict) -> None:
+    import redis
+
+    try:
+        get_redis_client().set(
+            POD_MAP_CACHE_KEY, json.dumps(payload), ex=POD_MAP_TTL
+        )
+    except (redis.exceptions.RedisError, ValueError, TypeError):
+        pass
+
+
 def read_roster_cache() -> dict | None:
     """Cached {"statuses": {mid: key_status}, "up": [mid]} or None."""
     import redis
@@ -308,7 +341,7 @@ def write_merged_roster_cache(statuses: dict, up: set | list) -> None:
         get_redis_client().set(
             MERGED_ROSTER_CACHE_KEY,
             json.dumps({"statuses": statuses, "up": sorted(up)}),
-            ex=ROSTER_TTL,
+            ex=MERGED_ROSTER_TTL,
         )
     except (redis.exceptions.RedisError, ValueError, TypeError):
         pass

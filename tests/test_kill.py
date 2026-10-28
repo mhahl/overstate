@@ -85,27 +85,30 @@ def test_kill_publishes_and_reports(app, admin, monkeypatch):
     monkeypatch.setattr(app.extensions["salt_client"], "local", stub.local)
     rv = admin.post("/jobs/abc123/kill", follow_redirects=True)
     assert "Kill published" in rv.data.decode()
-    assert stub.calls == [
-        (
-            "web-*",
-            "saltutil.kill_job",
-            {"arg": ["abc123"], "tgt_type": "glob", "asynchronous": True},
-        )
-    ]
+    # The kill fans out under one app-generated JID (per-master buses):
+    # the old shape read the kill JID from the master reply.
+    assert len(stub.calls) == 1
+    (_tgt, fun, kwargs), = stub.calls
+    assert fun == "saltutil.kill_job"
+    assert kwargs["arg"] == ["abc123"]
+    assert kwargs["tgt_type"] == "glob"
+    assert kwargs["asynchronous"] is True
+    kill_jid = kwargs["jid"]
+    assert kill_jid
     with app.app_context():
-        kill_job = get_session().get(Job, "kj1")
+        kill_job = get_session().get(Job, kill_jid)
         assert kill_job is not None
         assert kill_job.fun == "saltutil.kill_job"
         event = get_session().query(AuditEvent).filter_by(action="kill:abc123").one()
-        assert event.jid == "kj1"
+        assert event.jid == kill_jid
         get_session().add(
             JobReturn(
-                jid="kj1", minion_id="web-01", success=True, retcode=0, payload={}
+                jid=kill_jid, minion_id="web-01", success=True, retcode=0, payload={}
             )
         )
         get_session().commit()
     html = admin.get("/jobs/abc123").data.decode()
-    assert "Kill kj1" in html and "web-01" in html
+    assert f"Kill {kill_jid}" in html and "web-01" in html
 
 
 def test_kill_denial_flashes(app, admin, monkeypatch):

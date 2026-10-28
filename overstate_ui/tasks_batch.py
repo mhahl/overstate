@@ -68,12 +68,18 @@ def run_wave_batch(
 
     from .audit import log_event
     from .db import get_session
+    from .fleet import pod_clients
     from .jobs import sync_job
+    from .jobs_service import publish_all_async
     from .models import Job, JobReturn, User
     from .tasks import batch_cancelled, build_client
 
     session = get_session()
-    client = build_client()
+    # Publish buses are per-master: each wave must fan out to every
+    # master pod under one shared JID (the launch() pattern), or the
+    # wave silently misses the minions attached to the other pods —
+    # they would then trip the failure gate as "missing".
+    clients = pod_clients(build_client())
     failures = 0
     missing_total = 0
     status = "complete"
@@ -113,17 +119,15 @@ def run_wave_batch(
                     break
             targets = kept
         try:
-            result = client.local(
-                targets,
-                fun,
-                arg=args,
-                tgt_type="list",
-                asynchronous=True,
-                kwarg=kwarg,
+            # Deterministic shared JID across every pod (publish buses
+            # are per-master): the returner rows land under it wherever
+            # the minions are attached.
+            jid = f"batch-{group}-w{num}"
+            missed = publish_all_async(
+                clients, targets, fun, args, "list", jid, kwarg
             )
-            jid = result[0]["jid"] if isinstance(result, list) else result["jid"]
-        except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
-            child_jid = f"batch-{group}-w{num}"
+        except (SaltApiError, httpx.HTTPError) as exc:
+            child_jid = f"batch-{group}-w{num}-failed"
             session.add(
                 Job(
                     jid=child_jid,
@@ -142,6 +146,15 @@ def run_wave_batch(
                 status = "stopped"
                 break
             continue
+        if missed:
+            # Some pods did not answer: the wave publishes there on the
+            # next retry, and the missing returns below are the honest
+            # failure count for the pods that did answer.
+            log_event(
+                user,
+                f"batch-wave-partial:{group}:{num}:{','.join(missed)}",
+                jid=jid,
+            )
         session.add(
             Job(
                 jid=jid,

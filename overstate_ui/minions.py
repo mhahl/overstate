@@ -30,7 +30,7 @@ from .auth import roles_required
 from .dashboard import get_salt
 from .db import get_session
 from .files import highlight_json
-from .fleet import pod_clients
+from .fleet import local_one, local_one_raw, pod_clients
 from .inventory import GRAIN_COLUMNS, SNAPSHOT_GRAINS
 from .jobs_helpers import FUN_RE, _split_state_id, _state_label
 from .minions_helpers import (
@@ -369,8 +369,8 @@ def presence():
         return jsonify(cached)
     # Presence needs no grains: the lightweight merge carries everything
     # presence_of reads, so a cache miss costs columns, not snapshots.
-    # Merged across pods: manage.list_state is per-master TCP presence,
-    # so a single pod's up set undercounts the fleet.
+    # Merged across pods: manage.status is per-master presence, so a
+    # single pod's up set undercounts the fleet.
     statuses, up, _, presence_ok = merged_cached_roster(get_salt())
     if not presence_ok:
         # The live presence half failed: keep the dots the page already
@@ -520,10 +520,8 @@ def refresh_one(mid: str):
         flash(f"{mid} is not responding. Stored data is shown.", "warning")
         return redirect(url_for("minions.index"))
     try:
-        grains = (
-            get_salt()
-            .local(mid, "grains.item", arg=list(SNAPSHOT_GRAINS), tgt_type="list")[0]
-            .get(mid)
+        grains = local_one(
+            get_salt(), mid, "grains.item", arg=list(SNAPSHOT_GRAINS), timeout=15
         )
     except SaltApiError as exc:
         flash(f"Salt API error: {exc}.", "error")
@@ -844,7 +842,7 @@ def detail(mid: str):
             # columns above stay minion.read, grains.items needs
             # pillar.read and authz itself never reads live grains.
             if not skip_live and (not scoped or can_pillar):
-                live = client.local(mid, "grains.items", tgt_type="list")[0].get(mid)
+                live = local_one(client, mid, "grains.items")
                 if isinstance(live, dict):
                     data["grains"] = normalize_grains(live)
             # Vulnerability headline for the overview card: the slim
@@ -854,12 +852,7 @@ def detail(mid: str):
             if not skip_live and (
                 not scoped or authorize(current_user, "mine.read", minion=mid)
             ):
-                stored = client.local(
-                    mid,
-                    "mine.get",
-                    arg=[mid, "grype.scan_summary"],
-                    tgt_type="list",
-                )[0].get(mid, {})
+                stored = local_one(client, mid, "mine.get", arg=[mid, "grype.scan_summary"]) or {}
                 value = stored.get(mid) if isinstance(stored, dict) else None
                 if isinstance(value, dict) and isinstance(value.get("counts"), dict):
                     data["vuln_summary"] = value
@@ -877,12 +870,9 @@ def detail(mid: str):
             if skip_live:
                 data["schedule"] = {}
             else:
-                data["schedule"] = client.local(
-                    mid,
-                    "schedule.list",
-                    tgt_type="list",
-                    kwarg={"return_yaml": False},
-                )[0].get(mid, {})
+                data["schedule"] = local_one(
+                    client, mid, "schedule.list", kwarg={"return_yaml": False}
+                ) or {}
             data["sched_enabled"], data["schedule_rows"] = summarize_schedule(
                 data["schedule"]
             )
@@ -890,9 +880,7 @@ def detail(mid: str):
             if skip_live:
                 data["pillar"] = None
             elif not scoped or can_pillar:
-                data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[
-                    0
-                ].get(mid)
+                data["pillar"] = local_one(client, mid, "pillar.items")
             else:
                 data["pillar"] = None
             data["pillar_html"] = (
@@ -907,9 +895,9 @@ def detail(mid: str):
             data["mine_found"] = False
             data["mine_value"] = None
             if mine_fun and FUN_RE.match(mine_fun) and not skip_live:
-                stored = client.local(
-                    mid, "mine.get", arg=[mid, mine_fun], tgt_type="list"
-                )[0].get(mid, {})
+                stored = (
+                    local_one(client, mid, "mine.get", arg=[mid, mine_fun]) or {}
+                )
                 value = stored.get(mid) if isinstance(stored, dict) else stored
                 if value is not None:
                     data["mine_found"] = True
@@ -938,12 +926,10 @@ def detail(mid: str):
             if not skip_live:
                 summary = _vuln_cache_get(mid, "summary")
                 if summary is None:
-                    stored = client.local(
-                        mid,
-                        "mine.get",
-                        arg=[mid, "grype.scan_summary"],
-                        tgt_type="list",
-                    )[0].get(mid, {})
+                    stored = (
+                        local_one(client, mid, "mine.get", arg=[mid, "grype.scan_summary"])
+                        or {}
+                    )
                     summary = stored.get(mid) if isinstance(stored, dict) else None
                     if isinstance(summary, dict):
                         _vuln_cache_set(mid, "summary", summary)
@@ -956,12 +942,10 @@ def detail(mid: str):
                 if not isinstance(findings, list):
                     detail = _vuln_cache_get(mid, "detail")
                     if detail is None:
-                        stored = client.local(
-                            mid,
-                            "mine.get",
-                            arg=[mid, "grype.scan_detail"],
-                            tgt_type="list",
-                        )[0].get(mid, {})
+                        stored = (
+                            local_one(client, mid, "mine.get", arg=[mid, "grype.scan_detail"])
+                            or {}
+                        )
                         detail_value = (
                             stored.get(mid) if isinstance(stored, dict) else None
                         )
@@ -1050,25 +1034,28 @@ def detail(mid: str):
                 # already excludes pillar config — including a YAML
                 # string return, which never renders raw otherwise.
                 try:
-                    value = client.local(
-                        mid,
-                        "beacons.list",
-                        tgt_type="list",
-                        kwarg={
-                            "return_yaml": False,
-                            "include_pillar": False,
-                            "include_opts": False,
-                        },
-                    )[0].get(mid, {})
+                    value = (
+                        local_one(
+                            client,
+                            mid,
+                            "beacons.list",
+                            kwarg={
+                                "return_yaml": False,
+                                "include_pillar": False,
+                                "include_opts": False,
+                            },
+                        )
+                        or {}
+                    )
                 except SaltApiError:
                     value = {}
             else:
-                value = client.local(
-                    mid,
-                    "beacons.list",
-                    tgt_type="list",
-                    kwarg={"return_yaml": False},
-                )[0].get(mid, {})
+                value = (
+                    local_one(
+                        client, mid, "beacons.list", kwarg={"return_yaml": False}
+                    )
+                    or {}
+                )
             entries = parse_beacon_list(value)
             data["beacon_entries"] = entries
             data["beacon_pillar"] = set()
@@ -1076,12 +1063,15 @@ def detail(mid: str):
                 data["beacon_raw"] = value
             elif entries and (not scoped or can_pillar):
                 try:
-                    local_value = client.local(
-                        mid,
-                        "beacons.list",
-                        tgt_type="list",
-                        kwarg={"return_yaml": False, "include_pillar": False},
-                    )[0].get(mid, {})
+                    local_value = (
+                        local_one(
+                            client,
+                            mid,
+                            "beacons.list",
+                            kwarg={"return_yaml": False, "include_pillar": False},
+                        )
+                        or {}
+                    )
                 except SaltApiError:
                     pass
                 else:
@@ -1099,12 +1089,13 @@ def detail(mid: str):
                 data["pillar"] = None
             elif scoped and not can_pillar:
                 data["schedule"] = (
-                    client.local(
+                    local_one(
+                        client,
                         mid,
                         "schedule.list",
-                        tgt_type="list",
                         kwarg={"return_yaml": False},
-                    )[0].get(mid, {})
+                    )
+                    or {}
                     if authorize(current_user, "schedule.read", minion=mid)
                     else {}
                 )
@@ -1114,19 +1105,18 @@ def detail(mid: str):
                 # caller holds pillar.read: secrets-reader sees no
                 # schedules here, matching the schedule tab.
                 data["schedule"] = (
-                    client.local(
+                    local_one(
+                        client,
                         mid,
                         "schedule.list",
-                        tgt_type="list",
                         kwarg={"return_yaml": False},
-                    )[0].get(mid, {})
+                    )
+                    or {}
                     if not scoped
                     or authorize(current_user, "schedule.read", minion=mid)
                     else {}
                 )
-                data["pillar"] = client.local(mid, "pillar.items", tgt_type="list")[
-                    0
-                ].get(mid)
+                data["pillar"] = local_one(client, mid, "pillar.items")
     except SaltApiError as exc:
         error = str(exc)
     if tab == "overview":
@@ -1226,8 +1216,8 @@ def beacon_act(mid: str, action: str):
         flash("Beacon name is required.", "error")
         return redirect(url_for("minions.detail", mid=mid, tab="beacons"))
     try:
-        outcome = get_salt().local(
-            mid, BEACON_ACTIONS[action], arg=[name], tgt_type="list"
+        outcome = local_one_raw(
+            get_salt(), mid, BEACON_ACTIONS[action], arg=[name], timeout=15
         )
     except SaltApiError as exc:
         flash(f"Salt API error: {exc}.", "error")

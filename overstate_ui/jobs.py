@@ -44,6 +44,7 @@ from .authz import (
 )
 from .dashboard import get_salt, ping_target
 from .db import get_session
+from .fleet import pod_clients
 from .jobs_helpers import (
     ALLOWED_FUNS,
     COMPLETE_AFTER_SECONDS,
@@ -495,10 +496,12 @@ def fun_doc():
         _req("job.read", minion=minion)
     if not FUN_RE.match(fun) or not minion or any(c in minion for c in "*?[]"):
         return "Invalid function name.", 400
-    from .tasks import fun_doc_now
+    from .fleet import local_one
 
     try:
-        doc = fun_doc_now(get_salt(), minion, fun)
+        raw = local_one(get_salt(), minion, "sys.doc", arg=[fun], timeout=8)
+        text = raw.get(fun, "") if isinstance(raw, dict) else raw
+        doc = "\n".join(str(text or "").strip().splitlines()[:40])
     except (SaltApiError, httpx.HTTPError):
         doc = ""
     return render_template("_fun_doc.html", fun=fun, doc=doc)
@@ -1022,7 +1025,13 @@ def panel(jid: str, mid: str):
 @bp.post("/<jid>/kill")
 @roles_required("operator")
 def kill(jid: str):
-    """Publish saltutil.kill_job for jid to the job's own target."""
+    """Publish saltutil.kill_job for jid to the job's own target.
+
+    Publish buses are per-master: the kill must fan out to every master
+    pod under one shared JID, exactly like the original job's publish —
+    a single-pod kill would leave the job running on minions attached
+    to the other pods.
+    """
     session = get_session()
     job = session.get(Job, jid)
     if job is None:
@@ -1049,13 +1058,21 @@ def kill(jid: str):
             flash(f"salt-api error: {exc}", "error")
             return redirect(url_for("jobs.detail", jid=jid))
         tgt, tgt_type = ",".join(targets), "list"
-    client = get_salt()
+    from .jobs_service import new_jid, publish_all_async
+
+    # One shared JID across every pod: the kill reports land under it
+    # and the page's kill-reports merge in the detail route.
+    kill_jid = new_jid()
     try:
-        result = client.local(
-            tgt, "saltutil.kill_job", arg=[jid], tgt_type=tgt_type, asynchronous=True
+        missed = publish_all_async(
+            pod_clients(get_salt()),
+            tgt,
+            "saltutil.kill_job",
+            [jid],
+            tgt_type,
+            kill_jid,
         )
-        kill_jid = result[0]["jid"] if isinstance(result, list) else result["jid"]
-    except (SaltApiError, KeyError, IndexError, TypeError) as exc:
+    except SaltApiError as exc:
         flash(f"kill failed: {exc}", "error")
         return redirect(url_for("jobs.detail", jid=jid))
     session.add(
@@ -1077,7 +1094,14 @@ def kill(jid: str):
         minion_id=kill_ids[0] if len(kill_ids) == 1 else None,
         detail=",".join(kill_ids) if len(kill_ids) != 1 else None,
     )
-    flash(f"Kill published for {jid}. Minion reports appear on this page.", "success")
+    if missed:
+        flash(
+            f"Kill published for {jid}. {', '.join(missed)} did not answer "
+            "- the job may still run on minions attached there. Retry to converge.",
+            "warning",
+        )
+    else:
+        flash(f"Kill published for {jid}. Minion reports appear on this page.", "success")
     return redirect(url_for("jobs.detail", jid=jid))
 
 
@@ -1152,7 +1176,11 @@ def stream(jid: str):
 
     def events():
         last_keepalive = time.monotonic()
-        for _ in range(30):
+        # 600 polls x interval ≈ 20 min at the 2 s default: long jobs
+        # keep streaming instead of ending after ~60 s (a manual refresh
+        # was the only way to follow them), still bounded so a forgotten
+        # tab cannot hold a worker open forever.
+        for _ in range(600):
             job = sync_job(jid)
             jids = [jid]
             if (

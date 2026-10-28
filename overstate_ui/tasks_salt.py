@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from .fleet import pod_clients
 from .salt_client import SaltApiError
 from .tasks_queue import isolated_app
 
@@ -126,7 +127,39 @@ def fleet_keys_task() -> dict:
     from .tasks import build_client
 
     with isolated_app():
-        return fleet_keys_now(build_client())
+        # Cluster: union the per-master key buckets and active JIDs —
+        # key buckets and publish buses are per-pod, so a single-master
+        # count under-reports. Active JIDs are shared via the PG job
+        # cache, so the union simply de-duplicates.
+        clients = pod_clients(build_client())
+        accepted: set[str] = set()
+        pending: set[str] = set()
+        active: set[str] = set()
+        answered = 0
+        shaped = 0
+        for _name, cli in clients:
+            try:
+                keys = cli.wheel("key.list_all")[0]["data"]["return"]
+                live = cli.runner("jobs.active")[0]
+            except (SaltApiError, KeyError, IndexError, TypeError):
+                continue
+            answered += 1
+            accepted.update(keys.get("minions", []) or [])
+            pending.update(keys.get("minions_pre", []) or [])
+            if isinstance(live, dict) and all(
+                isinstance(k, str) and k.isdigit() for k in live
+            ):
+                shaped += 1
+                active.update(live)
+        if not answered:
+            raise SaltApiError("no master reachable")
+        return {
+            "reachable": True,
+            "accepted": len(accepted),
+            "pending": len(pending),
+            "active_jids": sorted(active),
+            "active_live": shaped == answered,
+        }
 
 
 def fleet_presence_now(client, http_timeout: float | None = None) -> dict:
@@ -152,7 +185,39 @@ def fleet_presence_task() -> dict:
     from .tasks import build_client
 
     with isolated_app():
-        return fleet_presence_now(build_client(), http_timeout=FANOUT_HTTP_TIMEOUT)
+        # Cluster: union live minions across every master (each pod's
+        # manage.status lists only the minions attached to it). Down is
+        # accepted keys with no live return on any pod, never a
+        # single-pod under-count — a minion attached to pod-1 appears
+        # "down" everywhere else.
+        clients = pod_clients(build_client())
+        up: set[str] = set()
+        accepted: set[str] = set()
+        answered = 0
+        for _name, cli in clients:
+            try:
+                status = cli.runner(
+                    "manage.status",
+                    http_timeout=FANOUT_HTTP_TIMEOUT,
+                    timeout=1,
+                    gather_job_timeout=1,
+                )[0]
+                keys = cli.wheel("key.list_all")[0]["data"]["return"]
+            except (SaltApiError, KeyError, IndexError, TypeError):
+                continue
+            if not isinstance(status, dict):
+                continue
+            answered += 1
+            up.update(status.get("up") or [])
+            accepted.update(keys.get("minions", []) or [])
+        if not answered:
+            raise SaltApiError("no master reachable")
+        down = accepted - up
+        return {
+            "reachable": True,
+            "up": len(up),
+            "down": len(down),
+        }
 
 
 def normalize_versions(payload) -> dict[str, int]:
@@ -191,7 +256,25 @@ def fleet_versions_task() -> dict:
     from .tasks import build_client
 
     with isolated_app():
-        return fleet_versions_now(build_client(), http_timeout=FANOUT_HTTP_TIMEOUT)
+        # Cluster: manage.versions reports each pod's attached minions,
+        # so the fleet counts are the sum across masters. The shared PG
+        # job cache means no risk of double counting a returner.
+        clients = pod_clients(build_client())
+        counts: dict[str, int] = {}
+        answered = 0
+        for _name, cli in clients:
+            try:
+                sub = normalize_versions(
+                    cli.runner("manage.versions", http_timeout=FANOUT_HTTP_TIMEOUT)[0]
+                )
+            except (SaltApiError, KeyError, IndexError, TypeError):
+                continue
+            answered += 1
+            for version, n in sub.items():
+                counts[version] = counts.get(version, 0) + n
+        if not answered:
+            raise SaltApiError("no master reachable")
+        return {"versions": counts}
 
 
 def list_functions_now(client, minion: str) -> list[str]:

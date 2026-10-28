@@ -332,6 +332,10 @@ def _new_jid() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y%m%d%H%M%S%f")
 
 
+new_jid = _new_jid
+"""Public alias for the kill/batch/wave fan-outs outside this module."""
+
+
 def _force_beacon_kwargs(
     fun: str, args: list, kwarg: dict | None
 ) -> tuple[list, dict | None]:
@@ -365,7 +369,7 @@ def _force_beacon_kwargs(
     return cleaned, forced
 
 
-def _publish_all_async(
+def publish_all_async(
     clients, tgt: str, fun: str, args: list, tgt_type: str, jid: str,
     kwarg: dict | None = None,
 ) -> list[str]:
@@ -586,7 +590,7 @@ def launch(
     clients = pod_clients(client)
     if asynchronous:
         jid = _new_jid()
-        missed = _publish_all_async(clients, tgt, fun, args, tgt_type, jid, kwarg)
+        missed = publish_all_async(clients, tgt, fun, args, tgt_type, jid, kwarg)
         session = get_session()
         session.add(
             Job(
@@ -612,7 +616,7 @@ def launch(
     # second worker. Completion stays with sync_job; a sync click that
     # outruns the budget simply leaves the job running like async does.
     jid = _new_jid()
-    missed = _publish_all_async(clients, tgt, fun, args, tgt_type, jid, kwarg)
+    missed = publish_all_async(clients, tgt, fun, args, tgt_type, jid, kwarg)
     session = get_session()
     job = Job(
         jid=jid,

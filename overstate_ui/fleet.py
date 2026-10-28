@@ -13,10 +13,11 @@ from __future__ import annotations
 import threading
 import time
 
+import httpx
 from flask import current_app
 
 from .k8s import K8sClient, K8sError
-from .salt_client import SaltClient
+from .salt_client import SaltApiError, SaltClient
 
 POD_URLS_TTL = 60.0
 """How long one K8s API answer for the master pods is trusted. Replica
@@ -105,3 +106,110 @@ def drop_client_cache() -> None:
     with _pod_urls_lock:
         _pod_urls_cache["urls"] = []
         _pod_urls_cache["at"] = 0.0
+
+
+POD_MAP_HTTP_TIMEOUT = 8.0
+
+
+def fleet_pod_map(default: SaltClient, http_timeout: float = POD_MAP_HTTP_TIMEOUT) -> dict:
+    """{minion_id: master pod name holding its live connection}.
+
+    Each master's ``manage.status`` lists only the minions attached to
+    it, so the union is a minion->pod map for routing single-minion
+    live calls to the owning master instead of the load-balanced VIP
+    (where ClientIP affinity can pin the app to a master that does not
+    own the minion). Held in a short Redis cache; a failover re-owning
+    shows up within the TTL. Empty when every pod is silent.
+    """
+    from .tasks_queue import read_pod_map_cache, write_pod_map_cache
+
+    cached = read_pod_map_cache()
+    if isinstance(cached, dict) and cached:
+        return cached
+    acc: dict = {}
+    answered = False
+    for name, cli in pod_clients(default):
+        try:
+            status = cli.runner(
+                "manage.status",
+                http_timeout=http_timeout,
+                timeout=1,
+                gather_job_timeout=1,
+            )[0]
+        except (SaltApiError, httpx.HTTPError, KeyError, IndexError, TypeError):
+            continue
+        if not isinstance(status, dict):
+            continue
+        answered = True
+        for mid in status.get("up") or []:
+            acc.setdefault(str(mid), name)
+    if answered and acc:
+        write_pod_map_cache(acc)
+    return acc
+
+
+def local_one_raw(
+    default: SaltClient,
+    mid: str,
+    fun: str,
+    arg: list | None = None,
+    kwarg: dict | None = None,
+    via: str = "local",
+    timeout: int = 10,
+    http_timeout: float | None = None,
+):
+    """Like :func:`local_one` but returns the raw salt-api return list,
+    for callers that inspect the response shape itself (e.g. beacon
+    refusal payloads). Routes to the owning pod when known; falls back
+    to the default client otherwise."""
+    mapping = fleet_pod_map(default)
+    clients = dict(pod_clients(default))
+    cli = clients.get(mapping.get(mid, "")) if mapping else None
+    if cli is None:
+        cli = default
+    return cli.local(
+        mid,
+        fun,
+        arg=arg or [],
+        tgt_type="list",
+        via=via,
+        timeout=timeout,
+        kwarg=kwarg,
+        http_timeout=http_timeout,
+    )
+
+
+def local_one(
+    default: SaltClient,
+    mid: str,
+    fun: str,
+    arg: list | None = None,
+    kwarg: dict | None = None,
+    via: str = "local",
+    timeout: int = 10,
+    http_timeout: float | None = None,
+):
+    """Run ``fun`` on a single minion via its owning master pod.
+
+    Returns the ``[0].get(mid)`` payload like a plain synchronous
+    local call. Falls back to the default client when the pod map is
+    unavailable (dev box, all pods silent) or the minion's owner is
+    unknown — so behavior outside a cluster is unchanged. Raises
+    SaltApiError/httpx errors to the caller exactly like a direct
+    ``client.local`` call.
+    """
+    mapping = fleet_pod_map(default)
+    clients = dict(pod_clients(default))
+    cli = clients.get(mapping.get(mid, "")) if mapping else None
+    if cli is None:
+        cli = default
+    return cli.local(
+        mid,
+        fun,
+        arg=arg or [],
+        tgt_type="list",
+        via=via,
+        timeout=timeout,
+        kwarg=kwarg,
+        http_timeout=http_timeout,
+    )[0].get(mid)

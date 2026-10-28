@@ -280,12 +280,13 @@ def minion_entries(
         # "everyone down": dead/down labels must never derive from a
         # read that did not happen.
         row["presence_unknown"] = not presence_ok
-        row["dead"] = (
-            row["key_status"] == "accepted"
-            and not row["up"]
-            and presence_ok
-            and bool(up)
-        )
+        # A successful read with no up set means the accepted minions are
+        # genuinely offline — every test.ping failed on every pod — so
+        # they label dead rather than a bare "down" (which reads like the
+        # status is unknown). The cached roster only ever stores the
+        # product of a successful presence read, so a warm cache cannot
+        # mislabel from a failed read.
+        row["dead"] = row["key_status"] == "accepted" and not row["up"] and presence_ok
         if q and q not in row["id"]:
             continue
         if status_filter and row["key_status"] != status_filter:
@@ -423,10 +424,11 @@ def merged_live_roster(
     """Union of live_roster across pods: (statuses, up, reachable, presence_ok).
 
     Status per minion is the strongest any reachable pod reports;
-    up is the union (manage.list_state is per-master TCP presence, so a
-    single-pod read undercounts). Unreachable pods contribute
-    nothing; reachable means any pod answered either half; presence_ok
-    means any pod answered the presence half.
+    up is the union (manage.status is per-master presence — each pod
+    lists the minions attached to it — so a single-pod read
+    undercounts). Unreachable pods contribute nothing; reachable means
+    any pod answered either half; presence_ok means any pod answered
+    the presence half.
     """
     statuses: dict[str, str] = {}
     up: set[str] = set()
