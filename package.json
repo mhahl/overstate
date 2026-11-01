@@ -27,6 +27,6 @@
     "daisyui": "^5.7.39",
     "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
-    "wunderbaum": "^0.14.1"
+    "wunderbaum": "^0.15.0"
   }
 }
